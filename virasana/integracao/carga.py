@@ -793,6 +793,7 @@ def cria_campo_pesos_carga(db, batch_size=1):
         carga = linha.get('metadata').get('carga')
         _id = linha['_id']
         container = carga.get('container')
+        print(carga, container)
         if isinstance(container, list) and len(container) > 0:
             container = container[0]
         if container:
