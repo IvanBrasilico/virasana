@@ -83,11 +83,14 @@ def limpa_pre(page_source: str):
 
 
 def get_dues_json_pos_acd(page_source: str):
-    json_pos_acd = json.loads(limpa_pre(page_source))
-    lista_due = json_pos_acd['lista']
     result = []
-    for item in lista_due:
-        result.append(item['numeroDUE'])
+    try:
+        json_pos_acd = json.loads(limpa_pre(page_source))
+        lista_due = json_pos_acd['lista']
+        for item in lista_due:
+            result.append(item['numeroDUE'])
+    except JSONDecodeError:
+        pass
     return result
 
 
@@ -101,9 +104,11 @@ def get_dues_pos_acd(driver, conteineres, pos_acd_url=POS_ACD_URL):
 
 
 def get_dues_json_due(page_source: str):
-    json_due = json.loads(limpa_pre(page_source))
-    result = json_due
-    return result
+    try:
+        json_due = json.loads(limpa_pre(page_source))
+        return json_due
+    except JSONDecodeError:
+        return None
 
 
 def detalha_dues(driver, conteineres_listadue, due_items_url=DUE_ITEMS_URL):
@@ -113,7 +118,9 @@ def detalha_dues(driver, conteineres_listadue, due_items_url=DUE_ITEMS_URL):
             if due and isinstance(due, str) and due_detalhe.get(due) is None:
                 driver.get(due_items_url + due)
                 due_page = driver.page_source
-                due_detalhe[due] = get_dues_json_due(due_page)
+                detalhe = get_dues_json_due(due_page)
+                if detalhe:
+                    due_detalhe[due] = detalhe
     return due_detalhe
 
 

@@ -30,7 +30,7 @@ def update(batch_size):
     """Script de linha de comando para geração de resumos de peso."""
     tempo = time.time()
     print('Calculando pesos')
-    total = carga.cria_campo_pesos_carga(db, batch_size=b)
+    total = carga.cria_campo_pesos_carga(db, batch_size=batch_size)
     tempo = time.time() - tempo
     tempo_registro = 0 if (total == 0) else (tempo / total)
     print(total, 'dados de pesagem processados ',
