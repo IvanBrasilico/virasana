@@ -206,6 +206,9 @@ def summary(grid_data=None, registro=None):
         'numeroinformado')
     result['Data de escaneamento'] = meta.get(
         'dataescaneamento').strftime('%Y-%m-%d %H:%M')
+    xmldoc = meta.get('xml')
+    if xmldoc.get('alerta') is True:
+        result['COM Alerta do Operador Recinto'] = ''
     result['Data de Carregamento da imagem no sistema'] = upload
     result['Nome Recinto'] = meta.get('recinto')
     if meta.get('alertapeso') is True:
