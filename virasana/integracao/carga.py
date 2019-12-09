@@ -177,20 +177,17 @@ def summary(grid_data=None, registro=None):
         if not meta:
             raise TypeError('Não foi encontrado registro do CARGA' +
                             ' na função integracao.carga.summary')
-        manifesto = meta.get('manifesto')
-        if isinstance(manifesto, list):
-            manifesto = manifesto[0]
-        tipo = manifesto.get('tipomanifesto')
         tipos = {'lci': 'Importação',
                  'bce': 'Baldeação',
                  'lce': 'Exportação'}
-        result['Operação'] = tipo + ' - ' + tipos.get(tipo, '')
         if meta.get('vazio'):
+            manifesto = meta.get('manifesto')
+            if isinstance(manifesto, list):
+                manifesto = manifesto[0]
+            tipo = manifesto.get('tipomanifesto')
+            result['Operação'] = tipos.get(tipo, '')
             result['CONTÊINER VAZIO'] = ''
-            result['Manifesto - Escala'] = \
-                '%s - %s' % \
-                (manifesto.get('manifesto'),
-                 meta.get('atracacao').get('escala'))
+            result['Manifesto'] = manifesto.get('manifesto')
             conteiner_pesos = []
             conteineres = meta.get('container')
             if not isinstance(conteineres, list):
@@ -210,12 +207,15 @@ def summary(grid_data=None, registro=None):
             atracacao = meta.get('atracacao')
             if isinstance(atracacao, list):
                 atracacao = atracacao[0]
+            escala = ''
             if atracacao:
                 escala = atracacao.get('escala')
+            tipo = conhecimento.get('trafego')
+            result['Operação'] = tipos.get(tipo, '')
             result['Conhecimento - Manifesto - Escala'] = \
                 'CE %s - %s - %s' % \
                 (conhecimento.get('conhecimento'),
-                 manifesto.get('manifesto'),
+                 conhecimento.get('manifesto'),
                  escala)
             result['Descrição'] = \
                 conhecimento.get('descricaomercadoria')
@@ -816,9 +816,7 @@ def cria_campo_pesos_carga(db, batch_size=1):
 
             db['fs.files'].update_one(
                 {'_id': _id},
-                {'$set': {'metadata.carga.pesototal': pesototal,
-                          'metadata.diferencapeso': peso_dif,
-                          'metadata.alertapeso': alertapeso}}
+                {'$set': dict_update}
             )
             if alertapeso:
                 divergentes += 1

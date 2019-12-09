@@ -1,0 +1,136 @@
+{
+  "carga": {
+    "container": [
+      {
+        "container": "trlu9504252",
+        "lacre1": "a0979331",
+        "quantidadebloqueiosativos": "00",
+        "taracontainer": "003700,000",
+        "tipo": "general purpose(40'/8'6) - dry 40'",
+        "volumeitem": "0000000048,000",
+        "capacidade": "40",
+        "pesobrutoitem": "000023502,000",
+        "conhecimento": "151705125931807",
+        "item": "0002",
+        "quantidadebloqueiosinativos": "00"
+      }
+    ],
+    "manifesto": [
+      {
+        "codigoportodescarregamento": "brssz",
+        "tipomanifesto": "lci",
+        "dataemissao": "12/06/2017",
+        "codigoterminaldescarregamento1": "brssz058",
+        "codigoportocarregamento": "deham",
+        "nomeportocarregamento": "hamburg",
+        "nometerminaldescarregamento1": "brasil terminal portuario - btp",
+        "codigoempresanavegacao": "ch001016",
+        "manifesto": "1517501412710",
+        "nomeempresanavegacao": "msc mediterranean shipping co",
+        "codigoagencianavegacao": "02378779000109",
+        "nomeportodescarregamento": "santos",
+        "nomeagencianavegacao": "msc mediterranean shipping do brasil ltda"
+      }
+    ],
+    "ncm": [
+      {
+        "ncm": "4802",
+        "item": "0002",
+        "descricao": "papel e cartao, nao revestidos, dos tipos utilizados para escrita, impressao ou outros fins graficos, e papel e cartao para fabricar cartoes",
+        "conhecimento": "151705125931807"
+      }
+    ],
+    "conhecimento": [
+      {
+        "nomeportoorigem": "hamburg",
+        "dataemissao": "12/06/2017",
+        "indicadorblaordem": "n",
+        "tipodocdespachonaturezadsi": "consumo",
+        "situacao": "entregue",
+        "canaldespachodi": "verde",
+        "codigoportoorigem": "deham",
+        "moedafrete": "euro/com.europeia",
+        "identificacaoconsignatario": "plural industria grafica ltda.",
+        "recolhimentofrete": "prepaid",
+        "codigosituacao": "07",
+        "continuacaodescricaomercadoria": "s",
+        "datasituacao": "20/07/2017",
+        "codigodasituacaodespacho": "01",
+        "situacaodespacho": "desembaracada",
+        "codigoagentenavegacao": "02378779000109",
+        "valorfrete": "00000000150,00",
+        "indicadorblservico": "n",
+        "indicadorcargaconteinerizada": "s",
+        "cpfcnpjconsignatario": "03858331000155",
+        "tipo": "bl",
+        "modalidadefrete": "house to house",
+        "quantidadebloqueiosinativos": "00",
+        "codigoportodestino": "brssz",
+        "nomeraarmazenamento": "brasil terminal portuario s/a",
+        "nomeagentenavegacao": "msc mediterranean shipping do brasil ltda",
+        "nomenavioprimeirotransporte": "msc krystal",
+        "codigoraarmazenamento": "8931359",
+        "descricaomercadoria": "79 pk 26 pk package . 27 pk package . 26 pk package holmen view -53 gsm fsc mix credit: ra-coc-001 386 ncm: 4802.61.99 wooden packaging: not applicable (not used) freight prepaid 20 freedays demurrage (equipment) papel e cartao, nao revestidos, dos",
+        "codigodocumentodespacho": "di",
+        "numerobl": "mscuru825924",
+        "datasituacaodespacho": "14/07/2017",
+        "nomeportodestino": "santos",
+        "identificacaonotificado": "plural industria grafica ltda.",
+        "nomeconsignatario": "plural industria grafica ltda",
+        "numerodocumentodespacho": "1711576834",
+        "conhecimento": "151705125931807",
+        "consignatarioestrangeiro": "n",
+        "identificacaoembarcador": "central national-gottesman inc."
+      }
+    ],
+    "vazio": false,
+    "atracacao": {
+      "localatracacao": "btp02",
+      "codigoterminal": "brssz058",
+      "datadesatracacao": "02/07/2017",
+      "nometerminal": "brasil terminal portuario - btp",
+      "horadesatracacao": "20:21:00",
+      "horaatracacao": "03:08:00",
+      "escala": "17000233867",
+      "dataatracacaoiso": ISODate(
+      "2017-07-01T03:08:00Z"
+      ),
+      "dataatracacao": "01/07/2017",
+      "situacao": "atracada"
+    },
+    "pesototal": 27202
+  }
+}
+{
+  "carga": {
+    "vazio": true,
+    "container": [
+      {
+        "container": "medu3781804",
+        "manifesto": "1517501400984",
+        "capacidade(pes)": "20",
+        "nometipo": "general purpose(20'/8'6)-dry 20'",
+        "tara(kg)": "002300,000",
+      }
+    ],
+    "manifesto": [
+      {
+        "codigoportodescarregamento": "brssz",
+        "tipomanifesto": "lci",
+        "dataemissao": "20/06/2017",
+        "codigoterminaldescarregamento1": "brssz058",
+        "codigoportocarregamento": "coctg",
+        "nomeportodescarregamento": "santos",
+        "nometerminaldescarregamento1": "brasil terminal portuario - btp",
+        "nometerminaldescarregamento2": "santos brasil",
+        "codigoempresanavegacao": "ch001016",
+        "manifesto": "1517501400984",
+        "nomeempresanavegacao": "msc mediterranean shipping co",
+        "codigoagencianavegacao": "02378779000109",
+        "nomeportocarregamento": "cartagena",
+        "codigoterminaldescarregamento2": "brssz016",
+        "nomeagencianavegacao": "msc mediterranean shipping do brasil ltda"
+      }
+    ]
+  }
+}

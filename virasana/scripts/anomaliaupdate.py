@@ -29,9 +29,7 @@ str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
               help='Dia de início (dia/mês/ano) - padrão uma semana')
 @click.option('--fim', default=str_today,
               help='Dia de fim (dia/mês/ano) - padrão hoje')
-@click.option('--refresh', is_flag=True,
-              help='Baixar novamente')
-def update(inicio, fim, refresh):
+def update(inicio, fim):
     """Script de linha de comando para integração do arquivo XML."""
     start = datetime.strptime(inicio, '%d/%m/%Y')
     end = datetime.strptime(fim, '%d/%m/%Y')
