@@ -799,8 +799,8 @@ def cria_campo_pesos_carga(db, batch_size=1):
         if isinstance(container, list) and len(container) > 0:
             container = container[0]
         if container:
-            tara = float(container.get('taracontainer').replace(',', '.'))
-            peso = float(container.get('pesobrutoitem').replace(',', '.'))
+            tara = monta_float(container.get('taracontainer'))
+            peso = monta_float(container.get('pesobrutoitem'))
             pesototal = tara + peso
             peso_dif = abs(pesopred - pesototal)
             peso_dif_relativo = peso_dif / (pesopred + pesototal) / 2
