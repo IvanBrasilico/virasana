@@ -973,7 +973,8 @@ def files():
 
         projection = {'_id': 1, 'filename': 1,
                       'metadata.numeroinformado': 1,
-                      'metadata.predictions.bbox': 1,
+                      'metadata.predictions': 1,
+                      'metadata.pesagens': 1,
                       'metadata.dataescaneamento': 1,
                       'metadata.carga': 1}
         skip = (pagina_atual - 1) * PAGE_ROWS
@@ -1000,6 +1001,7 @@ def files():
             linha['ncms'] = carga.get_dados_ncm(grid_data)
             linha['infocarga'] = carga.get_dados_conteiner(grid_data)
             linha['pesocarga'] = carga.get_peso_conteiner(grid_data)
+            linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
             lista_arquivos.append(linha)

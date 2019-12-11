@@ -211,9 +211,12 @@ def summary(grid_data=None, registro=None):
         result['CONTÊINER COM ALERTA DO OPERADOR DE ESCÂNER(alerta Recinto)'] = ''
     result['Data de Carregamento da imagem no sistema'] = upload
     result['Nome Recinto'] = meta.get('recinto')
-    if meta.get('alertapeso') is True:
-        result['Alerta para diferença de peso'] = \
+    if meta.get('diferencapeso'):
+        result['Diferença de peso imagem'] = \
             '{:0.2f}'.format(meta.get('diferencapeso'))
+    if meta.get('diferencapeso2'):
+        result['Diferença de peso balança'] = \
+            '{:0.2f}'.format(meta.get('diferencapeso2'))
     return result
 
 
