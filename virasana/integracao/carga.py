@@ -45,7 +45,9 @@ CHAVES_CARGA = [
     'metadata.carga.atracacao.horaatracacao',
     'metadata.carga.pesototal',
     'metadata.diferencapeso',
+    'metadata.diferencapeso2',
     'metadata.alertapeso',
+    'metadata.alertapeso2',
     'metadata.carga.container.indicadorusoparcial'
 ]
 
@@ -137,6 +139,18 @@ def get_peso_conteiner(grid_data):
             volume = monta_float(conteiner.get('volumeitem'))
             return 'Peso %dkg (bruto %dkg  tara %dkg) Volume %dm3' % \
                    (pesototal, peso, tara, volume)
+    except Exception as err:
+        logger.error(err)
+    return ''
+
+def get_pesos(grid_data):
+    try:
+        print('************************', grid_data.get('metadata').get('predictions'))
+        pesopred = grid_data.get('metadata').get('predictions')[0].get('peso', 0.)
+        print(pesopred)
+        pesobalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
+        return 'Peso imagem %dkg  - Peso balança %dkg' % \
+               (pesopred, pesobalanca)
     except Exception as err:
         logger.error(err)
     return ''
@@ -801,6 +815,8 @@ def cria_campo_pesos_carga(db, batch_size=1):
         if container:
             tara = monta_float(container.get('taracontainer'))
             peso = monta_float(container.get('pesobrutoitem'))
+            if tara == 0.:
+                tara = monta_float(container.get('tara(kg)'))
             pesototal = tara + peso
             peso_dif = abs(pesopred - pesototal)
             peso_dif_relativo = peso_dif / (pesopred + pesototal) / 2
@@ -821,7 +837,7 @@ def cria_campo_pesos_carga(db, batch_size=1):
                 {'_id': _id},
                 {'$set': dict_update}
             )
-            if alertapeso:
+            if alertapeso or alertapeso2:
                 divergentes += 1
             processados += 1
     elapsed = time.time() - s0
