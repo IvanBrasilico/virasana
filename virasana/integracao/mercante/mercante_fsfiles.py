@@ -16,7 +16,7 @@ from virasana.integracao.mercante.mercante_marshmallow import \
 
 UPDATE_DATAOPERACAO_SQL = \
     'UPDATE manifestosresumo' \
-    ' SET dataInicioOperacaoDate = STR_TO_DATE(dataInicioOperacao, "\%Y-\%m-\%d")' \
+    ' SET dataInicioOperacaoDate = STR_TO_DATE(dataInicioOperacao, "%Y-%m-%d")' \
     ' WHERE dataInicioOperacaoDate IS NULL AND dataInicioOperacao !=""; '
 
 
@@ -57,6 +57,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     if len(listanumerocc) == 0:
         return {}, {}
     lista = '("' + '", "'.join(listanumerocc) + '")'
+    print(lista)
     sql_manifestos = \
         'SELECT numero, idConteinerVazio FROM conteinervazioresumo c ' \
         ' inner join manifestosresumo m on c.manifesto = m.numero' \
@@ -80,7 +81,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
     with engine.connect() as conn:
-        cursor = conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
+        conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
         for parametros_pesquisa in pesquisas_manifesto:
             cursor = conn.execute(sql_manifestos, parametros_pesquisa)
             result = cursor.fetchall()
@@ -99,6 +100,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
 
 def update_mercante_fsfiles(db, engine, diaapesquisar: datetime):
     dict_numerocc = get_conteineres_semcarga_dia(diaapesquisar)
+    # print(dict_numerocc)
     manifestos, conhecimentos = pesquisa_containers_no_mercante(
         engine,
         diaapesquisar,
@@ -108,14 +110,14 @@ def update_mercante_fsfiles(db, engine, diaapesquisar: datetime):
     session = Session()
     for container, _id in dict_numerocc.items():
         if conhecimentos.get(container):  # Se encontrou conhecimento, priorizar!!!
-            logger.info('Update Conhecimento no _id %s Container %s' % (_id, container))
+            # logger.info('Update Conhecimento no _id %s Container %s' % (_id, container))
             db['fs.files'].update_one(
                 {'_id': ObjectId(_id)},
                 {'$set': {'metadata.carga':
                               conhecimento_carga(session, conhecimentos[container], container)}}
             )
         elif manifestos.get(container):
-            logger.info('Update manifesto no _id %s Container %s' % (_id, container))
+            # logger.info('Update manifesto no _id %s Container %s' % (_id, container))
             db['fs.files'].update_one(
                 {'_id': ObjectId(_id)},
                 {'$set': {'metadata.carga':

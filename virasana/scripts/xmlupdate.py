@@ -14,6 +14,7 @@ Args:
 """
 import time
 from datetime import datetime
+from pymongo.errors import OperationFailure
 
 import click
 
@@ -31,8 +32,11 @@ today = datetime.today()
               help='Tamanho do lote - padrão' + str(BATCH_SIZE))
 def update(year, month, batch_size):
     """Script de linha de comando para integração do arquivo XML."""
-    create_indexes(db)
-    xmli.create_indexes(db)
+    try:
+        create_indexes(db)
+        xmli.create_indexes(db)
+    except OperationFailure as err:
+        print(err)
     print('Começando a procurar por dados de XML a inserir')
     number = gridfs_count(db, xmli.FALTANTES)
     print(number, 'registros sem metadata de xml')

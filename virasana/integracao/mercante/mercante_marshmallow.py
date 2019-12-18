@@ -133,9 +133,14 @@ def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None
     dict_carga['conhecimento'] = []
     dict_carga['ncm'] = []
     dict_carga['container'] = []
+    dict_carga['manifesto'] = []
     for numeroconhecimento in conhecimentos:
         conhecimento = session.query(Conhecimento).filter(Conhecimento.numeroCEmercante == numeroconhecimento).one()
-        dict_carga['conhecimento'].append(conhecimento_schema.dump(conhecimento, session))
+        conhecimento_dict = conhecimento_schema.dump(conhecimento, session)
+        dict_carga['conhecimento'].append(conhecimento_dict)
+        manifesto = session.query(Manifesto).filter(Manifesto.numero == conhecimento_dict['manifesto']).one_or_none()
+        if manifesto:
+            dict_carga['manifesto'].append(manifesto_schema.dump(manifesto, session))
         itens = session.query(Item).filter(Item.numeroCEmercante == numeroconhecimento).all()
         for item in itens:
             if item.codigoConteiner == numeroconteiner:
