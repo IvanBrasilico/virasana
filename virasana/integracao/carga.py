@@ -146,9 +146,9 @@ def get_peso_conteiner(grid_data):
 
 def get_pesos(grid_data):
     try:
-        print('************************', grid_data.get('metadata').get('predictions'))
+        # print('************************', grid_data.get('metadata').get('predictions'))
         pesopred = grid_data.get('metadata').get('predictions')[0].get('peso', 0.)
-        print(pesopred)
+        # print(pesopred)
         pesobalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
         return 'Peso imagem %dkg  - Peso balança %dkg' % \
                (pesopred, pesobalanca)
@@ -781,7 +781,7 @@ def get_peso_balanca(pesagens):
     peso = 0.
     if pesagens is not None:
         for pesagem in pesagens:
-            if pesagem.get('peso') > peso:
+            if pesagem.get('peso') > peso and not pesagem.get('tara', 0.) == 0.:
                 peso = pesagem.get('peso')
     return peso
 
