@@ -29,7 +29,7 @@ from virasana.integracao.mercante.mercantealchemy import Conhecimento, \
     t_ManifestoEscala, EscalaManifesto
 
 
-def get_pendentes(session, origem, tipomovimento, limit=20000):
+def get_pendentes(session, origem, tipomovimento, limit=100000):
     controle = ControleResumo.get_(session, str(origem), tipomovimento)
     maxid = controle.maxid
     logger.info('%s - inicio em ID %s - tipo %s' % (origem, maxid, tipomovimento))
