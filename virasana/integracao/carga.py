@@ -113,15 +113,16 @@ def get_dados_conteiner(grid_data):
                     return ''
                 tara = monta_float(conteiner.get('tara(kg)'))
                 return 'Contêiner VAZIO Tara: %d %s' % (tara, descricaotipo)
+
             conhecimento = metadata_carga.get('conhecimento')
-            print(conhecimento)
+            if conhecimento is None:
+                return ''
             if isinstance(conhecimento, list) and len(conhecimento) > 0:
                 conhecimento = conhecimento[0]
             descricao = conhecimento.get('descricaomercadoria')[:240]
             descricao = descricao[:60] + ' ' + descricao[60:120] + \
                         ' ' + descricao[120:180] + ' ' + descricao[180:241]
             return '%s - %s' % (descricaotipo, descricao)
-        return ''
     except Exception as err:
         logger.error(err, exc_info=True)
         return ''
