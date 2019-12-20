@@ -44,8 +44,10 @@ def create_indexes(db):
 def get_metadata_due(grid_data):
     if grid_data:
         metadata = grid_data.get('metadata')
+        print(metadata)
         if metadata:
             due = metadata.get('due')
+            print(due)
             if due:
                 return due
     return None
