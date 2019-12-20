@@ -70,9 +70,11 @@ def get_metadata_carga(grid_data):
 def get_tipo_manifesto(grid_data):
     metadata_carga = get_metadata_carga(grid_data)
     manifesto = metadata_carga.get('manifesto')
+    if manifesto is None:
+        return '', ''
     if isinstance(manifesto, list):
         manifesto = manifesto[0]
-    tipo = manifesto.get('tipomanifesto')
+    tipo = manifesto.get('tipomanifesto').lower()
     tipos = {'lci': 'Importação',
              'bce': 'Baldeação',
              'lce': 'Exportação'}
@@ -199,7 +201,7 @@ def summary(grid_data=None, registro=None):
             manifesto = meta.get('manifesto')
             if isinstance(manifesto, list):
                 manifesto = manifesto[0]
-            tipo = manifesto.get('tipomanifesto')
+            tipo = manifesto.get('tipomanifesto').lower()
             result['Operação'] = tipos.get(tipo, '')
             result['CONTÊINER VAZIO'] = ''
             result['Manifesto'] = manifesto.get('manifesto')
@@ -214,6 +216,8 @@ def summary(grid_data=None, registro=None):
             result['Número contêiner - tara'] = conteiner_pesos
         else:
             conhecimento = meta.get('conhecimento')
+            if not conhecimento:
+                return {}
             if isinstance(conhecimento, list):
                 conhecimento = conhecimento[0]
             result['CONTÊINER COM CARGA'] = ''
@@ -225,7 +229,7 @@ def summary(grid_data=None, registro=None):
             escala = ''
             if atracacao:
                 escala = atracacao.get('escala')
-            tipo = conhecimento.get('trafego')
+            tipo = conhecimento.get('trafego').lower()
             result['Operação'] = tipos.get(tipo, '')
             result['Conhecimento - Manifesto - Escala'] = \
                 'CE %s - %s - %s' % \
