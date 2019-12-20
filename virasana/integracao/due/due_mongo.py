@@ -47,12 +47,10 @@ def get_metadata_due(grid_data):
         metadata = grid_data.get('metadata')
         if metadata is None:
             metadata = grid_data
-        # print(metadata)
-        if metadata:
-            due = metadata.get('due')
-            print(due)
-            if due:
-                return due
+        due = metadata.get('due')
+        print(due)
+        if due:
+            return due
     return None
 
 
