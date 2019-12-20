@@ -46,9 +46,12 @@ def get_metadata_due(grid_data):
     logger.error(grid_data)
     if grid_data:
         metadata = grid_data.get('metadata')
+        logger.error(metadata)
         if metadata is None:
             metadata = grid_data
+        logger.error(metadata)
         due = metadata.get('due')
+        logger.error(due)
         print(due)
         if due:
             return due
