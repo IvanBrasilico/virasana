@@ -1001,6 +1001,7 @@ def files():
             linha['ncms'] = carga.get_dados_ncm(grid_data)
             linha['infocarga'] = carga.get_dados_conteiner(grid_data)
             linha['pesocarga'] = carga.get_peso_conteiner(grid_data)
+            linha['infodue'] = due_mongo.get_dados(grid_data)
             linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)

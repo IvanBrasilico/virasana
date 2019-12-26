@@ -1,6 +1,7 @@
 import json
 import pymongo
 from bson import ObjectId
+from ajna_commons.flask.log import logger
 
 
 def update_due(db, dues):
@@ -39,6 +40,39 @@ def create_indexes(db):
         except pymongo.errors.OperationFailure:
             pass
 
+
+def get_metadata_due(grid_data):
+    print('Metadata DUE')
+    logger.error(grid_data)
+    if grid_data:
+        metadata = grid_data.get('metadata')
+        logger.error(metadata)
+        if metadata is None:
+            metadata = grid_data
+        logger.error(metadata)
+        due = metadata.get('due')
+        logger.error(due)
+        print(due)
+        if due:
+            return due
+    return None
+
+
+def get_dados(grid_data):
+    try:
+        metadata = get_metadata_due(grid_data)
+        if metadata:
+            declarante = metadata.get('Declarante')
+            nome_declarante = declarante.get('Nome Declarante')
+            destino = metadata.get('paisImportador')
+            numero = metadata.get('numero')
+            ruc = metadata.get('ruc')
+            return 'DUE %s - RUC %s - IMPORTADOR %s/%s - DESTINO %s' % \
+                   (numero, ruc, declarante, nome_declarante, destino)
+        return ''
+    except Exception as err:
+        logger.error(err, exc_info=True)
+        return ''
 
 
 if __name__ == '__main__':  # pragma: no cover

@@ -70,9 +70,11 @@ def get_metadata_carga(grid_data):
 def get_tipo_manifesto(grid_data):
     metadata_carga = get_metadata_carga(grid_data)
     manifesto = metadata_carga.get('manifesto')
+    if manifesto is None:
+        return '', ''
     if isinstance(manifesto, list):
         manifesto = manifesto[0]
-    tipo = manifesto.get('tipomanifesto')
+    tipo = manifesto.get('tipomanifesto').lower()
     tipos = {'lci': 'Importação',
              'bce': 'Baldeação',
              'lce': 'Exportação'}
@@ -111,15 +113,16 @@ def get_dados_conteiner(grid_data):
                     return ''
                 tara = monta_float(conteiner.get('tara(kg)'))
                 return 'Contêiner VAZIO Tara: %d %s' % (tara, descricaotipo)
+
             conhecimento = metadata_carga.get('conhecimento')
-            print(conhecimento)
+            if conhecimento is None:
+                return ''
             if isinstance(conhecimento, list) and len(conhecimento) > 0:
                 conhecimento = conhecimento[0]
             descricao = conhecimento.get('descricaomercadoria')[:240]
             descricao = descricao[:60] + ' ' + descricao[60:120] + \
                         ' ' + descricao[120:180] + ' ' + descricao[180:241]
             return '%s - %s' % (descricaotipo, descricao)
-        return ''
     except Exception as err:
         logger.error(err, exc_info=True)
         return ''
@@ -199,7 +202,7 @@ def summary(grid_data=None, registro=None):
             manifesto = meta.get('manifesto')
             if isinstance(manifesto, list):
                 manifesto = manifesto[0]
-            tipo = manifesto.get('tipomanifesto')
+            tipo = manifesto.get('tipomanifesto').lower()
             result['Operação'] = tipos.get(tipo, '')
             result['CONTÊINER VAZIO'] = ''
             result['Manifesto'] = manifesto.get('manifesto')
@@ -214,6 +217,8 @@ def summary(grid_data=None, registro=None):
             result['Número contêiner - tara'] = conteiner_pesos
         else:
             conhecimento = meta.get('conhecimento')
+            if not conhecimento:
+                return {}
             if isinstance(conhecimento, list):
                 conhecimento = conhecimento[0]
             result['CONTÊINER COM CARGA'] = ''
@@ -225,7 +230,7 @@ def summary(grid_data=None, registro=None):
             escala = ''
             if atracacao:
                 escala = atracacao.get('escala')
-            tipo = conhecimento.get('trafego')
+            tipo = conhecimento.get('trafego').lower()
             result['Operação'] = tipos.get(tipo, '')
             result['Conhecimento - Manifesto - Escala'] = \
                 'CE %s - %s - %s' % \
