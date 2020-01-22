@@ -65,14 +65,17 @@ def processa_resumo(engine, origem, destino, chaves):
                 controle.maxid = row['id']
             dict_campos = {key: row[key]
                            for key in campos_destino}
+            chaves_valores = [getattr(destino, chave) == row[chave] for chave in chaves]
+            # print(chaves_valores)
             if tipomovimento == 'I':
+                existe = session.query(destino).filter(*chaves_valores).one_or_none()
+                if existe:
+                    continue
                 objeto = destino(**dict_campos)
                 session.add(objeto)
                 # destino.__table__.insert().prefix_with('IGNORE').values(**dict_campos)
                 cont += 1
             else:  # A = Update / E = Delete
-                chaves_valores = [getattr(destino, chave) == row[chave] for chave in chaves]
-                # print(chaves_valores)
                 try:
                     objeto = session.query(destino).filter(*chaves_valores).one_or_none()
                     if objeto:
