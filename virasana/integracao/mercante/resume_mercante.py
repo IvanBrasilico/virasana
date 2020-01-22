@@ -68,7 +68,10 @@ def processa_resumo(engine, origem, destino, chaves):
             chaves_valores = [getattr(destino, chave) == row[chave] for chave in chaves]
             # print(chaves_valores)
             if tipomovimento == 'I':
-                existe = session.query(destino).filter(*chaves_valores).one_or_none()
+                try:
+                    existe = session.query(destino).filter(*chaves_valores).one_or_none()
+                except MultipleResultsFound:
+                    continue
                 if existe:
                     continue
                 objeto = destino(**dict_campos)
