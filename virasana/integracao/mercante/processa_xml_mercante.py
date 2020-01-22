@@ -64,24 +64,25 @@ def get_arquivos_novos(engine):
 def processa_classes(engine, lista_arquivos):
     count_objetos = Counter()
     lista_erros = []
-    for arquivo in lista_arquivos:
-        xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
-        xroot = xtree.getroot()
-        objetos = []
-        for node in xroot:
-            classe = mercante.classes.get(node.tag)
-            if classe:
-                count_objetos[classe] += 1
-                objeto = classe()
-                objeto._parse_node(node)
-                objetos.append(objeto._to_dict())
-        df = pd.DataFrame(objetos)
-        try:
+    try:
+        for arquivo in lista_arquivos:
+            logger.info('Processando arquivo xml %s' % arquivo)
+            xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
+            xroot = xtree.getroot()
+            objetos = []
+            for node in xroot:
+                classe = mercante.classes.get(node.tag)
+                if classe:
+                    count_objetos[classe] += 1
+                    objeto = classe()
+                    objeto._parse_node(node)
+                    objetos.append(objeto._to_dict())
+            df = pd.DataFrame(objetos)
             df.reset_index()
             df.to_sql(node.tag, engine, if_exists='append', index=False)
-        except Exception as err:
-            logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
-            lista_erros.append(arquivo)
+    except Exception as err:
+        logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
+        lista_erros.append(arquivo)
     return count_objetos, lista_erros
 
 
