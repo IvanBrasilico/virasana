@@ -131,6 +131,8 @@ def get_indexes_and_ids_conhecimentos(db, conhecimentos: list):
             predictions = linha['metadata'].get('predictions')
             if predictions:
                 index = predictions[0].get('index')
+            else:
+                index = None
             ncms = linha['metadata'].get('carga').get('ncm')
             if index and ncms and len(ncms) == 1:
                 conhecimentos_ids[conhecimento].append(linha['_id'])
@@ -195,13 +197,17 @@ def filtra_anomalias(conhecimentos_ids, ids_indexes):
 
 def processa_zscores(db, inicio, fim):
     logger.info('Pesquisando de %s de %s' % (inicio, fim))
-    conhecimentos_agravar = get_conhecimentos_um_ncm(db, inicio, fim)
-    logger.info('%d conhecimentos encontrados' % len(conhecimentos_agravar))
-    conhecimentos_ids, ids_indexes = get_indexes_and_ids_conhecimentos(
-        db, conhecimentos_agravar
-    )
-    logger.info('%d conhecimentos filtrados' % len(conhecimentos_ids.items()))
-    ngravados = grava_zcores(db, conhecimentos_ids, ids_indexes)
+    try:
+        conhecimentos_agravar = get_conhecimentos_um_ncm(db, inicio, fim)
+        logger.info('%d conhecimentos encontrados' % len(conhecimentos_agravar))
+        conhecimentos_ids, ids_indexes = get_indexes_and_ids_conhecimentos(
+            db, conhecimentos_agravar
+        )
+        logger.info('%d conhecimentos filtrados' % len(conhecimentos_ids.items()))
+        ngravados = grava_zcores(db, conhecimentos_ids, ids_indexes)
+    except Exception as err:
+        logger.info('Erro em processa_zscores %s ' % err)
+        return 0
     return ngravados
 
 
