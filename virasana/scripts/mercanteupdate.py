@@ -37,14 +37,16 @@ str_today = datetime.strftime(today, '%d/%m/%Y')
               help='Quantidade de dias a processar para trás - padrão 10')
 @click.option('--fim', default=str_today,
               help='Dia de fim (dia/mês/ano) - padrão hoje')
-def update(dias, fim):
+@click.option('--download', is_flag=True,
+              help='Baixar arquivos das datas da API do Aniita')
+def update(dias, fim, download):
     """Script de linha de comando para integração do arquivo XML."""
     end = datetime.strptime(fim, '%d/%m/%Y')
     print('Começando a integração... Fim %s  Dias antes %s' % (fim, dias))
     connection = create_engine(SQL_URI)
     tempo = time.time()
-
-    processa_xml_mercante.get_arquivos_novos(connection, end, dias)
+    if download:
+        processa_xml_mercante.get_arquivos_novos(connection, end, dias)
     processa_xml_mercante.xml_para_mercante(connection)
     resume_mercante.mercante_resumo(connection)
     mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, end, dias)
