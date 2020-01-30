@@ -27,13 +27,15 @@ URL_ANIITA_LISTA = 'http://10.50.13.17:8443/consultaArquivos'
 URL_ANIITA_DOWNLOAD = 'http://10.50.13.17:8443/download'
 
 
-def get_arquivos_novos(engine):
+def get_arquivos_novos(engine, datainicial=None, datafinal=None):
     """Baixa arquivos novos da API do Aniita"""
     data_ultimo_arquivo = data_ultimo_arquivo_baixado(engine)
-    datainicial = datetime.strftime(data_ultimo_arquivo + timedelta(seconds=1),
-                                    FORMATO_DATA_ANIITA)
-    datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days=1),
-                                  FORMATO_DATA_ANIITA)
+    if datainicial is None:
+        datainicial = datetime.strftime(data_ultimo_arquivo + timedelta(seconds=1),
+                                        FORMATO_DATA_ANIITA)
+    if datafinal is None:
+        datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days=1),
+                                      FORMATO_DATA_ANIITA)
     print(datainicial, datafinal)
     r = requests.get(URL_ANIITA_LISTA, params={'dtInicial': datainicial,
                                                'dtFinal': datafinal})
