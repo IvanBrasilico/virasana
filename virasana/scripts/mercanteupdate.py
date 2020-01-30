@@ -17,7 +17,7 @@ Args:
 
 """
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import click
 from ajna_commons.flask.conf import SQL_URI
@@ -44,7 +44,7 @@ def update(dias, fim):
     connection = create_engine(SQL_URI)
     tempo = time.time()
 
-    processa_xml_mercante.get_arquivos_novos(connection, end, end + timedelta(days=dias))
+    processa_xml_mercante.get_arquivos_novos(connection, end, dias)
     processa_xml_mercante.xml_para_mercante(connection)
     resume_mercante.mercante_resumo(connection)
     mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, end, dias)
