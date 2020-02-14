@@ -207,8 +207,11 @@ def summary(grid_data=None, registro=None):
     result['Data de escaneamento'] = meta.get(
         'dataescaneamento').strftime('%Y-%m-%d %H:%M')
     xmldoc = meta.get('xml')
-    if xmldoc.get('alerta') is True:
-        result['CONTÊINER COM ALERTA DO OPERADOR DE ESCÂNER(alerta Recinto)'] = ''
+    if xmldoc is None:
+        result['XML não integrado.']
+    else:
+        if xmldoc.get('alerta') is True:
+            result['CONTÊINER COM ALERTA DO OPERADOR DE ESCÂNER(alerta Recinto)'] = ''
     result['Data de Carregamento da imagem no sistema'] = upload
     result['Nome Recinto'] = meta.get('recinto')
     if meta.get('diferencapeso'):
