@@ -808,7 +808,10 @@ def cria_campo_pesos_carga(db, batch_size=1):
     processados = 0
     divergentes = 0
     s0 = time.time()
+
     for linha in file_cursor.limit(batch_size):
+        alertapeso = False
+        alertapeso2 = False
         total += 1
         pesopred = linha.get('metadata').get('predictions')[0].get('peso')
         pesobalanca = get_peso_balanca(linha.get('metadata').get('pesagens'))
