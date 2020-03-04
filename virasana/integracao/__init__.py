@@ -29,9 +29,9 @@ from pymongo import ASCENDING, MongoClient
 from pymongo.errors import OperationFailure
 
 from virasana.integracao import carga
-from virasana.integracao import xmli
-from virasana.integracao import padma
 from virasana.integracao import info_ade02
+from virasana.integracao import padma
+from virasana.integracao import xmli
 
 USERNAME = 'virasana_service'
 VIRASANA_PASS_FILE = os.path.join(os.path.dirname(__file__), USERNAME)
@@ -58,7 +58,7 @@ CHAVES_GRIDFS = [
 ]
 
 TIPOS_GRIDFS = {
-'uploadDate': date
+    'uploadDate': date
 }
 
 
@@ -276,8 +276,8 @@ def stats_resumo_imagens(db, datainicio=None, datafim=None):
 
     filtro_pesagem = dict(filtro, **info_ade02.FALTANTES)
     stats['Imagens com informações de Pesagem'] = total - \
-                                         gridfs_count(db, filtro_pesagem,
-                                                      limit=None)
+                                                  gridfs_count(db, filtro_pesagem,
+                                                               limit=None)
     # DATAS
     logger.debug('Totais consultados')
     datas = OrderedDict()
