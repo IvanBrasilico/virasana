@@ -208,7 +208,7 @@ def summary(grid_data=None, registro=None):
         'dataescaneamento').strftime('%Y-%m-%d %H:%M')
     xmldoc = meta.get('xml')
     if xmldoc is None:
-        result['XML não integrado.']
+        result['XML não integrado.'] = ''
     else:
         if xmldoc.get('alerta') is True:
             result['CONTÊINER COM ALERTA DO OPERADOR DE ESCÂNER(alerta Recinto)'] = ''
