@@ -70,6 +70,12 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def configure_app(mongodb, mysql):
     """Configurações gerais e de Banco de Dados da Aplicação."""
+
+    @app.route('/virasana/login', methods=['GET', 'POST'])
+    def virasana_login():
+        return login_ajna.login_view(request)
+    login_ajna.login_manager.login_view = 'virasana_login'
+
     app.config['DEBUG'] = os.environ.get('DEBUG', 'None') == '1'
     if app.config['DEBUG'] is True:
         app.jinja_env.auto_reload = True
