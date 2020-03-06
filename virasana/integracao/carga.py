@@ -880,8 +880,9 @@ def cria_campo_pesos_carga_pesagem(db, batch_size=1000):
                 {'_id': _id},
                 {'$set': dict_update}
             )
-            divergentes += 1
-        processados += 1
+            if alertapeso2:
+                divergentes += 1
+            processados += 1
     elapsed = time.time() - s0
     logger.info(
         'Resultado cria_campo_pesos_carga_pesagem. ' +
