@@ -147,6 +147,7 @@ def get_peso_conteiner(grid_data):
         logger.error(err)
     return ''
 
+
 def get_pesos(grid_data):
     try:
         # print('************************', grid_data.get('metadata').get('predictions'))
@@ -808,13 +809,9 @@ def cria_campo_pesos_carga(db, batch_size=1):
     processados = 0
     divergentes = 0
     s0 = time.time()
-
     for linha in file_cursor.limit(batch_size):
-        alertapeso = False
-        alertapeso2 = False
         total += 1
         pesopred = linha.get('metadata').get('predictions')[0].get('peso')
-        pesobalanca = get_peso_balanca(linha.get('metadata').get('pesagens'))
         carga = linha.get('metadata').get('carga')
         _id = linha['_id']
         container = carga.get('container')
@@ -834,19 +831,11 @@ def cria_campo_pesos_carga(db, batch_size=1):
             dict_update = {'metadata.carga.pesototal': pesototal,
                            'metadata.diferencapeso': peso_dif,
                            'metadata.alertapeso': alertapeso}
-            if pesobalanca and pesobalanca > 0.:
-                peso_dif2 = abs(pesobalanca - pesototal)
-                peso_dif_relativo2 = peso_dif2 / (pesobalanca + pesototal) / 2
-                alertapeso2 = (peso_dif2 > 2000 and peso_dif_relativo2 > .15) \
-                              or peso_dif_relativo2 > .4
-                dict_update.update({'metadata.diferencapeso2': peso_dif2,
-                                    'metadata.alertapeso2': alertapeso2})
-
             db['fs.files'].update_one(
                 {'_id': _id},
                 {'$set': dict_update}
             )
-            if alertapeso or alertapeso2:
+            if alertapeso:
                 divergentes += 1
             processados += 1
     elapsed = time.time() - s0
@@ -859,6 +848,50 @@ def cria_campo_pesos_carga(db, batch_size=1):
         '{:0.5f}s por registro'.format((elapsed / total) if total else 0)
     )
     return total
+
+
+def cria_campo_pesos_carga_pesagem(db, batch_size=1):
+    """Grava alerta se diferença entre peso declarado e peso pesado pela
+        balança for significativo.
+    """
+    filtro = {'metadata.contentType': 'image/jpeg',
+              'metadata.carga.pesototal': {'$exists': True},
+              'metadata.pesagens': {'$exists': True},
+              'metadata.alertapeso2': {'$exists': False}
+              }
+    file_cursor = db['fs.files'].find(filtro)
+    total = 0
+    processados = 0
+    divergentes = 0
+    s0 = time.time()
+    for linha in file_cursor.limit(batch_size):
+        _id = linha['_id']
+        total += 1
+        pesobalanca = get_peso_balanca(linha.get('metadata').get('pesagens'))
+        pesototal = linha.get('metadata').get('carga').get('pesototal')
+        if pesobalanca and pesobalanca > 0.:
+            peso_dif2 = abs(pesobalanca - pesototal)
+            peso_dif_relativo2 = peso_dif2 / (pesobalanca + pesototal) / 2
+            alertapeso2 = (peso_dif2 > 2000 and peso_dif_relativo2 > .15) \
+                          or peso_dif_relativo2 > .4
+            dict_update = {'metadata.diferencapeso2': peso_dif2,
+                           'metadata.alertapeso2': alertapeso2}
+            db['fs.files'].update_one(
+                {'_id': _id},
+                {'$set': dict_update}
+            )
+        divergentes += 1
+        processados += 1
+        elapsed = time.time() - s0
+        logger.info(
+            'Resultado cria_campo_pesos_carga_pesagem. ' +
+            'Pesquisados: %s ' % str(total) +
+            'Encontrados: %s ' % str(processados) +
+            'Com alerta: %s ' % str(divergentes) +
+            'Tempo total: {:0.2f}s '.format(elapsed) +
+            '{:0.5f}s por registro'.format((elapsed / total) if total else 0)
+        )
+        return total
 
 
 class Conhecimento:
