@@ -792,7 +792,7 @@ def get_peso_balanca(pesagens):
     return peso
 
 
-def cria_campo_pesos_carga(db, batch_size=1):
+def cria_campo_pesos_carga(db, batch_size=1000):
     """Cria campo com peso total informado para contêiner no CARGA.
 
         Grava alerta se diferença entre peso declarado e peso previsto pela
@@ -850,7 +850,7 @@ def cria_campo_pesos_carga(db, batch_size=1):
     return total
 
 
-def cria_campo_pesos_carga_pesagem(db, batch_size=1):
+def cria_campo_pesos_carga_pesagem(db, batch_size=1000):
     """Grava alerta se diferença entre peso declarado e peso pesado pela
         balança for significativo.
     """
@@ -880,7 +880,7 @@ def cria_campo_pesos_carga_pesagem(db, batch_size=1):
                 {'_id': _id},
                 {'$set': dict_update}
             )
-        divergentes += 1
+            divergentes += 1
         processados += 1
         elapsed = time.time() - s0
         logger.info(
