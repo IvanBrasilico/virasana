@@ -891,7 +891,7 @@ def cria_campo_pesos_carga_pesagem(db, batch_size=1000):
             'Tempo total: {:0.2f}s '.format(elapsed) +
             '{:0.5f}s por registro'.format((elapsed / total) if total else 0)
         )
-        return total
+    return total
 
 
 class Conhecimento:
