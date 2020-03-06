@@ -882,15 +882,15 @@ def cria_campo_pesos_carga_pesagem(db, batch_size=1000):
             )
             divergentes += 1
         processados += 1
-        elapsed = time.time() - s0
-        logger.info(
-            'Resultado cria_campo_pesos_carga_pesagem. ' +
-            'Pesquisados: %s ' % str(total) +
-            'Encontrados: %s ' % str(processados) +
-            'Com alerta: %s ' % str(divergentes) +
-            'Tempo total: {:0.2f}s '.format(elapsed) +
-            '{:0.5f}s por registro'.format((elapsed / total) if total else 0)
-        )
+    elapsed = time.time() - s0
+    logger.info(
+        'Resultado cria_campo_pesos_carga_pesagem. ' +
+        'Pesquisados: %s ' % str(total) +
+        'Encontrados: %s ' % str(processados) +
+        'Com alerta: %s ' % str(divergentes) +
+        'Tempo total: {:0.2f}s '.format(elapsed) +
+        '{:0.5f}s por registro'.format((elapsed / total) if total else 0)
+    )
     return total
 
 
