@@ -75,6 +75,7 @@ def configure_app(mongodb, mysql):
     def virasana_login():
         return login_ajna.login_view(request)
     login_ajna.login_manager.login_view = 'virasana_login'
+    app.config['REMEMBER_COOKIE_PATH'] = '/virasana'
 
     app.config['DEBUG'] = os.environ.get('DEBUG', 'None') == '1'
     if app.config['DEBUG'] is True:
