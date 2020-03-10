@@ -33,21 +33,23 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
+from sqlalchemy.orm import sessionmaker
 from wtforms import (BooleanField, DateField, FloatField, IntegerField,
                      PasswordField, SelectField, StringField)
 from wtforms.validators import DataRequired, optional
 
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro
-from virasana.integracao.due import due_mongo
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
                                  TIPOS_GRIDFS)
+from virasana.integracao.due import due_mongo
+from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
 from virasana.models.anomalia_lote import get_conhecimentos_filtro, \
-    get_ids_score_conhecimento_zscore, get_conhecimentos_zscore
+    get_ids_score_conhecimento_zscore
 from virasana.models.auditoria import Auditoria
 from virasana.models.image_search import ImageSearch
 from virasana.models.models import Ocorrencias, Tags
@@ -66,8 +68,15 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb):
+def configure_app(mongodb, mysql):
     """Configurações gerais e de Banco de Dados da Aplicação."""
+
+    @app.route('/virasana/login', methods=['GET', 'POST'])
+    def virasana_login():
+        return login_ajna.login_view(request)
+    login_ajna.login_manager.login_view = 'virasana_login'
+    app.config['REMEMBER_COOKIE_PATH'] = '/virasana'
+
     app.config['DEBUG'] = os.environ.get('DEBUG', 'None') == '1'
     if app.config['DEBUG'] is True:
         app.jinja_env.auto_reload = True
@@ -78,6 +87,7 @@ def configure_app(mongodb):
     login_ajna.configure(app)
     user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
+    app.config['mysql'] = mysql
     try:
         img_search = None
         img_search = ImageSearch(mongodb)
@@ -1093,6 +1103,7 @@ def cemercante(numero=None):
     Exibe o CE Mercante e os arquivos associados a ele.
     """
     db = app.config['mongodb']
+    sql = app.config['mysql']
     conhecimento = None
     imagens = []
     if request.method == 'POST':
@@ -1101,8 +1112,14 @@ def cemercante(numero=None):
         contrast, color = get_contrast_and_color_(request)
         print('################', contrast, color)
     if numero:
-        conhecimento = carga.Conhecimento.from_db(db, numero)
-        containers = carga.ListaContainerConhecimento.from_db(db, numero)
+        Session = sessionmaker(bind=sql)
+        session = Session()
+        conhecimento = session.query(Conhecimento).filter(
+            Conhecimento.numeroCEmercante == numero).one_or_none()
+        containers = list(session.query(Item).filter(
+            Item.numeroCEmercante == numero).all())
+        # conhecimento = carga.Conhecimento.from_db(db, numero)
+        # containers = carga.ListaContainerConhecimento.from_db(db, numero)
         idszscore = get_ids_score_conhecimento_zscore(db, [numero])[numero]
         # print(idszscore)
         imagens = [{'_id': str(item['_id']),

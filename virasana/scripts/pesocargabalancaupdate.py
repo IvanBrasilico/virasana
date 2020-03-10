@@ -1,7 +1,7 @@
-"""Processamento do pesototal do carga x peso da imagem
+"""Processamento das pesagens de balança
 
 Script de linha de comando para inclusão
-dos metadados de peso
+dos metadados das comparações entre peso declarado x balança
 
 Args:
 
@@ -28,9 +28,7 @@ str_yesterday = datetime.strftime(yesterday, '%d/%m/%Y')
               help='Lote de registros para processar (padrão 1000)')
 def update(batch_size):
     """Script de linha de comando para geração de resumos de peso."""
-    print('Calculando pesos')
-    carga.cria_campo_pesos_carga(db, batch_size=batch_size)
-
+    carga.cria_campo_pesos_carga_pesagem(db, batch_size=batch_size)
 
 
 if __name__ == '__main__':
