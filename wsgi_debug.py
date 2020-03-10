@@ -2,6 +2,8 @@ import os
 from werkzeug.serving import run_simple
 from werkzeug.wsgi import DispatcherMiddleware
 
+import sys
+sys.path.insert(0, '../commons')
 from ajna_commons.flask.conf import VIRASANA_URL
 
 os.environ['DEBUG'] = '1'
