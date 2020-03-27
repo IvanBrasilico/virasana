@@ -412,6 +412,16 @@ class ControleResumo(Base):
         return controle
 
 
+class RiscoAtivo(Base):
+    __tablename__ = 'riscosativos'
+    ID = Column(BIGINT,
+                primary_key=True, autoincrement=True)
+    user_name = Column(CHAR(15), index=True)
+    campo = Column(CHAR(40), index=True)
+    valor = Column(CHAR(40), index=True)
+    motivo = Column(CHAR(40), index=True)
+
+
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
     if confirma != 'S':

@@ -27,16 +27,19 @@ URL_ANIITA_LISTA = 'http://10.50.13.17:8443/consultaArquivos'
 URL_ANIITA_DOWNLOAD = 'http://10.50.13.17:8443/download'
 
 
-def get_arquivos_novos(engine):
+def get_arquivos_novos(engine, start=None, days=1):
     """Baixa arquivos novos da API do Aniita"""
-    data_ultimo_arquivo = data_ultimo_arquivo_baixado(engine)
+    if start is None:
+        data_ultimo_arquivo = data_ultimo_arquivo_baixado(engine)
+    else:
+        data_ultimo_arquivo = start
     datainicial = datetime.strftime(data_ultimo_arquivo + timedelta(seconds=1),
-                                    FORMATO_DATA_ANIITA)
-    datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days = 1),
-                                  FORMATO_DATA_ANIITA)
+                                        FORMATO_DATA_ANIITA)
+    datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days=days),
+                                      FORMATO_DATA_ANIITA)
     print(datainicial, datafinal)
     r = requests.get(URL_ANIITA_LISTA, params={'dtInicial': datainicial,
-                                             'dtFinal': datafinal})
+                                               'dtFinal': datafinal})
     print(r.url)
     print(r.text)
     if r.status_code == 200:
@@ -64,58 +67,61 @@ def get_arquivos_novos(engine):
 def processa_classes(engine, lista_arquivos):
     count_objetos = Counter()
     lista_erros = []
-    for arquivo in lista_arquivos:
-        xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
-        xroot = xtree.getroot()
-        objetos = []
-        for node in xroot:
-            classe = mercante.classes.get(node.tag)
-            if classe:
-                count_objetos[classe] += 1
-                objeto = classe()
-                objeto._parse_node(node)
-                objetos.append(objeto._to_dict())
-        df = pd.DataFrame(objetos)
-        try:
+    try:
+        for arquivo in lista_arquivos:
+            logger.info('(processa_classes)Processando arquivo xml %s' % arquivo)
+            xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
+            xroot = xtree.getroot()
+            objetos = []
+            for node in xroot:
+                classe = mercante.classes.get(node.tag)
+                if classe:
+                    count_objetos[classe] += 1
+                    objeto = classe()
+                    objeto._parse_node(node)
+                    objetos.append(objeto._to_dict())
+            df = pd.DataFrame(objetos)
             df.reset_index()
             df.to_sql(node.tag, engine, if_exists='append', index=False)
-        except Exception as err:
-            logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
-            lista_erros.append(arquivo)
+    except Exception as err:
+        logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
+        lista_erros.append(arquivo)
     return count_objetos, lista_erros
 
 
 def processa_classes_em_lista(engine, lista_arquivos):
     count_objetos = Counter()
     lista_erros = []
-    for arquivo in lista_arquivos:
-        xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
-        xroot = xtree.getroot()
-        objetos = defaultdict(list)
-        for node in xroot:
-            classes = mercante.classes_em_lista.get(node.tag)
-            if classes:
-                for classe in classes:
-                    classe_pai = mercante.classes.get(node.tag)
-                    objeto_pai = classe_pai()
-                    objeto_pai._parse_node(node)
-                    tag_classe = classe._tag
-                    for subnode in node.findall(tag_classe):
-                        count_objetos[classe] += 1
-                        objeto = classe(objeto_pai)
-                        objeto._parse_node(subnode)
-                        objetos[classe].append(objeto._to_dict())
-        if objetos and len(objetos) > 0:
-            for classe, lista in objetos.items():
-                df = pd.DataFrame(lista)
-                classname = classe.__name__
-                # print(classname, len(lista))
-                try:
+    try:
+        for arquivo in lista_arquivos:
+            logger.info('(processa_classes_em_lista)Processando arquivo xml %s'
+                        % arquivo)
+            xtree = ElementTree.parse(os.path.join(mercante.MERCANTE_DIR, arquivo))
+            xroot = xtree.getroot()
+            objetos = defaultdict(list)
+            for node in xroot:
+                classes = mercante.classes_em_lista.get(node.tag)
+                if classes:
+                    for classe in classes:
+                        classe_pai = mercante.classes.get(node.tag)
+                        objeto_pai = classe_pai()
+                        objeto_pai._parse_node(node)
+                        tag_classe = classe._tag
+                        for subnode in node.findall(tag_classe):
+                            count_objetos[classe] += 1
+                            objeto = classe(objeto_pai)
+                            objeto._parse_node(subnode)
+                            objetos[classe].append(objeto._to_dict())
+            if objetos and len(objetos) > 0:
+                for classe, lista in objetos.items():
+                    df = pd.DataFrame(lista)
+                    classname = classe.__name__
+                    # print(classname, len(lista))
                     df.reset_index()
                     df.to_sql(classname, engine, if_exists='append', index=False)
-                except Exception as err:
-                    logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
-                    lista_erros.append(arquivo)
+    except Exception as err:
+        logger.error('Erro ocorrido no arquivo %s. %s' % (arquivo, err))
+        lista_erros.append(arquivo)
     return count_objetos, lista_erros
 
 

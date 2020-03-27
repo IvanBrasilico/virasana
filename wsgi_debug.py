@@ -1,6 +1,11 @@
 import os
+import sys
 from werkzeug.serving import run_simple
 from werkzeug.wsgi import DispatcherMiddleware
+
+
+sys.path.insert(0, '.')
+sys.path.insert(0, '../ajna_docs/commons')
 
 from ajna_commons.flask.conf import VIRASANA_URL
 

@@ -6,12 +6,13 @@ consulta e integração das imagens com outras bases.
 """
 
 import ajna_commons.flask.log as log
-from ajna_commons.flask.flask_log import configure_applog
 from ajna_commons.flask import api_login
-from virasana.db import mongodb
+from ajna_commons.flask.flask_log import configure_applog
+
+from virasana.db import mongodb, mysql
 from virasana.views import configure_app, csrf
 
-app = configure_app(mongodb)
+app = configure_app(mongodb, mysql)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
