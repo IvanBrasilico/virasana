@@ -7,15 +7,15 @@ programado para rodar via crontab, conforme exempo em /periodic_updates.sh
 import logging
 import os
 import time
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from xml.etree import ElementTree
+
 import pandas as pd
 import requests
 import sqlalchemy
-from datetime import datetime, timedelta
-
-from collections import Counter, defaultdict
-from xml.etree import ElementTree
-
 from ajna_commons.flask.log import logger
+
 from virasana.integracao.mercante import mercante
 # from ajnaapi.config import Staging
 from virasana.integracao.mercante.mercantealchemy import data_ultimo_arquivo_baixado, \
@@ -34,9 +34,9 @@ def get_arquivos_novos(engine, start=None, days=1):
     else:
         data_ultimo_arquivo = start
     datainicial = datetime.strftime(data_ultimo_arquivo + timedelta(seconds=1),
-                                        FORMATO_DATA_ANIITA)
+                                    FORMATO_DATA_ANIITA)
     datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days=days),
-                                      FORMATO_DATA_ANIITA)
+                                  FORMATO_DATA_ANIITA)
     print(datainicial, datafinal)
     r = requests.get(URL_ANIITA_LISTA, params={'dtInicial': datainicial,
                                                'dtFinal': datafinal})
@@ -127,6 +127,12 @@ def processa_classes_em_lista(engine, lista_arquivos):
 
 def xml_para_mercante(engine, lote=100):
     logger.info('Iniciando atualizações da base Mercante...')
+    caminho_erros = os.path.join(mercante.MERCANTE_DIR, 'erros')
+    caminho_processados = os.path.join(mercante.MERCANTE_DIR, 'processados')
+    if not os.path.exists(caminho_erros):
+        os.makedir(caminho_erros)
+    if not os.path.exists(caminho_processados):
+        os.makedir(caminho_processados)
     lista_arquivos = \
         [f for f in os.listdir(mercante.MERCANTE_DIR)
          if os.path.isfile(os.path.join(mercante.MERCANTE_DIR, f))]
@@ -155,7 +161,7 @@ def xml_para_mercante(engine, lote=100):
     # Tira arquivos processados do path
     for arquivo in arquivoscomerro:
         os.rename(os.path.join(mercante.MERCANTE_DIR, arquivo),
-                  os.path.join(mercante.MERCANTE_DIR, 'erros', arquivo))
+                  os.path.join(caminho_erros, arquivo))
     lista_arquivos_semerro = [arquivo for arquivo in lista_arquivos
                               if arquivo not in arquivoscomerro]
     logger.info('%d Arquivos SEM erro sendo copiados para diretório processados ' %
@@ -164,7 +170,7 @@ def xml_para_mercante(engine, lote=100):
     # Tira arquivos com erro do path
     for arquivo in lista_arquivos_semerro:
         os.rename(os.path.join(mercante.MERCANTE_DIR, arquivo),
-                  os.path.join(mercante.MERCANTE_DIR, 'processados', arquivo))
+                  os.path.join(caminho_processados, arquivo))
 
 
 if __name__ == '__main__':
