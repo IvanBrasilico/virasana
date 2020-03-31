@@ -68,7 +68,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
         'SELECT c.numeroCEmercante, codigoConteiner FROM itensresumo i' \
         ' inner join conhecimentosresumo c on i.numeroCEmercante = c.numeroCEmercante' \
         ' inner join manifestosresumo m on c.manifestoCE = m.numero' \
-        ' WHERE c.tipoBLConhecimento in (\'10\', \'12\') AND' \
+        ' WHERE c.tipoBLConhecimento in (\'10\', \'11\', \'12\') AND' \
         ' m.tipoTrafego = %s AND' \
         ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
         ' i.codigoConteiner IN ' + lista
@@ -77,12 +77,13 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     today = datetime.strftime(dia, '%Y-%m-%d')
     after = dia + timedelta(days=10)
     after = datetime.strftime(after, '%Y-%m-%d')
-    pesquisas_manifesto = [(5, before, today), (7, today, after)]
+    # Pesquisar importação (5) e exportação (7)
+    parametros_pesquisas = [(5, before, today), (7, today, after)]
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
     with engine.connect() as conn:
         conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
-        for parametros_pesquisa in pesquisas_manifesto:
+        for parametros_pesquisa in parametros_pesquisas:
             cursor = conn.execute(sql_manifestos, parametros_pesquisa)
             result = cursor.fetchall()
             logger.info('%s Manifestos encontrados para parâmetros %s' %
