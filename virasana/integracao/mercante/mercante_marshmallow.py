@@ -141,10 +141,12 @@ def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None
         manifesto = session.query(Manifesto).filter(Manifesto.numero == conhecimento_dict['manifesto']).one_or_none()
         if manifesto:
             dict_carga['manifesto'].append(manifesto_schema.dump(manifesto, session))
-        itens = session.query(Item).filter(Item.numeroCEmercante == numeroconhecimento).all()
-        for item in itens:
-            if item.codigoConteiner == numeroconteiner:
-                dict_carga['container'].append(item_schema.dump(item))
+        # Só colocar ItemCarga (Container) caso seja de BL único ou MBL, para fins de peso.
+        if conhecimento.tipoBLConhecimento in ('10', '11'):
+            itens = session.query(Item).filter(Item.numeroCEmercante == numeroconhecimento).all()
+            for item in itens:
+                if item.codigoConteiner == numeroconteiner:
+                    dict_carga['container'].append(item_schema.dump(item))
         ncms = session.query(NCMItem).filter(NCMItem.numeroCEMercante == numeroconhecimento).all()
         for ncmitem in ncms:
             if ncmitem.codigoConteiner == numeroconteiner:
