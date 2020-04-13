@@ -129,13 +129,14 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
             preds = r.json()['predictions']
             print(preds)
             # TODO: Salvar predições
-            for umid, new_pred in zip(_ids, preds)
-            pred_gravado[0]['peso'] = new_pred[0]
-            print('Gravando...', pred_gravado, _id)
-            db['fs.files'].update(
-                {'_id': image.id},
-                {'$set': {'metadata.predictions': pred_gravado}}
-            )
+            for oid, new_pred in zip(_ids, preds):
+                pred_gravado[0]['peso'] = new_pred[0]
+                print('Gravando...', pred_gravado, _id)
+                db['fs.files'].update(
+                    {'_id': oid},
+                    {'$set': {'metadata.predictions': pred_gravado}}
+                )
+            logger.info('Predições novas salvas no MongoDB')
             images = []
             _ids = []
 
