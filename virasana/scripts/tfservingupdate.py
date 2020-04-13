@@ -18,6 +18,7 @@ Args:
     batch_size: quantidade de consultas simultâneas (mais rápido até limite do Servidor)
 
 """
+import io
 import time
 
 import click
@@ -106,8 +107,10 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         registros_processados += 1
         if registros_processados == 1:
             logger.info('Iniciando varredura de registros')
-        image = mongo_image(db, _id)
-        image = recorta_imagem(image, pred_gravado[0].get('bbox'))
+        image_bytes = mongo_image(db, _id)
+        image = Image.open(io.BytesIO(image_bytes))
+        coords = pred_gravado[0].get('bbox')
+        image = image.crop((coords[1], coords[0], coords[3], coords[2]))
         image = image.resize((288, 144), Image.LANCZOS)
         image_array = np.array(image) / 255
         images.append(image_array.tolist())
