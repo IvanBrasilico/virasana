@@ -112,7 +112,7 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         coords = pred_gravado[0].get('bbox')
         logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
-        logger.info('Image size after crop: %s ' % ', '.join(image.size))
+        logger.info('Image size after crop: %s ' % (image.size, ))
         image = image.resize((288, 144), Image.LANCZOS)
         logger.info('Image size after resize: %s ' % (image.size, ))
         image_array = np.array(image) / 255
