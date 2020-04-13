@@ -106,7 +106,7 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         pred_gravado = registro.get('metadata').get('predictions')
         registros_processados += 1
         if registros_processados == 1:
-            logger.info('Iniciando varredura de registros')
+            logger.info('Iniciando leitura das imagens')
         image_bytes = mongo_image(db, _id)
         image = Image.open(io.BytesIO(image_bytes))
         coords = pred_gravado[0].get('bbox')
@@ -114,9 +114,12 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         image = image.resize((288, 144), Image.LANCZOS)
         image_array = np.array(image) / 255
         images.append(image_array.tolist())
+        print(len(images), end=' ')
         if len(images) >= batch_size:
+            logger.info('Batch carregado, enviando ao Servidor TensorFlow')
             json_batch = {"signature_name": "serving_default", "instances": images}
-            r = requests.post('http://10.80.100.90/v1/models/vazio:predict', json=json_batch)
+            r = requests.post('http://10.68.100.90/v1/models/vazio:predict', json=json_batch)
+            logger.info('Predições recebidas do Servidor TensorFlow')
             print(r.json())
             images = []
 
