@@ -69,6 +69,10 @@ def mostra_tempo_final(s_inicial, registros_vazios, registros_processados):
           'registros processados', registros_processados)
 
 
+def rescale(pred):
+    peso = pred * 7558.96 + 18204.96
+    return peso
+
 BATCH_SIZE = 64
 MODEL = 'peso'
 LIMIT = 128
@@ -124,14 +128,15 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         if len(images) >= batch_size:
             logger.info('Batch carregado, enviando ao Servidor TensorFlow')
             json_batch = {"signature_name": "serving_default", "instances": images}
-            r = requests.post('http://10.68.100.90/v1/models/peso:predict', json=json_batch)
+            r = requests.post('http://10.68.100.90/v1/models/%s:predict' % modelo,
+                              json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
             preds = r.json()['predictions']
             print(preds)
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
-                pred_gravado[0]['peso'] = new_pred[0]
-                print('Gravando...', pred_gravado, _id)
+                pred_gravado[0][modelo] = rescale(new_pred[0])
+                print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
                     {'$set': {'metadata.predictions': pred_gravado}}
