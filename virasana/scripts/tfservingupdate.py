@@ -101,6 +101,7 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
     registros_vazios = 0
     s_inicio = time.time()
     images = []
+    _ids = []
     for registro in cursor:
         _id = registro['_id']
         pred_gravado = registro.get('metadata').get('predictions')
@@ -118,14 +119,25 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         image_array = np.array(image) / 255
         # logger.info('Image array shape: %s ' % (image_array.shape, ) )
         images.append(image_array.tolist())
+        _ids.append(_id)
         # print(len(images), end=' ')
         if len(images) >= batch_size:
             logger.info('Batch carregado, enviando ao Servidor TensorFlow')
             json_batch = {"signature_name": "serving_default", "instances": images}
             r = requests.post('http://10.68.100.90/v1/models/peso:predict', json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
-            print(r.json())
+            preds = r.json()['predictions']
+            print(preds)
+            # TODO: Salvar predições
+            for umid, new_pred in zip(_ids, preds)
+            pred_gravado[0]['peso'] = new_pred[0]
+            print('Gravando...', pred_gravado, _id)
+            db['fs.files'].update(
+                {'_id': image.id},
+                {'$set': {'metadata.predictions': pred_gravado}}
+            )
             images = []
+            _ids = []
 
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
 
