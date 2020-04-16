@@ -18,12 +18,11 @@ Args:
     batch_size: quantidade de consultas simultâneas (mais rápido até limite do Servidor)
 
 """
-import io
-import time
-
 import click
+import io
 import numpy as np
 import requests
+import time
 from PIL import Image
 from ajna_commons.flask.log import logger
 from ajna_commons.utils.images import mongo_image, recorta_imagem
@@ -73,6 +72,7 @@ def rescale(pred):
     peso = pred * 7558.96 + 18204.96
     return peso
 
+
 BATCH_SIZE = 64
 MODEL = 'peso'
 LIMIT = 128
@@ -118,7 +118,10 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         # logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
         # logger.info('Image size after crop: %s ' % (image.size, ))
-        image = image.resize((288, 144), Image.LANCZOS)
+        if modelo == 'peso':
+            image = image.resize((288, 144), Image.LANCZOS)
+        elif modelo == 'vazio':
+            image = image.resize((244, 244), Image.LANCZOS)
         # logger.info('Image size after resize: %s ' % (image.size, ))
         image_array = np.array(image) / 255
         # logger.info('Image array shape: %s ' % (image_array.shape, ) )
@@ -135,7 +138,10 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
             print(preds)
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
-                pred_gravado[0][modelo] = rescale(new_pred[0])
+                if modelo == 'peso':
+                    pred_gravado[0][modelo] = rescale(new_pred[0])
+                elif modelo == 'vazio':
+                    pred_gravado[0][modelo] = new_pred[0]
                 print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
