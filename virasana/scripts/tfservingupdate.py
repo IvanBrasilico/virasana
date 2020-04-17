@@ -127,36 +127,37 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
     s_inicio = time.time()
     images = []
     _ids = []
+    logger.info('Iniciando leitura das imagens')
     for registro in cursor:
         _id = registro['_id']
         pred_gravado = registro.get('metadata').get('predictions')
         registros_processados += 1
-        if registros_processados == 1:
-            logger.info('Iniciando leitura das imagens')
         image_bytes = mongo_image(db, _id)
         image = Image.open(io.BytesIO(image_bytes))
         coords = pred_gravado[0].get('bbox')
         # logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
         # logger.info('Image size after crop: %s ' % (image.size, ))
+        image = prepara_imagem(image, modelo)
         # logger.info('Image array shape: %s ' % (image_array.shape, ) )
         images.append(image_array.tolist())
         _ids.append(_id)
         # print(len(images), end=' ')
         if len(images) >= batch_size:
             logger.info('Batch carregado, enviando ao Servidor TensorFlow..')
+            s1 = time.time()
             json_batch = {"signature_name": "serving_default", "instances": images}
             r = requests.post(tfserving_url + ' % s:predict' % modelo,
                               json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
+            s2 = time.time()
+            logger.info('Consulta ao tensorflow serving em %s segundos' % (s2-s1) +
+                        ' para %s exemplos' % batch_size)
             preds = r.json()['predictions']
             print(preds)
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
-                if modelo == 'peso':
-                    pred_gravado[0][modelo] = rescale(new_pred[0])
-                elif modelo == 'vazio':
-                    pred_gravado[0][modelo] = new_pred[0]
+                pred_gravado[0][modelo] = interpreta_pred(new_pred[0])
                 print('Gravando...', pred_gravado, oid)
                 # db['fs.files'].update(
                 #    {'_id': oid},
@@ -165,7 +166,6 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
             logger.info('Predições novas salvas no MongoDB')
             images = []
             _ids = []
-
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
 
 
