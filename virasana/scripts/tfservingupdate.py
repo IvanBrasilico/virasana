@@ -73,12 +73,33 @@ def rescale(pred):
     return peso
 
 
+def interpreta_pred(prediction: float, model: str):
+    """Resume predições se necessário."""
+    if model == 'vazio':
+        return prediction < 0.5
+    if model == 'peso':
+        return rescale(prediction)
+
+
+def prepara_imagem(image, model: str) -> array:
+    if modelo == 'peso':
+        image = image.resize((288, 144), Image.LANCZOS)
+    elif modelo == 'vazio':
+        image = image.resize((244, 244), Image.LANCZOS)
+    # logger.info('Image size after resize: %s ' % (image.size, ))
+    image_array = np.array(image) / 255
+    return image_array
+
+
+TFSERVING_URL = 'http://10.68.100.90/v1/models/'
 BATCH_SIZE = 64
 MODEL = 'peso'
 LIMIT = 128
 
 
 @click.command()
+@click.option('--tfserving_url', help='URL do tfserving (Padrão %s)' % TFSERVING_URL,
+              default=TFSERVING_URL)
 @click.option('--modelo', help='Modelo de predição a ser consultado',
               required=True)
 @click.option('--campo', help='Nome do campo a atualizar.'
@@ -94,7 +115,7 @@ LIMIT = 128
 @click.option('--pulaerros', is_flag=True,
               help='Pular registros que tenham erro anterior' +
                    '(metadata.predictions == [])')
-def predictions_update(modelo, campo, limit, batch_size, pulaerros):
+def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerros):
     """Consulta padma e grava predições de retorno no MongoDB."""
     if not campo:
         campo = modelo
@@ -118,20 +139,14 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
         # logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
         # logger.info('Image size after crop: %s ' % (image.size, ))
-        if modelo == 'peso':
-            image = image.resize((288, 144), Image.LANCZOS)
-        elif modelo == 'vazio':
-            image = image.resize((244, 244), Image.LANCZOS)
-        # logger.info('Image size after resize: %s ' % (image.size, ))
-        image_array = np.array(image) / 255
         # logger.info('Image array shape: %s ' % (image_array.shape, ) )
         images.append(image_array.tolist())
         _ids.append(_id)
         # print(len(images), end=' ')
         if len(images) >= batch_size:
-            logger.info('Batch carregado, enviando ao Servidor TensorFlow')
+            logger.info('Batch carregado, enviando ao Servidor TensorFlow..')
             json_batch = {"signature_name": "serving_default", "instances": images}
-            r = requests.post('http://10.68.100.90/v1/models/%s:predict' % modelo,
+            r = requests.post(tfserving_url + ' % s:predict' % modelo,
                               json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
             preds = r.json()['predictions']
@@ -143,10 +158,10 @@ def predictions_update(modelo, campo, limit, batch_size, pulaerros):
                 elif modelo == 'vazio':
                     pred_gravado[0][modelo] = new_pred[0]
                 print('Gravando...', pred_gravado, oid)
-                db['fs.files'].update(
-                    {'_id': oid},
-                    {'$set': {'metadata.predictions': pred_gravado}}
-                )
+                # db['fs.files'].update(
+                #    {'_id': oid},
+                #    {'$set': {'metadata.predictions': pred_gravado}}
+                # )
             logger.info('Predições novas salvas no MongoDB')
             images = []
             _ids = []
