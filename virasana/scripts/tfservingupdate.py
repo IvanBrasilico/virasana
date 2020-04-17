@@ -85,7 +85,7 @@ def prepara_imagem(image, model: str):
     if modelo == 'peso':
         image = image.resize((288, 144), Image.LANCZOS)
     elif modelo == 'vazio':
-        image = image.resize((244, 244), Image.LANCZOS)
+        image = image.resize((224, 224), Image.LANCZOS)
     # logger.info('Image size after resize: %s ' % (image.size, ))
     image_array = np.array(image) / 255
     return image_array
