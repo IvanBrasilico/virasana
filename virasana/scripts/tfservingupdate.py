@@ -73,11 +73,11 @@ def rescale(pred):
     return peso
 
 
-def interpreta_pred(prediction: float, model: str):
+def interpreta_pred(prediction: float, modelo: str):
     """Resume predições se necessário."""
-    if model == 'vazio':
+    if modelo == 'vazio':
         return prediction < 0.5
-    if model == 'peso':
+    if modelo == 'peso':
         return rescale(prediction)
 
 
@@ -151,7 +151,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
                               json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
             s2 = time.time()
-            logger.info('Consulta ao tensorflow serving em %s segundos' % (s2-s1) +
+            logger.info('Consulta ao tensorflow serving em %s segundos' % (s2 - s1) +
                         ' para %s exemplos' % batch_size)
             try:
                 preds = r.json()['predictions']
@@ -162,7 +162,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
                 raise err
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
-                pred_gravado[0][modelo] = interpreta_pred(new_pred[0])
+                pred_gravado[0][modelo] = interpreta_pred(new_pred[0], modelo)
                 print('Gravando...', pred_gravado, oid)
                 # db['fs.files'].update(
                 #    {'_id': oid},
