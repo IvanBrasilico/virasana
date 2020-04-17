@@ -147,7 +147,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
             logger.info('Batch carregado, enviando ao Servidor TensorFlow..')
             s1 = time.time()
             json_batch = {"signature_name": "serving_default", "instances": images}
-            r = requests.post(tfserving_url + ' % s:predict' % modelo,
+            r = requests.post(tfserving_url + '%s:predict' % modelo,
                               json=json_batch)
             logger.info('Predições recebidas do Servidor TensorFlow')
             s2 = time.time()
