@@ -81,7 +81,7 @@ def interpreta_pred(prediction: float, model: str):
         return rescale(prediction)
 
 
-def prepara_imagem(image, model: str) -> array:
+def prepara_imagem(image, model: str):
     if modelo == 'peso':
         image = image.resize((288, 144), Image.LANCZOS)
     elif modelo == 'vazio':
