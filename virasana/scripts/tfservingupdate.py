@@ -145,15 +145,18 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
         _ids.append(_id)
         # print(len(images), end=' ')
         if len(images) >= batch_size:
-            logger.info('Batch carregado, enviando ao Servidor TensorFlow..')
+            logger.info('Batch carregado, enviando ao Servidor TensorFlow.' 
+                        ' Modelo: %s' % modelo)
             s1 = time.time()
             json_batch = {"signature_name": "serving_default", "instances": images}
             r = requests.post(tfserving_url + '%s:predict' % modelo,
                               json=json_batch)
-            logger.info('Predições recebidas do Servidor TensorFlow')
+            logger.info('Predições recebidas do Servidor TensorFlow'
+                        ' Modelo: %s' % modelo)
             s2 = time.time()
             logger.info('Consulta ao tensorflow serving em %s segundos' % (s2 - s1) +
-                        ' para %s exemplos' % batch_size)
+                        ' para %s exemplos' % batch_size +
+                        ' Modelo: %s' % modelo)
             try:
                 preds = r.json()['predictions']
                 # print(preds)
