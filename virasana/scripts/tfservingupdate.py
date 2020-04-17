@@ -18,14 +18,15 @@ Args:
     batch_size: quantidade de consultas simultâneas (mais rápido até limite do Servidor)
 
 """
-import click
 import io
+import time
+
+import click
 import numpy as np
 import requests
-import time
 from PIL import Image
 from ajna_commons.flask.log import logger
-from ajna_commons.utils.images import mongo_image, recorta_imagem
+from ajna_commons.utils.images import mongo_image
 
 from virasana.db import mongodb as db
 from virasana.integracao.padma import (BBOX_MODELS)
@@ -164,14 +165,19 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
             for oid, new_pred in zip(_ids, preds):
                 pred_gravado[0][modelo] = interpreta_pred(new_pred[0], modelo)
                 print('Gravando...', pred_gravado, oid)
-                # db['fs.files'].update(
-                #    {'_id': oid},
-                #    {'$set': {'metadata.predictions': pred_gravado}}
-                # )
+                db['fs.files'].update(
+                    {'_id': oid},
+                    {'$set': {'metadata.predictions': pred_gravado}}
+                )
             logger.info('Predições novas salvas no MongoDB')
             images = []
             _ids = []
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
+
+
+def tfs_predictions_update(modelo, limit=2000, batch_size=20):
+    predictions_update(TFSERVING_URL, modelo, modelo,
+                       limit, batch_size, pulaerros=False)
 
 
 if __name__ == '__main__':
