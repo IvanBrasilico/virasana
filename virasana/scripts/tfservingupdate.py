@@ -153,8 +153,13 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
             s2 = time.time()
             logger.info('Consulta ao tensorflow serving em %s segundos' % (s2-s1) +
                         ' para %s exemplos' % batch_size)
-            preds = r.json()['predictions']
-            print(preds)
+            try:
+                preds = r.json()['predictions']
+                print(preds)
+            except Exception as err:
+                print(r.status_code)
+                print(r.text)
+                raise err
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
                 pred_gravado[0][modelo] = interpreta_pred(new_pred[0])
