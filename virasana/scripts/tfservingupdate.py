@@ -156,7 +156,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
                         ' para %s exemplos' % batch_size)
             try:
                 preds = r.json()['predictions']
-                print(preds)
+                # print(preds)
             except Exception as err:
                 print(r.status_code)
                 print(r.text)
@@ -164,7 +164,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
                 pred_gravado[0][modelo] = interpreta_pred(new_pred[0], modelo)
-                print('Gravando...', pred_gravado, oid)
+                # print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
                     {'$set': {'metadata.predictions': pred_gravado}}
