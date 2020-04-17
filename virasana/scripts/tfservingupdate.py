@@ -138,7 +138,7 @@ def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerro
         # logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
         # logger.info('Image size after crop: %s ' % (image.size, ))
-        image = prepara_imagem(image, modelo)
+        image_array = prepara_imagem(image, modelo)
         # logger.info('Image array shape: %s ' % (image_array.shape, ) )
         images.append(image_array.tolist())
         _ids.append(_id)
