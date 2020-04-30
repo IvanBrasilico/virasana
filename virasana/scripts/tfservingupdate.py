@@ -92,7 +92,7 @@ def prepara_imagem(image, modelo: str):
     return image_array
 
 
-TFSERVING_URL = 'http://10.68.100.90/v1/models/'
+TFSERVING_URL = 'http://10.68.100.40/v1/models/'
 BATCH_SIZE = 64
 MODEL = 'peso'
 LIMIT = 128
