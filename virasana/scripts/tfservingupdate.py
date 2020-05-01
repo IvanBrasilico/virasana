@@ -118,7 +118,7 @@ LIMIT = 128
                    '(metadata.predictions == [])')
 def predictions_update(tfserving_url, modelo, campo, limit, batch_size, pulaerros):
     """Consulta padma e grava predições de retorno no MongoDB."""
-    predictions_update(modelo, limit, batch_size, pulaerros)
+    tfs_predictions_update(modelo, limit, batch_size, pulaerros, campo, tfserving_url)
 
 
 def tfs_predictions_update(modelo, limit=2000, batch_size=20,
