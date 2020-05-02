@@ -519,7 +519,7 @@ def tag_del():
 
 
 @app.route('/grid_data', methods=['POST', 'GET'])
-# @login_required
+#@login_required
 @csrf.exempt
 def grid_data():
     """Executa uma consulta no banco.
