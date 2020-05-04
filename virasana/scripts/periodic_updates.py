@@ -17,25 +17,24 @@ import sys
 import time
 from datetime import date, datetime, timedelta
 from json.decoder import JSONDecodeError
-from sqlalchemy import create_engine
 
 import requests
-from pymongo import MongoClient
-
 from ajna_commons.flask.conf import (DATABASE,
                                      MONGODB_URI, SQL_URI,
                                      VIRASANA_URL)
 from ajna_commons.flask.log import logger
+from pymongo import MongoClient
+from sqlalchemy import create_engine
 
-from virasana.integracao.carga2.carga2 import do_update_carga
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
+from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
-from virasana.integracao.mercante import mercante_fsfiles
+from virasana.models import anomalia_lote
 from virasana.scripts.gera_indexes import gera_indexes
 from virasana.scripts.predictionsupdate import predictions_update2
-from virasana.models import anomalia_lote
+from virasana.scripts.tfservingupdate import tfs_predictions_update
 
 
 def get_token(session, url):
@@ -110,8 +109,10 @@ def periodic_updates(db, connection, lote=4000):
     predictions_update2('index', 'index', lote, 8)
     gera_indexes()
     print(reload_indexes())
-    predictions_update2('vaziosvm', 'vazio', lote, 4)
-    predictions_update2('peso', 'peso', lote, 16)
+    tfs_predictions_update('vazio', lote, 20)
+    tfs_predictions_update('peso', lote, 20)
+    # predictions_update2('vaziosvm', 'vazio', lote, 4)
+    # predictions_update2('peso', 'peso', lote, 16)
 
 
 if __name__ == '__main__':

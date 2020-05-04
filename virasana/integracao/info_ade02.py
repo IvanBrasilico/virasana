@@ -33,7 +33,6 @@ except FileNotFoundError:
 # DTE_URL = 'https://www.janelaunicaportuaria.org.br/ws_homologacao/sepes/api/Pesagem'
 DTE_TOKEN = 'https://jupapi.org.br/api/sepes/Pesagem/token'
 DTE_URL = 'https://jupapi.org.br/api/sepes/PesagemMovimentacao'
-
 FIELDS = ()
 
 # Fields to be converted to ISODate
@@ -104,11 +103,12 @@ def get_pesagens_dte_recintos(recintos_list, datainicial, datafinal):
 
 
 def trata_registro_pesagem_dte(registro):
-    def float_or_zero(s: str)-> float:
+    def float_or_zero(s: str) -> float:
         try:
             return float(s)
         except ValueError:
             return 0.
+
     new_dict = {}
     for key, value in registro.items():
         key = sanitizar(key, mongo_sanitizar)
@@ -331,8 +331,8 @@ if __name__ == '__main__':  # pragma: no cover
     from ajna_commons.flask.conf import DATABASE, MONGODB_URI
 
     db = MongoClient(host=MONGODB_URI)[DATABASE]
-    print('Criando índices para Pesagens')
-    print(create_indexes(db))
+    # print('Criando índices para Pesagens')
+    # print(create_indexes(db))
     print('Adquirindo pesagens do dia anterior')
     start = datetime.combine(date.today(), datetime.min.time()) - timedelta(days=1)
     end = start
