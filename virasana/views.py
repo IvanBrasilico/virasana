@@ -1122,6 +1122,7 @@ def cemercante(numero=None):
         # containers = carga.ListaContainerConhecimento.from_db(db, numero)
         idszscore = get_ids_score_conhecimento_zscore(db, [numero])[numero]
         # print(idszscore)
+
         imagens = [{'_id': str(item['_id']),
                     'container': item['container'],
                     'zscore': '{:0.1f}'.format(item['zscore'])}
