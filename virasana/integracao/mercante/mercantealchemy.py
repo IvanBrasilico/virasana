@@ -273,7 +273,7 @@ class ManifestoEscala(Base):
 
 class Conhecimento(Base):
     __tablename__ = 'conhecimentosresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     numeroCEMaster = Column(VARCHAR(15), index=True)
     numeroCEmercante = Column(VARCHAR(15), unique=True)
@@ -302,7 +302,7 @@ class Conhecimento(Base):
 
 class Item(Base):  # Conteiner Cheio
     __tablename__ = 'itensresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     # TODO: Confirmar que chave é esta
     numeroCEmercante = Column(VARCHAR(15))
