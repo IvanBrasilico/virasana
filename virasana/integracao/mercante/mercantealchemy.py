@@ -431,8 +431,8 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        metadata.drop_all(engine)
-        metadata.create_all(engine)
+        metadata.drop_all(engine, [metadata.tables['riscosativos']])
+        metadata.create_all(engine, [metadata.tables['riscosativos']])
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
         metadata.drop_all(engine)

@@ -1431,6 +1431,13 @@ def select_auditoria():
                            select=select)
 
 
+@app.route('/image-editor/<_id>')
+def image_editor(_id):
+    """Exibe o editor Open Source JS (licença MIT) FileRobot."""
+    db = app.config['mongodb']
+    return render_template('filerobot.html', _id=_id)
+
+
 @nav.navigation()
 def mynavbar():
     """Menu da aplicação."""
