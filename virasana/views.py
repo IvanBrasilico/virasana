@@ -929,8 +929,7 @@ def valida_form_files(form, filtro, db):
             end = datetime.combine(end, datetime.max.time())
             filtro['metadata.dataescaneamento'] = {'$lte': end, '$gte': start}
         if numero:
-            filtro['metadata.numeroinformado'] = \
-                {'$regex': '^' + mongo_sanitizar(numero), '$options': 'i'}
+            filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
         if alerta:
             filtro['metadata.xml.alerta'] = True
         if ranking:
@@ -972,8 +971,7 @@ def files():
             form_files = FilesForm(numero=numero)
             form_files.filtro_tags.choices = tags_object.tags_text
             form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
-            filtro['metadata.numeroinformado'] = \
-                {'$regex': '^' + mongo_sanitizar(numero), '$options': 'i'}
+            filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
         if order is None:
