@@ -2,7 +2,7 @@
 from ajna_commons.flask.conf import SQL_URI
 from sqlalchemy import Column, CHAR, \
     DateTime, func, Integer, Index, select, \
-    Table, Text, VARCHAR
+    Table, Text, VARCHAR, BigInteger
 from sqlalchemy import create_engine, and_
 from sqlalchemy.dialects.mysql import BIGINT, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
