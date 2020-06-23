@@ -21,7 +21,11 @@ class ParseXML:
             alvo = node.find(campo)
             if alvo is not None:
                 # print(alvo.text, alvo.tag)
-                destino = getattr(self, campo)
+                try:
+                    destino = getattr(self, campo)
+                except AttributeError as err:
+                    logger.error(err)
+                    continue
                 if isinstance(destino, str):
                     setattr(self, campo, alvo.text)
                 else:
