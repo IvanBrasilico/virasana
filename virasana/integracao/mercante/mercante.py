@@ -284,7 +284,7 @@ classes = {'conhecimentosEmbarque': Conhecimento,
            'manifestosCarga': Manifesto,
            'itensCarga': ItemCarga,
            'exclusoesEscala': ExclusaoEscala,
-           'escalas': EscalaXML}
+           'escala': EscalaXML}
 
 
 classes_em_lista = {'manifestosCarga': [ConteinerVazio, EscalaManifesto],
