@@ -209,6 +209,25 @@ class ExclusaoEscala(ParseXML):
         self.dataExclusao: str = ''
         self.horaExclusao: str = ''
 
+class EscalaXML(ParseXML):
+    def __init__(self):
+        self.tipoMovimento: str = ''
+        self.numeroDaEscala: str = ''
+        self.dataAtualizacao: str = ''
+        self.horaAtualizacao: str = ''
+        self.agenciaDeNavegacao: str = ''
+        self.portoDaEscala: str = ''
+        self.embarcacao: str = ''
+        self.numeroViagemDoArmador: str = ''
+        self.tipoOperacaoPrevista: str = ''
+        self.bandeiraDaEmbarcacao: str = ''
+        self.empresaDeNavegacao: str = ''
+        self.dataPrevistaAtracacao: str = ''
+        self.dataPrevistaDesatracacao: str = ''
+        self.dataEfetivaPrimeiraAtracacao: str = ''
+        self.dataEfetivaPrimeiraDesatracacao: str = ''
+
+
 
 # Entidades que ficam em listas dentro de outra Entidade no XML
 # Tratamento tem que se diferente na varredura de nodes do XML
@@ -260,7 +279,9 @@ class EscalaManifesto(ParseXML):
 classes = {'conhecimentosEmbarque': Conhecimento,
            'manifestosCarga': Manifesto,
            'itensCarga': ItemCarga,
-           'exclusoesEscala': ExclusaoEscala}
+           'exclusoesEscala': ExclusaoEscala,
+           'escalas': EscalaXML}
+
 
 classes_em_lista = {'manifestosCarga': [ConteinerVazio, EscalaManifesto],
                     'itensCarga': [NCMItemCarga]}
