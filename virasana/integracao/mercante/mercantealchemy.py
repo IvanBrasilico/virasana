@@ -164,7 +164,7 @@ t_exclusoesEscala = Table(
 )
 
 t_escalas = Table(
-    'escalasCarga', metadata,
+    'escala', metadata,
     Column('id', BIGINT, primary_key=True, autoincrement=True),
     Column('tipoMovimento', Text),
     Column('numeroDaEscala', Text),
