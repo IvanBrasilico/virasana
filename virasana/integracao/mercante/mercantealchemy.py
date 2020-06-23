@@ -294,7 +294,7 @@ class ManifestoEscala(Base):
 
 class Conhecimento(Base):
     __tablename__ = 'conhecimentosresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     numeroCEMaster = Column(VARCHAR(15), index=True)
     numeroCEmercante = Column(VARCHAR(15), unique=True)
@@ -323,7 +323,7 @@ class Conhecimento(Base):
 
 class Item(Base):  # Conteiner Cheio
     __tablename__ = 'itensresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     # TODO: Confirmar que chave é esta
     numeroCEmercante = Column(VARCHAR(15))
@@ -452,8 +452,8 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        # metadata.drop_all(engine)
-        # metadata.create_all(engine)
+        # metadata.drop_all(engine, [metadata.tables['riscosativos']])
+        # metadata.create_all(engine, [metadata.tables['riscosativos']])
         metadata.create_all(engine, [metadata.tables['escalasCarga']])
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')

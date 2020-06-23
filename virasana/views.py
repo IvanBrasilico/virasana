@@ -519,7 +519,7 @@ def tag_del():
 
 
 @app.route('/grid_data', methods=['POST', 'GET'])
-# @login_required
+#@login_required
 @csrf.exempt
 def grid_data():
     """Executa uma consulta no banco.
@@ -929,8 +929,7 @@ def valida_form_files(form, filtro, db):
             end = datetime.combine(end, datetime.max.time())
             filtro['metadata.dataescaneamento'] = {'$lte': end, '$gte': start}
         if numero:
-            filtro['metadata.numeroinformado'] = \
-                {'$regex': '^' + mongo_sanitizar(numero), '$options': 'i'}
+            filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
         if alerta:
             filtro['metadata.xml.alerta'] = True
         if ranking:
@@ -972,8 +971,7 @@ def files():
             form_files = FilesForm(numero=numero)
             form_files.filtro_tags.choices = tags_object.tags_text
             form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
-            filtro['metadata.numeroinformado'] = \
-                {'$regex': '^' + mongo_sanitizar(numero), '$options': 'i'}
+            filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
         if order is None:
@@ -1122,6 +1120,7 @@ def cemercante(numero=None):
         # containers = carga.ListaContainerConhecimento.from_db(db, numero)
         idszscore = get_ids_score_conhecimento_zscore(db, [numero])[numero]
         # print(idszscore)
+
         imagens = [{'_id': str(item['_id']),
                     'container': item['container'],
                     'zscore': '{:0.1f}'.format(item['zscore'])}
@@ -1428,6 +1427,13 @@ def select_auditoria():
     return render_template('auditoria.html',
                            form=form,
                            select=select)
+
+
+@app.route('/image-editor/<_id>')
+def image_editor(_id):
+    """Exibe o editor Open Source JS (licença MIT) FileRobot."""
+    db = app.config['mongodb']
+    return render_template('filerobot.html', _id=_id)
 
 
 @nav.navigation()
