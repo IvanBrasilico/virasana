@@ -26,13 +26,13 @@ from ajna_commons.flask.log import logger
 from pymongo import MongoClient
 from sqlalchemy import create_engine
 
+from scripts.gera_indexes import gera_indexes
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
 from virasana.models import anomalia_lote
-from virasana.scripts.gera_indexes import gera_indexes
 from virasana.scripts.predictionsupdate import predictions_update2
 from virasana.scripts.tfservingupdate import tfs_predictions_update
 
@@ -100,15 +100,15 @@ def periodic_updates(db, connection, lote=1000):
     mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, hoje, 10)
     # carga.dados_carga_grava_fsfiles(db, lote * 2, doisdias)
     anomalia_lote.processa_zscores(db, cincodias, ontem)
-    # info_ade02.adquire_pesagens(db, cincodias, ontem)
-    # info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
-    # atualiza_stats(db)
-    # carga.cria_campo_pesos_carga(db, lote * 3)
-    # carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
+    info_ade02.adquire_pesagens(db, cincodias, ontem)
+    info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
+    atualiza_stats(db)
+    carga.cria_campo_pesos_carga(db, lote * 3)
+    carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
     predictions_update2('ssd', 'bbox', lote, 4)
     predictions_update2('index', 'index', lote, 8)
-    # gera_indexes()
-    # print(reload_indexes())
+    gera_indexes()
+    print(reload_indexes())
     tfs_predictions_update('vazio', lote, 20)
     tfs_predictions_update('peso', lote, 20)
     # predictions_update2('vaziosvm', 'vazio', lote, 4)
