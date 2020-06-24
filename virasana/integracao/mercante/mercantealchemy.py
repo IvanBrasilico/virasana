@@ -183,7 +183,6 @@ t_escalas = Table(
     Column('dataEfetivaPrimeiraDesatracacao', Text),
     Column('create_date', TIMESTAMP, index=True,
            server_default=func.current_timestamp())
-
 )
 
 t_itensCarga = Table(
@@ -240,15 +239,32 @@ t_manifestosCarga = Table(
 
 class Escala(Base):
     __tablename__ = 'escalasresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
-    numero = Column(VARCHAR(20), unique=True)
+    numeroDaEscala = Column(VARCHAR(20), unique=True)
+    dataAtualizacao = Column(VARCHAR(10))
+    horaAtualizacao = Column(VARCHAR(10))
+    agenciaDeNavegacao = Column(VARCHAR(30))
+    portoDaEscala = Column(VARCHAR(20))
+    embarcacao = Column(VARCHAR(50))
+    numeroViagemDoArmador = Column(VARCHAR(20))
+    tipoOperacaoPrevista = Column(VARCHAR(20))
+    bandeiraDaEmbarcacao = Column(VARCHAR(20))
+    empresaDeNavegacao = Column(VARCHAR(20))
+    dataPrevistaAtracacao = Column(VARCHAR(10))
+    dataPrevistaDesatracacao = Column(VARCHAR(10))
+    dataEfetivaPrimeiraAtracacao = Column(VARCHAR(10))
+    dataEfetivaPrimeiraDesatracacao = Column(VARCHAR(10))
+    create_date = Column(TIMESTAMP, index=True,
+                     server_default=func.current_timestamp())
+    last_modified = Column(DateTime, index=True,
+                       onupdate=func.current_timestamp())
     # manifestos = relationship("ManifestoEscala", back_populates='escala',  cascade="delete, delete-orphan")
 
 
 class Manifesto(Base):
     __tablename__ = 'manifestosresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     numero = Column(VARCHAR(15), unique=True)
     codAgenciaInformante = Column(VARCHAR(20))

@@ -26,7 +26,7 @@ from virasana.integracao.mercante.mercantealchemy import Conhecimento, \
     ConteinerVazio, ControleResumo, Item, Manifesto, NCMItem, \
     t_conhecimentosEmbarque, t_ConteinerVazio, t_itensCarga, \
     t_manifestosCarga, t_NCMItemCarga, t_exclusoesEscala, Escala, \
-    t_ManifestoEscala, EscalaManifesto
+    t_ManifestoEscala, EscalaManifesto, t_escalas
 
 
 def get_pendentes(session, origem, tipomovimento, limit=100000):
@@ -128,9 +128,11 @@ def mercante_resumo(engine):
                  t_itensCarga: Item,
                  t_NCMItemCarga: NCMItem,
                  t_ConteinerVazio: ConteinerVazio,
+                 t_escalas: Escala
                  }
 
     chaves = {EscalaManifesto: ['manifesto', 'escala'],
+              Escala: ['numeroDaEscala'],
               Manifesto: ['numero'],
               Conhecimento: ['numeroCEmercante'],
               Item: ['numeroCEmercante', 'numeroSequencialItemCarga'],
