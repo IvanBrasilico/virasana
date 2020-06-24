@@ -260,6 +260,7 @@ def predictions_update(modelo, campo, tamanho, qtde,
     registros_vazios = 0
     s_inicio = time.time()
     images = []
+    logger.info('get_event_loop')
     loop = asyncio.get_event_loop()
     for registro in cursor:
         _id = registro['_id']
@@ -286,6 +287,7 @@ def predictions_update(modelo, campo, tamanho, qtde,
                 '{0: .2f} segundos'.format(s1 - s0)
             )
     # Processa pilha restante...
+    logger.info('looping')
     loop.run_until_complete(fazconsulta(images, modelo, campo))
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
 
@@ -301,6 +303,7 @@ def predictions_update2(modelo, campo, tamanho, qtde):
     registros_vazios = 0
     s_inicio = time.time()
     images = []
+    logger.info('get_event_loop')
     loop = asyncio.get_event_loop()
     for registro in cursor:
         _id = registro['_id']
@@ -326,6 +329,7 @@ def predictions_update2(modelo, campo, tamanho, qtde):
                 '{0: .2f} segundos'.format(s1 - s0)
             )
     # Processa pilha restante...
+    logger.info('final_loop')
     loop.run_until_complete(fazconsulta(images, modelo, campo))
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
 

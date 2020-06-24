@@ -86,7 +86,7 @@ def reload_indexes():
     return result
 
 
-def periodic_updates(db, connection, lote=2000):
+def periodic_updates(db, connection, lote=1000):
     print('Iniciando atualizações...')
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
@@ -100,11 +100,11 @@ def periodic_updates(db, connection, lote=2000):
     mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, hoje, 10)
     # carga.dados_carga_grava_fsfiles(db, lote * 2, doisdias)
     anomalia_lote.processa_zscores(db, cincodias, ontem)
-    info_ade02.adquire_pesagens(db, cincodias, ontem)
-    info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
-    atualiza_stats(db)
-    carga.cria_campo_pesos_carga(db, lote * 3)
-    carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
+    # info_ade02.adquire_pesagens(db, cincodias, ontem)
+    # info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
+    # atualiza_stats(db)
+    # carga.cria_campo_pesos_carga(db, lote * 3)
+    # carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
     predictions_update2('ssd', 'bbox', lote, 4)
     predictions_update2('index', 'index', lote, 8)
     gera_indexes()
