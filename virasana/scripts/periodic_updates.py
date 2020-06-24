@@ -86,7 +86,7 @@ def reload_indexes():
     return result
 
 
-def periodic_updates(db, connection, lote=4000):
+def periodic_updates(db, connection, lote=2000):
     print('Iniciando atualizações...')
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
