@@ -1,13 +1,11 @@
 # coding: utf-8
-import datetime
+from ajna_commons.flask.conf import SQL_URI
+from sqlalchemy import Column, CHAR, \
+    DateTime, func, Integer, Index, select, \
+    Table, Text, VARCHAR, BigInteger
 from sqlalchemy import create_engine, and_
-from sqlalchemy import BigInteger, Column, CHAR, \
-    DateTime, func, Integer, Index, MetaData, select, \
-    Table, Text, VARCHAR
 from sqlalchemy.dialects.mysql import BIGINT, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
-
-from ajna_commons.flask.conf import SQL_URI
 
 # from sqlalchemy.orm import relationship
 # from sqlachemy import ForeignKey
@@ -163,6 +161,29 @@ t_exclusoesEscala = Table(
     Column('tipoMovimento', Text),
     Column('create_date', TIMESTAMP, index=True,
            server_default=func.current_timestamp())
+)
+
+t_escalas = Table(
+    'escala', metadata,
+    Column('id', BIGINT, primary_key=True, autoincrement=True),
+    Column('tipoMovimento', Text),
+    Column('numeroDaEscala', Text),
+    Column('dataAtualizacao', Text),
+    Column('horaAtualizacao', Text),
+    Column('agenciaDeNavegacao', Text),
+    Column('portoDaEscala', Text),
+    Column('embarcacao', Text),
+    Column('numeroViagemDoArmador', Text),
+    Column('tipoOperacaoPrevista', Text),
+    Column('bandeiraDaEmbarcacao', Text),
+    Column('empresaDeNavegacao', Text),
+    Column('dataPrevistaAtracacao', Text),
+    Column('dataPrevistaDesatracacao', Text),
+    Column('dataEfetivaPrimeiraAtracacao', Text),
+    Column('dataEfetivaPrimeiraDesatracacao', Text),
+    Column('create_date', TIMESTAMP, index=True,
+           server_default=func.current_timestamp())
+
 )
 
 t_itensCarga = Table(
@@ -431,8 +452,9 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        metadata.drop_all(engine, [metadata.tables['riscosativos']])
-        metadata.create_all(engine, [metadata.tables['riscosativos']])
+        # metadata.drop_all(engine, [metadata.tables['riscosativos']])
+        # metadata.create_all(engine, [metadata.tables['riscosativos']])
+        metadata.create_all(engine, [metadata.tables['escalasCarga']])
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
         metadata.drop_all(engine)
