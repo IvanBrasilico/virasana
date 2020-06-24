@@ -470,7 +470,7 @@ if __name__ == '__main__':
         engine = create_engine(SQL_URI)
         # metadata.drop_all(engine, [metadata.tables['riscosativos']])
         # metadata.create_all(engine, [metadata.tables['riscosativos']])
-        metadata.create_all(engine, [metadata.tables['escalasCarga']])
+        metadata.create_all(engine, [metadata.tables['escalasresumo']])
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
         metadata.drop_all(engine)
