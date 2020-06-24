@@ -4,6 +4,7 @@ Script que pega os índices já gerados e coloca em array numpy
 import os
 
 import numpy as np
+from ajna_commons.flask.log import logger
 
 from virasana.db import mongodb as db
 
@@ -11,6 +12,7 @@ VIRASANA_MODELS = os.path.join('virasana', 'models')
 
 
 def gera_indexes():
+    logger.info('Gerando índices de busca por similaridade...')
     cursor = db['fs.files'].find(
         {'metadata.predictions.index': {'$exists': True, '$ne': None}},
         {'metadata.predictions.index': 1}

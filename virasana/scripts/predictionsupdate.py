@@ -331,6 +331,7 @@ def predictions_update2(modelo, campo, tamanho, qtde):
     # Processa pilha restante...
     logger.info('final_loop')
     loop.run_until_complete(fazconsulta(images, modelo, campo))
+    logger.info('end final_loop')
     mostra_tempo_final(s_inicio, registros_vazios, registros_processados)
 
 
