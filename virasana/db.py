@@ -8,5 +8,6 @@ from ajna_commons.flask.conf import SQL_URI
 
 conn = MongoClient(host=MONGODB_URI)
 mongodb = conn[DATABASE]
+mongodb_risco = conn['risco']
 mysql = create_engine(SQL_URI)
 

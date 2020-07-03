@@ -68,7 +68,7 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql):
+def configure_app(mongodb, mysql, mongodb_risco):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
@@ -87,6 +87,7 @@ def configure_app(mongodb, mysql):
     login_ajna.configure(app)
     user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
+    app.config['mongodb_risco'] = mongodb_risco
     app.config['mysql'] = mysql
     try:
         img_search = None

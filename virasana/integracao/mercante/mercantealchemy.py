@@ -1,5 +1,4 @@
 # coding: utf-8
-from ajna_commons.flask.conf import SQL_URI
 from sqlalchemy import Column, CHAR, \
     DateTime, func, Integer, Index, select, \
     Table, Text, VARCHAR, BigInteger
@@ -7,8 +6,10 @@ from sqlalchemy import create_engine, and_
 from sqlalchemy.dialects.mysql import BIGINT, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 
+from ajna_commons.flask.conf import SQL_URI
 # from sqlalchemy.orm import relationship
 # from sqlachemy import ForeignKey
+from bhadrasana.models import BaseDumpable
 
 Base = declarative_base()
 metadata = Base.metadata
@@ -237,7 +238,7 @@ t_manifestosCarga = Table(
 ### Tabelas resumo
 
 
-class Escala(Base):
+class Escala(Base, BaseDumpable):
     __tablename__ = 'escalasresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -256,13 +257,13 @@ class Escala(Base):
     dataEfetivaPrimeiraAtracacao = Column(VARCHAR(10))
     dataEfetivaPrimeiraDesatracacao = Column(VARCHAR(10))
     create_date = Column(TIMESTAMP, index=True,
-                     server_default=func.current_timestamp())
+                         server_default=func.current_timestamp())
     last_modified = Column(DateTime, index=True,
-                       onupdate=func.current_timestamp())
+                           onupdate=func.current_timestamp())
     # manifestos = relationship("ManifestoEscala", back_populates='escala',  cascade="delete, delete-orphan")
 
 
-class Manifesto(Base):
+class Manifesto(Base, BaseDumpable):
     __tablename__ = 'manifestosresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -308,7 +309,7 @@ class ManifestoEscala(Base):
 """
 
 
-class Conhecimento(Base):
+class Conhecimento(Base, BaseDumpable):
     __tablename__ = 'conhecimentosresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -337,7 +338,7 @@ class Conhecimento(Base):
     # listancm = relationship("NCMItem", cascade="delete, delete-orphan")
 
 
-class Item(Base):  # Conteiner Cheio
+class Item(Base, BaseDumpable):  # Conteiner Cheio
     __tablename__ = 'itensresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -369,10 +370,12 @@ class Item(Base):  # Conteiner Cheio
 Index('ix_itens_chave', Item.numeroCEmercante, Item.numeroSequencialItemCarga)
 
 
-class NCMItem(Base):
+class NCMItem(Base, BaseDumpable):
     __tablename__ = 'ncmitemresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
+    # TODO: mudar para bater com os outros objetos (usar property???)
+    # Testar se setter e getter abaixo resolveu
     numeroCEMercante = Column(CHAR(15))
     #                 ForeignKey('conhecimentosresumo.numeroCEmercante'))
     numeroSequencialItemCarga = Column(CHAR(5), index=True)
@@ -389,15 +392,23 @@ class NCMItem(Base):
     last_modified = Column(DateTime, index=True,
                            onupdate=func.current_timestamp())
 
+    @property
+    def numeroCEmercante(self):
+        return self.numeroCEMercante
+
+    @numeroCEmercante.setter
+    def numeroCEmercante(self, value):
+        self.numeroCEMercante = value
+
 
 Index('ix_ncmitem_chave', NCMItem.numeroCEMercante,
       NCMItem.codigoConteiner, NCMItem.numeroSequencialItemCarga,
       NCMItem.identificacaoNCM)
 
 
-class ConteinerVazio(Base):
+class ConteinerVazio(Base, BaseDumpable):
     __tablename__ = 'conteinervazioresumo'
-    ID = Column(BIGINT,
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     manifesto = Column(CHAR(15))
     # ForeignKey('manifestosresumo.numero'))
@@ -470,7 +481,7 @@ if __name__ == '__main__':
         engine = create_engine(SQL_URI)
         # metadata.drop_all(engine, [metadata.tables['riscosativos']])
         # metadata.create_all(engine, [metadata.tables['riscosativos']])
-        metadata.create_all(engine, [metadata.tables['escalasresumo']])
+        metadata.create_all(engine, [metadata.tables['escala']])
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
         metadata.drop_all(engine)

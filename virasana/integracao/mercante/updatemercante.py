@@ -14,7 +14,7 @@ def do():
         print('Lote de %s arquivos' % lote)
     sql = create_engine(SQL_URI)
     print('Baixando arquivos novos...')
-    get_arquivos_novos(sql)
+    # get_arquivos_novos(sql)
     print('Processando XML...')
     xml_para_mercante(sql, lote)
     print('Fazendo resumo operações...')
