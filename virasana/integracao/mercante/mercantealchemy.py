@@ -9,10 +9,20 @@ from sqlalchemy.ext.declarative import declarative_base
 from ajna_commons.flask.conf import SQL_URI
 # from sqlalchemy.orm import relationship
 # from sqlachemy import ForeignKey
-from bhadrasana.models import BaseDumpable
 
 Base = declarative_base()
 metadata = Base.metadata
+
+class BaseDumpable(Base):
+    __abstract__ = True
+
+    def dump(self, exclude=None, explode=False):
+        dump = dict([(k, v) for k, v in vars(self).items() if not k.startswith('_')])
+        if exclude:
+            for key in exclude:
+                if dump.get(key):
+                    dump.pop(key)
+        return dump
 
 
 # Tabelas auxiliares / log
@@ -238,7 +248,7 @@ t_manifestosCarga = Table(
 ### Tabelas resumo
 
 
-class Escala(Base, BaseDumpable):
+class Escala(BaseDumpable):
     __tablename__ = 'escalasresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -263,7 +273,7 @@ class Escala(Base, BaseDumpable):
     # manifestos = relationship("ManifestoEscala", back_populates='escala',  cascade="delete, delete-orphan")
 
 
-class Manifesto(Base, BaseDumpable):
+class Manifesto(BaseDumpable):
     __tablename__ = 'manifestosresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -309,7 +319,7 @@ class ManifestoEscala(Base):
 """
 
 
-class Conhecimento(Base, BaseDumpable):
+class Conhecimento(BaseDumpable):
     __tablename__ = 'conhecimentosresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -338,7 +348,7 @@ class Conhecimento(Base, BaseDumpable):
     # listancm = relationship("NCMItem", cascade="delete, delete-orphan")
 
 
-class Item(Base, BaseDumpable):  # Conteiner Cheio
+class Item(BaseDumpable):  # Conteiner Cheio
     __tablename__ = 'itensresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -370,7 +380,7 @@ class Item(Base, BaseDumpable):  # Conteiner Cheio
 Index('ix_itens_chave', Item.numeroCEmercante, Item.numeroSequencialItemCarga)
 
 
-class NCMItem(Base, BaseDumpable):
+class NCMItem(BaseDumpable):
     __tablename__ = 'ncmitemresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -406,7 +416,7 @@ Index('ix_ncmitem_chave', NCMItem.numeroCEMercante,
       NCMItem.identificacaoNCM)
 
 
-class ConteinerVazio(Base, BaseDumpable):
+class ConteinerVazio(BaseDumpable):
     __tablename__ = 'conteinervazioresumo'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
@@ -421,7 +431,7 @@ class ConteinerVazio(Base, BaseDumpable):
                            onupdate=func.current_timestamp())
 
 
-class EscalaManifesto(Base):
+class EscalaManifesto(BaseDumpable):
     __tablename__ = 'escalamanifestoresumo'
     ID = Column(BIGINT,
                 primary_key=True, autoincrement=True)
