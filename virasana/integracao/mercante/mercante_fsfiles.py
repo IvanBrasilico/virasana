@@ -68,7 +68,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     for r in range((len(listanumerocc) // 500) + 1):
         start = r * 500
         listaparcial = listanumerocc[start: start + 500]
-        lista = '("' + '", "'.join(listaparcial) + '")'
+        lista = '("' + '", "'.join(sorted(listaparcial)) + '")'
         print(lista)
         sql_manifestos = \
             'SELECT numero, idConteinerVazio FROM conteinervazioresumo c ' \
