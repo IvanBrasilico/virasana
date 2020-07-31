@@ -108,7 +108,7 @@ def update_mercante_fsfiles(db, engine, diaapesquisar: datetime):
     manifestos, conhecimentos = pesquisa_containers_no_mercante(
         engine,
         diaapesquisar,
-        dict_numerocc.keys()
+        list(dict_numerocc.keys())
     )
     Session = sessionmaker(bind=engine)
     session = Session()
