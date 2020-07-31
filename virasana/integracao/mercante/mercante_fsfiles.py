@@ -44,11 +44,12 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
 
     r = requests.post(VIRASANA_URL + "/grid_data", json=params, verify=False)
     listacc = list(r.json())
-    dict_numerocc = {item['metadata']['numeroinformado']: item['_id'] for item in listacc}
-    if dict_numerocc.get('ERRO'):
-        dict_numerocc.pop('ERRO')
-    if dict_numerocc.get(''):
-        dict_numerocc.pop('')
+    dict_numerocc = {}
+    for item in listacc:
+        numero = item['metadata']['numeroinformado']
+        if not numero or numero == 'ERRO' or '\\' in numero:
+            continue
+        dict_numerocc[numero]  = item['_id']
     logger.info('%s imagens encontradas sem metadata do carga' % len(dict_numerocc))
     return dict_numerocc
 
@@ -65,7 +66,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     parametros_pesquisas = [(5, before, today), (7, today, after)]
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
-    STEP = 100
+    STEP = 400
     for r in range((len(listanumerocc) // STEP) + 1):
         start = r * STEP
         listaparcial = listanumerocc[start: start + STEP]
