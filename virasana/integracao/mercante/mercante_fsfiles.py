@@ -44,7 +44,7 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
 
     r = requests.post(VIRASANA_URL + "/grid_data", json=params, verify=False)
     listacc = list(r.json())
-    dict_numerocc = {item['metadata']['numeroinformado']: item['_id'] for item in listacc}
+    dict_numerocc = {item['metadata']['numeroinformado']: item['_id'] for item in listacc[:2000]}
     if dict_numerocc.get('ERRO'):
         dict_numerocc.pop('ERRO')
     if dict_numerocc.get(''):
