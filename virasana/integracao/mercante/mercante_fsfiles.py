@@ -65,9 +65,10 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     parametros_pesquisas = [(5, before, today), (7, today, after)]
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
-    for r in range((len(listanumerocc) // 500) + 1):
-        start = r * 500
-        listaparcial = listanumerocc[start: start + 500]
+    STEP = 100
+    for r in range((len(listanumerocc) // STEP) + 1):
+        start = r * STEP
+        listaparcial = listanumerocc[start: start + STEP]
         lista = '("' + '", "'.join(sorted(listaparcial)) + '")'
         print(lista)
         sql_manifestos = \
