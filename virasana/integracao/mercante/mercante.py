@@ -115,7 +115,9 @@ class Conhecimento(ParseXML):
 
     @property
     def dadoscomplementaresconsignatario(self) -> str:
-        return self._consignatario.dadosComplementaresConsignatario
+        if self._consignatario:
+            return self._consignatario.dadosComplementaresConsignatario
+        return ''
 
     @consignatario.setter
     def consignatario(self, node: Element):
