@@ -150,11 +150,12 @@ def upload_bson():
             flash(mensagem)
             return redirect(request.url)
         content = file.read()
+        with MongoClient(host=MONGODB_URI) as conn:
+            db = conn[DATABASE]
+            trata_bson(content, db)
+    """
         if platform == 'win32':
-            with MongoClient(host=MONGODB_URI) as conn:
-                db = conn[DATABASE]
-                trata_bson(content, db)
-        else:
+       else:
             # print('Escrevendo no REDIS')
             d = {'bson': b64encode(content).decode('utf-8'),
                  'filename': file.filename}
@@ -164,6 +165,7 @@ def upload_bson():
             # print('taskid', taskid)
     if taskid:
         return redirect(url_for('list_files', taskid=taskid))
+    """
     return redirect(url_for('list_files'))
 
 

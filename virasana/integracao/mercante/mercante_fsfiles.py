@@ -44,11 +44,12 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
 
     r = requests.post(VIRASANA_URL + "/grid_data", json=params, verify=False)
     listacc = list(r.json())
-    dict_numerocc = {item['metadata']['numeroinformado']: item['_id'] for item in listacc}
-    if dict_numerocc.get('ERRO'):
-        dict_numerocc.pop('ERRO')
-    if dict_numerocc.get(''):
-        dict_numerocc.pop('')
+    dict_numerocc = {}
+    for item in listacc:
+        numero = item['metadata']['numeroinformado']
+        if not numero or numero == 'ERRO' or '\\' in numero:
+            continue
+        dict_numerocc[numero]  = item['_id']
     logger.info('%s imagens encontradas sem metadata do carga' % len(dict_numerocc))
     return dict_numerocc
 
@@ -56,22 +57,6 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
 def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     if len(listanumerocc) == 0:
         return {}, {}
-    lista = '("' + '", "'.join(listanumerocc) + '")'
-    print(lista)
-    sql_manifestos = \
-        'SELECT numero, idConteinerVazio FROM conteinervazioresumo c ' \
-        ' inner join manifestosresumo m on c.manifesto = m.numero' \
-        ' where tipoTrafego = %s AND ' \
-        ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
-        ' c.idConteinerVazio IN ' + lista
-    sql_conhecimentos = \
-        'SELECT c.numeroCEmercante, codigoConteiner FROM itensresumo i' \
-        ' inner join conhecimentosresumo c on i.numeroCEmercante = c.numeroCEmercante' \
-        ' inner join manifestosresumo m on c.manifestoCE = m.numero' \
-        ' WHERE c.tipoBLConhecimento in (\'10\', \'11\', \'12\') AND' \
-        ' m.tipoTrafego = %s AND' \
-        ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
-        ' i.codigoConteiner IN ' + lista
     before = dia - timedelta(days=6)
     before = datetime.strftime(before, '%Y-%m-%d')
     today = datetime.strftime(dia, '%Y-%m-%d')
@@ -81,21 +66,41 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     parametros_pesquisas = [(5, before, today), (7, today, after)]
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
-    with engine.connect() as conn:
-        conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
-        for parametros_pesquisa in parametros_pesquisas:
-            cursor = conn.execute(sql_manifestos, parametros_pesquisa)
-            result = cursor.fetchall()
-            logger.info('%s Manifestos encontrados para parâmetros %s' %
-                        (len(result), parametros_pesquisa))
-            for linha in result:
-                manifestos[linha['idConteinerVazio']].add(linha['numero'])
-            cursor = conn.execute(sql_conhecimentos, parametros_pesquisa)
-            result = cursor.fetchall()
-            logger.info('%s Conhecimentos encontrados para parâmetros %s' %
-                        (len(result), parametros_pesquisa))
-            for linha in result:
-                conhecimentos[linha['codigoConteiner']].add(linha['numeroCEmercante'])
+    STEP = 400
+    for r in range((len(listanumerocc) // STEP) + 1):
+        start = r * STEP
+        listaparcial = listanumerocc[start: start + STEP]
+        lista = '("' + '", "'.join(sorted(listaparcial)) + '")'
+        print(lista)
+        sql_manifestos = \
+            'SELECT numero, idConteinerVazio FROM conteinervazioresumo c ' \
+            ' inner join manifestosresumo m on c.manifesto = m.numero' \
+            ' where tipoTrafego = %s AND ' \
+            ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
+            ' c.idConteinerVazio IN ' + lista
+        sql_conhecimentos = \
+            'SELECT c.numeroCEmercante, codigoConteiner FROM itensresumo i' \
+            ' inner join conhecimentosresumo c on i.numeroCEmercante = c.numeroCEmercante' \
+            ' inner join manifestosresumo m on c.manifestoCE = m.numero' \
+            ' WHERE c.tipoBLConhecimento in (\'10\', \'11\', \'12\') AND' \
+            ' m.tipoTrafego = %s AND' \
+            ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
+            ' i.codigoConteiner IN ' + lista
+        with engine.connect() as conn:
+            conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
+            for parametros_pesquisa in parametros_pesquisas:
+                cursor = conn.execute(sql_manifestos, parametros_pesquisa)
+                result = cursor.fetchall()
+                logger.info('%s Manifestos encontrados para parâmetros %s' %
+                            (len(result), parametros_pesquisa))
+                for linha in result:
+                    manifestos[linha['idConteinerVazio']].add(linha['numero'])
+                cursor = conn.execute(sql_conhecimentos, parametros_pesquisa)
+                result = cursor.fetchall()
+                logger.info('%s Conhecimentos encontrados para parâmetros %s' %
+                            (len(result), parametros_pesquisa))
+                for linha in result:
+                    conhecimentos[linha['codigoConteiner']].add(linha['numeroCEmercante'])
     return manifestos, conhecimentos
 
 
@@ -105,7 +110,7 @@ def update_mercante_fsfiles(db, engine, diaapesquisar: datetime):
     manifestos, conhecimentos = pesquisa_containers_no_mercante(
         engine,
         diaapesquisar,
-        dict_numerocc.keys()
+        list(dict_numerocc.keys())
     )
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -130,6 +135,7 @@ def update_mercante_fsfiles_dias(db, engine, diainicio: datetime, diasantes=10):
     for dias in range(diasantes):
         diaapesquisar = diainicio - timedelta(days=dias)
         update_mercante_fsfiles(db, engine, diaapesquisar)
+
 
 if __name__ == '__main__':
     hoje = datetime.today()
