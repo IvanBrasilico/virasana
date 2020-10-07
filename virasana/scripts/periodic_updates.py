@@ -26,7 +26,7 @@ from ajna_commons.flask.log import logger
 from pymongo import MongoClient
 from sqlalchemy import create_engine
 
-from integracao import jupapi
+from virasana.integracao import jupapi
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
 from virasana.integracao.mercante import mercante_fsfiles
