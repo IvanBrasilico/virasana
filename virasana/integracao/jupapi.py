@@ -64,6 +64,7 @@ if __name__ == '__main__':  # pragma: no cover
     token = get_token_api()
     print(token)
     gmcis_dict = get_gmci(start, end, token)
+    print(gmcis_dict[:200])
     for gmci_dict in gmcis_dict:
         gmci = GMCI()
         gmci.cod_recinto = gmci_dict['cod_recinto']
