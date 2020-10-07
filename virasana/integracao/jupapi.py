@@ -72,12 +72,11 @@ if __name__ == '__main__':  # pragma: no cover
         gmci.cod_recinto = gmci_dict['cod_recinto']
         gmci.num_gmci = gmci_dict['num_gmci']
         gmci.num_conteiner = gmci_dict['num_conteiner']
-        datahora = gmci_dict['data_dt'] + gmci_dict['hora_dt']
-        gmci.datahora = datetime.strptime(datahora, '%d/%m/%Y%H:%M:%S' )
+        datahora = gmci_dict['data_dt'] + ' ' + gmci_dict['hora_dt']
+        gmci.datahora = datetime.strptime(datahora, '%Y-%m-%d %H:%M:%S')
         try:
             session.add(gmci)
             session.commit()
         except Exception as err:
             logger.error(err)
             session.rollback()
-
