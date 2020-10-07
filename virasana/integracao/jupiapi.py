@@ -42,7 +42,7 @@ def get_gmci(datainicial, datafinal, token):
                'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H%:%M:%S')}
     headers = {'Authorization': 'Bearer ' + token}
     print(payload)
-    r = requests.get(GMCI_URL, headers=headers, params=payload, verify=False)
+    r = requests.post(GMCI_URL, headers=headers, params=payload, verify=False)
     logger.debug('get_pesagens_dte ' + r.url)
     try:
         lista_pesagens = r.json()
