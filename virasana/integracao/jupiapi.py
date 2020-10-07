@@ -2,9 +2,10 @@
 """
 import csv
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import requests
+from ajna_commons.flask.log import logger
 
 DTE_USERNAME = os.environ.get('DTE_USERNAME')
 DTE_PASSWORD = os.environ.get('DTE_PASSWORD')
@@ -43,7 +44,22 @@ def get_token_api(username=DTE_USERNAME, password=DTE_PASSWORD):
     return token
 
 
+def get_gmci(datainicial, datafinal, token):
+    payload = {'DataInicial': datetime.strftime(datainicial, '%d/%m/%Y %H%:M:%S'),
+               'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H%:M:%S')}
+    headers = {'Authorization': 'Bearer ' + token}
+    r = requests.get(GMCI_URL, headers=headers, params=payload, verify=False)
+    logger.debug('get_pesagens_dte ' + r.url)
+    try:
+        lista_pesagens = r.json()
+        return lista_pesagens
+    except:
+        logger.error(r, r.text)
+
+
 if __name__ == '__main__':  # pragma: no cover
-    start = datetime.combine(date.today(), datetime.min.time()) - timedelta(days=1)
-    end = start
-    print(get_token_api())
+    start = datetime.combine(date.today(), datetime.min.time())
+    end = datetime.now()
+    token = get_token_api()
+    print(token)
+    print(get_gmci(start, end, token))
