@@ -9,7 +9,7 @@ from ajna_commons.flask.log import logger
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from integracao.gmci_alchemy import GMCI
+from virasana.integracao.gmci_alchemy import GMCI
 
 DTE_USERNAME = os.environ.get('DTE_USERNAME')
 DTE_PASSWORD = os.environ.get('DTE_PASSWORD')
