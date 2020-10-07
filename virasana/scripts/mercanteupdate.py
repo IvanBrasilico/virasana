@@ -46,7 +46,7 @@ def update(dias, fim, download):
     connection = create_engine(SQL_URI)
     tempo = time.time()
     if download:
-        processa_xml_mercante.get_arquivos_novos(connection, end, dias)
+        processa_xml_mercante.get_arquivos_novos(connection)
     processa_xml_mercante.xml_para_mercante(connection)
     resume_mercante.mercante_resumo(connection)
     mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, end, dias)
