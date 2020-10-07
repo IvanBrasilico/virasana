@@ -73,7 +73,7 @@ if __name__ == '__main__':  # pragma: no cover
         gmci.num_gmci = gmci_dict['num_gmci']
         gmci.num_conteiner = gmci_dict['num_conteiner']
         datahora = gmci_dict['data_dt'] + gmci_dict['hora_dt']
-        gmci.datahora = datetime.strptime()
+        gmci.datahora = datetime.strptime(datahora, '%d/%m/%Y%H:%M:%S' )
         try:
             session.add(gmci)
             session.commit()
