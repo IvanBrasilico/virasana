@@ -2,13 +2,9 @@
 """
 import csv
 import os
-from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 
 import requests
-from ajna_commons.flask.log import logger
-from ajna_commons.utils.sanitiza import sanitizar, mongo_sanitizar
-
 
 DTE_USERNAME = os.environ.get('DTE_USERNAME')
 DTE_PASSWORD = os.environ.get('DTE_PASSWORD')
@@ -36,6 +32,7 @@ FIELDS = ()
 DATE_FIELDS = ('Date', 'UpdateDateTime', 'LastStateDateTime',
                'SCANTIME', 'ScanTime')
 
+
 def get_token_api(username=DTE_USERNAME, password=DTE_PASSWORD):
     data = {'username': username, 'password': password, 'grant_type': 'password'}
     r = requests.post(API_TOKEN, data=data, verify=False)
@@ -44,8 +41,6 @@ def get_token_api(username=DTE_USERNAME, password=DTE_PASSWORD):
     print(r.status_code)
     token = r.json().get('access_token')
     return token
-
-
 
 
 if __name__ == '__main__':  # pragma: no cover
