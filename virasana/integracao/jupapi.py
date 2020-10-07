@@ -59,7 +59,7 @@ def novas_gmcis(engine):
     Session = sessionmaker(bind=engine)
     session = Session()
     start = session.query(func.max(GMCI.datahora)).scalar()
-    end = start + timedelta(minutes=60)
+    end = start + timedelta(minutes=300)
     print(start, end)
     token = get_token_api()
     gmcis_dict = get_gmci(start, end, token)
