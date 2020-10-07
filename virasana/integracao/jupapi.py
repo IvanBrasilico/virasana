@@ -1,12 +1,12 @@
 """Funções para leitura e tratamento dos dados de pesagem e gate dos recintos.
 """
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import requests
 from ajna_commons.flask.conf import SQL_URI
 from ajna_commons.flask.log import logger
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 from virasana.integracao.gmci_alchemy import GMCI
@@ -55,11 +55,37 @@ def get_gmci(datainicial, datafinal, token):
         logger.error(r, r.text)
 
 
-if __name__ == '__main__':  # pragma: no cover
-    engine = create_engine(SQL_URI)
+def novas_gmcis(engine):
     Session = sessionmaker(bind=engine)
     session = Session()
-    start = datetime.combine(date.today(), datetime.min.time()) - timedelta(days=1)
+    start = session.query(func.max(GMCI)).scalar()
+    end = start + timedelta(minutes=60)
+    print(start, end)
+    token = get_token_api()
+    gmcis_dict = get_gmci(start, end, token)
+    for gmci_dict in gmcis_dict['DadosGmcis']['gmci_ctr']:
+        print(gmci_dict)
+        gmci = GMCI()
+        gmci.cod_recinto = gmci_dict['cod_recinto']
+        gmci.num_gmci = gmci_dict['num_gmci']
+        gmci.num_conteiner = gmci_dict['num_conteiner']
+        datahora = gmci_dict['data_dt'] + ' ' + gmci_dict['hora_dt']
+        gmci.datahora = datetime.strptime(datahora, '%Y-%m-%d %H:%M:%S')
+        try:
+            session.add(gmci)
+            session.commit()
+        except Exception as err:
+            logger.error(err)
+            session.rollback()
+
+
+if __name__ == '__main__':  # pragma: no cover
+    engine = create_engine(SQL_URI)
+    novas_gmcis(engine)
+    """
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    start = datetime.combine(date.today(), datetime.min.time())
     end = datetime.now()
     token = get_token_api()
     print(token)
@@ -80,3 +106,4 @@ if __name__ == '__main__':  # pragma: no cover
         except Exception as err:
             logger.error(err)
             session.rollback()
+    """
