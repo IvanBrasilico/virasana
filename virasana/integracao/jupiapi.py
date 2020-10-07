@@ -18,7 +18,7 @@ if DTE_PASSWORD is None:
     DTE_PASSWORD = linha.split(',')[1]
 
 API_TOKEN = 'https://jupapi.org.br/api/jupgmcialf/autenticar'
-GMCI_URL = 'https://jupapi.org.br/api/sepes/PesagemMovimentacao'
+GMCI_URL = 'https://jupapi.org.br/api/jupgmcialf/gmci/PegaGmcisPorPeriodo'
 FIELDS = ()
 
 # Fields to be converted to ISODate
