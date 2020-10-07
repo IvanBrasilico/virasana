@@ -36,7 +36,7 @@ if __name__ == '__main__':
     if banco == '1':
         engine = create_engine(SQL_URI)
         metadata.drop_all(engine)
-        metadata.create_all(engine, [metadata.tables['escala']])
+        metadata.create_all(engine)
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
         metadata.drop_all(engine)
