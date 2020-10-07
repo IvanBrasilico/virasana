@@ -39,6 +39,7 @@ def get_token_api(username=DTE_USERNAME, password=DTE_PASSWORD):
     r = requests.post(API_TOKEN, data=data, verify=False)
     print(r.url)
     print(r.text)
+    print(data)
     print(r.status_code)
     token = r.json().get('access_token')
     return token
@@ -48,6 +49,7 @@ def get_gmci(datainicial, datafinal, token):
     payload = {'DataInicial': datetime.strftime(datainicial, '%d/%m/%Y %H%:M:%S'),
                'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H%:M:%S')}
     headers = {'Authorization': 'Bearer ' + token}
+    print(params)
     r = requests.get(GMCI_URL, headers=headers, params=payload, verify=False)
     logger.debug('get_pesagens_dte ' + r.url)
     try:
