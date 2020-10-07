@@ -65,8 +65,8 @@ if __name__ == '__main__':  # pragma: no cover
     print(token)
     gmcis_dict = get_gmci(start, end, token)
     print(gmcis_dict.keys())
-    print(gmcis_dict['DadosGmcis'])
-    for gmci_dict in gmcis_dict['DadosGmcis']:
+    # print(gmcis_dict['DadosGmcis'])
+    for gmci_dict in gmcis_dict['DadosGmcis']['gmci_ctr']:
         gmci = GMCI()
         gmci.cod_recinto = gmci_dict['cod_recinto']
         gmci.num_gmci = gmci_dict['num_gmci']
