@@ -13,17 +13,9 @@ DTE_PASSWORD = os.environ.get('DTE_PASSWORD')
 if DTE_PASSWORD is None:
     dte_file = os.path.join(os.path.dirname(__file__), 'jupapi.info')
     with open(dte_file) as dte_info:
-        linha = dte_info.readline()
+        linha = dte_info.readline().rstrip('\n')
     DTE_USERNAME = linha.split(',')[0]
     DTE_PASSWORD = linha.split(',')[1]
-
-try:
-    recintos_file = os.path.join(os.path.dirname(__file__), 'recintos.csv')
-    with open(recintos_file, encoding='utf-8') as csv_in:
-        reader = csv.reader(csv_in)
-        recintos_list = [row for row in reader]
-except FileNotFoundError:
-    recintos_list = []
 
 API_TOKEN = 'https://jupapi.org.br/api/jupgmcialf/autenticar'
 GMCI_URL = 'https://jupapi.org.br/api/sepes/PesagemMovimentacao'
@@ -49,7 +41,7 @@ def get_gmci(datainicial, datafinal, token):
     payload = {'DataInicial': datetime.strftime(datainicial, '%d/%m/%Y %H%:M:%S'),
                'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H%:M:%S')}
     headers = {'Authorization': 'Bearer ' + token}
-    print(params)
+    print(payload)
     r = requests.get(GMCI_URL, headers=headers, params=payload, verify=False)
     logger.debug('get_pesagens_dte ' + r.url)
     try:
