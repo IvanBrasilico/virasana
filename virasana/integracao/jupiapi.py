@@ -2,7 +2,7 @@
 """
 import csv
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import requests
 from ajna_commons.flask.log import logger
@@ -52,7 +52,7 @@ def get_gmci(datainicial, datafinal, token):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    start = datetime.combine(date.today(), datetime.min.time())
+    start = datetime.combine(date.today(), datetime.min.time()) - timedelta(days=2)
     end = datetime.now()
     token = get_token_api()
     print(token)
