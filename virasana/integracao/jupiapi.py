@@ -38,8 +38,8 @@ def get_token_api(username=DTE_USERNAME, password=DTE_PASSWORD):
 
 
 def get_gmci(datainicial, datafinal, token):
-    payload = {'DataInicial': datetime.strftime(datainicial, '%d/%m/%Y %H%:%M:%S'),
-               'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H%:%M:%S')}
+    payload = {'DataInicial': datetime.strftime(datainicial, '%d/%m/%Y %H:%M:%S'),
+               'DataFinal': datetime.strftime(datafinal, '%d/%m/%Y %H:%M:%S')}
     headers = {'Authorization': 'Bearer ' + token}
     print(payload)
     r = requests.post(GMCI_URL, headers=headers, params=payload, verify=False)
