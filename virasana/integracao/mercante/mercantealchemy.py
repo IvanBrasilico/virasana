@@ -159,6 +159,7 @@ t_conhecimentosEmbarque = Table(
     Column('tipoBLConhecimento', Text),
     Column('tipoMovimento', Text),
     Column('tipoTrafego', Text),
+    Column('numConhecimento', Text),
     Column('create_date', TIMESTAMP, index=True,
            server_default=func.current_timestamp())
 )
@@ -341,6 +342,7 @@ class Conhecimento(BaseDumpable):
     portoOrigemCarga = Column(VARCHAR(10), index=True)
     tipoBLConhecimento = Column(VARCHAR(10), index=True)
     tipoTrafego = Column(VARCHAR(10), index=True)
+    numConhecimento = Column(VARCHAR(30), index=True)
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())
     last_modified = Column(DateTime, onupdate=func.current_timestamp())

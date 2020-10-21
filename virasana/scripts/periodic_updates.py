@@ -26,6 +26,7 @@ from ajna_commons.flask.log import logger
 from pymongo import MongoClient
 from sqlalchemy import create_engine
 
+from virasana.integracao import jupapi
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
 from virasana.integracao.mercante import mercante_fsfiles
@@ -113,6 +114,10 @@ def periodic_updates(db, connection, lote=2000):
     tfs_predictions_update('peso', lote, 20)
     # predictions_update2('vaziosvm', 'vazio', lote, 4)
     # predictions_update2('peso', 'peso', lote, 16)
+    try:
+        jupapi.novas_gmcis(connection)
+    except Exception as err:
+        print(err)
 
 
 if __name__ == '__main__':
