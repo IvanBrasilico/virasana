@@ -48,6 +48,7 @@ def get_gmci(datainicial, datafinal, token):
     print(payload)
     r = requests.post(GMCI_URL, headers=headers, data=payload, verify=False)
     logger.debug('get_gmci ' + r.url)
+    print('get_gmci', r.url)
     try:
         lista_gmci = r.json()
         return lista_gmci
@@ -82,7 +83,7 @@ def novas_gmcis(engine):
 if __name__ == '__main__':  # pragma: no cover
     # engine = create_engine(SQL_URI)
     # novas_gmcis(engine)
-    start = datetime.combine(datetime.today(), datetime.min.time())
+    start = datetime.combine(datetime.today(), datetime.min.time()) - timedelta(days=2)
     end = datetime.now()
     token = get_token_api()
     print(token)
