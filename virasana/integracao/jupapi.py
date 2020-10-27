@@ -80,8 +80,8 @@ def novas_gmcis(engine):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    engine = create_engine(SQL_URI)
-    novas_gmcis(engine)
+    # engine = create_engine(SQL_URI)
+    # novas_gmcis(engine)
     start = datetime.combine(datetime.today(), datetime.min.time())
     end = datetime.now()
     token = get_token_api()
