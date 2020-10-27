@@ -49,8 +49,8 @@ def get_gmci(datainicial, datafinal, token):
     r = requests.post(GMCI_URL, headers=headers, data=payload, verify=False)
     logger.debug('get_gmci ' + r.url)
     try:
-        lista_pesagens = r.json()
-        return lista_pesagens
+        lista_gmci = r.json()
+        return lista_gmci
     except:
         logger.error(r, r.text)
 
@@ -82,10 +82,7 @@ def novas_gmcis(engine):
 if __name__ == '__main__':  # pragma: no cover
     engine = create_engine(SQL_URI)
     novas_gmcis(engine)
-    """
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    start = datetime.combine(date.today(), datetime.min.time())
+    start = datetime.combine(datetime.today(), datetime.min.time())
     end = datetime.now()
     token = get_token_api()
     print(token)
@@ -94,16 +91,3 @@ if __name__ == '__main__':  # pragma: no cover
     # print(gmcis_dict['DadosGmcis'])
     for gmci_dict in gmcis_dict['DadosGmcis']['gmci_ctr']:
         print(gmci_dict)
-        gmci = GMCI()
-        gmci.cod_recinto = gmci_dict['cod_recinto']
-        gmci.num_gmci = gmci_dict['num_gmci']
-        gmci.num_conteiner = gmci_dict['num_conteiner']
-        datahora = gmci_dict['data_dt'] + ' ' + gmci_dict['hora_dt']
-        gmci.datahora = datetime.strptime(datahora, '%Y-%m-%d %H:%M:%S')
-        try:
-            session.add(gmci)
-            session.commit()
-        except Exception as err:
-            logger.error(err)
-            session.rollback()
-    """
