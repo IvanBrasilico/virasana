@@ -22,7 +22,7 @@ log.logger.info('Servidor (re)iniciado!')
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     db_session.remove()
-    logger.info('db_session remove')
+    log.logger.info('db_session remove')
 
 
 
