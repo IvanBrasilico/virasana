@@ -11,9 +11,9 @@ from ajna_commons.flask.flask_log import configure_applog
 
 from virasana.db import mongodb, mysql, mongodb_risco
 from virasana.views import configure_app, csrf
-from bhadrasana.models import db_session
+# from bhadrasana.models import db_session
 
-app = configure_app(mongodb, mysql, mongodb_risco, db_session)
+app = configure_app(mongodb, mysql, mongodb_risco)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)

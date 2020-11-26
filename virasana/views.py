@@ -70,7 +70,7 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql, mongodb_risco, sqlsession):
+def configure_app(mongodb, mysql, mongodb_risco):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
@@ -90,7 +90,7 @@ def configure_app(mongodb, mysql, mongodb_risco, sqlsession):
     user_ajna.DBUser.alchemy_class = Usuario
     # Para usar MySQL como base de Usuários ativar a variável de ambiente SQL_USER
     if os.environ.get('SQL_USER'):
-        user_ajna.DBUser.dbsession = sqlsession
+        user_ajna.DBUser.dbsession = mysql
     else:
         user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
