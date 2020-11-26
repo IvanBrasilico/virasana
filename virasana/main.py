@@ -11,12 +11,21 @@ from ajna_commons.flask.flask_log import configure_applog
 
 from virasana.db import mongodb, mysql, mongodb_risco
 from virasana.views import configure_app, csrf
+from bhadrasana.models import db_session
 
-app = configure_app(mongodb, mysql, mongodb_risco)
+app = configure_app(mongodb, mysql, mongodb_risco, db_session)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
 log.logger.info('Servidor (re)iniciado!')
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db_session.remove()
+    logger.info('db_session remove')
+
+
+
 
 if __name__ == '__main__':  # pragma: no cover
     app.run(debug=app.config['DEBUG'])

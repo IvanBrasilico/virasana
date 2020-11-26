@@ -1,5 +1,8 @@
 import logging
-from werkzeug.wsgi import DispatcherMiddleware
+try:
+    from werkzeug.wsgi import DispatcherMiddleware
+except ImportError:
+    from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 from virasana.main import app
 

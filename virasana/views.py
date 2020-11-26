@@ -38,6 +38,8 @@ from wtforms import (BooleanField, DateField, FloatField, IntegerField,
                      PasswordField, SelectField, StringField)
 from wtforms.validators import DataRequired, optional
 
+from bhadrasana.models import Usuario
+
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
@@ -68,7 +70,7 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql, mongodb_risco):
+def configure_app(mongodb, mysql, mongodb_risco, sqlsession):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
@@ -85,7 +87,12 @@ def configure_app(mongodb, mysql, mongodb_risco):
     app.config['SECRET_KEY'] = SECRET
     app.config['SESSION_TYPE'] = 'filesystem'
     login_ajna.configure(app)
-    user_ajna.DBUser.dbsession = mongodb
+    user_ajna.DBUser.alchemy_class = Usuario
+    # Para usar MySQL como base de Usuários ativar a variável de ambiente SQL_USER
+    if os.environ.get('SQL_USER'):
+        user_ajna.DBUser.dbsession = sqlsession
+    else:
+        user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
     app.config['mongodb_risco'] = mongodb_risco
     app.config['mysql'] = mysql
