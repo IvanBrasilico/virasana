@@ -33,7 +33,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from wtforms import (BooleanField, DateField, FloatField, IntegerField,
                      PasswordField, SelectField, StringField)
 from wtforms.validators import DataRequired, optional
@@ -90,7 +90,11 @@ def configure_app(mongodb, mysql, mongodb_risco):
     user_ajna.DBUser.alchemy_class = Usuario
     # Para usar MySQL como base de Usuários ativar a variável de ambiente SQL_USER
     if os.environ.get('SQL_USER'):
-        user_ajna.DBUser.dbsession = mysql
+        db_session = scoped_session(sessionmaker(autocommit=False,
+                                                 autoflush=False,
+                                                 bind=mysql))
+
+        user_ajna.DBUser.dbsession = db_session
     else:
         user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
