@@ -67,7 +67,7 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql, mongodb_risco, db_session):
+def configure_app(mongodb, mongodb_risco, db_session):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
@@ -93,7 +93,7 @@ def configure_app(mongodb, mysql, mongodb_risco, db_session):
         user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
     app.config['mongodb_risco'] = mongodb_risco
-    app.config['mysql'] = mysql
+    app.config['db_session'] = db_session
     try:
         img_search = None
         img_search = ImageSearch(mongodb)
@@ -1109,7 +1109,7 @@ def cemercante(numero=None):
     Exibe o CE Mercante e os arquivos associados a ele.
     """
     db = app.config['mongodb']
-    sql = app.config['mysql']
+    session = app.config['db_session']
     conhecimento = None
     imagens = []
     if request.method == 'POST':
@@ -1118,8 +1118,6 @@ def cemercante(numero=None):
         contrast, color = get_contrast_and_color_(request)
         print('################', contrast, color)
     if numero:
-        Session = sessionmaker(bind=sql)
-        session = Session()
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == numero).one_or_none()
         containers = list(session.query(Item).filter(

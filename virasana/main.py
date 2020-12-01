@@ -18,7 +18,7 @@ db_session = scoped_session(sessionmaker(autocommit=False,
                                          autoflush=False,
                                          bind=mysql))
 
-app = configure_app(mongodb, mysql, mongodb_risco, db_session)
+app = configure_app(mongodb, mongodb_risco, db_session)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
