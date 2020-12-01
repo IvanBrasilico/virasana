@@ -20,6 +20,7 @@ from ajna_commons.flask.log import logger
 from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
 from ajna_commons.utils.sanitiza import mongo_sanitizar
+from bhadrasana.models import Usuario
 from bson import json_util
 from bson.objectid import ObjectId
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
@@ -33,13 +34,6 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
-from sqlalchemy.orm import sessionmaker, scoped_session
-from wtforms import (BooleanField, DateField, FloatField, IntegerField,
-                     PasswordField, SelectField, StringField)
-from wtforms.validators import DataRequired, optional
-
-from bhadrasana.models import Usuario
-
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
@@ -58,6 +52,9 @@ from virasana.models.models import Ocorrencias, Tags
 from virasana.models.text_index import TextSearch
 from virasana.workers.dir_monitor import BSON_DIR
 from virasana.workers.tasks import raspa_dir, trata_bson
+from wtforms import (BooleanField, DateField, FloatField, IntegerField,
+                     PasswordField, SelectField, StringField)
+from wtforms.validators import DataRequired, optional
 
 app = Flask(__name__, static_url_path='/static')
 # app.jinja_env.filters['zip'] = zip
@@ -70,12 +67,13 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql, mongodb_risco):
+def configure_app(mongodb, mysql, mongodb_risco, db_session):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
     def virasana_login():
         return login_ajna.login_view(request)
+
     login_ajna.login_manager.login_view = 'virasana_login'
     app.config['REMEMBER_COOKIE_PATH'] = '/virasana'
 
@@ -90,10 +88,6 @@ def configure_app(mongodb, mysql, mongodb_risco):
     user_ajna.DBUser.alchemy_class = Usuario
     # Para usar MySQL como base de Usuários ativar a variável de ambiente SQL_USER
     if os.environ.get('SQL_USER'):
-        db_session = scoped_session(sessionmaker(autocommit=False,
-                                                 autoflush=False,
-                                                 bind=mysql))
-
         user_ajna.DBUser.dbsession = db_session
     else:
         user_ajna.DBUser.dbsession = mongodb
@@ -533,7 +527,7 @@ def tag_del():
 
 
 @app.route('/grid_data', methods=['POST', 'GET'])
-#@login_required
+# @login_required
 @csrf.exempt
 def grid_data():
     """Executa uma consulta no banco.
