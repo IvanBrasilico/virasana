@@ -877,6 +877,7 @@ class FilesForm(FlaskForm):
                                    validators=[optional()], default='')
     contrast = BooleanField()
     color = BooleanField()
+    classe = StringField()
 
 
 def recupera_user_filtros():
@@ -906,6 +907,7 @@ def valida_form_files(form, filtro, db):
         ranking = form.ranking.data
         pagina_atual = form.pagina_atual.data
         filtro_escolhido = form.filtro_auditoria.data
+        classe = form.classe.data
         if filtro_escolhido and filtro_escolhido != '0':
             auditoria_object = Auditoria(db)
             filtro_auditoria = \
@@ -943,9 +945,15 @@ def valida_form_files(form, filtro, db):
         if ranking:
             filtro['metadata.ranking'] = {'$exists': True, '$gte': .5}
             order = [('metadata.ranking', -1)]
+        if classe:
+            filtro['metadata.predictions.class'] = mongo_sanitizar(classe)
     # print(filtro)
     return filtro, pagina_atual, order
 
+classes = {1: 'Container 40',
+           2: 'Container 20',
+           3: 'Container não localizado',
+           4: 'Imagem de má qualidade - reescanear'}
 
 @app.route('/files', methods=['GET', 'POST'])
 @login_required
@@ -982,6 +990,8 @@ def files():
             filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
+        filtro['metadata.predictions.bbox'] = {'$exists': True}
+
         if order is None:
             order = [('metadata.dataescaneamento', 1)]
         if pagina_atual is None:
@@ -1021,6 +1031,11 @@ def files():
             linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
+            preds = grid_data['metadata'].get('predictions')
+            if preds:
+                classe = preds[0].get('class')
+                if classe:
+                    linha['classe'] = classes.get(classe)
             lista_arquivos.append(linha)
         # print(lista_arquivos)
         if len(lista_arquivos) < 50:
