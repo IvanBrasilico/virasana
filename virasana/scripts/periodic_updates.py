@@ -105,7 +105,7 @@ def periodic_updates(db, connection, lote=2000):
     atualiza_stats(db)
     carga.cria_campo_pesos_carga(db, lote * 3)
     carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
-    predictions_update2('ssd', 'bbox', lote, 4)
+    # predictions_update2('ssd', 'bbox', lote, 4)
     predictions_update2('index', 'index', lote, 8)
     gera_indexes()
     print(reload_indexes())
