@@ -28,7 +28,7 @@ log.logger.info('Servidor (re)iniciado!')
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     db_session.remove()
-    log.logger.info('db_session remove (não ativado - ver se é necessário ativar)')
+    log.logger.info('db_session remove')
 
 
 if __name__ == '__main__':  # pragma: no cover

@@ -877,7 +877,7 @@ class FilesForm(FlaskForm):
                                    validators=[optional()], default='')
     contrast = BooleanField()
     color = BooleanField()
-    classe = StringField()
+    classe = SelectField(u'Classe de contêiner detectado', default='0')
 
 
 def recupera_user_filtros():
@@ -899,7 +899,7 @@ def valida_form_files(form, filtro, db):
     """Lê formulário e adiciona campos ao filtro se necessário."""
     order = None
     pagina_atual = None
-    if form.validate():  # configura filtro básico
+    if form.validate():
         numero = form.numero.data
         start = form.start.data
         end = form.end.data
@@ -945,8 +945,11 @@ def valida_form_files(form, filtro, db):
         if ranking:
             filtro['metadata.ranking'] = {'$exists': True, '$gte': .5}
             order = [('metadata.ranking', -1)]
-        if classe:
-            filtro['metadata.predictions.class'] = mongo_sanitizar(classe)
+        if classe and classe!='0':
+            print(f'Selecionando classe {classe}')
+            filtro['metadata.predictions.class'] = int(mongo_sanitizar(classe))
+    else:
+        print(form.errors)
     # print(filtro)
     return filtro, pagina_atual, order
 
@@ -954,6 +957,12 @@ classes = {1: 'Container 40',
            2: 'Container 20',
            3: 'Container não localizado',
            4: 'Imagem de má qualidade - reescanear'}
+
+def get_classes():
+    choices  = [('0', 'Todas')]
+    for k, v in classes.items():
+        choices.append((str(k), v))
+    return choices
 
 @app.route('/files', methods=['GET', 'POST'])
 @login_required
@@ -974,12 +983,14 @@ def files():
                            end=date.today())
     form_files.filtro_tags.choices = tags_object.tags_text
     form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+    form_files.classe.choices = get_classes()
     filtro, user_filtros = recupera_user_filtros()
     if request.method == 'POST':
         # print('****************************', request.form)
         form_files = FilesForm(**request.form)
         form_files.filtro_tags.choices = tags_object.tags_text
         form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+        form_files.classe.choices = get_classes()
         filtro, pagina_atual, order = valida_form_files(form_files, filtro, db)
     else:
         numero = request.args.get('numero')
@@ -987,10 +998,12 @@ def files():
             form_files = FilesForm(numero=numero)
             form_files.filtro_tags.choices = tags_object.tags_text
             form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+            form_files.classe.choices = get_classes()
             filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
+    print(filtro)
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
-        filtro['metadata.predictions.bbox'] = {'$exists': True}
+        # filtro['metadata.predictions.bbox'] = {'$exists': True}
 
         if order is None:
             order = [('metadata.dataescaneamento', 1)]
