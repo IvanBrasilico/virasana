@@ -99,6 +99,7 @@ class Conhecimento(ParseXML):
         self.indicadorShipsConvenience: str = ''
         self._manifestoCE: ManifestoCE = None
         self.codigoEmpresaNavegacao: str = ''
+        self.numConhecimento: str = ''
 
     @property
     def embarcador(self) -> str:

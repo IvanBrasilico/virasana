@@ -9,6 +9,7 @@ import os
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from json import JSONDecodeError
 from xml.etree import ElementTree
 
 import pandas as pd
@@ -40,29 +41,31 @@ def get_arquivos_novos(engine, start=None, days=1):
     print(datainicial, datafinal)
     r = requests.get(URL_ANIITA_LISTA, params={'dtInicial': datainicial,
                                                'dtFinal': datafinal})
-    print(r.url)
-    print(r.text)
-    if r.status_code == 200:
-        lista_arquivos = r.json()
-        for item in lista_arquivos:
-            filename = item['nomeArquivo']
-            r = requests.get(URL_ANIITA_DOWNLOAD, params={'nome': filename})
-            print(r.url)
-            destino = os.path.join(mercante.MERCANTE_DIR, filename)
-            print('Gerando arquivo %s' % destino)
-            if r.status_code == 200:
-                with open(destino, 'wb') as out:
-                    out.write(r.content)
-                # Grava em tabela arquivos baixados
-                ind_partedata = filename.rfind('_', ) + 1
-                partedata = filename[ind_partedata:-4]
-                print(partedata)
-                try:
-                    data = datetime.strptime(partedata, FORMATO_DATA_ARQUIVO)
-                    grava_arquivo_baixado(engine, filename, data)
-                except ValueError as err:
-                    print(err)
-
+    logger.info(r.url)
+    logger.info(r.text)
+    try:
+        if r.status_code == 200:
+            lista_arquivos = r.json()
+            for item in lista_arquivos:
+                filename = item['nomeArquivo']
+                r = requests.get(URL_ANIITA_DOWNLOAD, params={'nome': filename})
+                logger.info(r.url)
+                destino = os.path.join(mercante.MERCANTE_DIR, filename)
+                logger.info('Gerando arquivo %s' % destino)
+                if r.status_code == 200:
+                    with open(destino, 'wb') as out:
+                        out.write(r.content)
+                    # Grava em tabela arquivos baixados
+                    ind_partedata = filename.rfind('_', ) + 1
+                    partedata = filename[ind_partedata:-4]
+                    logger.info(partedata)
+                    try:
+                        data = datetime.strptime(partedata, FORMATO_DATA_ARQUIVO)
+                        grava_arquivo_baixado(engine, filename, data)
+                    except ValueError as err:
+                        logger.error(err)
+    except JSONDecodeError as err:
+        logger.error(err)
 
 def processa_classes(engine, lista_arquivos):
     count_objetos = Counter()

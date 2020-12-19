@@ -67,9 +67,9 @@ def create_indexes(db):
 def get_token_dte(username=DTE_USERNAME, password=DTE_PASSWORD):
     data = {'username': username, 'password': password, 'grant_type': 'password'}
     r = requests.post(DTE_TOKEN, data=data, verify=False)
-    print(r.url)
-    print(r.text)
-    print(r.status_code)
+    logger.info(r.url)
+    logger.info(r.text)
+    logger.info(r.status_code)
     token = r.json().get('access_token')
     return token
 
@@ -191,7 +191,7 @@ def compara_pesagens_imagens(fs_cursor, pesagens_cursor, campo_comparacao):
     containers_imagens = [row['metadata']['numeroinformado'].lower() for row in fs_cursor]
     containers_pesagens = [row[campo_comparacao] for row in pesagens_cursor]
     containers_comuns = set(containers_imagens) & set(containers_pesagens)
-    print('TOTAL DE PESAGENS COMUNS:', len(containers_comuns))
+    logger.info('TOTAL DE PESAGENS COMUNS: %s' % len(containers_comuns))
     return linhas_ainserir
 
 
@@ -274,7 +274,7 @@ def pesagens_grava_fsfiles(db, data_inicio, data_fim, delta=7):
                 db['fs.files'].find(filtro, projection=projection
                                     ).sort('metadata.numeroinformado')
             )
-            print(filtro)
+            logger.info(filtro)
             pesagens_cursor_entrada = list(
                 db['PesagensDTE'].find(
                     {'datahoraentradaiso':
@@ -316,9 +316,9 @@ def pesagens_grava_fsfiles(db, data_inicio, data_fim, delta=7):
             inseridos_saida = inserepesagens_fsfiles(db, linhas_saida, 'saida')
             acum += inseridos_saida
             ldata = ldata + timedelta(days=1)
-            logger.info('%s dados de entrada inseridos em fs.files',
+            logger.info('%s dados de entrada inseridos em fs.files' %
                         inseridos_entrada)
-            logger.info('%s dados de saida inseridos em fs.files',
+            logger.info('%s dados de saida inseridos em fs.files' %
                         inseridos_saida)
         return acum
     except Exception as err:

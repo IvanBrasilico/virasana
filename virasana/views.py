@@ -20,6 +20,7 @@ from ajna_commons.flask.log import logger
 from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
 from ajna_commons.utils.sanitiza import mongo_sanitizar
+from bhadrasana.models import Usuario
 from bson import json_util
 from bson.objectid import ObjectId
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
@@ -33,11 +34,6 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
-from sqlalchemy.orm import sessionmaker
-from wtforms import (BooleanField, DateField, FloatField, IntegerField,
-                     PasswordField, SelectField, StringField)
-from wtforms.validators import DataRequired, optional
-
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
@@ -56,6 +52,9 @@ from virasana.models.models import Ocorrencias, Tags
 from virasana.models.text_index import TextSearch
 from virasana.workers.dir_monitor import BSON_DIR
 from virasana.workers.tasks import raspa_dir, trata_bson
+from wtforms import (BooleanField, DateField, FloatField, IntegerField,
+                     PasswordField, SelectField, StringField)
+from wtforms.validators import DataRequired, optional
 
 app = Flask(__name__, static_url_path='/static')
 # app.jinja_env.filters['zip'] = zip
@@ -68,12 +67,13 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def configure_app(mongodb, mysql, mongodb_risco):
+def configure_app(mongodb, mongodb_risco, db_session):
     """Configurações gerais e de Banco de Dados da Aplicação."""
 
     @app.route('/virasana/login', methods=['GET', 'POST'])
     def virasana_login():
         return login_ajna.login_view(request)
+
     login_ajna.login_manager.login_view = 'virasana_login'
     app.config['REMEMBER_COOKIE_PATH'] = '/virasana'
 
@@ -85,10 +85,15 @@ def configure_app(mongodb, mysql, mongodb_risco):
     app.config['SECRET_KEY'] = SECRET
     app.config['SESSION_TYPE'] = 'filesystem'
     login_ajna.configure(app)
-    user_ajna.DBUser.dbsession = mongodb
+    user_ajna.DBUser.alchemy_class = Usuario
+    # Para usar MySQL como base de Usuários ativar a variável de ambiente SQL_USER
+    if os.environ.get('SQL_USER'):
+        user_ajna.DBUser.dbsession = db_session
+    else:
+        user_ajna.DBUser.dbsession = mongodb
     app.config['mongodb'] = mongodb
     app.config['mongodb_risco'] = mongodb_risco
-    app.config['mysql'] = mysql
+    app.config['db_session'] = db_session
     try:
         img_search = None
         img_search = ImageSearch(mongodb)
@@ -522,7 +527,7 @@ def tag_del():
 
 
 @app.route('/grid_data', methods=['POST', 'GET'])
-#@login_required
+# @login_required
 @csrf.exempt
 def grid_data():
     """Executa uma consulta no banco.
@@ -872,6 +877,7 @@ class FilesForm(FlaskForm):
                                    validators=[optional()], default='')
     contrast = BooleanField()
     color = BooleanField()
+    classe = SelectField(u'Classe de contêiner detectado', default='0')
 
 
 def recupera_user_filtros():
@@ -893,7 +899,7 @@ def valida_form_files(form, filtro, db):
     """Lê formulário e adiciona campos ao filtro se necessário."""
     order = None
     pagina_atual = None
-    if form.validate():  # configura filtro básico
+    if form.validate():
         numero = form.numero.data
         start = form.start.data
         end = form.end.data
@@ -901,6 +907,7 @@ def valida_form_files(form, filtro, db):
         ranking = form.ranking.data
         pagina_atual = form.pagina_atual.data
         filtro_escolhido = form.filtro_auditoria.data
+        classe = form.classe.data
         if filtro_escolhido and filtro_escolhido != '0':
             auditoria_object = Auditoria(db)
             filtro_auditoria = \
@@ -938,9 +945,24 @@ def valida_form_files(form, filtro, db):
         if ranking:
             filtro['metadata.ranking'] = {'$exists': True, '$gte': .5}
             order = [('metadata.ranking', -1)]
+        if classe and classe!='0':
+            print(f'Selecionando classe {classe}')
+            filtro['metadata.predictions.class'] = int(mongo_sanitizar(classe))
+    else:
+        print(form.errors)
     # print(filtro)
     return filtro, pagina_atual, order
 
+classes = {1: 'Container 40',
+           2: 'Container 20',
+           3: 'Container não localizado',
+           4: 'Imagem de má qualidade - reescanear'}
+
+def get_classes():
+    choices  = [('0', 'Todas')]
+    for k, v in classes.items():
+        choices.append((str(k), v))
+    return choices
 
 @app.route('/files', methods=['GET', 'POST'])
 @login_required
@@ -961,12 +983,14 @@ def files():
                            end=date.today())
     form_files.filtro_tags.choices = tags_object.tags_text
     form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+    form_files.classe.choices = get_classes()
     filtro, user_filtros = recupera_user_filtros()
     if request.method == 'POST':
         # print('****************************', request.form)
         form_files = FilesForm(**request.form)
         form_files.filtro_tags.choices = tags_object.tags_text
         form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+        form_files.classe.choices = get_classes()
         filtro, pagina_atual, order = valida_form_files(form_files, filtro, db)
     else:
         numero = request.args.get('numero')
@@ -974,9 +998,13 @@ def files():
             form_files = FilesForm(numero=numero)
             form_files.filtro_tags.choices = tags_object.tags_text
             form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
+            form_files.classe.choices = get_classes()
             filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
+    print(filtro)
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
+        # filtro['metadata.predictions.bbox'] = {'$exists': True}
+
         if order is None:
             order = [('metadata.dataescaneamento', 1)]
         if pagina_atual is None:
@@ -1016,6 +1044,11 @@ def files():
             linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
+            preds = grid_data['metadata'].get('predictions')
+            if preds:
+                classe = preds[0].get('class')
+                if classe:
+                    linha['classe'] = classes.get(classe)
             lista_arquivos.append(linha)
         # print(lista_arquivos)
         if len(lista_arquivos) < 50:
@@ -1104,7 +1137,7 @@ def cemercante(numero=None):
     Exibe o CE Mercante e os arquivos associados a ele.
     """
     db = app.config['mongodb']
-    sql = app.config['mysql']
+    session = app.config['db_session']
     conhecimento = None
     imagens = []
     if request.method == 'POST':
@@ -1113,8 +1146,6 @@ def cemercante(numero=None):
         contrast, color = get_contrast_and_color_(request)
         print('################', contrast, color)
     if numero:
-        Session = sessionmaker(bind=sql)
-        session = Session()
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == numero).one_or_none()
         containers = list(session.query(Item).filter(
