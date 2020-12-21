@@ -326,7 +326,8 @@ def predictions_update2(modelo, campo, tamanho, qtde):
             s1 = time.time()
             logger.info(
                 'Sequência real ...... %d ' % registros_processados +
-                '{0: .2f} segundos'.format(s1 - s0)
+                '{0: .2f} segundos'.format(s1 - s0) +
+                ' modelo %s' % modelo
             )
     # Processa pilha restante...
     logger.info('final_loop')
