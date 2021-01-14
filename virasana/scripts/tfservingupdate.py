@@ -140,7 +140,7 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
         pred_gravado = registro.get('metadata').get('predictions')
         registros_processados += 1
         image_bytes = mongo_image(db, _id)
-        image = Image.open(io.BytesIO(image_bytes))
+        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         coords = pred_gravado[0].get('bbox')
         logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
