@@ -8,9 +8,10 @@ from selenium import webdriver
 
 GECKO_PATH = "C:\\Users\\25052288840\\Downloads\\chromedriver.exe"
 
-SUITE_URL = "https://www.suiterfb.receita.fazenda"
-POS_ACD_URL = "https://portalunico.suiterfb.receita.fazenda/cct/api/deposito-carga/consultar-estoque-pos-acd?numeroConteiner="
-DUE_ITEMS_URL = "https://portalunico.suiterfb.receita.fazenda/due/api/due/obterDueComItensResumidos?due="
+# SUITE_URL = "https://www.suiterfb.receita.fazenda"
+SUITE_URL = "https://portalunico.siscomex.gov.br/portal/"
+POS_ACD_URL = "https://portalunico.siscomex.gov.br/cct/api/deposito-carga/consultar-estoque-pos-acd?numeroConteiner="
+DUE_ITEMS_URL = "https://portalunico.siscomex.gov.br/due/api/due/obterDueComItensResumidos?due="
 
 VIRASANA_URL = "https://ajna.labin.rf08.srf/virasana/"
 
@@ -68,11 +69,11 @@ def raspa_containers_sem_due(
 def auth_suite_rfb(driver, portal_url=SUITE_URL):
     driver.get(portal_url)
     # time.sleep(1)
-    LOGON_REDIRECT = "/camweb/grupo?sis=SUITERFB&url=www.suiterfb.receita.fazenda/api/private/redirect"
-    driver.get(portal_url + LOGON_REDIRECT)
+    # LOGON_REDIRECT = "/camweb/grupo??sis=pucomex&url=portalunico.siscomex.gov.br/portal"
+    # driver.get(portal_url + LOGON_REDIRECT)
     # time.sleep(1)
-    form = driver.find_element_by_name("loginCertForm")
-    form.submit()
+    btn_certificado = driver.find_element_by_name("btn_certificado")
+    btn_certificado.click()
     # time.sleep(2)
 
 

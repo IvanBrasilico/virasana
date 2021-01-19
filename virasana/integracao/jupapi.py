@@ -56,7 +56,7 @@ def get_gmci(datainicial, datafinal, token):
         logger.error(r, r.text)
 
 
-def novas_gmcis(engine, days=2):
+def novas_gmcis(engine, days=5):
     Session = sessionmaker(bind=engine)
     session = Session()
     start = session.query(func.max(GMCI.datahora)).scalar()
@@ -83,6 +83,8 @@ def novas_gmcis(engine, days=2):
 if __name__ == '__main__':  # pragma: no cover
     engine = create_engine(SQL_URI)
     novas_gmcis(engine, days=5)
+
+    """
     start = datetime.combine(datetime.today(), datetime.min.time()) - timedelta(days=2)
     end = datetime.now()
     token = get_token_api()
@@ -92,3 +94,4 @@ if __name__ == '__main__':  # pragma: no cover
     # print(gmcis_dict['DadosGmcis'])
     for gmci_dict in gmcis_dict['DadosGmcis']['gmci_ctr']:
         print(gmci_dict)
+    """
