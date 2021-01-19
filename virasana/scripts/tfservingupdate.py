@@ -172,11 +172,11 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
                 raise err
             # TODO: Salvar predições
             for oid, new_pred in zip(_ids, preds):
-                pred_gravado[0][modelo] = interpreta_pred(new_pred[0], modelo)
+                pred_modelo = interpreta_pred(new_pred[0], modelo)
                 # print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
-                    {'$set': {'metadata.predictions': pred_gravado}}
+                    {'$set': {f'metadata.predictions.{modelo}': pred_modelo}}
                 )
             logger.info('Predições novas salvas no MongoDB')
             images = []
