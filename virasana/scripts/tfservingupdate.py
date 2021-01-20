@@ -19,12 +19,17 @@ Args:
 
 """
 import io
+import sys
 import time
 
 import click
 import numpy as np
 import requests
 from PIL import Image
+
+sys.path.insert(0, '.')
+sys.path.insert(0, '../commons')
+
 from ajna_commons.flask.log import logger
 from ajna_commons.utils.images import mongo_image
 
@@ -144,14 +149,14 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
         coords = pred_gravado[0].get('bbox')
         logger.info('Image size: %s - bbox: %s' % (image.size, coords))
         image = image.crop((coords[1], coords[0], coords[3], coords[2]))
-        logger.info('Image size after crop: %s ' % (image.size, ))
+        logger.info('Image size after crop: %s ' % (image.size,))
         image_array = prepara_imagem(image, modelo)
-        logger.info('Image array shape: %s ' % (image_array.shape, ) )
+        logger.info('Image array shape: %s ' % (image_array.shape,))
         images.append(image_array.tolist())
         _ids.append(_id)
         # print(len(images), end=' ')
         if len(images) >= batch_size:
-            logger.info('Batch carregado, enviando ao Servidor TensorFlow.' 
+            logger.info('Batch carregado, enviando ao Servidor TensorFlow.'
                         ' Modelo: %s' % modelo)
             s1 = time.time()
             json_batch = {"signature_name": "serving_default", "instances": images}
@@ -170,9 +175,11 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
                 print(r.status_code)
                 print(r.text)
                 raise err
-            # TODO: Salvar predições
+            # Salvar predições
             for oid, new_pred in zip(_ids, preds):
                 pred_modelo = interpreta_pred(new_pred[0], modelo)
+                logger.info({'_id': oid,
+                             f'metadata.predictions.{modelo}': pred_modelo})
                 # print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
