@@ -183,7 +183,7 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
                 # print('Gravando...', pred_gravado, oid)
                 db['fs.files'].update(
                     {'_id': oid},
-                    {'$set': {f'metadata.predictions.{modelo}': pred_modelo}}
+                    {'$set': {f'metadata.predictions[0].{modelo}': pred_modelo}}
                 )
             logger.info('Predições novas salvas no MongoDB')
             images = []
