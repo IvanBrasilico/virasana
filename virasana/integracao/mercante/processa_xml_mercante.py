@@ -38,7 +38,7 @@ def get_arquivos_novos(engine, start=None, days=1):
                                     FORMATO_DATA_ANIITA)
     datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days=days),
                                   FORMATO_DATA_ANIITA)
-    logger.info('%s, %s' , (datainicial, datafinal))
+    logger.info('Buscando de %s a %s' % (datainicial, datafinal))
     logger.info('Conectando no Aniita... Timeout 15 segundos')
     r = requests.get(URL_ANIITA_LISTA, timeout=15,
                      params={'dtInicial': datainicial,
