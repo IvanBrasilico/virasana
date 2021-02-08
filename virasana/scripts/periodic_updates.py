@@ -95,6 +95,7 @@ def periodic_updates(db, connection, lote=2000):
     dezdias = hoje - timedelta(days=10)
     ontem = hoje - timedelta(days=1)
     xmli.dados_xml_grava_fsfiles(db, lote * 5, cincodias)
+    logger.info('Pegando arquivos XML')
     processa_xml_mercante.get_arquivos_novos(connection)
     processa_xml_mercante.xml_para_mercante(connection)
     resume_mercante.mercante_resumo(connection)
