@@ -54,7 +54,8 @@ def get_arquivos_novos(engine, start=None, days=1):
             lista_arquivos = r.json()
             for item in lista_arquivos:
                 filename = item['nomeArquivo']
-                r = requests.get(URL_ANIITA_DOWNLOAD, params={'nome': filename})
+                r = requests.get(URL_ANIITA_DOWNLOAD, timeout=15,
+                                 params={'nome': filename})
                 logger.info(r.url)
                 destino = os.path.join(mercante.MERCANTE_DIR, filename)
                 logger.info('Gerando arquivo %s' % destino)
@@ -70,7 +71,7 @@ def get_arquivos_novos(engine, start=None, days=1):
                         grava_arquivo_baixado(engine, filename, data)
                     except ValueError as err:
                         logger.error(err)
-    except JSONDecodeError as err:
+    except (JSONDecodeError, requests.exceptions.Timeout) as err:
         logger.error(err)
 
 def processa_classes(engine, lista_arquivos):
