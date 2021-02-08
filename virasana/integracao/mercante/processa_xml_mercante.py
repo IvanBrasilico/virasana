@@ -40,9 +40,13 @@ def get_arquivos_novos(engine, start=None, days=1):
                                   FORMATO_DATA_ANIITA)
     logger.info('Buscando de %s a %s' % (datainicial, datafinal))
     logger.info('Conectando no Aniita... Timeout 15 segundos')
-    r = requests.get(URL_ANIITA_LISTA, timeout=15,
+    try:
+        r = requests.get(URL_ANIITA_LISTA, timeout=15,
                      params={'dtInicial': datainicial,
                                                'dtFinal': datafinal})
+    except requests.exceptions.Timeout as err:
+        logger.error(err)
+        return
     logger.info(r.url)
     logger.info(r.text)
     try:
