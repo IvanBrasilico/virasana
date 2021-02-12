@@ -111,7 +111,7 @@ def periodic_updates(db, connection, lote=2000):
     predictions_update2('index', 'index', lote, 8)
     # gera_indexes()
     # print(reload_indexes())
-    tfs_predictions_update('vazio', lote, 20)
+    # tfs_predictions_update('vazio', lote, 20)
     tfs_predictions_update('peso', lote, 20)
     # predictions_update2('vaziosvm', 'vazio', lote, 4)
     # predictions_update2('peso', 'peso', lote, 16)
