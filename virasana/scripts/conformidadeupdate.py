@@ -32,9 +32,9 @@ today = date.today()
 str_today = datetime.strftime(today, '%d/%m/%Y')
 lastweek = today - timedelta(days=7)
 str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
+end = datetime.strptime(fim, '%d/%m/%Y')
 
-
-def update_conformidade(db, engine, start=None, end=today, limit=2000):
+def update_conformidade(db, engine, start=None, end=end, limit=2000):
     Session = sessionmaker(bind=engine)
     session = Session()
     if start is None:
