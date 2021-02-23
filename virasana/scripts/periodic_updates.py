@@ -89,10 +89,6 @@ def reload_indexes():
 
 def periodic_updates(db, connection, lote=2000):
     print('Iniciando atualizações...')
-    try:
-        update_conformidade(db, session)
-    except Exception as err:
-        logger.error(err)
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)
@@ -122,11 +118,11 @@ def periodic_updates(db, connection, lote=2000):
     try:
         jupapi.novas_gmcis(connection)
     except Exception as err:
-        print(err)
+        logger.error(err)
     try:
-        update_conformidade(db, session)
+        update_conformidade(db, connection)
     except Exception as err:
-        print(err)
+        logger.error(err)
 
 
 if __name__ == '__main__':
