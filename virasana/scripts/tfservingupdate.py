@@ -160,8 +160,12 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
                         ' Modelo: %s' % modelo)
             s1 = time.time()
             json_batch = {"signature_name": "serving_default", "instances": images}
-            r = requests.post(tfserving_url + '%s:predict' % modelo,
-                              json=json_batch)
+            try:
+                r = requests.post(tfserving_url + '%s:predict' % modelo,
+                              json=json_batch, timeout=30)
+            except requests.exceptions.Timeout as err:
+                logger.error(err)
+                break
             logger.info('Predições recebidas do Servidor TensorFlow'
                         ' Modelo: %s' % modelo)
             s2 = time.time()
