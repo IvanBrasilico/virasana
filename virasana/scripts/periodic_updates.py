@@ -89,6 +89,10 @@ def reload_indexes():
 
 def periodic_updates(db, connection, lote=2000):
     print('Iniciando atualizações...')
+    try:
+        update_conformidade(db, session)
+    except Exception as err:
+        print(err)
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)

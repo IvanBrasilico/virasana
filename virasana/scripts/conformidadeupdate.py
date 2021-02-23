@@ -43,7 +43,7 @@ def update_conformidade(db, engine, start=None, end=today, limit=2000):
     query = {'metadata.contentType': 'image/jpeg',
              'uploadDate': {'$gte': start, '$lte': end}
              }
-    print(query)
+    logger.info(query)
     cursor = db['fs.files'].find(query).limit(limit)
     qtde = 0
     for linha in cursor:
