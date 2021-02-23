@@ -17,11 +17,12 @@ from datetime import date, datetime, timedelta
 import click
 from PIL import Image
 from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
+from ajna_commons.flask.log import logger
 from ajna_commons.flask.conf import SQL_URI
 from ajna_commons.utils.images import mongo_image
 from virasana.db import mongodb as db
@@ -59,15 +60,15 @@ def update_conformidade(db, engine, start=None, end=today, limit=2000):
             session.commit()
             qtde += 1
         except UnicodeDecodeError:
-            print(f'Erro de encoding no id: {linha["_id"]}')
+            logger.error(f'Erro de encoding no id: {linha["_id"]}')
         except IntegrityError:
             session.rollback()
-            print(f'Linha duplicada: {linha["_id"]}')
+            logger.error(f'Linha duplicada: {linha["_id"]}')
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
-    print(qtde, 'análises de conformidade inseridas em ',
-          tempo, 'segundos.',
-          tempo_registro, 'por registro')
+    logger.info(f'{qtde} análises de conformidade inseridas em {tempo} segundos.' +
+                f'{tempo_registro} por registro')
+
 
 @click.command()
 @click.option('--inicio', default=str_lastweek,
@@ -85,6 +86,7 @@ def update(inicio, fim, limit):
         start = datetime.strptime(inicio, '%d/%m/%Y')
     print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
     update_conformidade(db, engine, start, end, limit)
+
 
 if __name__ == '__main__':
     update()
