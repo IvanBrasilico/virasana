@@ -18,12 +18,12 @@ class Conformidade(Base):
     __tablename__ = 'ajna_conformidade'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
-    cod_recinto = Column(Integer(), index=True)
-    id_imagem = Column(VARCHAR(40), index=True)
-    width = Column(Integer(), unique=True)
-    height = Column(Integer(), unique=True)
+    cod_recinto = Column(VARCHAR(20), index=True)
+    id_imagem = Column(VARCHAR(40), unique=True)
+    width = Column(Integer(), index=True)
+    height = Column(Integer(), index=True)
     ratio = Column(Numeric(10, 2), index=True)
-    num_gmci = Column(Integer(), unique=True)
+    num_gmci = Column(Integer(), index=True)
     datahora = Column(DateTime, index=True)
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())
@@ -33,7 +33,7 @@ class Conformidade(Base):
     def set_size(self, size):
         self.width = size[0]
         self.height = size[1]
-        self.ratio = self.width + self.ratio
+        self.ratio = self.width / self.height
 
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
