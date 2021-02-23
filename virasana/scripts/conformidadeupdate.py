@@ -55,7 +55,7 @@ def update_conformidade(db, engine, start=None, end=today, limit=2000):
             conformidade.set_size(image.size)
             conformidade.cod_recinto = linha['metadata']['recinto']
             conformidade.datahora = linha['uploadDate']
-            conformidade.id_imagem = linha['_id']
+            conformidade.id_imagem = str(linha['_id'])
             session.add(conformidade)
             session.commit()
             qtde += 1
