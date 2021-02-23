@@ -119,6 +119,10 @@ def periodic_updates(db, connection, lote=2000):
         jupapi.novas_gmcis(connection)
     except Exception as err:
         print(err)
+    try:
+        update_conformidade(db, session)
+    except Exception as err:
+        print(err)
 
 
 if __name__ == '__main__':

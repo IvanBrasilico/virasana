@@ -33,24 +33,11 @@ lastweek = today - timedelta(days=7)
 str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
 
 
-@click.command()
-@click.option('--inicio', default=str_lastweek,
-              help='Dia de início (dia/mês/ano) - padrão uma semana')
-@click.option('--fim', default=str_today,
-              help='Dia de fim (dia/mês/ano) - padrão hoje')
-@click.option('--limit', default=1000,
-              help='Quantidade de registros - padrão 1000 - informar 0 para usar datas')
-def update(inicio, fim, limit):
-    """Script de linha de comando para integração do arquivo XML."""
-    engine = create_engine(SQL_URI)
+def update_conformidade(db, engine, start=None, end=today):
     Session = sessionmaker(bind=engine)
     session = Session()
-    end = datetime.strptime(fim, '%d/%m/%Y')
-    if limit == 0:
-        start = datetime.strptime(inicio, '%d/%m/%Y')
-    else:
+    if start is None:
         start = session.query(func.max(Conformidade.datahora)).scalar()
-    print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
     tempo = time.time()
     query = {'metadata.contentType': 'image/jpeg',
              'uploadDate': {'$gte': start, '$lte': end}
@@ -82,6 +69,21 @@ def update(inicio, fim, limit):
           tempo, 'segundos.',
           tempo_registro, 'por registro')
 
+@click.command()
+@click.option('--inicio', default=str_lastweek,
+              help='Dia de início (dia/mês/ano) - padrão uma semana')
+@click.option('--fim', default=str_today,
+              help='Dia de fim (dia/mês/ano) - padrão hoje')
+@click.option('--limit', default=1000,
+              help='Quantidade de registros - padrão 1000 - informar 0 para usar datas')
+def update(inicio, fim, limit):
+    """Script de linha de comando para integração do arquivo XML."""
+    engine = create_engine(SQL_URI)
+    end = datetime.strptime(fim, '%d/%m/%Y')
+    if limit == 0:
+        start = datetime.strptime(inicio, '%d/%m/%Y')
+    print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
+    update_conformidade(db, engine, start, end)
 
 if __name__ == '__main__':
     update()
