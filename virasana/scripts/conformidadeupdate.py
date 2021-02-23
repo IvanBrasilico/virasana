@@ -33,7 +33,7 @@ lastweek = today - timedelta(days=7)
 str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
 
 
-def update_conformidade(db, engine, start=None, end=today):
+def update_conformidade(db, engine, start=None, end=today, limit=2000):
     Session = sessionmaker(bind=engine)
     session = Session()
     if start is None:
@@ -80,10 +80,11 @@ def update(inicio, fim, limit):
     """Script de linha de comando para integração do arquivo XML."""
     engine = create_engine(SQL_URI)
     end = datetime.strptime(fim, '%d/%m/%Y')
+    start = None
     if limit == 0:
         start = datetime.strptime(inicio, '%d/%m/%Y')
     print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
-    update_conformidade(db, engine, start, end)
+    update_conformidade(db, engine, start, end, limit)
 
 if __name__ == '__main__':
     update()
