@@ -92,7 +92,7 @@ def periodic_updates(db, connection, lote=2000):
     try:
         update_conformidade(db, session)
     except Exception as err:
-        print(err)
+        logger.error(err)
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)
