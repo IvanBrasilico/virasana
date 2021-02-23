@@ -30,9 +30,9 @@ from virasana.integracao.conformidade_alchemy import Conformidade
 
 today = date.today()
 str_today = datetime.strftime(today, '%d/%m/%Y')
+end = datetime.strptime(str_today, '%d/%m/%Y')
 lastweek = today - timedelta(days=7)
 str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
-end = datetime.strptime(fim, '%d/%m/%Y')
 
 def update_conformidade(db, engine, start=None, end=end, limit=2000):
     Session = sessionmaker(bind=engine)
