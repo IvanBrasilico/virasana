@@ -36,7 +36,7 @@ from virasana.models import anomalia_lote
 from virasana.scripts.gera_indexes import gera_indexes
 from virasana.scripts.predictionsupdate import predictions_update2
 from virasana.scripts.tfservingupdate import tfs_predictions_update
-
+from virasana.scripts.conformidadeupdate import update_conformidade
 
 def get_token(session, url):
     """Faz um get na url e tenta encontrar o csrf_token na resposta."""
