@@ -1,5 +1,16 @@
-# coding: utf-8
+"""Lógicas para tratar conformidade/qualidade das imagens de escaneamento
+
+SQLs para relatórios:
+
+elect cod_recinto, avg(height), std(height), avg(ratio), stddev(ratio),
+ min(ratio), max(ratio), count(ratio)
+ from ajna_conformidade group by cod_recinto
+
+
+"""
+
 import sys
+
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
@@ -24,7 +35,9 @@ class Conformidade(Base):
     height = Column(Integer(), index=True)
     ratio = Column(Numeric(10, 2), index=True)
     num_gmci = Column(Integer(), index=True)
-    datahora = Column(DateTime, index=True)
+    uploadDate = Column(DateTime, index=True)
+    dataescaneamento = Column(DateTime, index=True)
+    numeroinformado = Column(VARCHAR(11), index=True)  # Número contêiner
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())
     last_modified = Column(DateTime, index=True,
@@ -34,6 +47,7 @@ class Conformidade(Base):
         self.width = size[0]
         self.height = size[1]
         self.ratio = self.width / self.height
+
 
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
