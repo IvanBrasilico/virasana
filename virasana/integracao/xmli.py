@@ -123,6 +123,7 @@ def xml_todict(xml) -> dict:
                 for char in 'tT_':
                     text = text.replace(char, ' ')
                 try:
+                    text = text.replace(',', '.')
                     parse_str = '%Y-%m-%d %H:%M:%S.%Z'
                     text = datetime.strptime(text, parse_str)
                 except ValueError as err:
