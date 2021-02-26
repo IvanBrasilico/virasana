@@ -16,13 +16,16 @@ Args:
     diasantes: quantos dias regredir (processa um dia por vez na parte da integração)
 
 """
+import sys
 import time
 from datetime import date, datetime
 
 import click
-from ajna_commons.flask.conf import SQL_URI
 from sqlalchemy import create_engine
 
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
+from ajna_commons.flask.conf import SQL_URI
 from virasana.db import mongodb as db
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante

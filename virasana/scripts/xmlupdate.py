@@ -12,12 +12,15 @@ Args:
     batch_size: tamanho do lote de atualização/limite de registros da consulta
 
 """
+import sys
 import time
 from datetime import datetime
 from pymongo.errors import OperationFailure
 
 import click
 
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
 from virasana.db import mongodb as db
 from virasana.integracao import create_indexes, gridfs_count, xmli
 
@@ -30,7 +33,9 @@ today = datetime.today()
 @click.option('--month', default=today.month, help='Mes - padrão atual')
 @click.option('--batch_size', default=BATCH_SIZE,
               help='Tamanho do lote - padrão' + str(BATCH_SIZE))
-def update(year, month, batch_size):
+@click.option('--recinto', default=None,
+              help='Codigo do Recinto')
+def update(year, month, batch_size, recinto):
     """Script de linha de comando para integração do arquivo XML."""
     try:
         create_indexes(db)
@@ -44,7 +49,7 @@ def update(year, month, batch_size):
     data_inicio = datetime(year, month, 1)
     print('Data início', data_inicio)
     tempo = time.time()
-    xmli.dados_xml_grava_fsfiles(db, batch_size, data_inicio)
+    xmli.dados_xml_grava_fsfiles(db, batch_size, data_inicio, recinto)
     tempo = time.time() - tempo
     print(batch_size, 'dados XML do fs.files percorridos em ',
           tempo, 'segundos.',

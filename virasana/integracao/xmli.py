@@ -159,7 +159,8 @@ def xml_todict(xml) -> dict:
 
 def dados_xml_grava_fsfiles(db, batch_size=5000,
                             data_inicio=datetime(1900, 1, 1),
-                            update=True):
+                            update=True,
+                            recinto=None):
     """Busca por registros no GridFS sem info do XML.
 
     Busca por registros no fs.files (GridFS - imagens) que não tenham metadata
@@ -177,24 +178,23 @@ def dados_xml_grava_fsfiles(db, batch_size=5000,
         update: Caso seja setado como False, apenas faz consulta, sem
             atualizar metadata da collection fs.files
 
+        recinto: Código do recinto (metadata.recinto)
+
     Returns:
         Número de registros encontrados
 
     """
-    file_cursor = db['fs.files'].find(
-        {'metadata.xml': None,
-         'metadata.dataescaneamento': {'$gt': data_inicio},
-         'metadata.contentType': 'image/jpeg'
-         }).limit(batch_size)
+    filtro = {'metadata.xml': None,
+              'metadata.dataescaneamento': {'$gt': data_inicio},
+              'metadata.contentType': 'image/jpeg'
+              }
+    if recinto:
+        filtro.update({'metadata.recinto': recinto})
+    file_cursor = db['fs.files'].find(filtro).limit(batch_size)
     fs = GridFS(db)
-    total = db['fs.files'].count_documents(
-        {'metadata.xml': None,
-         'metadata.dataescaneamento': {'$gt': data_inicio},
-         'metadata.contentType': 'image/jpeg'
-         })
+    total = db['fs.files'].count_documents(filtro)
     acum = 0
     for linha in file_cursor:
-
         numero = linha.get('metadata').get('numeroinformado')
         data = linha.get('uploadDate')
         filename = linha.get('filename')
@@ -235,6 +235,7 @@ def dados_xml_grava_fsfiles(db, batch_size=5000,
                 final_filename = xml_filename + '.XML'
                 xml_document = db['fs.files'].find_one(
                     {'filename': final_filename})
+            print('xml alternativo:', final_filename)
         if not xml_document:
             logger.info('Numero %s filename %s não encontrado!!!' %
                         (numero, filename))
@@ -245,6 +246,7 @@ def dados_xml_grava_fsfiles(db, batch_size=5000,
         raw = fs.get(file_id).read()
         encode = chardet.detect(raw)
         # print(encode)
+        # print(raw)
         encoding = [encode['encoding'],
                     'latin1',
                     'utf8',
@@ -254,18 +256,23 @@ def dados_xml_grava_fsfiles(db, batch_size=5000,
         dados_xml = {}
         for e in encoding:
             try:
-                xml = raw.decode(e)
-                # TODO: see why sometimes a weird character
-                # appears in front of content
-                posi = xml.find('<DataForm>')
-                # print('POSI', posi)
-                if posi == -1:
-                    xml = xml[2:]
-                else:
-                    xml = xml[posi:]
-                ET.fromstring(xml)
-                dados_xml = xml_todict(xml)
-                break
+                xmlo = raw.decode(e)
+                try:
+                    ET.fromstring(xml)
+                    dados_xml = xml_todict(xmlo)
+                    break
+                except Exception:
+                    # TODO: see why sometimes a weird character
+                    # appears in front of content
+                    posi = xmlo.find('<DataForm>')
+                    # print('POSI', posi)
+                    if posi == -1:
+                        xml = xmlo[2:]
+                    else:
+                        xml = xmlo[posi:]
+                    ET.fromstring(xml)
+                    dados_xml = xml_todict(xml)
+                    break
             except Exception as err:
                 print('Erro de encoding', e, err)
         if dados_xml != {}:
