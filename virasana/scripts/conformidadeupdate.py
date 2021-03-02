@@ -9,10 +9,10 @@ Args:
     diafim: dia final da pesquisa
 
 """
+import datetime
 import io
 import sys
 import time
-from datetime import date, datetime, timedelta
 
 import click
 from PIL import Image
@@ -28,10 +28,11 @@ from ajna_commons.utils.images import mongo_image
 from virasana.db import mongodb as db
 from virasana.integracao.conformidade_alchemy import Conformidade
 
-today = date.today()
-str_today = datetime.strftime(today, '%d/%m/%Y')
-lastweek = today - timedelta(days=7)
-str_lastweek = datetime.strftime(lastweek, '%d/%m/%Y')
+today = datetime.date.today()
+str_today = datetime.datetime.strftime(today, '%d/%m/%Y')
+lastweek = today - datetime.timedelta(days=7)
+str_lastweek = datetime.datetime.strftime(lastweek, '%d/%m/%Y')
+
 
 def update_conformidade(db, engine, start=None, end=None, limit=2000):
     Session = sessionmaker(bind=engine)
@@ -39,7 +40,7 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
     if start is None:
         start = session.query(func.max(Conformidade.uploadDate)).scalar()
     if end is None:
-        end = datetime.now()
+        end = datetime.datetime.now() + datetime.time.max
     tempo = time.time()
     query = {'metadata.contentType': 'image/jpeg',
              'uploadDate': {'$gte': start, '$lte': end}
@@ -83,10 +84,11 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
 def update(inicio, fim, limit):
     """Script de linha de comando para integração do arquivo XML."""
     engine = create_engine(SQL_URI)
-    end = datetime.strptime(fim, '%d/%m/%Y')
+    end = datetime.datetime.strptime(fim, '%d/%m/%Y')
+    end = datetime.datetime.strptime(fim, '%d/%m/%Y')
     start = None
     if limit == 0:
-        start = datetime.strptime(inicio, '%d/%m/%Y')
+        start = datetime.datetime.strptime(inicio, '%d/%m/%Y')
     print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
     update_conformidade(db, engine, start, end, limit)
 
