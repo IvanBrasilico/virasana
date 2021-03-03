@@ -190,6 +190,8 @@ def update(inicio, fim, limit):
         start = datetime.datetime.strptime(inicio, '%d/%m/%Y')
     print('Começando a integração... Inicio %s Fim %s' % (inicio, fim))
     update_conformidade(db, engine, start, end, limit)
+    completa_conformidade(db, engine, limit)
+    preenche_isocode(db, engine, limit)
 
 
 if __name__ == '__main__':
