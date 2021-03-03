@@ -16,6 +16,7 @@ import time
 
 import click
 import cv2
+import numpy as np
 from PIL import Image
 from bson import ObjectId
 from sqlalchemy import create_engine, func
@@ -183,7 +184,6 @@ def preenche_isocode(db, engine, limit=2000, start=None):
 def update(inicio, fim, limit):
     """Script de linha de comando para integração do arquivo XML."""
     engine = create_engine(SQL_URI)
-    end = datetime.datetime.strptime(fim, '%d/%m/%Y')
     end = datetime.datetime.strptime(fim, '%d/%m/%Y')
     start = None
     if limit == 0:
