@@ -38,7 +38,7 @@ class Conformidade(Base):
     uploadDate = Column(DateTime, index=True)
     dataescaneamento = Column(DateTime, index=True)
     numeroinformado = Column(VARCHAR(11), index=True)  # Número contêiner
-    laplacean = Column(Integer(), index=True)
+    laplacian = Column(Integer(), index=True)
     tipotrafego = Column(VARCHAR(3), index=True)  # Importação ou exportação
     vazio = Column(Boolean(), index=True)
     isocode_size = Column(VARCHAR(2), index=True)

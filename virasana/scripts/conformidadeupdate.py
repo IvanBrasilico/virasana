@@ -67,7 +67,7 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
             conformidade.id_imagem = str(linha['_id'])
             conformidade.dataescaneamento = linha['metadata']['dataescaneamento']
             conformidade.numeroinformado = linha['metadata']['numeroinformado']
-            conformidade.laplace = calcula_laplacian(image)
+            conformidade.laplacian = calcula_laplacian(image)
             session.add(conformidade)
             session.commit()
             qtde += 1
