@@ -15,6 +15,7 @@ import sys
 import time
 
 import click
+import cv2
 from PIL import Image
 from bson import ObjectId
 from sqlalchemy import create_engine, func
@@ -33,6 +34,10 @@ today = datetime.date.today()
 str_today = datetime.datetime.strftime(today, '%d/%m/%Y')
 lastweek = today - datetime.timedelta(days=7)
 str_lastweek = datetime.datetime.strftime(lastweek, '%d/%m/%Y')
+
+
+def calcula_laplacian(img):
+    return int(cv2.Laplacian(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR), cv2.CV_8U).var())
 
 
 def update_conformidade(db, engine, start=None, end=None, limit=2000):
@@ -61,6 +66,7 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
             conformidade.id_imagem = str(linha['_id'])
             conformidade.dataescaneamento = linha['metadata']['dataescaneamento']
             conformidade.numeroinformado = linha['metadata']['numeroinformado']
+            conformidade.laplace = calcula_laplacian(image)
             session.add(conformidade)
             session.commit()
             qtde += 1
@@ -97,8 +103,10 @@ def completa_conformidade(db, engine, limit=2000, start=None):
             metadata = row['metadata']
             carga = metadata.get('carga')
             if carga:
-                conhecimento = carga.get('conhecimento')[0]
+                conhecimento = carga.get('conhecimento')
                 if conhecimento:
+                    if isinstance(conhecimento, list):
+                        conhecimento = conhecimento[0]
                     tipotrafego = conhecimento.get('trafego')
                 if tipotrafego:
                     vazio = False
