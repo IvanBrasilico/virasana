@@ -16,7 +16,7 @@ sys.path.append('../ajna_docs/commons')
 
 from ajna_commons.flask.conf import SQL_URI
 from sqlalchemy import Column, DateTime, func, Integer, VARCHAR, BigInteger, \
-    Numeric
+    Numeric, Boolean
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.mysql import TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
@@ -38,6 +38,11 @@ class Conformidade(Base):
     uploadDate = Column(DateTime, index=True)
     dataescaneamento = Column(DateTime, index=True)
     numeroinformado = Column(VARCHAR(11), index=True)  # Número contêiner
+    tipotrafego = Column(VARCHAR(3), index=True)  # Importação ou exportação
+    vazio = Column(Boolean(), index=True)
+    isocode_size = Column(VARCHAR(2), index=True)
+    isocode_group = Column(VARCHAR(2), index=True)
+    paisdestino = Column(VARCHAR(2), index=True)
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())
     last_modified = Column(DateTime, index=True,

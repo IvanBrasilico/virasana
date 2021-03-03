@@ -16,6 +16,7 @@ import time
 
 import click
 from PIL import Image
+from bson import ObjectId
 from sqlalchemy import create_engine, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
@@ -71,6 +72,96 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
     logger.info(f'{qtde} análises de conformidade inseridas em {tempo} segundos.' +
+                f'{tempo_registro} por registro')
+
+
+def completa_conformidade(db, engine, limit=2000, start=None):
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    if start:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.dataescaneamento >= start) \
+            .filter(Conformidade.tipotrafego.is_(None)).limit(limit).all()
+    else:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.tipotrafego.is_(None)).limit(limit).all()
+
+    tempo = time.time()
+    qtde = 0
+    for conformidade in lista_conformidade:
+        row = db['fs.files'].find_one({'_id': ObjectId(conformidade.id_imagem)})
+        tipotrafego = None
+        vazio = None
+        paisdestino = None
+        try:
+            metadata = row['metadata']
+            carga = metadata.get('carga')
+            if carga:
+                conhecimento = carga.get('conhecimento')[0]
+                if conhecimento:
+                    tipotrafego = conhecimento.get('trafego')
+                if tipotrafego:
+                    vazio = False
+                    paisdestino = conhecimento.get('paisdestino')
+                else:
+                    manifesto = carga.get('manifesto')[0]
+                    tipotrafego = manifesto.get('trafego')
+                    vazio = True
+                    if tipotrafego == 'lce':
+                        paisdestino = manifesto.get('codigoportodescarregamento')[:2]
+            conformidade.tipotrafego = tipotrafego
+            conformidade.vazio = vazio
+            conformidade.paisdestino = paisdestino
+            session.add(conformidade)
+            session.commit()
+            qtde += 1
+        except Exception as err:
+            logger.error(err, exc_info=True)
+            session.rollback()
+    tempo = time.time() - tempo
+    tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
+    logger.info(f'{qtde} análises de conformidade complementadas em {tempo} segundos.' +
+                f'{tempo_registro} por registro')
+
+
+def preenche_isocode(db, engine, limit=2000, start=None):
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    if start:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.dataescaneamento >= start) \
+            .filter(Conformidade.isocode_size.is_(None)).limit(limit).all()
+    else:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.isocode_size.is_(None)).limit(limit).all()
+    tempo = time.time()
+    qtde = 0
+    querys = [
+        'SELECT distinct isoCode FROM dbmercante.itensresumo where codigoConteiner="%s"',
+        'SELECT distinct isoConteinerVazio FROM dbmercante.conteinervazioresumo ' +
+        'WHERE idConteinerVazio="%s"'
+    ]
+    try:
+        for conformidade in lista_conformidade:
+            isocode = None
+            for query in querys:
+                rs = session.execute(query % conformidade.numeroinformado)
+                lines = list(rs)
+                if lines and len(lines) > 0:
+                    isocode = lines[0][0].strip()
+                    break
+            if isocode:
+                conformidade.isocode_size = isocode[:3]
+                conformidade.isocode_group = isocode[-2:]
+                session.add(conformidade)
+                qtde += 1
+        session.commit()
+    except Exception as err:
+        logger.error(err, exc_info=True)
+        session.rollback()
+    tempo = time.time() - tempo
+    tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
+    logger.info(f'{qtde} isocode preenchidos em {tempo} segundos.' +
                 f'{tempo_registro} por registro')
 
 
