@@ -36,7 +36,7 @@ from virasana.models import anomalia_lote
 from virasana.scripts.gera_indexes import gera_indexes
 from virasana.scripts.predictionsupdate import predictions_update2
 from virasana.scripts.tfservingupdate import tfs_predictions_update
-from virasana.scripts.conformidadeupdate import update_conformidade
+from virasana.scripts import conformidadeupdate
 
 def get_token(session, url):
     """Faz um get na url e tenta encontrar o csrf_token na resposta."""
@@ -93,6 +93,7 @@ def periodic_updates(db, connection, lote=2000):
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)
     dezdias = hoje - timedelta(days=10)
+    vintedias = hoje - timedelta(days=20)
     ontem = hoje - timedelta(days=1)
     xmli.dados_xml_grava_fsfiles(db, lote * 5, cincodias)
     logger.info('Pegando arquivos XML')
@@ -120,7 +121,12 @@ def periodic_updates(db, connection, lote=2000):
     except Exception as err:
         logger.error(err)
     try:
-        update_conformidade(db, connection)
+        conformidadeupdate.update_conformidade(db, connection)
+        # Depois de dez dias, desiste de atualizar os campos extras puxados do bbox
+        conformidadeupdate.preenche_bbox(db, connection, start=vintedias)
+        # Depois de vinte dias, desiste de atualizar os campos extras puxados do Carga
+        conformidadeupdate.completa_conformidade(db, connection, start=vintedias)
+        conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
     except Exception as err:
         logger.error(err)
 

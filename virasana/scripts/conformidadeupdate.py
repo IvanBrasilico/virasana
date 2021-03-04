@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from bson import ObjectId
+from gridfs import GridFS
 from sqlalchemy import create_engine, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
@@ -27,7 +28,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 from ajna_commons.flask.log import logger
 from ajna_commons.flask.conf import SQL_URI
-from ajna_commons.utils.images import mongo_image
+from ajna_commons.utils.images import mongo_image, recorta_imagem
 from virasana.db import mongodb as db
 from virasana.integracao.conformidade_alchemy import Conformidade
 
@@ -67,7 +68,6 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
             conformidade.id_imagem = str(linha['_id'])
             conformidade.dataescaneamento = linha['metadata']['dataescaneamento']
             conformidade.numeroinformado = linha['metadata']['numeroinformado']
-            conformidade.laplacian = calcula_laplacian(image)
             session.add(conformidade)
             session.commit()
             qtde += 1
@@ -79,6 +79,49 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
     logger.info(f'{qtde} análises de conformidade inseridas em {tempo} segundos.' +
+                f'{tempo_registro} por registro')
+
+
+def preenche_bbox(db, engine, limit=2000, start=None):
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    if start:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.dataescaneamento >= start) \
+            .filter(Conformidade.bbox_classe.is_(None)).limit(limit).all()
+    else:
+        lista_conformidade = session.query(Conformidade) \
+            .filter(Conformidade.bbox_classe.is_(None)).limit(limit).all()
+    tempo = time.time()
+    qtde = 0
+    try:
+        for conformidade in lista_conformidade:
+            classe = None
+            score = None
+            fs = GridFS(db)
+            _id = ObjectId(conformidade.id_imagem)
+            if fs.exists(_id):
+                grid_data = fs.get(_id)
+                preds = grid_data.metadata.get('predictions')
+                if preds:
+                    bboxes = preds[0].get('bbox')
+                    image = grid_data.read()
+                    image = recorta_imagem(image, bboxes, pil=True)
+                    classe = preds[0].get('classe')
+                    score = preds[0].get('score')
+            if classe:
+                conformidade.bbox_classe = classe
+                conformidade.bbox_score = score
+                conformidade.laplacian = calcula_laplacian(image)
+                session.add(conformidade)
+                qtde += 1
+        session.commit()
+    except Exception as err:
+        logger.error(err, exc_info=True)
+        session.rollback()
+    tempo = time.time() - tempo
+    tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
+    logger.info(f'{qtde} isocode preenchidos em {tempo} segundos.' +
                 f'{tempo_registro} por registro')
 
 
