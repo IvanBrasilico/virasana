@@ -119,7 +119,7 @@ def periodic_updates(db, connection, lote=2000):
     try:
         jupapi.novas_gmcis(connection)
     except Exception as err:
-        logger.error(err)
+        logger.error(err, exc_info=True)
     try:
         conformidadeupdate.update_conformidade(db, connection)
         # Depois de dez dias, desiste de atualizar os campos extras puxados do bbox
@@ -128,7 +128,7 @@ def periodic_updates(db, connection, lote=2000):
         conformidadeupdate.completa_conformidade(db, connection, start=vintedias)
         conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
     except Exception as err:
-        logger.error(err)
+        logger.error(err, exc_info=True)
 
 
 if __name__ == '__main__':
