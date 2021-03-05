@@ -36,7 +36,6 @@ import click
 from ajna_commons.flask.log import logger
 from ajna_commons.utils.images import mongo_image, recorta_imagem
 from bson import ObjectId
-
 from virasana.db import mongodb as db
 from virasana.integracao.padma import (BBOX_MODELS, consulta_padma,
                                        interpreta_pred)
@@ -52,6 +51,9 @@ def monta_filtro(model: str, sovazios: bool,
     """Retorna filtro para MongoDB."""
     batch_size = tamanho
     filtro = {'metadata.contentType': 'image/jpeg'}
+    # Limitar a 30 dias para imagens que a predição der erro não ficarem para sempre sendo consultadas...
+    filtro['metadata.dataescaneamento'] = \
+        {'$gt': datetime.datetime.now() - datetime.timedelta(days=30)}
     if sovazios:
         filtro['metadata.carga.vazio'] = True
     # Modelo que cria uma caixa de coordenadas para recorte é pré requisito
