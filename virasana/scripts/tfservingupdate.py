@@ -18,6 +18,7 @@ Args:
     batch_size: quantidade de consultas simultâneas (mais rápido até limite do Servidor)
 
 """
+import datetime
 import io
 import sys
 import time
@@ -41,6 +42,9 @@ def monta_filtro(model: str, limit: int,
                  pulaerros=False) -> dict:
     """Retorna filtro para MongoDB."""
     filtro = {'metadata.contentType': 'image/jpeg'}
+    # Limitar a 30 dias para imagens que a predição der erro não ficarem para sempre sendo consultadas...
+    filtro['metadata.dataescaneamento'] = \
+        {'$gt': datetime.datetime.now() - datetime.timedelta(days=30)}
     # Modelo que cria uma caixa de coordenadas para recorte é pré requisito
     # para os outros modelos. Assim, outros modelos só podem rodar em registros
     # que já possuam o campo bbox (bbox: exists: True)
@@ -162,7 +166,7 @@ def tfs_predictions_update(modelo, limit=2000, batch_size=20,
             json_batch = {"signature_name": "serving_default", "instances": images}
             try:
                 r = requests.post(tfserving_url + '%s:predict' % modelo,
-                              json=json_batch, timeout=30)
+                                  json=json_batch, timeout=30)
             except requests.exceptions.Timeout as err:
                 logger.error(err)
                 break

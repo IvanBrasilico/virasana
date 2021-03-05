@@ -138,12 +138,12 @@ def completa_conformidade(db, engine, limit=2000, start=None):
 
     tempo = time.time()
     qtde = 0
-    for conformidade in lista_conformidade:
-        row = db['fs.files'].find_one({'_id': ObjectId(conformidade.id_imagem)})
-        tipotrafego = None
-        vazio = None
-        paisdestino = None
-        try:
+    try:
+        for conformidade in lista_conformidade:
+            row = db['fs.files'].find_one({'_id': ObjectId(conformidade.id_imagem)})
+            tipotrafego = None
+            vazio = None
+            paisdestino = None
             metadata = row['metadata']
             carga = metadata.get('carga')
             if carga:
@@ -167,9 +167,9 @@ def completa_conformidade(db, engine, limit=2000, start=None):
             session.add(conformidade)
             session.commit()
             qtde += 1
-        except Exception as err:
-            logger.error(err, exc_info=True)
-            session.rollback()
+    except Exception as err:
+        logger.error(err, exc_info=True)
+        session.rollback()
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
     logger.info(f'{qtde} análises de conformidade complementadas em {tempo} segundos.' +

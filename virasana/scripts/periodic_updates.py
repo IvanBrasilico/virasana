@@ -123,7 +123,7 @@ def periodic_updates(db, connection, lote=2000):
     try:
         conformidadeupdate.update_conformidade(db, connection)
         # Depois de dez dias, desiste de atualizar os campos extras puxados do bbox
-        conformidadeupdate.preenche_bbox(db, connection, start=vintedias)
+        conformidadeupdate.preenche_bbox(db, connection, start=dezdias)
         # Depois de vinte dias, desiste de atualizar os campos extras puxados do Carga
         conformidadeupdate.completa_conformidade(db, connection, start=vintedias)
         conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
