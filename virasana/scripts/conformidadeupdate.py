@@ -108,7 +108,6 @@ def preenche_bbox(db, engine, limit=2000, start=None):
                     image = grid_data.read()
                     image = recorta_imagem(image, bboxes, pil=True)
                     classe = preds[0].get('class')
-                    print(classe)
                     score = preds[0].get('score')
             if classe:
                 conformidade.bbox_classe = classe
