@@ -107,7 +107,8 @@ def preenche_bbox(db, engine, limit=2000, start=None):
                     bboxes = preds[0].get('bbox')
                     image = grid_data.read()
                     image = recorta_imagem(image, bboxes, pil=True)
-                    classe = preds[0].get('classe')
+                    classe = preds[0].get('class')
+                    print(classe)
                     score = preds[0].get('score')
             if classe:
                 conformidade.bbox_classe = classe
@@ -121,7 +122,7 @@ def preenche_bbox(db, engine, limit=2000, start=None):
         session.rollback()
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
-    logger.info(f'{qtde} isocode preenchidos em {tempo} segundos.' +
+    logger.info(f'{qtde} bbox preenchidos em {tempo} segundos.' +
                 f'{tempo_registro} por registro')
 
 
