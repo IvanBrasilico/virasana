@@ -48,7 +48,7 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
     if start is None:
         start = session.query(func.max(Conformidade.uploadDate)).scalar()
     if end is None:
-        end = datetime.datetime.now() + datetime.time.max
+        end = datetime.datetime.combine(datetime.datetime.now(), datetime.time.max)
     tempo = time.time()
     query = {'metadata.contentType': 'image/jpeg',
              'uploadDate': {'$gte': start, '$lte': end}
