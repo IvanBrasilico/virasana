@@ -1,15 +1,14 @@
 from datetime import datetime
+
+from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
+from virasana.models.auditoria import Auditoria
+from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
 from wtforms.validators import optional
-
-from ajna_commons.utils.sanitiza import mongo_sanitizar
-
-from virasana.models.models import Tags
-from virasana.models.auditoria import Auditoria
 
 MAXROWS = 50
 MAXPAGES = 100
@@ -103,3 +102,14 @@ class FormFiltro(FlaskForm):
             print('FILTRO: ', self.filtro)
             return True
         return False
+
+
+class FormFiltroData(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])

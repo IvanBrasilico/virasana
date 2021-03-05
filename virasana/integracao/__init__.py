@@ -20,6 +20,7 @@ import pickle
 from collections import defaultdict, OrderedDict
 from datetime import datetime, date
 
+import pandas as pd
 import plotly
 import plotly.graph_objs as go
 from ajna_commons.flask.conf import DATABASE, MONGODB_URI
@@ -27,7 +28,6 @@ from ajna_commons.flask.log import logger
 from ajna_commons.flask.user import DBUser
 from pymongo import ASCENDING, MongoClient
 from pymongo.errors import OperationFailure
-
 from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
@@ -548,6 +548,29 @@ def get_service_password():
         with open(VIRASANA_PASS_FILE, 'wb') as out:
             pickle.dump(password, out, pickle.HIGHEST_PROTOCOL)
     return USERNAME, password
+
+
+def get_conformidade(session, datainicio=None, datafim=None):
+    SQL_CONFORMIDADE = '''
+    SELECT cod_recinto as Recinto, count(*) as "Qtde de imagens",
+     CAST(avg(height) AS INT) as "Linhas (média)",
+     CAST(avg(width) AS INT) as "Colunas (média)",
+     avg(ratio) as "Relação largura/altura (média)",
+     SUM(height < 700) / count(*) * 100 as "% Tamanho pequeno",
+     SUM(ratio < 1.5) / count(ratio) * 100 as "% relação abaixo 1.5",
+     avg(laplacian) as "Índice de nitidez ou ruído",
+     avg(bbox_score) *100 as "% Confiança da VC",
+     (sum(bbox_classe>=3) / count(*)) * 100 as "% VC não encontra CC"
+     from ajna_conformidade 
+
+     group by cod_recinto
+     '''
+    rs = session.execute(SQL_CONFORMIDADE)
+    lista_conformidade = []
+    for row in rs:
+        lista_conformidade.append([str(col) for col in row])
+
+    return rs.keys(), lista_conformidade
 
 
 if __name__ == '__main__':

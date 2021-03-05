@@ -1,0 +1,65 @@
+{% extends "layout.html" %} {% block content %}{{super()}}
+<div id="main" class="container-fluid">
+    {% for field, errors in oform.errors.items() %}
+    <div class="alert alert-error">
+        {{ oform[field].label }}: {{ ', '.join(errors) }}
+    </div>
+    {% endfor %}
+    <div id="top" class="row">
+        <form method="POST" id="formfiltrodata" action="conformidade">
+            <div class="col-sm-12">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                    <h4>Filtrar por datas</h4>
+                </div>
+                <div class="col-sm-4">
+                    <label for="date">Período de escaneamento</label>
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
+                    </div>
+                    <div class="col-sm-8">
+                        <input class="btn btn-default btn-info" type="submit" value="Filtrar" />
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<div id="list" class="row">
+    <div class="table table-responsive col-sm-10">
+        <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+            <thead>
+            <tr>
+                {% for key in headers %}
+                <td>{{ key }}</td>
+                {% endfor %}
+            </tr>
+            </thead>
+            {% for row in lista_conformidade %}
+            <tr>
+                {% for item in row %}
+                <td>{{ item }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+<div id="bottom" class="row">
+    AJNA - Receita Federal do Brasil 2017
+</div>
+<!-- /#main -->
+{% endblock %} {% block scripts %} {{super()}}
+<script type="text/javascript">
+
+
+</script> {% endblock %}

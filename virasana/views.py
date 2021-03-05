@@ -35,12 +35,12 @@ from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
-from virasana.forms.filtros import FormFiltro
+from virasana.forms.filtros import FormFiltro, FormFiltroData
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
-                                 TIPOS_GRIDFS)
+                                 TIPOS_GRIDFS, get_conformidade)
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
@@ -1197,6 +1197,27 @@ def stats():
                            oform=form)
 
 
+@app.route('/conformidade', methods=['GET', 'POST'])
+@login_required
+def conformidade():
+    """Permite consulta o tabelão de estatísticas de conformidade."""
+    session = app.config['db_session']
+    headers= []
+    lista_conformidade = []
+    form = FormFiltroData(request.form,
+                     start=date.today() - timedelta(days=30),
+                     end=date.today())
+    if form.validate():
+        start = datetime.combine(form.start.data, datetime.min.time())
+        end = datetime.combine(form.end.data, datetime.max.time())
+        headers, lista_conformidade = get_conformidade(session, start, end)
+        # logger.debug(stats_cache)
+    return render_template('conformidade.html',
+                           headers=headers,
+                           lista_conformidade=lista_conformidade,
+                           oform=form)
+
+
 @app.route('/pie_plotly')
 @login_required
 def pie_plotly():
@@ -1477,6 +1498,7 @@ def mynavbar():
              View('Pesquisar arquivos', 'files'),
              View('Pesquisa lote com anomalia', 'lotes_anomalia'),
              View('Estatísticas', 'stats'),
+             View('Conformidade', 'conformidade'),
              Subgroup(
                  'Outros',
                  View('Pesquisa imagem externa', 'similar_file'),
