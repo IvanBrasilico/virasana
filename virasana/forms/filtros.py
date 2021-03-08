@@ -113,3 +113,6 @@ class FormFiltroData(FlaskForm):
     """
     start = DateField('Start', validators=[optional()])
     end = DateField('End', validators=[optional()])
+    pagina_atual = IntegerField('Pagina', default=1)
+    recinto = StringField(u'Nome do Recinto',
+                                   validators=[optional()], default='')

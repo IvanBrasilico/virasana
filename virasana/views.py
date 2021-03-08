@@ -40,7 +40,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
-                                 TIPOS_GRIDFS, get_conformidade)
+                                 TIPOS_GRIDFS, get_conformidade, get_conformidade_recinto)
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
@@ -900,7 +900,7 @@ def valida_form_files(form, filtro, db):
     order = None
     pagina_atual = None
     if form.validate():
-        numero = form.numero.data
+        numero = form.numero.data.strip()
         start = form.start.data
         end = form.end.data
         alerta = form.alerta.data
@@ -939,13 +939,13 @@ def valida_form_files(form, filtro, db):
             end = datetime.combine(end, datetime.max.time())
             filtro['metadata.dataescaneamento'] = {'$lte': end, '$gte': start}
         if numero:
-            filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
+            filtro['metadata.numeroinformado'] = {'$regex': '^' + mongo_sanitizar(numero).upper()}
         if alerta:
             filtro['metadata.xml.alerta'] = True
         if ranking:
             filtro['metadata.ranking'] = {'$exists': True, '$gte': .5}
             order = [('metadata.ranking', -1)]
-        if classe and classe!='0':
+        if classe and classe != '0':
             print(f'Selecionando classe {classe}')
             filtro['metadata.predictions.class'] = int(mongo_sanitizar(classe))
     else:
@@ -953,16 +953,19 @@ def valida_form_files(form, filtro, db):
     # print(filtro)
     return filtro, pagina_atual, order
 
+
 classes = {1: 'Container 40',
            2: 'Container 20',
            3: 'Container não localizado',
            4: 'Imagem de má qualidade - reescanear'}
 
+
 def get_classes():
-    choices  = [('0', 'Todas')]
+    choices = [('0', 'Todas')]
     for k, v in classes.items():
         choices.append((str(k), v))
     return choices
+
 
 @app.route('/files', methods=['GET', 'POST'])
 @login_required
@@ -1202,11 +1205,11 @@ def stats():
 def conformidade():
     """Permite consulta o tabelão de estatísticas de conformidade."""
     session = app.config['db_session']
-    headers= []
+    headers = []
     lista_conformidade = []
     form = FormFiltroData(request.form,
-                     start=date.today() - timedelta(days=30),
-                     end=date.today())
+                          start=date.today() - timedelta(days=30),
+                          end=date.today())
     if form.validate():
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
@@ -1214,6 +1217,29 @@ def conformidade():
         # logger.debug(stats_cache)
     return render_template('conformidade.html',
                            headers=headers,
+                           lista_conformidade=lista_conformidade,
+                           oform=form)
+
+
+@app.route('/conformidade_recinto', methods=['GET', 'POST'])
+@login_required
+def conformidade_recinto():
+    """Permite consulta o tabelão de estatísticas de conformidade."""
+    session = app.config['db_session']
+    lista_conformidade = []
+    form = FormFiltroData(request.values,
+                          start=date.today() - timedelta(days=30),
+                          end=date.today())
+    if form.validate():
+        start = datetime.combine(form.start.data, datetime.min.time())
+        end = datetime.combine(form.end.data, datetime.max.time())
+        lista_conformidade = get_conformidade_recinto(session,
+                                                      recinto=form.recinto.data,
+                                                      datainicio=start,
+                                                      datafim=end,
+                                                      paginaatual=form.pagina_atual.data)
+        # logger.debug(stats_cache)
+    return render_template('conformidade_recinto.html',
                            lista_conformidade=lista_conformidade,
                            oform=form)
 

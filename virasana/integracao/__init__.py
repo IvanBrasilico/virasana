@@ -19,8 +19,8 @@ import os
 import pickle
 from collections import defaultdict, OrderedDict
 from datetime import datetime, date
+from decimal import Decimal
 
-import pandas as pd
 import plotly
 import plotly.graph_objs as go
 from ajna_commons.flask.conf import DATABASE, MONGODB_URI
@@ -32,6 +32,7 @@ from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
 from virasana.integracao import xmli
+from virasana.integracao.conformidade_alchemy import Conformidade
 
 USERNAME = 'virasana_service'
 VIRASANA_PASS_FILE = os.path.join(os.path.dirname(__file__), USERNAME)
@@ -562,15 +563,32 @@ def get_conformidade(session, datainicio=None, datafim=None):
      avg(bbox_score) *100 as "% Confiança da VC",
      (sum(bbox_classe>=3) / count(*)) * 100 as "% VC não encontra CC"
      from ajna_conformidade 
-
+     where dataescaneamento between :datainicio and :datafim
      group by cod_recinto
      '''
-    rs = session.execute(SQL_CONFORMIDADE)
+    rs = session.execute(SQL_CONFORMIDADE, {'datainicio': datainicio,
+                                            'datafim': datafim})
     lista_conformidade = []
     for row in rs:
-        lista_conformidade.append([str(col) for col in row])
-
+        linha = []
+        for col in row:
+            if isinstance(col, int):
+                linha.append(col)
+            elif isinstance(col, Decimal):
+                linha.append('{:0.1f}'.format(col))
+            else:
+                linha.append(col)
+        lista_conformidade.append(linha)
     return rs.keys(), lista_conformidade
+
+
+def get_conformidade_recinto(session, recinto=None, datainicio=None,
+                             datafim=None, paginaatual=0):
+    lista_conformidade = session.query(Conformidade).filter(
+        Conformidade.dataescaneamento.between(datainicio, datafim)
+    ).limit(50).offset(50 * paginaatual).all()
+    print(datainicio, datafim)
+    return lista_conformidade
 
 
 if __name__ == '__main__':

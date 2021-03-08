@@ -27,7 +27,7 @@
                         <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
                     </div>
                     <div class="col-sm-8">
-                        <input class="btn btn-default btn-info" type="submit" value="Filtrar" />
+                        <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
                     </div>
                 </div>
             </div>
@@ -47,7 +47,16 @@
             {% for row in lista_conformidade %}
             <tr>
                 {% for item in row %}
+                {{ loop.counter }}
+                {{ headers[loop.counter] }}
+                {% if headers[loop.counter] == 'Recinto' %}
+                <td>
+                    <a href="conformidade_recinto?recinto={{item}}&datainicio={{oform.datainicio}}&datafim={{oform.datafim}}">
+                        {{ item }}</a>
+                </td>
+                {% else %}
                 <td>{{ item }}</td>
+                {% endif %}
                 {% endfor %}
             </tr>
             {% endfor %}
