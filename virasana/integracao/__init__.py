@@ -28,6 +28,7 @@ from ajna_commons.flask.log import logger
 from ajna_commons.flask.user import DBUser
 from pymongo import ASCENDING, MongoClient
 from pymongo.errors import OperationFailure
+from sqlalchemy import and_, func, text, desc
 from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
@@ -583,12 +584,22 @@ def get_conformidade(session, datainicio=None, datafim=None):
 
 
 def get_conformidade_recinto(session, recinto=None, datainicio=None,
-                             datafim=None, paginaatual=0):
-    lista_conformidade = session.query(Conformidade).filter(
-        Conformidade.dataescaneamento.between(datainicio, datafim)
-    ).limit(50).offset(50 * paginaatual).all()
+                             datafim=None, order=None, reverse=False, paginaatual=0):
+    ROWS_PER_PAGE = 10
+    filtro = and_(Conformidade.dataescaneamento.between(datainicio, datafim),
+                  Conformidade.cod_recinto == recinto)
+    npaginas = int(session.query(func.count(Conformidade.ID)).filter(filtro).scalar()
+                   / ROWS_PER_PAGE)
+    q = session.query(Conformidade).filter(filtro)
+    if order:
+        print(reverse)
+        if reverse:
+            q = q.order_by(desc(text(order)))
+        else:
+            q = q.order_by(text(order))
+    lista_conformidade = q.limit(ROWS_PER_PAGE).offset(ROWS_PER_PAGE * paginaatual).all()
     print(datainicio, datafim)
-    return lista_conformidade
+    return lista_conformidade, npaginas
 
 
 if __name__ == '__main__':

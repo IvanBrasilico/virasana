@@ -116,3 +116,6 @@ class FormFiltroData(FlaskForm):
     pagina_atual = IntegerField('Pagina', default=1)
     recinto = StringField(u'Nome do Recinto',
                                    validators=[optional()], default='')
+    order = StringField(u'Nome do campo para ordenar',
+                                   validators=[optional()], default='')
+    reverse = BooleanField('Order by DESC', default=False)

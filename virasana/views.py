@@ -1210,7 +1210,7 @@ def conformidade():
     form = FormFiltroData(request.form,
                           start=date.today() - timedelta(days=30),
                           end=date.today())
-    if form.validate():
+    if request.method == 'POST' and form.validate():
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
         headers, lista_conformidade = get_conformidade(session, start, end)
@@ -1226,22 +1226,27 @@ def conformidade():
 def conformidade_recinto():
     """Permite consulta o tabelão de estatísticas de conformidade."""
     session = app.config['db_session']
+    npaginas = 0
     lista_conformidade = []
+    print(request.values)
     form = FormFiltroData(request.values,
                           start=date.today() - timedelta(days=30),
                           end=date.today())
     if form.validate():
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
-        lista_conformidade = get_conformidade_recinto(session,
-                                                      recinto=form.recinto.data,
-                                                      datainicio=start,
-                                                      datafim=end,
-                                                      paginaatual=form.pagina_atual.data)
+        lista_conformidade, npaginas = get_conformidade_recinto(session,
+                                                                recinto=form.recinto.data,
+                                                                datainicio=start,
+                                                                datafim=end,
+                                                                order=form.order.data,
+                                                                reverse=form.reverse.data,
+                                                                paginaatual=form.pagina_atual.data)
         # logger.debug(stats_cache)
     return render_template('conformidade_recinto.html',
                            lista_conformidade=lista_conformidade,
-                           oform=form)
+                           oform=form,
+                           npaginas=npaginas)
 
 
 @app.route('/pie_plotly')

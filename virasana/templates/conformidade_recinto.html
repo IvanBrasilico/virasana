@@ -9,12 +9,14 @@
         <form method="POST" id="formfiltrodata" action="conformidade_recinto">
             <div class="col-sm-12">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="recinto" value="{{oform.recinto}}"/>
-                <input type="hidden" name="paginaatual" value="{{oform.paginaatual}}"/>
+                <input type="hidden" name="recinto" value="{{oform.recinto.data}}"/>
+                <input type="hidden" name="order" id="order" value="{{oform.order.data}}"/>
+                <input type="hidden" name="reverse" id="desc" value="{{oform.reverse.data}}"/>
+                <input type="hidden" name="pagina_atual" value="{{oform.pagina_atual.data}}"/>
             </div>
             <div class="row">
                 <div class="col-sm-12">
-                    <h4>Filtrar por datas</h4>
+                    <h4>Recinto {{ oform.recinto.data }} - filtrar por datas</h4>
                 </div>
                 <div class="col-sm-4">
                     <label for="date">Período de escaneamento</label>
@@ -35,11 +37,12 @@
                         <input class="form-control" type="hidden" id="pagina_atual" name="pagina_atual"
                                value="{{oform.pagina_atual.data}}"/>
                         <button onclick="next_page(-1)" id="btn_page1" type="button" class="btn btn-default btn-info">
-                            >
-                        </button>
-                        <button onclick="next_page(1)" id="btn_page4" type="button" class="btn btn-default btn-info">
                             <
                         </button>
+                        <button onclick="next_page(1)" id="btn_page4" type="button" class="btn btn-default btn-info">
+                            >
+                        </button>
+                        Página {{oform.pagina_atual.data}} de {{npaginas}}
                     </div>
                 </div>
             </div>
@@ -51,14 +54,24 @@
         <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
             <thead>
             <tr>
-                <td>Largura</td>
-                <td>Altura</td>
-                <td>Relação L/A</td>
-                <td>Nitidez</td>
-                <td>Classe</td>
-                <td>Confiança</td>
-                <td>Tipo</td>
-                <td>Imagem</td>
+                <th>Largura</th>
+                <th>Altura</th>
+                <th>Relação L/A
+                    <button onclick="doPost('ratio', false)">&#8593;</button>
+                    <button onclick="doPost('ratio', true)">&#8595;</button>
+                </th>
+                <th>Nitidez
+                    <button onclick="doPost('laplacian', false)">&#8593;</button>
+                    <button onclick="doPost('laplacian', true)">&#8595;</button>
+                </th>
+                <th>Classe</th>
+                <th>Confiança
+                    <button onclick="doPost('bbox_score', false)">&#8593;</button>
+                    <button onclick="doPost('bbox_score', true)">&#8595;</button>
+                </th>
+                </th>
+                <th>Tipo</th>
+                <th>Imagem</th>
             </tr>
             </thead>
             {% for conformidade in lista_conformidade %}
@@ -105,7 +118,7 @@
 {% endblock %} {% block scripts %} {{super()}}
 <script type="text/javascript">
 
-        function next_page(increment) {
+    function next_page(increment) {
         var page = Number($('#pagina_atual').val());
         new_page = page + increment;
         if (new_page <= 0) new_page = 1;
@@ -115,10 +128,11 @@
         form.submit();
     }
 
-
-
-
-
+    function doPost(order, desc){
+        $('#order').val(order);
+        $('#desc').val(desc);
+        $('#formfiltrodata').submit();
+    }
 
 
 

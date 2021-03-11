@@ -1,14 +1,15 @@
 {% extends "layout.html" %} {% block content %}{{super()}}
 <div id="main" class="container-fluid">
     {% for field, errors in oform.errors.items() %}
-    <div class="alert alert-error">
+    <div class="alert alert-error row col-sm-12">
         {{ oform[field].label }}: {{ ', '.join(errors) }}
     </div>
     {% endfor %}
-    <div id="top" class="row">
+    <div id="top" class="row col-sm-12">
         <form method="POST" id="formfiltrodata" action="conformidade">
             <div class="col-sm-12">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="recinto" id="recinto" value=""/>
             </div>
             <div class="row">
                 <div class="col-sm-12">
@@ -35,24 +36,21 @@
     </div>
 </div>
 <div id="list" class="row">
-    <div class="table table-responsive col-sm-10">
+    &nbsp;
+    <div class="table table-responsive col-sm-12 row">
         <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
             <thead>
             <tr>
                 {% for key in headers %}
-                <td>{{ key }}</td>
+                <th>{{ key }}</th>
                 {% endfor %}
             </tr>
             </thead>
             {% for row in lista_conformidade %}
             <tr>
                 {% for item in row %}
-                {{ loop.counter }}
-                {{ headers[loop.counter] }}
-                {% if headers[loop.counter] == 'Recinto' %}
-                <td>
-                    <a href="conformidade_recinto?recinto={{item}}&datainicio={{oform.datainicio}}&datafim={{oform.datafim}}">
-                        {{ item }}</a>
+                {% if headers[loop.index - 1] == 'Recinto' %}
+                <td><button onclick="doPost('{{item}}')">{{ item }}</button>
                 </td>
                 {% else %}
                 <td>{{ item }}</td>
@@ -63,12 +61,32 @@
         </table>
     </div>
 </div>
-<div id="bottom" class="row">
+<div id="bottom" class="row col-sm-12">
     AJNA - Receita Federal do Brasil 2017
 </div>
 <!-- /#main -->
 {% endblock %} {% block scripts %} {{super()}}
 <script type="text/javascript">
+    $('th').click(function(){
+        var table = $(this).parents('table').eq(0)
+        var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+        this.asc = !this.asc
+        if (!this.asc){rows = rows.reverse()}
+        for (var i = 0; i < rows.length; i++){table.append(rows[i])}
+    })
+    function comparer(index) {
+        return function(a, b) {
+            var valA = getCellValue(a, index), valB = getCellValue(b, index)
+            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+        }
+    }
+    function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
+    function doPost(recinto){
+        $('#recinto').val(recinto);
+        $('#formfiltrodata').attr('action', 'conformidade_recinto');
+        $('#formfiltrodata').submit();
+    }
 
 
 </script> {% endblock %}
