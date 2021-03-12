@@ -28,8 +28,6 @@ from pymongo.errors import OperationFailure
 from ajna_commons.flask.conf import DATABASE, MONGODB_URI
 from ajna_commons.flask.log import logger
 from ajna_commons.flask.user import DBUser
-from pymongo import ASCENDING, MongoClient
-from pymongo.errors import OperationFailure
 from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
