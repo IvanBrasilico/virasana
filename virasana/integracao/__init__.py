@@ -19,21 +19,19 @@ import os
 import pickle
 from collections import defaultdict, OrderedDict
 from datetime import datetime, date
-from decimal import Decimal
 
 import plotly
 import plotly.graph_objs as go
 from ajna_commons.flask.conf import DATABASE, MONGODB_URI
 from ajna_commons.flask.log import logger
 from ajna_commons.flask.user import DBUser
+from integracao.risco.conformidade_alchemy import Conformidade
 from pymongo import ASCENDING, MongoClient
 from pymongo.errors import OperationFailure
-from sqlalchemy import and_, func, text, desc
 from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
 from virasana.integracao import xmli
-from virasana.integracao.conformidade_alchemy import Conformidade
 
 USERNAME = 'virasana_service'
 VIRASANA_PASS_FILE = os.path.join(os.path.dirname(__file__), USERNAME)
@@ -550,56 +548,6 @@ def get_service_password():
         with open(VIRASANA_PASS_FILE, 'wb') as out:
             pickle.dump(password, out, pickle.HIGHEST_PROTOCOL)
     return USERNAME, password
-
-
-def get_conformidade(session, datainicio=None, datafim=None):
-    SQL_CONFORMIDADE = '''
-    SELECT cod_recinto as Recinto, count(*) as "Qtde de imagens",
-     CAST(avg(height) AS INT) as "Linhas (média)",
-     CAST(avg(width) AS INT) as "Colunas (média)",
-     avg(ratio) as "Relação largura/altura (média)",
-     SUM(height < 700) / count(*) * 100 as "% Tamanho pequeno",
-     SUM(ratio < 1.5) / count(ratio) * 100 as "% relação abaixo 1.5",
-     avg(laplacian) as "Índice de nitidez ou ruído",
-     avg(bbox_score) *100 as "% Confiança da VC",
-     (sum(bbox_classe>=3) / count(*)) * 100 as "% VC não encontra CC"
-     from ajna_conformidade 
-     where dataescaneamento between :datainicio and :datafim
-     group by cod_recinto
-     '''
-    rs = session.execute(SQL_CONFORMIDADE, {'datainicio': datainicio,
-                                            'datafim': datafim})
-    lista_conformidade = []
-    for row in rs:
-        linha = []
-        for col in row:
-            if isinstance(col, int):
-                linha.append(col)
-            elif isinstance(col, Decimal):
-                linha.append('{:0.1f}'.format(col))
-            else:
-                linha.append(col)
-        lista_conformidade.append(linha)
-    return rs.keys(), lista_conformidade
-
-
-def get_conformidade_recinto(session, recinto=None, datainicio=None,
-                             datafim=None, order=None, reverse=False, paginaatual=0):
-    ROWS_PER_PAGE = 10
-    filtro = and_(Conformidade.dataescaneamento.between(datainicio, datafim),
-                  Conformidade.cod_recinto == recinto)
-    npaginas = int(session.query(func.count(Conformidade.ID)).filter(filtro).scalar()
-                   / ROWS_PER_PAGE)
-    q = session.query(Conformidade).filter(filtro)
-    if order:
-        print(reverse)
-        if reverse:
-            q = q.order_by(desc(text(order)))
-        else:
-            q = q.order_by(text(order))
-    lista_conformidade = q.limit(ROWS_PER_PAGE).offset(ROWS_PER_PAGE * paginaatual).all()
-    print(datainicio, datafim)
-    return lista_conformidade, npaginas
 
 
 if __name__ == '__main__':

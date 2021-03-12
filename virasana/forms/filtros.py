@@ -113,9 +113,26 @@ class FormFiltroData(FlaskForm):
     """
     start = DateField('Start', validators=[optional()])
     end = DateField('End', validators=[optional()])
+    recinto = StringField(u'Nome do Recinto',
+                          validators=[optional()], default='')
+
+
+class FormFiltroConformidade(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])
     pagina_atual = IntegerField('Pagina', default=1)
     recinto = StringField(u'Nome do Recinto',
-                                   validators=[optional()], default='')
+                          validators=[optional()], default='')
     order = StringField(u'Nome do campo para ordenar',
-                                   validators=[optional()], default='')
+                        validators=[optional()], default='')
     reverse = BooleanField('Order by DESC', default=False)
+    isocode_size = SelectField(u'Iso Code size',
+                               validators=[optional()], default='')
+    isocode_group = SelectField(u'Iso Code Group',
+                                validators=[optional()], default='')

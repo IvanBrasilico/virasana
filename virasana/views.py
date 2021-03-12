@@ -35,15 +35,20 @@ from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
-from virasana.forms.filtros import FormFiltro, FormFiltroData
+from virasana.forms.filtros import FormFiltro, FormFiltroData, FormFiltroConformidade
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
-                                 TIPOS_GRIDFS, get_conformidade, get_conformidade_recinto)
+                                 TIPOS_GRIDFS)
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
+from virasana.integracao.risco.alertas_manager import get_alertas
+from virasana.integracao.risco.conformidade_alchemy import \
+    get_isocode_groups_choices, get_isocode_sizes_choices
+from virasana.integracao.risco.conformidade_manager import \
+    get_conformidade, get_conformidade_recinto
 from virasana.models.anomalia_lote import get_conhecimentos_filtro, \
     get_ids_score_conhecimento_zscore
 from virasana.models.auditoria import Auditoria
@@ -1210,11 +1215,15 @@ def conformidade():
     form = FormFiltroData(request.form,
                           start=date.today() - timedelta(days=30),
                           end=date.today())
-    if request.method == 'POST' and form.validate():
-        start = datetime.combine(form.start.data, datetime.min.time())
-        end = datetime.combine(form.end.data, datetime.max.time())
-        headers, lista_conformidade = get_conformidade(session, start, end)
-        # logger.debug(stats_cache)
+    try:
+        if request.method == 'POST' and form.validate():
+            start = datetime.combine(form.start.data, datetime.min.time())
+            end = datetime.combine(form.end.data, datetime.max.time())
+            headers, lista_conformidade = get_conformidade(session, start, end)
+            # logger.debug(stats_cache)
+    except Exception as err:
+        flash(err)
+        logger.error(err, exc_info=True)
     return render_template('conformidade.html',
                            headers=headers,
                            lista_conformidade=lista_conformidade,
@@ -1227,24 +1236,67 @@ def conformidade_recinto():
     """Permite consulta o tabelão de estatísticas de conformidade."""
     session = app.config['db_session']
     npaginas = 0
+    headers = []
+    conformidade = []
     lista_conformidade = []
+    print(request.values)
+    form = FormFiltroConformidade(request.values,
+                                  start=date.today() - timedelta(days=30),
+                                  end=date.today())
+    form.isocode_group.choices = get_isocode_groups_choices(session)
+    form.isocode_size.choices = get_isocode_sizes_choices(session)
+    try:
+        if form.validate():
+            start = datetime.combine(form.start.data, datetime.min.time())
+            end = datetime.combine(form.end.data, datetime.max.time())
+            headers, conformidade = get_conformidade(session, start, end,
+                                                     form.recinto.data,
+                                                     isocode_group=form.isocode_group.data,
+                                                     isocode_size=form.isocode_size.data)
+            lista_conformidade, npaginas = get_conformidade_recinto(session,
+                                                                    recinto=form.recinto.data,
+                                                                    datainicio=start,
+                                                                    datafim=end,
+                                                                    order=form.order.data,
+                                                                    reverse=form.reverse.data,
+                                                                    isocode_group=form.isocode_group.data,
+                                                                    isocode_size=form.isocode_size.data,
+                                                                    paginaatual=form.pagina_atual.data)
+    except Exception as err:
+        flash(err)
+        logger.error(err, exc_info=True)
+    return render_template('conformidade_recinto.html',
+                           lista_conformidade=lista_conformidade,
+                           oform=form,
+                           npaginas=npaginas,
+                           headers=headers,
+                           conformidade=conformidade)
+
+
+@app.route('/alertas', methods=['GET', 'POST'])
+@login_required
+def alertas():
+    """Permite consultar o tabelão de estatísticas de alertas."""
+    session = app.config['db_session']
+    npaginas = 0
+    lista_alertas = []
     print(request.values)
     form = FormFiltroData(request.values,
                           start=date.today() - timedelta(days=30),
                           end=date.today())
-    if form.validate():
-        start = datetime.combine(form.start.data, datetime.min.time())
-        end = datetime.combine(form.end.data, datetime.max.time())
-        lista_conformidade, npaginas = get_conformidade_recinto(session,
-                                                                recinto=form.recinto.data,
-                                                                datainicio=start,
-                                                                datafim=end,
-                                                                order=form.order.data,
-                                                                reverse=form.reverse.data,
-                                                                paginaatual=form.pagina_atual.data)
-        # logger.debug(stats_cache)
-    return render_template('conformidade_recinto.html',
-                           lista_conformidade=lista_conformidade,
+    try:
+        if form.validate():
+            start = datetime.combine(form.start.data, datetime.min.time())
+            end = datetime.combine(form.end.data, datetime.max.time())
+            lista_alertas, npaginas = get_alertas(session,
+                                                  recinto=form.recinto.data,
+                                                  datainicio=start,
+                                                  datafim=end)
+    except Exception as err:
+        flash(err)
+        logger.error(err, exc_info=True)
+    return render_template('alertas.html',
+                           lista_alertas=lista_alertas,
                            oform=form,
                            npaginas=npaginas)
 
@@ -1529,9 +1581,11 @@ def mynavbar():
              View('Pesquisar arquivos', 'files'),
              View('Pesquisa lote com anomalia', 'lotes_anomalia'),
              View('Estatísticas', 'stats'),
-             View('Conformidade', 'conformidade'),
              Subgroup(
                  'Outros',
+                 View('Alertas', 'alertas'),
+                 View('Conformidade', 'conformidade'),
+                 Separator(),
                  View('Pesquisa imagem externa', 'similar_file'),
                  View('Pesquisa textual', 'text_search'),
                  Separator(),

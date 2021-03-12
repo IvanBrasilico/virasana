@@ -30,10 +30,16 @@
                     <div class="col-sm-2">
                         <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
                     </div>
-                    <div class="col-sm-6">
-                        <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
+                    <div class="col-sm-1">
+                        {{oform.isocode_size(class='form-control')}}
+                    </div>
+                    <div class="col-sm-1">
+                        {{oform.isocode_group(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
+                        <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
+                    </div>
+                    <div class="col-sm-4">
                         <input class="form-control" type="hidden" id="pagina_atual" name="pagina_atual"
                                value="{{oform.pagina_atual.data}}"/>
                         <button onclick="next_page(-1)" id="btn_page1" type="button" class="btn btn-default btn-info">
@@ -49,13 +55,47 @@
         </form>
     </div>
 </div>
-<div id="list" class="row">
-    <div class="table table-responsive col-sm-10">
+<div id="resumorecinto" class="row">
+    &nbsp;
+    <div class="table table-responsive col-sm-12 row">
         <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
             <thead>
             <tr>
-                <th>Largura</th>
-                <th>Altura</th>
+                {% for key in headers %}
+                <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+            </thead>
+            {% for row in conformidade %}
+            <tr>
+                {% for item in row %}
+                {% if headers[loop.index - 1] == 'Recinto' %}
+                <td><button onclick="doPost2()">{{ item }}</button>
+                </td>
+                {% else %}
+                <td>{{ item }}</td>
+                {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<div id="list" class="row">
+    <div class="table table-responsive col-sm-12">
+        <table style="white-space:nowrap;"
+               class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+            <thead>
+            <tr>
+                <th>Largura
+                    <button onclick="doPost('width', false)">&#8593;</button>
+                    <button onclick="doPost('width', true)">&#8595;</button>
+                </th>
+                <th>Altura
+                    <button onclick="doPost('height', false)">&#8593;</button>
+                    <button onclick="doPost('height', true)">&#8595;</button>
+                </th>
                 <th>Relação L/A
                     <button onclick="doPost('ratio', false)">&#8593;</button>
                     <button onclick="doPost('ratio', true)">&#8595;</button>
@@ -64,11 +104,13 @@
                     <button onclick="doPost('laplacian', false)">&#8593;</button>
                     <button onclick="doPost('laplacian', true)">&#8595;</button>
                 </th>
-                <th>Classe</th>
+                <th>Classe
+                    <button onclick="doPost('bbox_classe', false)">&#8593;</button>
+                    <button onclick="doPost('bbox_classe', true)">&#8595;</button>
+                </th>
                 <th>Confiança
                     <button onclick="doPost('bbox_score', false)">&#8593;</button>
                     <button onclick="doPost('bbox_score', true)">&#8595;</button>
-                </th>
                 </th>
                 <th>Tipo</th>
                 <th>Imagem</th>
@@ -133,6 +175,13 @@
         $('#desc').val(desc);
         $('#formfiltrodata').submit();
     }
+
+    function doPost2(){
+        $('#recinto').val('');
+        $('#formfiltrodata').attr('action', 'conformidade');
+        $('#formfiltrodata').submit();
+    }
+
 
 
 

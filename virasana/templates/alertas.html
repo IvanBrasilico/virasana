@@ -1,0 +1,97 @@
+{% extends "layout.html" %} {% block content %}{{super()}}
+<div id="main" class="container-fluid">
+    {% for field, errors in oform.errors.items() %}
+    <div class="alert alert-error">
+        {{ oform[field].label }}: {{ ', '.join(errors) }}
+    </div>
+    {% endfor %}
+    <div id="top" class="row">
+        <form method="POST" id="formfiltrodata" action="alertas">
+            <div class="col-sm-12">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="recinto" value="{{oform.recinto.data}}"/>
+                <input type="hidden" name="pagina_atual" value="{{oform.pagina_atual.data}}"/>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                    <h4>Recinto {{ oform.recinto.data }} - filtrar por datas</h4>
+                </div>
+                <div class="col-sm-4">
+                    <label for="date">Período de escaneamento</label>
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
+                    </div>
+                    <div class="col-sm-6">
+                        <input class="form-control" type="hidden" id="pagina_atual" name="pagina_atual"
+                               value="{{oform.pagina_atual.data}}"/>
+                        <button onclick="next_page(-1)" id="btn_page1" type="button" class="btn btn-default btn-info">
+                            <
+                        </button>
+                        <button onclick="next_page(1)" id="btn_page4" type="button" class="btn btn-default btn-info">
+                            >
+                        </button>
+                        Página {{oform.pagina_atual.data}} de {{npaginas}}
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<div id="list" class="row">
+    <div class="table table-responsive col-sm-12">
+        <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+            <thead>
+            <tr>
+                <th>Dados</th>
+                <th>Imagem</th>
+            </tr>
+            </thead>
+            {% for alerta in alertas %}
+            <tr>
+                <td>
+                    {{alerta.texto}}
+                </td>
+                <td>
+                    <a href="file?_id={{conformidade.id_imagem}}" target="_BLANK">
+                        <img src="image/{{conformidade.id_imagem}}"
+                             alt="Sem imagem" width="auto" height="auto"
+                             style="border: 1px solid #000; max-width:800px; max-height:320px;"
+                             onmouseover="showMsg(this, '{{ conformidade.id_imagemv}}')" onmouseout="clearMsg(this)"
+                        />
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+<div id="bottom" class="row">
+    AJNA - Receita Federal do Brasil 2017
+</div>
+<!-- /#main -->
+{% endblock %} {% block scripts %} {{super()}}
+<script type="text/javascript">
+
+    function next_page(increment) {
+        var page = Number($('#pagina_atual').val());
+        new_page = page + increment;
+        if (new_page <= 0) new_page = 1;
+        if (new_page > {{ npaginas }}) {new_page = {{ npaginas }}};
+        $('#pagina_atual').val(new_page);
+        form = $('#formfiltro');
+        form.submit();
+    }
+
+
+
+</script> {% endblock %}
