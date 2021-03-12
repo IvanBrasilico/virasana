@@ -1285,7 +1285,7 @@ def alertas():
                           start=date.today() - timedelta(days=30),
                           end=date.today())
     try:
-        if form.validate():
+        if request.method == 'POST' and form.validate():
             start = datetime.combine(form.start.data, datetime.min.time())
             end = datetime.combine(form.end.data, datetime.max.time())
             lista_alertas, npaginas = get_alertas(session,

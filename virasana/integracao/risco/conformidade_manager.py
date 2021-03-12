@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from virasana.integracao import Conformidade
 from sqlalchemy import and_, func, text, desc
+from virasana.integracao.risco.conformidade_alchemy import Conformidade
 
 
 def get_conformidade(session, datainicio=None, datafim=None, cod_recinto='',
@@ -68,4 +68,3 @@ def get_conformidade_recinto(session, recinto=None, datainicio=None,
     lista_conformidade = q.limit(ROWS_PER_PAGE).offset(ROWS_PER_PAGE * paginaatual).all()
     print(datainicio, datafim)
     return lista_conformidade, npaginas
-
