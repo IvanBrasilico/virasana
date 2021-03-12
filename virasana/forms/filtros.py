@@ -116,6 +116,7 @@ class FormFiltroData(FlaskForm):
     end = DateField('End', validators=[optional()])
     recinto = StringField(u'Nome do Recinto',
                           validators=[optional()], default='')
+    pagina_atual = IntegerField('Pagina', default=1)
 
 
 class FormFiltroConformidade(FlaskForm):
