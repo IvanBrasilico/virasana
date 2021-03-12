@@ -22,16 +22,17 @@ from datetime import datetime, date
 
 import plotly
 import plotly.graph_objs as go
+from pymongo import ASCENDING, MongoClient
+from pymongo.errors import OperationFailure
+
 from ajna_commons.flask.conf import DATABASE, MONGODB_URI
 from ajna_commons.flask.log import logger
 from ajna_commons.flask.user import DBUser
-from integracao.risco.conformidade_alchemy import Conformidade
-from pymongo import ASCENDING, MongoClient
-from pymongo.errors import OperationFailure
 from virasana.integracao import carga
 from virasana.integracao import info_ade02
 from virasana.integracao import padma
 from virasana.integracao import xmli
+from virasana.integracao.risco.conformidade_alchemy import Conformidade
 
 USERNAME = 'virasana_service'
 VIRASANA_PASS_FILE = os.path.join(os.path.dirname(__file__), USERNAME)

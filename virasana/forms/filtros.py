@@ -1,14 +1,15 @@
 from datetime import datetime
 
-from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
-from virasana.models.auditoria import Auditoria
-from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
 from wtforms.validators import optional
+
+from ajna_commons.utils.sanitiza import mongo_sanitizar
+from virasana.models.auditoria import Auditoria
+from virasana.models.models import Tags
 
 MAXROWS = 50
 MAXPAGES = 100
@@ -136,3 +137,20 @@ class FormFiltroConformidade(FlaskForm):
                                validators=[optional()], default='')
     isocode_group = SelectField(u'Iso Code Group',
                                 validators=[optional()], default='')
+
+
+class FormFiltroAlerta(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])
+    pagina_atual = IntegerField('Pagina', default=1)
+    recinto = StringField(u'Nome do Recinto',
+                          validators=[optional()], default='')
+    order = StringField(u'Nome do campo para ordenar',
+                        validators=[optional()], default='')
+    reverse = BooleanField('Order by DESC', default=False)
