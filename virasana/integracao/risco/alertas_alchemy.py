@@ -5,7 +5,6 @@
 import sys
 from enum import Enum
 
-sys.path.append('..')
 sys.path.append('../ajna_docs/commons')
 
 from ajna_commons.flask.conf import SQL_URI
@@ -25,6 +24,11 @@ class NivelAlerta(Enum):
     Alto = 5
     Critico = 8
 
+class EstadoAlerta(Enum):
+    Ativo = 1
+    Resultado = 2
+    VistoEArquivado = 3
+    ArquivadoSemVisualizacao = 4
 
 cor_nivel = {
     NivelAlerta.Baixo: "#00ff00",
@@ -44,8 +48,9 @@ class Alerta(Base):
                 primary_key=True, autoincrement=True)
     origem = Column(BigInteger().with_variant(Integer, 'sqlite'), index=True)
     nivel = Column(Integer(), index=True)
+    estado = Column(Integer(), index=True)
     cod_recinto = Column(VARCHAR(20), index=True)
-    id_imagem = Column(VARCHAR(40), unique=True)
+    id_imagem = Column(VARCHAR(40), index=True)
     dataescaneamento = Column(DateTime, index=True)
     numeroinformado = Column(VARCHAR(11), index=True)  # Número contêiner
     informacoes = Column(VARCHAR(1000), index=True)  # Texto resumindo o alerta
@@ -55,7 +60,7 @@ class Alerta(Base):
                            onupdate=func.current_timestamp())
 
 
-class Apontamentos(Base):
+class Apontamento(Base):
     """Os apontamentos são rodados periodicamente na base. Se encontrados, geram um alerta.
 
     """

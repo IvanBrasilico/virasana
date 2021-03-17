@@ -53,17 +53,17 @@
                 <th>Imagem</th>
             </tr>
             </thead>
-            {% for alerta in alertas %}
+            {% for alerta in lista_alertas %}
             <tr>
                 <td>
                     {{alerta.texto}}
                 </td>
                 <td>
-                    <a href="file?_id={{conformidade.id_imagem}}" target="_BLANK">
-                        <img src="image/{{conformidade.id_imagem}}"
+                    <a href="file?_id={{alerta.id_imagem}}" target="_BLANK">
+                        <img src="image/{{alerta.id_imagem}}"
                              alt="Sem imagem" width="auto" height="auto"
                              style="border: 1px solid #000; max-width:800px; max-height:320px;"
-                             onmouseover="showMsg(this, '{{ conformidade.id_imagemv}}')" onmouseout="clearMsg(this)"
+                             onmouseover="showMsg(this, '{{ alerta.id_imagemv}}')" onmouseout="clearMsg(this)"
                         />
                     </a>
                 </td>

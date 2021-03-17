@@ -1296,6 +1296,7 @@ def alertas():
                                                          order=form.order.data,
                                                          reverse=form.reverse.data,
                                                          paginaatual=form.pagina_atual.data)
+            print(lista_alertas, npaginas)
     except Exception as err:
         flash(err)
         logger.error(err, exc_info=True)
