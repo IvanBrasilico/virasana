@@ -39,29 +39,7 @@ class FiltroAlerta():
         self.filtro = condicao_(self.filtro, getattr(Alerta, campo) == valor)
 
 
-def get_alertas_filtro(session, recinto=None, datainicio=None, datafim=None,
-                       order=None, reverse=False, paginaatual=1):
-    filtroalerta = FiltroAlerta(datainicio, datafim)
-    if recinto:
-        filtroalerta.add_campo('cod_recinto', recinto)
-    filtro = filtroalerta.filtro
-    npaginas = int(session.query(func.count(Alerta.ID)).filter(filtro).scalar()
-                   / ROWS_PER_PAGE)
-    q = session.query(Alerta).filter(filtro)
-    if order:
-        if reverse:
-            q = q.order_by(desc(text(order)))
-        else:
-            q = q.order_by(text(order))
-    logger.info(str(q))
-    logger.info(' '.join([recinto, str(datainicio), str(datafim),
-                          str(order), str(paginaatual)]))
-    lista_alertas = q.limit(ROWS_PER_PAGE).offset(ROWS_PER_PAGE * (paginaatual - 1)).all()
-    print(datainicio, datafim)
-    return lista_alertas, npaginas
-
-
-def get_alertas_filtro2(session, form: FormFiltroAlerta):
+def get_alertas_filtro(session, form: FormFiltroAlerta):
     start = datetime.combine(form.start.data, datetime.min.time())
     end = datetime.combine(form.end.data, datetime.max.time())
     recinto = form.recinto.data

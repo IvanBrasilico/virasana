@@ -11,7 +11,16 @@ from datetime import date, datetime, timedelta
 from json import JSONDecodeError
 from sys import platform
 
+import ajna_commons.flask.login as login_ajna
+import ajna_commons.flask.user as user_ajna
 import requests
+from ajna_commons.flask.conf import (BSON_REDIS, DATABASE, logo, MONGODB_URI,
+                                     PADMA_URL, SECRET, redisdb)
+from ajna_commons.flask.log import logger
+from ajna_commons.utils import ImgEnhance
+from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
+from ajna_commons.utils.sanitiza import mongo_sanitizar
+from bhadrasana.models import Usuario
 from bson import json_util
 from bson.objectid import ObjectId
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
@@ -25,19 +34,6 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
-from wtforms import (BooleanField, DateField, FloatField, IntegerField,
-                     PasswordField, SelectField, StringField)
-from wtforms.validators import DataRequired, optional
-
-import ajna_commons.flask.login as login_ajna
-import ajna_commons.flask.user as user_ajna
-from ajna_commons.flask.conf import (BSON_REDIS, DATABASE, logo, MONGODB_URI,
-                                     PADMA_URL, SECRET, redisdb)
-from ajna_commons.flask.log import logger
-from ajna_commons.utils import ImgEnhance
-from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
-from ajna_commons.utils.sanitiza import mongo_sanitizar
-from bhadrasana.models import Usuario
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroData, FormFiltroConformidade, FormFiltroAlerta
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
@@ -48,7 +44,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
-from virasana.integracao.risco.alertas_manager import get_alertas_filtro, get_alertas_filtro2
+from virasana.integracao.risco.alertas_manager import get_alertas_filtro
 from virasana.integracao.risco.conformidade_alchemy import \
     get_isocode_groups_choices, get_isocode_sizes_choices
 from virasana.integracao.risco.conformidade_manager import \
@@ -61,6 +57,9 @@ from virasana.models.models import Ocorrencias, Tags
 from virasana.models.text_index import TextSearch
 from virasana.workers.dir_monitor import BSON_DIR
 from virasana.workers.tasks import raspa_dir, trata_bson
+from wtforms import (BooleanField, DateField, FloatField, IntegerField,
+                     PasswordField, SelectField, StringField)
+from wtforms.validators import DataRequired, optional
 
 app = Flask(__name__, static_url_path='/static')
 # app.jinja_env.filters['zip'] = zip
