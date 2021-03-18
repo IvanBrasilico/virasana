@@ -48,7 +48,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
-from virasana.integracao.risco.alertas_manager import get_alertas_filtro
+from virasana.integracao.risco.alertas_manager import get_alertas_filtro, get_alertas_filtro2
 from virasana.integracao.risco.conformidade_alchemy import \
     get_isocode_groups_choices, get_isocode_sizes_choices
 from virasana.integracao.risco.conformidade_manager import \
@@ -1289,13 +1289,7 @@ def alertas():
         if request.method == 'POST' and form.validate():
             start = datetime.combine(form.start.data, datetime.min.time())
             end = datetime.combine(form.end.data, datetime.max.time())
-            lista_alertas, npaginas = get_alertas_filtro(session,
-                                                         recinto=form.recinto.data,
-                                                         datainicio=start,
-                                                         datafim=end,
-                                                         order=form.order.data,
-                                                         reverse=form.reverse.data,
-                                                         paginaatual=form.pagina_atual.data)
+            lista_alertas, npaginas = get_alertas_filtro(session, form)
             print(lista_alertas, npaginas)
     except Exception as err:
         flash(err)
