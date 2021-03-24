@@ -44,7 +44,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
 from virasana.integracao.due import due_mongo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
-from virasana.integracao.risco.alertas_manager import get_alertas_filtro
+from virasana.integracao.risco.alertas_manager import get_alertas_filtro_agrupados
 from virasana.integracao.risco.conformidade_alchemy import \
     get_isocode_groups_choices, get_isocode_sizes_choices
 from virasana.integracao.risco.conformidade_manager import \
@@ -1279,22 +1279,20 @@ def alertas():
     """Permite consultar o tabelão de estatísticas de alertas."""
     session = app.config['db_session']
     npaginas = 0
-    lista_alertas = []
-    print(request.values)
+    dict_alertas = {}
+    logger.info(request.values)
     form = FormFiltroAlerta(request.values,
                             start=date.today() - timedelta(days=30),
                             end=date.today())
     try:
         if request.method == 'POST' and form.validate():
-            start = datetime.combine(form.start.data, datetime.min.time())
-            end = datetime.combine(form.end.data, datetime.max.time())
-            lista_alertas, npaginas = get_alertas_filtro(session, form)
-            print(lista_alertas, npaginas)
+            dict_alertas, npaginas = get_alertas_filtro_agrupados(session, form)
+            print(dict_alertas, npaginas)
     except Exception as err:
         flash(err)
         logger.error(err, exc_info=True)
     return render_template('alertas.html',
-                           lista_alertas=lista_alertas,
+                           dict_alertas=dict_alertas,
                            oform=form,
                            npaginas=npaginas)
 

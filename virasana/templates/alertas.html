@@ -49,23 +49,31 @@
         <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
             <thead>
             <tr>
-                <th>Dados</th>
-                <th>Imagem</th>
+                <th>Número contêiner</th>
+                <th>Alertas</th>
+                <th>Imagens</th>
             </tr>
             </thead>
-            {% for alerta in lista_alertas %}
+            {% for numero, alertas in dict_alertas.items() %}
             <tr>
                 <td>
-                    {{alerta.texto}}
+                    {{numero}}
                 </td>
                 <td>
-                    <a href="file?_id={{alerta.id_imagem}}" target="_BLANK">
-                        <img src="image/{{alerta.id_imagem}}"
-                             alt="Sem imagem" width="auto" height="auto"
-                             style="border: 1px solid #000; max-width:800px; max-height:320px;"
-                             onmouseover="showMsg(this, '{{ alerta.id_imagemv}}')" onmouseout="clearMsg(this)"
-                        />
-                    </a>
+                    {% for alerta in alertas %}
+                        {{alerta}}
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for alerta in alertas %}
+                        <a href="file?_id={{alerta.id_imagem}}" target="_BLANK">
+                            <img src="image/{{alerta.id_imagem}}"
+                                 alt="Sem imagem" width="auto" height="auto"
+                                 style="border: 1px solid #000; max-width:800px; max-height:320px;"
+                                 onmouseover="showMsg(this, '{{ alerta.id_imagemv}}')" onmouseout="clearMsg(this)"
+                            />
+                        </a>
+                    {% endfor %}
                 </td>
             </tr>
             {% endfor %}

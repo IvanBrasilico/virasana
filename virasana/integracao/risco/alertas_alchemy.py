@@ -5,10 +5,12 @@
 import sys
 from enum import Enum
 
+from sqlalchemy.orm import relationship
+
 sys.path.append('../ajna_docs/commons')
 
 from ajna_commons.flask.conf import SQL_URI
-from sqlalchemy import Column, DateTime, func, Integer, VARCHAR, BigInteger
+from sqlalchemy import Column, DateTime, func, Integer, VARCHAR, BigInteger, ForeignKey
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.mysql import TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
@@ -24,11 +26,13 @@ class NivelAlerta(Enum):
     Alto = 5
     Critico = 8
 
+
 class EstadoAlerta(Enum):
     Ativo = 1
     Resultado = 2
     VistoEArquivado = 3
     ArquivadoSemVisualizacao = 4
+
 
 cor_nivel = {
     NivelAlerta.Baixo: "#00ff00",
@@ -46,7 +50,9 @@ class Alerta(Base):
     __tablename__ = 'ajna_alertas'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
-    origem = Column(BigInteger().with_variant(Integer, 'sqlite'), index=True)
+    apontamento_id = Column(BigInteger().with_variant(Integer, 'sqlite'),
+                            ForeignKey('ajna_apontamentos.ID'))
+    apontamento = relationship("Apontamento")
     nivel = Column(Integer(), index=True)
     estado = Column(Integer(), index=True)
     cod_recinto = Column(VARCHAR(20), index=True)
@@ -58,6 +64,10 @@ class Alerta(Base):
                          server_default=func.current_timestamp())
     last_modified = Column(DateTime, index=True,
                            onupdate=func.current_timestamp())
+
+    def __str__(self):
+        return 'Nivel: %s - %s ' % \
+               (NivelAlerta(self.nivel).name, self.apontamento.nome)
 
 
 class Apontamento(Base):

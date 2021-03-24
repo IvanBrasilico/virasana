@@ -1,14 +1,15 @@
 import sys
+from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Tuple
 
-from ajna_commons.flask.conf import MONGODB_URI, SQL_URI, DATABASE
 from pymongo import MongoClient
 from sqlalchemy import and_, func, desc, text, or_, create_engine
 from sqlalchemy.orm import sessionmaker
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
+from ajna_commons.flask.conf import MONGODB_URI, SQL_URI, DATABASE
 from ajna_commons.flask.log import logger
 from virasana.forms.filtros import FormFiltroAlerta
 from virasana.models.auditoria import Auditoria
@@ -39,7 +40,7 @@ class FiltroAlerta():
         self.filtro = condicao_(self.filtro, getattr(Alerta, campo) == valor)
 
 
-def get_alertas_filtro(session, form: FormFiltroAlerta):
+def get_alertas_filtro(session, form: FormFiltroAlerta) -> Tuple[List[Alerta], int]:
     start = datetime.combine(form.start.data, datetime.min.time())
     end = datetime.combine(form.end.data, datetime.max.time())
     recinto = form.recinto.data
@@ -51,7 +52,7 @@ def get_alertas_filtro(session, form: FormFiltroAlerta):
         filtroalerta.add_campo('cod_recinto', recinto)
     filtro = filtroalerta.filtro
     npaginas = int(session.query(func.count(Alerta.ID)).filter(filtro).scalar()
-                   / ROWS_PER_PAGE)
+                   / ROWS_PER_PAGE) + 1
     q = session.query(Alerta).filter(filtro)
     if order:
         if reverse:
@@ -65,8 +66,12 @@ def get_alertas_filtro(session, form: FormFiltroAlerta):
     return lista_alertas, npaginas
 
 
-def get_alertasfiltro_agrupados(session, filtro):
-    pass
+def get_alertas_filtro_agrupados(session, form: FormFiltroAlerta) -> Tuple[dict, int]:
+    lista_alertas, npaginas = get_alertas_filtro(session, form)
+    result = defaultdict(list)
+    for alerta in lista_alertas:
+        result[alerta.numeroinformado].append(alerta)
+    return result, npaginas
 
 
 class Integrador():
@@ -84,7 +89,7 @@ class Integrador():
             metadata = row['metadata']
             alerta.numeroinformado = metadata['numeroinformado']
             alerta.dataescaneamento = metadata['dataescaneamento']
-            alerta.origem = apontamento.ID
+            alerta.apontamento_id = apontamento.ID
             alerta.nivel = apontamento.nivel
             alerta.estado = EstadoAlerta.Ativo
             self.session.add(alerta)
@@ -115,6 +120,8 @@ def filtro_peso(db, data):
     print(filtro)
     return db['fs.files'].find(filtro)
 
+def captura_caixa_corporativa():
+    return []
 
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
@@ -125,7 +132,8 @@ if __name__ == '__main__':
     tipos_apontamento = {
         'Vazio com carga': filtro_vazio,
         'Não vazio sem carga': filtro_nvazio,
-        'Diferença peso declarado contra balança': filtro_peso
+        'Peso declarado X Balança': filtro_peso,
+        'Alertas de recintos': captura_caixa_corporativa
     }
     inicio = None
     for nome_apontamento, funcao_apontamento in tipos_apontamento.items():
@@ -134,13 +142,13 @@ if __name__ == '__main__':
         if not apontamento:
             apontamento = Apontamento()
             apontamento.nome = nome_apontamento
-            apontamento.nivel = NivelAlerta.Alto
+            apontamento.nivel = NivelAlerta.Alto.value
             session.add(apontamento)
             session.commit()
             session.refresh(apontamento)
         else:
             inicio = session.query(func.max(Alerta.dataescaneamento)). \
-                filter(Alerta.origem == apontamento.ID).scalar()
+                filter(Alerta.apontamento_id == apontamento.ID).scalar()
         if inicio is None:
             inicio = datetime.now() - timedelta(days=10)
         integrador = Integrador(session, db, None)
