@@ -110,7 +110,7 @@ def cropped_images(predictions: dict, image: bytes, _id: int) -> list:
             try:
                 image_crop = recorta_imagem(image, bbox)
                 images.append(image_crop)
-            except TypeError as err:
+            except Exception as err:
                 print('Erro ao recortar imagem', _id, str(err))
     return images
 
