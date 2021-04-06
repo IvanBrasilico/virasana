@@ -89,7 +89,7 @@ def monta_filtro(model: str, sovazios: bool,
     return cursor
 
 
-def cropped_images(predictions: dict, image: bytes, _id: int) -> list:
+def cropped_images(predictions: dict, image: bytes, _id: str) -> list:
     """Recorta imagens de acordo com bbox passada.
 
     Para acessar algumas predições, é necessário recortar as imagens antes.
@@ -112,6 +112,7 @@ def cropped_images(predictions: dict, image: bytes, _id: int) -> list:
                 images.append(image_crop)
             except Exception as err:
                 print('Erro ao recortar imagem', _id, str(err))
+                raise err
     return images
 
 
@@ -127,13 +128,16 @@ def get_images(model: str, _id: ObjectId, image: bytes,
     já vinculadas à imagem _id e anexa uma ou duas imagens resultantes.
     """
     result = []
-    if model in BBOX_MODELS:
-        result.append(ImageID(_id, [image], None))
-    else:
-        # print('original', predictions, _id)
-        if predictions:
-            content = cropped_images(predictions, image, _id)
-            result.append(ImageID(_id, content, predictions))
+    try:
+        if model in BBOX_MODELS:
+            result.append(ImageID(_id, [image], None))
+        else:
+            # print('original', predictions, _id)
+            if predictions:
+                content = cropped_images(predictions, image, _id)
+                result.append(ImageID(_id, content, predictions))
+    except:
+        pass
 
     return result
 
