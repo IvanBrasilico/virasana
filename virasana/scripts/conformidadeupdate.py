@@ -30,7 +30,7 @@ from ajna_commons.flask.log import logger
 from ajna_commons.flask.conf import SQL_URI
 from ajna_commons.utils.images import mongo_image, recorta_imagem
 from virasana.db import mongodb as db
-from integracao.risco.conformidade_alchemy import Conformidade
+from virasana.integracao.risco.conformidade_alchemy import Conformidade
 
 today = datetime.date.today()
 str_today = datetime.datetime.strftime(today, '%d/%m/%Y')
