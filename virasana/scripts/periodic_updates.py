@@ -109,11 +109,17 @@ def periodic_updates(db, connection, lote=2000):
     carga.cria_campo_pesos_carga(db, lote * 3)
     carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
     # predictions_update2('ssd', 'bbox', lote, 4)
-    predictions_update2('index', 'index', lote, 8)
+    try:
+        predictions_update2('index', 'index', lote, 8)
+    except Exception as err:
+        logger.error(err, exc_info=True)
     # gera_indexes()
     # print(reload_indexes())
     # tfs_predictions_update('vazio', lote, 20)
-    tfs_predictions_update('peso', lote, 20)
+    try:
+        tfs_predictions_update('peso', lote, 20)
+    except Exception as err:
+        logger.error(err, exc_info=True)
     # predictions_update2('vaziosvm', 'vazio', lote, 4)
     # predictions_update2('peso', 'peso', lote, 16)
     try:
