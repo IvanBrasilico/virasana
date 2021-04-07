@@ -39,7 +39,10 @@ str_lastweek = datetime.datetime.strftime(lastweek, '%d/%m/%Y')
 
 
 def calcula_laplacian(img):
-    return int(cv2.Laplacian(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR), cv2.CV_8U).var())
+    try:
+        return int(cv2.Laplacian(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR), cv2.CV_8U).var())
+    except Exception as err:
+        return 0.
 
 
 def update_conformidade(db, engine, start=None, end=None, limit=2000):
