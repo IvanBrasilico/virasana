@@ -1,7 +1,10 @@
 """Funções para Auditoria/comparação nos metadados de fs.files."""
+import sys
 import json
 from collections import defaultdict
 
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons/')
 from ajna_commons.flask.log import logger
 
 from virasana.integracao import carga, info_ade02, xmli
@@ -67,6 +70,13 @@ class Auditoria:
                          },
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Imagens com dois NCMs'
+              },
+        '11': {'filtro': {'metadata.contentType': 'image/jpeg',
+                          "metadata.predictions.reefer.reefer_contaminado": True,
+                          "metadata.predictions.reefer.reefer_class": 0,
+                         },
+              'order': [('metadata.dataescaneamento', 1)],
+              'descricao': 'Motor Reefer com suspeita de contaminação'
               },
     }
 

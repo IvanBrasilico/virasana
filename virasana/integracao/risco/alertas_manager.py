@@ -120,8 +120,40 @@ def filtro_peso(db, data):
     print(filtro)
     return db['fs.files'].find(filtro)
 
+def filtro_reefer_contaminado(db, data):
+    filtro = Auditoria.FILTROS_AUDITORIA['11']['filtro']
+    filtro.update({'metadata.dataescaneamento': {'$gt': data}})
+    print(filtro)
+    return db['fs.files'].find(filtro)
+
+
 def captura_caixa_corporativa():
     return []
+
+tipos_apontamento = {
+    'Vazio com carga': filtro_vazio,
+    'Não vazio sem carga': filtro_nvazio,
+    'Peso declarado X Balança': filtro_peso,
+    'Alertas de recintos': captura_caixa_corporativa,
+    'Reefer contaminado': filtro_reefer_contaminado
+
+}
+
+def processa_apontamentos(session, db, db_fichas):
+    """Processa o dicionário de apontamentos, para criar alertas
+    Args:
+        session: conexão ao MySQL
+        conn: conexão ao MongoDB
+    """
+    for nome_apontamento, funcao_apontamento in tipos_apontamento.items():
+        apontamento = session.query(Apontamento). \
+            filter(Apontamento.nome == nome_apontamento).one_or_none()
+        inicio = session.query(func.max(Alerta.dataescaneamento)). \
+            filter(Alerta.apontamento_id == apontamento.ID).scalar()
+        if inicio is None:
+            inicio = datetime.now() - timedelta(days=10)
+        integrador = Integrador(session, db, db_fichas)
+        integrador.integra_filtro(apontamento, funcao_apontamento, inicio)
 
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
@@ -129,13 +161,6 @@ if __name__ == '__main__':
     session = Session()
     conn = MongoClient(host=MONGODB_URI)
     db = conn[DATABASE]
-    tipos_apontamento = {
-        'Vazio com carga': filtro_vazio,
-        'Não vazio sem carga': filtro_nvazio,
-        'Peso declarado X Balança': filtro_peso,
-        'Alertas de recintos': captura_caixa_corporativa
-    }
-    inicio = None
     for nome_apontamento, funcao_apontamento in tipos_apontamento.items():
         apontamento = session.query(Apontamento). \
             filter(Apontamento.nome == nome_apontamento).one_or_none()
@@ -145,11 +170,4 @@ if __name__ == '__main__':
             apontamento.nivel = NivelAlerta.Alto.value
             session.add(apontamento)
             session.commit()
-            session.refresh(apontamento)
-        else:
-            inicio = session.query(func.max(Alerta.dataescaneamento)). \
-                filter(Alerta.apontamento_id == apontamento.ID).scalar()
-        if inicio is None:
-            inicio = datetime.now() - timedelta(days=10)
-        integrador = Integrador(session, db, None)
-        integrador.integra_filtro(apontamento, funcao_apontamento, inicio)
+
