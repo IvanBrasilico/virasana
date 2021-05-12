@@ -5,12 +5,14 @@ import requests
 import time
 from datetime import datetime, time
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 
-GECKO_PATH = "C:\\Users\\25052288840\\Downloads\\chromedriver.exe"
+GECKO_PATH = "C:\\Users\\22462913807\\Downloads\\chromedriver.exe"
 
 # SUITE_URL = "https://www.suiterfb.receita.fazenda"
 SUITE_URL = "https://portalunico.siscomex.gov.br/portal/"
-POS_ACD_URL = "https://portalunico.siscomex.gov.br/cct/api/deposito-carga/consultar-estoque-pos-acd?numeroConteiner="
+# POS_ACD_URL = "https://portalunico.siscomex.gov.br/cct/api/deposito-carga/consultar-estoque-pos-acd?numeroConteiner="
+POS_ACD_URL = "https://portalunico.siscomex.gov.br/cct/#/consulta-estoque-pos-acd"
 DUE_ITEMS_URL = "https://portalunico.siscomex.gov.br/due/api/due/obterDueComItensResumidos?due="
 
 VIRASANA_URL = "https://ajna.labin.rf08.srf/virasana/"
@@ -69,10 +71,11 @@ def raspa_containers_sem_due(
 def auth_suite_rfb(driver, portal_url=SUITE_URL):
     driver.get(portal_url)
     # time.sleep(1)
-    # LOGON_REDIRECT = "/camweb/grupo??sis=pucomex&url=portalunico.siscomex.gov.br/portal"
-    # driver.get(portal_url + LOGON_REDIRECT)
-    # time.sleep(1)
-    btn_certificado = driver.find_element_by_name("btn_certificado")
+    btn_grp_governo = driver.find_element(By.ID, "grp_governo")
+    btn_grp_governo.click()
+    btn_prf_rfb = driver.find_element(By.ID, "prf_rfb")
+    btn_prf_rfb.click()
+    btn_certificado = driver.find_element(By.ID, "btn_certificado")
     btn_certificado.click()
     # time.sleep(2)
 
@@ -97,10 +100,16 @@ def get_dues_json_pos_acd(page_source: str):
 
 def get_dues_pos_acd(driver, conteineres, pos_acd_url=POS_ACD_URL):
     conteineres_listadue = {}
+    driver.get(pos_acd_url)  # abre tela de consulta
+    driver.find_element_by_css_selector("label[for='c']").click()  # seleciona "Contêiner
+    input_field = driver.find_element_by_name("numeroConteiner")
     for conteiner in conteineres:
-        driver.get(pos_acd_url + conteiner)
-        pos_acd = driver.page_source
-        conteineres_listadue[conteiner] = get_dues_json_pos_acd(pos_acd)
+        input_field.send_keys(conteiner)
+        btn_confirmar = driver.find_element(By.ID, 'pucx-consultar')
+        btn_confirmar.click()
+        # driver.get(pos_acd_url + conteiner)  # API não funciona mais
+        # pos_acd = driver.page_source
+        # conteineres_listadue[conteiner] = get_dues_json_pos_acd(pos_acd)
     return conteineres_listadue
 
 
@@ -189,7 +198,7 @@ def monta_due_ajna(due):
 if __name__ == '__main__':
     driver = webdriver.Chrome(GECKO_PATH)
     diaapesquisar = datetime(2019, 9, 2)
-    datainicial = datetime.strftime(datetime.combine(diaapesquisar, time.min), '%Y-%m-%d  %H:%M:%S')
+    datainicial = datetime.strftime(datetime.combine(diaapesquisar, time.min), '%Y-%m-%d %H:%M:%S')
     datafinal = datetime.strftime(datetime.combine(diaapesquisar, time.max), '%Y-%m-%d %H:%M:%S')
     print(datainicial, datafinal)
     for tipo_manifesto in (None, 'lce'):
