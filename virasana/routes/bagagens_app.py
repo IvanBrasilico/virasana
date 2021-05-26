@@ -3,15 +3,17 @@ from datetime import date, timedelta, datetime
 from ajna_commons.flask.log import logger
 from flask import render_template, request, flash
 from flask_login import login_required
-from forms.filtros import FormFiltroData
+from virasana.forms.filtros import FormFiltroData
+from virasana.usecases.bagagens_manager import get_bagagens
 
 
 def configure(app):
     """Configura rotas para bagagem."""
 
-    @app.route('/virasana/bagagens', methods=['GET', 'POST'])
+    @app.route('/bagagens', methods=['GET', 'POST'])
     @login_required
     def bagagens():
+        mongodb = app.config['mongodb']
         session = app.config['db_session']
         headers = []
         lista_bagagens = []
@@ -22,7 +24,7 @@ def configure(app):
             if request.method == 'POST' and form.validate():
                 start = datetime.combine(form.start.data, datetime.min.time())
                 end = datetime.combine(form.end.data, datetime.max.time())
-                headers, lista_bagagens = get_bagagens(session, start, end)
+                lista_bagagens, npaginas = get_bagagens(mongodb, session, start, end)
                 # logger.debug(stats_cache)
         except Exception as err:
             flash(err)

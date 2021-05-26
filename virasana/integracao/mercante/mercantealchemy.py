@@ -1,4 +1,5 @@
 # coding: utf-8
+from ajna_commons.flask.conf import SQL_URI
 from sqlalchemy import Column, CHAR, \
     DateTime, func, Integer, Index, select, \
     Table, Text, VARCHAR, BigInteger
@@ -6,12 +7,12 @@ from sqlalchemy import create_engine, and_
 from sqlalchemy.dialects.mysql import BIGINT, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 
-from ajna_commons.flask.conf import SQL_URI
 # from sqlalchemy.orm import relationship
 # from sqlachemy import ForeignKey
 
 Base = declarative_base()
 metadata = Base.metadata
+
 
 class BaseDumpable(Base):
     __abstract__ = True
@@ -319,6 +320,16 @@ class ManifestoEscala(Base):
 
 """
 
+TIPOS_TRAFEGO = {'3': 'Cabotagem',
+                 '5': 'Importação',
+                 '7': 'Exportação',
+                 '9': 'Passagem'}
+
+TIPOS_BL = {'10': 'BL',
+            '11': 'MBL',
+            '12': 'HBL',
+            '15': 'MHBL'}
+
 
 class Conhecimento(BaseDumpable):
     __tablename__ = 'conhecimentosresumo'
@@ -346,8 +357,15 @@ class Conhecimento(BaseDumpable):
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())
     last_modified = Column(DateTime, onupdate=func.current_timestamp())
+
     # listaconteineres = relationship("Item", cascade="delete, delete-orphan")
     # listancm = relationship("NCMItem", cascade="delete, delete-orphan")
+
+    def get_tipoTrafego(self):
+        return TIPOS_TRAFEGO.get(self.tipoTrafego)
+
+    def get_tipoBL(self):
+        return TIPOS_BL.get(self.tipoBLConhecimento)
 
 
 class Item(BaseDumpable):  # Conteiner Cheio
