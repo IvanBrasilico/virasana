@@ -67,8 +67,12 @@
                     {{ conhecimento.portoOrigemCarga }} -
                     {{ conhecimento.consignatario }}<br>
                 {% endfor %}
-                    <button class="btn btn-danger">Abrir Ficha</button>
-                    <button class="btn btn-warning">Descartar</button>
+                    <button class="btn btn-danger"
+                        onclick="window.open('/bhadrasana/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
+                        Abrir Ficha</button>
+                    <button class="btn btn-warning"
+                        onclick="window.open('bagagem_descarta?numeroCEmercante={{item.numeroCEmercante}}')">
+                        Descartar</button>
                 </td>
                 <td>
                     <a href="file?_id={{item.id_imagem}}" target="_BLANK">
