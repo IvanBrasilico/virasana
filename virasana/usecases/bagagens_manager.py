@@ -10,7 +10,8 @@ def get_bagagens(mongodb: Database,
                  paginaatual=0) -> Tuple[List[Item], int]:
     query = '''SELECT codigoConteiner, c.numeroCEmercante FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
-    WHERE NCM LIKE '9797%' AND c.tipoBLConhecimento IN(10, 11) AND c.tipoTrafego = 5 
+    WHERE NCM LIKE '9797%' AND c.tipoBLConhecimento IN(10, 11) AND c.tipoTrafego = 5
+    AND c.portoDestFinal = 'BRSSZ' 
     AND c.dataEmissao BETWEEN :datainicio AND :datafim'''
     ROWS_PER_PAGE = 10
     conteineres = session.execute(query, {'datainicio': datainicio, 'datafim': datafim})
