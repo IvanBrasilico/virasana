@@ -19,6 +19,7 @@ def get_bagagens(mongodb: Database,
     # lista_itens = q.fetchall()
     print(datainicio, datafim)
     lista_itens = []
+
     for row in conteineres:
         item = session.query(Item).filter(Item.codigoConteiner == row[0]). \
             filter(Item.numeroCEmercante == row[1]). \
