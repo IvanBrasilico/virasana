@@ -61,8 +61,6 @@ from wtforms import (BooleanField, DateField, FloatField, IntegerField,
                      PasswordField, SelectField, StringField)
 from wtforms.validators import DataRequired, optional
 
-from virasana.routes import bagagens_app
-
 app = Flask(__name__, static_url_path='/static')
 # app.jinja_env.filters['zip'] = zip
 csrf = CSRFProtect(app)
@@ -108,7 +106,6 @@ def configure_app(mongodb, mongodb_risco, db_session):
     except (IOError, FileNotFoundError):
         pass
     app.config['text_search'] = TextSearch(mongodb)
-    bagagens_app.configure(app)
     return app
 
 
@@ -1573,8 +1570,6 @@ def image_editor(_id):
     return render_template('filerobot.html', _id=_id)
 
 
-
-
 @nav.navigation()
 def mynavbar():
     """Menu da aplicação."""
@@ -1599,7 +1594,6 @@ def mynavbar():
     if current_user.is_authenticated:
         items.append(View('Sair', 'commons.logout'))
     return Navbar(*items)
-
 
 
 if __name__ == '__main__':

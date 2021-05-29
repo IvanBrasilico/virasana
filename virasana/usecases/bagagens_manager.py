@@ -38,3 +38,6 @@ def get_bagagens(mongodb: Database,
         lista_itens.append(item)
     npaginas = 0
     return lista_itens, npaginas
+
+
+
