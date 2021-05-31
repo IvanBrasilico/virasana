@@ -11,8 +11,8 @@ def exporta_viajantes(con):
     sql_novos_viajantes = '''SELECT DISTINCT c.consignatario as cpf FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
     WHERE NCM LIKE '9797%' AND c.tipoBLConhecimento IN(10, 12, 15) AND c.tipoTrafego = 5
-    AND c.dataEmissao >= '2021-04-01
-    and c.consignatario not in (select distinct cpf from bagagens_viagens)'''
+    AND c.dataEmissao >= '2021-04-01'
+    AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_viagens)'''
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv('viajantes.csv')
 

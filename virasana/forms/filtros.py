@@ -1,15 +1,14 @@
 from datetime import datetime
 
+from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
+from virasana.models.auditoria import Auditoria
+from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
 from wtforms.validators import optional
-
-from ajna_commons.utils.sanitiza import mongo_sanitizar
-from virasana.models.auditoria import Auditoria
-from virasana.models.models import Tags
 
 MAXROWS = 50
 MAXPAGES = 100
@@ -117,6 +116,14 @@ class FormFiltroData(FlaskForm):
     recinto = StringField(u'Nome do Recinto',
                           validators=[optional()], default='')
     pagina_atual = IntegerField('Pagina', default=1)
+    colormap = SelectField('Mapa de cores para visualizar imagem',
+                           validators=[optional()], default='contraste')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
+                                 'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
+                                 'tab10']
 
 
 class FormFiltroConformidade(FlaskForm):
