@@ -9,10 +9,15 @@ from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Man
 
 
 def testa_filtros(item, portoorigem: str, cpf_cnpj: str, numero_conteiner: str):
-    if numero_conteiner and numero_conteiner not in item.codigoConteiner:
-        return False
+    if numero_conteiner:
+        numero_conteiner = numero_conteiner.upper()
+        numero_conteiner = ''.join([s for s in numero_conteiner if s.isdigit() or s.isalpha()])
+        if numero_conteiner not in item.codigoConteiner:
+            return False
+    if cpf_cnpj:
+        cpf_cnpj = ''.join([s for s in numero_conteiner if s.isdigit()])
     for conhecimento in item.conhecimentos:
-        if portoorigem and portoorigem not in conhecimento.portoOrigemCarga:
+        if portoorigem and portoorigem.upper() not in conhecimento.portoOrigemCarga:
             return False
         if cpf_cnpj and cpf_cnpj not in conhecimento.consignatario:
             return False

@@ -1,10 +1,16 @@
 import os
+import sys
 
 import pandas as pd
-from ajna_commons.flask.conf import SQL_URI
-from integracao.bagagens.viajantesalchemy import Viagem
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+sys.path.insert(0, '.')
+sys.path.insert(0, '../ajna_docs/commons')
+sys.path.append('../bhadrasana2')
+
+from ajna_commons.flask.conf import SQL_URI
+from virasana.integracao.bagagens.viajantesalchemy import Viagem
 
 
 def exporta_viajantes(con):
@@ -18,10 +24,11 @@ def exporta_viajantes(con):
 
 
 def importa_viagens(session):
-    df = pd.read_csv('viagens.csv', session)
-    for index, row in df.itertuples():
+    df = pd.read_csv('viagens.csv')
+    df = df.fillna('')
+    for index, row in df.iterrows():
         viagem = Viagem()
-        viagem.cpf = row['cpf']
+        viagem.cpf = str(row['cpf']).zfill(11)
         viagem.data_chegada = row['apvj_apva_apvo_dt_chegada']
         viagem.origem = row['apvj_cd_local_embarque']
         viagem.destino = row['apvj_cd_local_destino']
@@ -41,4 +48,3 @@ if __name__ == '__main__':
     else:
         print('Exportando viajantes...')
         exporta_viajantes(session)
-
