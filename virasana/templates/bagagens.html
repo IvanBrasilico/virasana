@@ -87,10 +87,11 @@
             </thead>
             {% for item in lista_bagagens %}
             <tr>
-                <td>{{ item.codigoConteiner }}<br>
+                <td><h2>{{ item.codigoConteiner }}</h2>
                     Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }}
                     Balança: {{ "%d"|format(item.pesoBalanca) }}<br>
                     Manifesto: {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento }}<br>
+                    GMCI: {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}<br>
                     {% for conhecimento in item.conhecimentos %}
                     {{ conhecimento.numeroCEmercante }} -
                     {{ conhecimento.get_tipoBL() }} -

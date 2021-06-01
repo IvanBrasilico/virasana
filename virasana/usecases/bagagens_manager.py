@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
 from typing import List
 
+from bhadrasana.models.ovr import Recinto
 from pymongo.database import Database
 from virasana.integracao.carga import get_peso_balanca
+from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
 
 
@@ -49,6 +51,13 @@ def get_bagagens(mongodb: Database,
         # Se não encontrar, procura pelo conhecimento
         dataminima = datetime.strptime(conhecimento.dataEmissao, '%Y-%m-%d') + timedelta(days=2)
         datamaxima = dataminima + timedelta(days=30)
+        gmci = session.query(GMCI).filter(GMCI.num_conteiner == item.codigoConteiner). \
+            filter(GMCI.datahora.between(dataminima, datamaxima)).one_or_none()
+        if gmci:
+            recinto = session.query(Recinto).filter(Recinto.id == gmci.cod_recinto).one_or_none()
+            if recinto:
+                gmci.nome_recinto = recinto.nome
+        item.gmci = gmci
         grid_data = mongodb['fs.files'].find_one(
             {'metadata.numeroinformado': item.codigoConteiner,
              'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
