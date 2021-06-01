@@ -3,6 +3,8 @@ from typing import List
 
 from bhadrasana.models.ovr import Recinto
 from pymongo.database import Database
+from sqlalchemy import desc
+from virasana.integracao.bagagens.viajantesalchemy import Viagem
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
@@ -51,6 +53,12 @@ def get_bagagens(mongodb: Database,
         item.manifesto = manifesto
         filhotes = session.query(Conhecimento).filter(
             Conhecimento.numeroCEMaster == item.numeroCEmercante).all()
+        data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
+        for ce in filhotes:
+            viagens = session.query(Viagem).filter(Viagem.cpf == ce.consignatario). \
+                filter(Viagem.data_chegada > data_inicial_viagens). \
+                order_by(desc(Viagem.data_chegada))
+            ce.viagens = viagens
         item.conhecimentos = [conhecimento, *filhotes]
         # Procura escaneamentos do contêiner até 32 dias após emissão do conhecimento
         # Se não encontrar, procura pelo conhecimento

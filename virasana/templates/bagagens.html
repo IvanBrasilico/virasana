@@ -60,7 +60,7 @@
                         {{oform.colormap(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
-                        {{oform.semimagem(class='form-control')}}  Exibir somente as sem imagem
+                        {{oform.semimagem(class='form-control')}} Exibir somente as sem imagem
                     </div>
                     <div class="col-sm-2">
                         <input class="btn btn-default btn-info form-control" type="submit" value="Filtrar"/>
@@ -90,21 +90,36 @@
                 <td><h2>{{ item.codigoConteiner }}</h2>
                     Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }}
                     Balança: {{ "%d"|format(item.pesoBalanca) }}<br>
-                    Manifesto: {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento }}<br>
+                    Manifesto: {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento
+                    }}<br>
                     GMCI: {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}<br>
                     {% for conhecimento in item.conhecimentos %}
                     {{ conhecimento.numeroCEmercante }} -
                     {{ conhecimento.get_tipoBL() }} -
                     {{ conhecimento.portoOrigemCarga }} -
                     {{ conhecimento.consignatario }}<br>
+                    <table>
+                        {% for viagem in conhecimento.viagens %}
+                        <tr>
+                            <td>{{ viagem.data_chegada }}</td>
+                            <td>{{ viagem.origem }}</td>
+                            <td>{{ viagem.destino }}</td>
+                            <td>{{ viagem.localizador }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
                     {% endfor %}
                     <button class="btn btn-danger"
                             onclick="window.open('/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
                         Abrir Ficha
                     </button>
-                    <button class="btn btn-warning"
+                    <button class="btn btn-success"
                             onclick="window.open('bagagem_descarta?numeroCEmercante={{item.numeroCEmercante}}')">
                         Descartar
+                    </button>
+                    <button class="btn btn-info"
+                            onclick="window.open('files?numero={{item.codigoConteiner}}')">
+                        Outras imagens
                     </button>
                 </td>
                 <td>
@@ -141,6 +156,7 @@
         }
     }
     function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
 
 
 
