@@ -11,28 +11,56 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="recinto" id="recinto" value=""/>
             </div>
-            <div class="row">
-                <div class="col-sm-12">
-                    <h4>Filtrar por datas</h4>
+            <div class="form-group">
+                <div class="row">
+                    <div class="col-sm-4">
+                        <label for="date">Data de emissão do BL</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <label for="portoorigem">Porto de origem</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <label for="date">CPF ou CNPJ do consignatário</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <label for="date">Número do contêiner</label>
+                    </div>
                 </div>
-                <div class="col-sm-4">
-                    <label for="date">Período de escaneamento</label>
-                </div>
-            </div>
-            <div class="row">
-                <div class="form-group">
+                <div class="row">
                     <div class="col-sm-2">
                         <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
                     </div>
                     <div class="col-sm-2">
                         <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
                     </div>
-                    <div class="col-sm-3">
+                    <div class="col-sm-2">
+                        {{oform.portoorigem(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.cpf_cnpj(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.conteiner(class='form-control')}}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-2">
+                        Etapa da seleção
+                    </div>
+                    <div class="col-sm-2">
+                        Filtro de imagem
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-2">
                         <input type="checkbox">Exibir descartados<br>
                         <input type="checkbox">Exibir selecionados (com ficha)
                     </div>
-                    <div class="col-sm-3">
+                    <div class="col-sm-2">
                         {{oform.colormap(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.semimagem(class='form-control')}}  Exibir somente as sem imagem
                     </div>
                     <div class="col-sm-2">
                         <input class="btn btn-default btn-info form-control" type="submit" value="Filtrar"/>
@@ -47,8 +75,8 @@
     </div>
 </div>
 <div id="list" class="row">
-    &nbsp;
     <div class="table table-responsive col-sm-12 row">
+        {{ lista_bagagens | length }} linhas encontradas de um limite de 100.
         <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
             <thead>
             <tr>
@@ -60,20 +88,23 @@
             {% for item in lista_bagagens %}
             <tr>
                 <td>{{ item.codigoConteiner }}<br>
-                Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }}
-                Balança: {{ "%d"|format(item.pesoBalanca) }}<br>
-                {% for conhecimento in item.conhecimentos %}
+                    Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }}
+                    Balança: {{ "%d"|format(item.pesoBalanca) }}<br>
+                    Manifesto: {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento }}<br>
+                    {% for conhecimento in item.conhecimentos %}
                     {{ conhecimento.numeroCEmercante }} -
                     {{ conhecimento.get_tipoBL() }} -
                     {{ conhecimento.portoOrigemCarga }} -
                     {{ conhecimento.consignatario }}<br>
-                {% endfor %}
+                    {% endfor %}
                     <button class="btn btn-danger"
-                        onclick="window.open('/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
-                        Abrir Ficha</button>
+                            onclick="window.open('/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
+                        Abrir Ficha
+                    </button>
                     <button class="btn btn-warning"
-                        onclick="window.open('bagagem_descarta?numeroCEmercante={{item.numeroCEmercante}}')">
-                        Descartar</button>
+                            onclick="window.open('bagagem_descarta?numeroCEmercante={{item.numeroCEmercante}}')">
+                        Descartar
+                    </button>
                 </td>
                 <td>
                     <a href="file?_id={{item.id_imagem}}" target="_BLANK">
@@ -109,5 +140,8 @@
         }
     }
     function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
+
+
 
 </script> {% endblock %}

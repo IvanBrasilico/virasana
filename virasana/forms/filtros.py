@@ -14,6 +14,38 @@ MAXROWS = 50
 MAXPAGES = 100
 
 
+class FilesForm(FlaskForm):
+    """Valida pesquisa de arquivos.
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    numero = StringField(u'Número', validators=[optional()], default='')
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])
+    alerta = BooleanField('Alerta', validators=[optional()], default=False)
+    ranking = BooleanField('Ranking', validators=[optional()], default=False)
+    pagina_atual = IntegerField('Pagina', default=1)
+    filtro_auditoria = SelectField(u'Filtros de Auditoria',
+                                   default=0)
+    tag_usuario = BooleanField('Exclusivamente Tag do usuário',
+                               validators=[optional()], default=False)
+    filtro_tags = SelectField(u'Tags de usuário',
+                              default=[0])
+    texto_ocorrencia = StringField(u'Texto Ocorrência',
+                                   validators=[optional()], default='')
+    classe = SelectField(u'Classe de contêiner detectado', default='0')
+    colormap = SelectField('Mapa de cores para visualizar imagem',
+                           validators=[optional()], default='contraste')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
+                                 'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
+                                 'tab10']
+
+
 class FormFiltro(FlaskForm):
     """Valida pesquisa de arquivos.
 
@@ -116,14 +148,6 @@ class FormFiltroData(FlaskForm):
     recinto = StringField(u'Nome do Recinto',
                           validators=[optional()], default='')
     pagina_atual = IntegerField('Pagina', default=1)
-    colormap = SelectField('Mapa de cores para visualizar imagem',
-                           validators=[optional()], default='contraste')
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
-                                 'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
-                                 'tab10']
 
 
 class FormFiltroConformidade(FlaskForm):
@@ -162,3 +186,32 @@ class FormFiltroAlerta(FlaskForm):
     order = StringField(u'Nome do campo para ordenar',
                         validators=[optional()], default='')
     reverse = BooleanField('Order by DESC', default=False)
+
+
+class FormFiltroBagagem(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])
+    recinto = StringField(u'Nome do Recinto',
+                          validators=[optional()], default='')
+    portoorigem = StringField(u'Porto de Origem',
+                              validators=[optional()], default='')
+    cpf_cnpj = StringField(u'CPF ou CNPJ do consignatario',
+                           validators=[optional()], default='')
+    conteiner = StringField(u'Número do contêiner',
+                            validators=[optional()], default='')
+    colormap = SelectField('Mapa de cores para visualizar imagem',
+                           validators=[optional()], default='contraste')
+    semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem',
+                             default=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
+                                 'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
+                                 'tab10']

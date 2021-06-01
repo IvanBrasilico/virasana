@@ -35,7 +35,7 @@ from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
-from virasana.forms.filtros import FormFiltro, FormFiltroData, FormFiltroConformidade, FormFiltroAlerta
+from virasana.forms.filtros import FormFiltro, FormFiltroData, FormFiltroConformidade, FormFiltroAlerta, FilesForm
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
@@ -859,30 +859,6 @@ def filtro():
     return jsonify(result)
 
 
-class FilesForm(FlaskForm):
-    """Valida pesquisa de arquivos.
-
-    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
-    search_files.html
-
-    """
-    numero = StringField(u'Número', validators=[optional()], default='')
-    start = DateField('Start', validators=[optional()])
-    end = DateField('End', validators=[optional()])
-    alerta = BooleanField('Alerta', validators=[optional()], default=False)
-    ranking = BooleanField('Ranking', validators=[optional()], default=False)
-    pagina_atual = IntegerField('Pagina', default=1)
-    filtro_auditoria = SelectField(u'Filtros de Auditoria',
-                                   default=0)
-    tag_usuario = BooleanField('Exclusivamente Tag do usuário',
-                               validators=[optional()], default=False)
-    filtro_tags = SelectField(u'Tags de usuário',
-                              default=[0])
-    texto_ocorrencia = StringField(u'Texto Ocorrência',
-                                   validators=[optional()], default='')
-    contrast = BooleanField()
-    color = BooleanField()
-    classe = SelectField(u'Classe de contêiner detectado', default='0')
 
 
 def recupera_user_filtros():
@@ -1581,6 +1557,7 @@ def mynavbar():
                  'Outros',
                  View('Alertas', 'alertas'),
                  View('Conformidade', 'conformidade'),
+                 View('Bagagens', 'bagagens'),
                  Separator(),
                  View('Pesquisa imagem externa', 'similar_file'),
                  View('Pesquisa textual', 'text_search'),

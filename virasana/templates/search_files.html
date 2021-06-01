@@ -14,7 +14,7 @@
                 <div class="col-sm-12">
                     <h4>Filtrar por número e datas</h4>
                 </div>
-                <div class="col-sm-3">
+                <div class="col-sm-2">
                     <label for="numero">Número do contêiner</label>
                 </div>
                 <div class="col-sm-4">
@@ -23,7 +23,7 @@
                 <div class="col-sm-1">
                     <label for="alerta">Alerta?</label>
                 </div>
-                <div class="col-sm-1">
+                <div class="col-sm-2">
                     <label for="contrast">Filtro imagem</label>
                 </div>
                 <div class="col-sm-3">
@@ -32,7 +32,7 @@
             </div>
             <div class="row">
                 <div class="form-group">
-                    <div class="col-sm-3">
+                    <div class="col-sm-2">
                         <input class="form-control" type="text" name="numero" value="{{oform.numero.data}}"/>
                     </div>
                     <div class="col-sm-2">
@@ -45,12 +45,8 @@
                         <input class="form-control" type="checkbox" name="alerta" {% if oform.alerta.data %} checked {%
                                endif %}/>
                     </div>
-                    <div class="col-sm-1">
-                        <input type="checkbox" id="contrast" name="contrast" {% if oform.contrast.data %} checked {%
-                               endif %}/>
-                        &nbsp; + contraste<br>
-                        <input type="checkbox" id="color" name="color" {% if oform.color.data %} checked {% endif %}/>
-                        &nbsp; colorir<br>
+                    <div class="col-sm-2">
+                        {{oform.colormap(class='form-control')}}
                     </div>
                     <div class="col-sm-1">
                         <button onclick="zeraeposta()" id="btn_filtrar" type="button" class="btn btn-default btn-info">
@@ -181,10 +177,10 @@
                 </td>
                 <td>
                     <a href="file?_id={{ myfile['_id'] }}" target="_BLANK">
-                        <img src="image/{{ myfile['_id'] }}?contrast={{ oform.contrast.data }}&color={{ oform.color.data }}"
+                        <img src="imagens_cmap?_id={{myfile['_id']}}&colormap={{oform.colormap.data}}"
                              alt="Sem imagem" width="auto" height="auto"
                              class="zoom"
-                             onmouseover="showMsg(this, '{{ myfile['_id'] }}')" onmouseout="clearMsg(this)"
+                             onmouseover="showMsg(this, '{{myfile['_id']}}')" onmouseout="clearMsg(this)"
                         />
                     </a>
                 </td>
@@ -286,6 +282,7 @@
     function clearMsg(img) {
         img.title = "";
     }
+
 
 
 </script> {% endblock %}
