@@ -161,6 +161,8 @@ t_conhecimentosEmbarque = Table(
     Column('tipoMovimento', Text),
     Column('tipoTrafego', Text),
     Column('numConhecimento', Text),
+    Column('cnpjNotify', Text),
+    Column('notify', Text),
     Column('create_date', TIMESTAMP, index=True,
            server_default=func.current_timestamp())
 )
@@ -340,6 +342,8 @@ class Conhecimento(BaseDumpable):
     codigoEmpresaNavegacao = Column(VARCHAR(20), index=True)
     codigoTerminalCarregamento = Column(VARCHAR(20), index=True)
     consignatario = Column(VARCHAR(200))
+    cnpjNotify = Column(VARCHAR(200))
+    notify = Column(VARCHAR(200))
     cubagem = Column(VARCHAR(20))
     dataAtualizacao = Column(VARCHAR(10))
     dataEmissao = Column(VARCHAR(20))

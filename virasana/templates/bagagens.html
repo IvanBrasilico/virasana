@@ -7,11 +7,11 @@
     {% endfor %}
     <div id="top" class="row col-sm-12">
         <form method="POST" id="formfiltrodata" action="bagagens">
-            <div class="col-sm-12">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="recinto" id="recinto" value=""/>
-            </div>
             <div class="form-group">
+                <div class="row">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="recinto" id="recinto" value=""/>
+                </div>
                 <div class="row">
                     <div class="col-sm-4">
                         <label for="date">Data de emissão do BL</label>
@@ -67,48 +67,61 @@
                     </div>
                 </div>
             </div>
-            <div class="row">
+            <div class="row col-sm-12">
                 Filtrar por ????<br>
                 Ordenar por ???
             </div>
         </form>
     </div>
-</div>
-<div id="list" class="row">
-    <div class="table table-responsive col-sm-12 row">
-        {{ lista_bagagens | length }} linhas encontradas de um limite de 100.
-        <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
-            <thead>
-            <tr>
-                {% for key in headers %}
-                <th>{{ key }}</th>
-                {% endfor %}
-            </tr>
-            </thead>
-            {% for item in lista_bagagens %}
-            <tr>
-                <td><h2>{{ item.codigoConteiner }}</h2>
-                    Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }}
-                    Balança: {{ "%d"|format(item.pesoBalanca) }}<br>
-                    Manifesto: {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento
-                    }}<br>
-                    GMCI: {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}<br>
-                    {% for conhecimento in item.conhecimentos %}
-                    {{ conhecimento.numeroCEmercante }} -
-                    {{ conhecimento.get_tipoBL() }} -
-                    {{ conhecimento.portoOrigemCarga }} -
-                    {{ conhecimento.consignatario }}<br>
-                    <table>
-                        {% for viagem in conhecimento.viagens %}
-                        <tr>
-                            <td>{{ viagem.data_chegada }}</td>
-                            <td>{{ viagem.origem }}</td>
-                            <td>{{ viagem.destino }}</td>
-                            <td>{{ viagem.localizador }}</td>
-                        </tr>
-                        {% endfor %}
-                    </table>
+    <div id="list" class="row col-sm-12">
+        <div class="row col-sm-12">
+            {{ lista_bagagens | length }} linhas encontradas de um limite de 100.
+        </div>
+        {% for item in lista_bagagens %}
+        <div class="row col-xl-12 bg-white text-primary">
+            <div class="col-sm-4">
+                <div class="col-sm-12 text-danger">
+                    <h2>{{ item.codigoConteiner }}</h2>
+                </div>
+                <div class="col-sm-12">
+                    Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }} Balança: {{
+                    "%d"|format(item.pesoBalanca) }}
+                </div>
+                <div class="col-sm-12"><b>Manifesto:</b>
+                    {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento}}
+                </div>
+                <div class="col-sm-12"><b>GMCI:</b>
+                    {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}
+                </div>
+                <div class="col-sm-12"><b>Conhecimentos:</b></div>
+                {% for conhecimento in item.conhecimentos %}
+                    <div class="col-sm-12">
+                            {{ conhecimento.numeroCEmercante }} -
+                            {{ conhecimento.dataEmissao }} -
+                            {{ conhecimento.portoOrigemCarga }}<br>
+                            {{ conhecimento.consignatario }}
+                    </div>
+                    {% if conhecimento.viagens %}
+                    {% for viagem in conhecimento.viagens %}
+                    <div class="col-sm-1">&nbsp;</div>
+                    <div class="col-sm-11">
+                        <div class="col-sm-6">
+                            {{ viagem.data_chegada.strftime('%d/%m/%Y %H:%M') }}
+                        </div>
+                        <div class="col-sm-2">
+                            {{ viagem.origem }}
+                        </div>
+                        <div class="col-sm-2">
+                            {{ viagem.destino }}
+                        </div>
+                        <div class="col-sm-2">
+                            {{ viagem.localizador }}
+                        </div>
+                    </div>
                     {% endfor %}
+                    {% endif %}
+                {% endfor %}
+                <div class="col-sm-12">
                     <button class="btn btn-danger"
                             onclick="window.open('/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
                         Abrir Ficha
@@ -121,27 +134,26 @@
                             onclick="window.open('files?numero={{item.codigoConteiner}}')">
                         Outras imagens
                     </button>
-                </td>
-                <td>
-                    <a href="file?_id={{item.id_imagem}}" target="_BLANK">
-                        <img src="imagens_cmap?_id={{item.id_imagem}}&colormap={{oform.colormap.data}}"
-                             alt="Sem imagem" width="auto" height="auto"
-                             class="zoom"
-                             onmouseover="showMsg(this, '{{ item.id_imagem}}')" onmouseout="clearMsg(this)"
-                        />
-                    </a>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
+                </div>
+            </div>
+            <div class="col-sm-8">
+                <a href="file?_id={{item.id_imagem}}" target="_BLANK">
+                    <img src="imagens_cmap?_id={{item.id_imagem}}&colormap={{oform.colormap.data}}"
+                         alt="Sem imagem" width="auto" height="auto"
+                         class="zoom"
+                         onmouseover="showMsg(this, '{{ item.id_imagem}}')" onmouseout="clearMsg(this)"
+                    />
+                </a>
+            </div>
+        </div>
+        {% endfor %}
     </div>
-</div>
-<div id="bottom" class="row col-sm-12">
-    AJNA - Receita Federal do Brasil 2017
-</div>
-<!-- /#main -->
-{% endblock %} {% block scripts %} {{super()}}
-<script type="text/javascript">
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2017
+    </div>
+    <!-- /#main -->
+    {% endblock %} {% block scripts %} {{super()}}
+    <script type="text/javascript">
     $('th').click(function(){
         var table = $(this).parents('table').eq(0)
         var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
@@ -161,4 +173,5 @@
 
 
 
-</script> {% endblock %}
+    </script>
+    {% endblock %}

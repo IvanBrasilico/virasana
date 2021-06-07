@@ -37,3 +37,31 @@ def configure(app):
                                headers=headers,
                                lista_bagagens=lista_bagagens,
                                oform=form)
+
+
+"""
+                <div class="col-sm-12">
+                    {% if conhecimento.viagens2 %}
+                    {% for viagem in conhecimento.viagens %}
+                    <div class="col-sm-2">&nbsp;</div>
+                    <div class="col-sm-10">
+                        <div class="col-sm-4">
+                            {{ viagem.data_chegada }}
+                        </div>
+                        <div class="col-sm-2">
+                            {{ viagem.origem }}
+                        </div>
+                        <div class="col-sm-2">
+                            {{ viagem.destino }}
+                        </div>
+                        <div class="col-sm-4">
+                            {{ viagem.localizador }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+
+"""
