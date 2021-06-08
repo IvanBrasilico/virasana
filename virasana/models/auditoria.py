@@ -72,8 +72,10 @@ class Auditoria:
               'descricao': 'Imagens com dois NCMs'
               },
         '11': {'filtro': {'metadata.contentType': 'image/jpeg',
-                          "metadata.predictions.reefer.reefer_contaminado": True,
-                          "metadata.predictions.reefer.reefer_class": 0,
+                          'metadata.predictions.reefer.reefer_contaminado': True,
+                          'metadata.predictions.reefer.reefer_class': 0,
+                          'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
+                          'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
                          },
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Motor Reefer com suspeita de contaminação'
