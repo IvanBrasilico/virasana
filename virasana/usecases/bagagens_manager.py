@@ -58,8 +58,10 @@ def get_bagagens(mongodb: Database,
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == item.numeroCEmercante).one_or_none()
         if not int(conhecimento.tipoBLConhecimento) in (10, 11):
-            conhecimento = session.query(Conhecimento).filter(
+            conhecimento_master = session.query(Conhecimento).filter(
                 Conhecimento.numeroCEmercante == conhecimento.numeroCEMaster).one_or_none()
+            if conhecimento_master:
+                conhecimento = conhecimento_master
         print(item.codigoConteiner)
         manifesto = session.query(Manifesto).filter(
             Manifesto.numero == conhecimento.manifestoCE).one_or_none()
