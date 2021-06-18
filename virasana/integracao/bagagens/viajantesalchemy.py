@@ -1,7 +1,7 @@
 import sys
 
 from sqlalchemy import Column, CHAR, \
-    DateTime, Integer, BigInteger
+    DateTime, Integer, BigInteger, String
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -25,6 +25,22 @@ class Viagem(Base):
     voo = Column(CHAR(10), index=True)
 
 
+class Pessoa(Base):
+    __tablename__ = 'bagagens_pessoas'
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
+                primary_key=True, autoincrement=True)
+    cpf = Column(CHAR(11), index=True)
+    data_nascimento = Column(DateTime(), index=True)
+    nome = Column(String(50), index=True)
+    endereco = Column(String(200), index=True)
+
+class Descartado(Base):
+    __tablename__ = 'risco_descartados'
+    ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
+                primary_key=True, autoincrement=True)
+    numeroCEmercante = Column(CHAR(15), index=True)
+
+
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
     if confirma != 'S':
@@ -34,7 +50,7 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        metadata.drop_all(engine)
+        # metadata.drop_all(engine)
         metadata.create_all(engine)
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')

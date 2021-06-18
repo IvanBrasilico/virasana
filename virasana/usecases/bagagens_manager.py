@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List
 
-from bhadrasana.models.ovr import Recinto
+from bhadrasana.models.ovr import Recinto, OVR
 from pymongo.database import Database
 from sqlalchemy import desc
 from virasana.integracao.bagagens.viajantesalchemy import Viagem
@@ -13,17 +13,12 @@ from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Man
 def get_bagagens(mongodb: Database,
                  session, datainicio: datetime, datafim: datetime,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
+                 selecionados=False,
+                 descartados=False,
                  somente_sem_imagem=False
                  ) -> List[Item]:
     # tipoTrafego 5 = lci
     # tipoBLConhecimento 10 = MBL 11 = BL 12 = HBL 15 = MHBL
-    query = '''SELECT codigoConteiner, c.numeroCEmercante, c.tipoBLConhecimento FROM itensresumo i
-    INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
-    WHERE NCM LIKE '9797%' AND c.tipoTrafego = 5
-    AND c.portoDestFinal = 'BRSSZ' AND codigoConteiner like :codigoConteiner
-    AND c.portoOrigemCarga like :portoOrigemCarga
-    AND c.dataEmissao BETWEEN :datainicio AND :datafim
-    LIMIT 100'''
     if numero_conteiner:
         numero_conteiner = numero_conteiner.upper()
     numero_conteiner = ''.join([s for s in numero_conteiner if s.isdigit() or s.isalpha()])
@@ -33,8 +28,10 @@ def get_bagagens(mongodb: Database,
         cpf_cnpj = ''.join([s for s in cpf_cnpj if s.isdigit()])
     q = session.query(Conhecimento.numeroCEmercante, Conhecimento.tipoBLConhecimento,
                       Item.codigoConteiner). \
-        join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante). \
-        filter(Item.NCM.like('9797%')). \
+        join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
+    if selecionados:
+        q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
+    q = q.filter(Item.NCM.like('9797%')). \
         filter(Conhecimento.tipoTrafego == 5). \
         filter(Conhecimento.portoDestFinal == 'BRSSZ'). \
         filter(Item.codigoConteiner.like(numero_conteiner + '%')). \
@@ -44,7 +41,7 @@ def get_bagagens(mongodb: Database,
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
-    conteineres = q.all()
+    conteineres = q.order_by(Conhecimento.dataEmissao).limit(200).all()
     print(f'{len(conteineres)} itens totais encontrados...')
     lista_itens = []
     for row in conteineres:

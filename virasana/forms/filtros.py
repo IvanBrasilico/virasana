@@ -207,8 +207,9 @@ class FormFiltroBagagem(FlaskForm):
                             validators=[optional()], default='')
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='contraste')
-    semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem',
-                             default=False)
+    descartados = BooleanField('Exibir descartados', default=False)
+    selecionados = BooleanField('Exibir selecionados', default=False)
+    semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem', default=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -28,6 +28,8 @@ def configure(app):
                                               portoorigem=form.portoorigem.data,
                                               cpf_cnpj=form.cpf_cnpj.data,
                                               numero_conteiner=form.conteiner.data,
+                                              selecionados=form.selecionados.data,
+                                              descartados=form.descartados.data,
                                               somente_sem_imagem=form.semimagem.data)
                 # logger.debug(stats_cache)
         except Exception as err:

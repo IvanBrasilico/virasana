@@ -53,14 +53,15 @@
                 </div>
                 <div class="row">
                     <div class="col-sm-2">
-                        <input type="checkbox">Exibir descartados<br>
-                        <input type="checkbox">Exibir selecionados (com ficha)
+                        <input type="checkbox" name="descartados" id="descartados"
+                               {% if oform.descartados.data %} checked {% endif %}>Exibir descartados<br>
+                        <input type="checkbox" name="selecionados" id="selecionados"
+                               {% if oform.selecionados.data %} checked {% endif %}>Exibir selecionados<br>
+                        <input type="checkbox" name="semimagem" id="semimagem"
+                               {% if oform.semimagem.data %} checked {% endif %}>Exibir sem imagem
                     </div>
                     <div class="col-sm-2">
                         {{oform.colormap(class='form-control')}}
-                    </div>
-                    <div class="col-sm-2">
-                        {{oform.semimagem(class='form-control')}} Exibir somente as sem imagem
                     </div>
                     <div class="col-sm-2">
                         <input class="btn btn-default btn-info form-control" type="submit" value="Filtrar"/>
@@ -68,8 +69,7 @@
                 </div>
             </div>
             <div class="row col-sm-12">
-                Filtrar por ????<br>
-                Ordenar por ???
+                Ordenado por Data de Emissão do BL
             </div>
         </form>
     </div>
@@ -95,35 +95,35 @@
                 </div>
                 <div class="col-sm-12"><b>Conhecimentos:</b></div>
                 {% for conhecimento in item.conhecimentos %}
-                    <div class="col-sm-12">
-                            {{ conhecimento.numeroCEmercante }} -
-                            {{ conhecimento.dataEmissao }} -
-                            {{ conhecimento.portoOrigemCarga }}<br>
-                            {{ conhecimento.consignatario }}
+                <div class="col-sm-12">
+                    {{ conhecimento.numeroCEmercante }} -
+                    {{ conhecimento.dataEmissao }} -
+                    {{ conhecimento.portoOrigemCarga }}<br>
+                    {{ conhecimento.consignatario }}
+                </div>
+                {% if conhecimento.viagens %}
+                {% for viagem in conhecimento.viagens %}
+                <div class="col-sm-1">&nbsp;</div>
+                <div class="col-sm-11">
+                    <div class="col-sm-6">
+                        {{ viagem.data_chegada.strftime('%d/%m/%Y %H:%M') }}
                     </div>
-                    {% if conhecimento.viagens %}
-                    {% for viagem in conhecimento.viagens %}
-                    <div class="col-sm-1">&nbsp;</div>
-                    <div class="col-sm-11">
-                        <div class="col-sm-6">
-                            {{ viagem.data_chegada.strftime('%d/%m/%Y %H:%M') }}
-                        </div>
-                        <div class="col-sm-2">
-                            {{ viagem.origem }}
-                        </div>
-                        <div class="col-sm-2">
-                            {{ viagem.destino }}
-                        </div>
-                        <div class="col-sm-2">
-                            {{ viagem.localizador }}
-                        </div>
+                    <div class="col-sm-2">
+                        {{ viagem.origem }}
                     </div>
-                    {% endfor %}
-                    {% endif %}
+                    <div class="col-sm-2">
+                        {{ viagem.destino }}
+                    </div>
+                    <div class="col-sm-2">
+                        {{ viagem.localizador }}
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
                 {% endfor %}
                 <div class="col-sm-12">
                     <button class="btn btn-danger"
-                            onclick="window.open('/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
+                            onclick="window.open('https://ajna.labin.rf08.srf/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
                         Abrir Ficha
                     </button>
                     <button class="btn btn-success"
@@ -168,6 +168,7 @@
         }
     }
     function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
 
 
 
