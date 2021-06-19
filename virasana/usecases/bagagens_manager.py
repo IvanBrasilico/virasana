@@ -97,5 +97,6 @@ def get_bagagens(mongodb: Database,
             item.id_imagem = grid_data.get('_id')
             item.pesoBalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
         # if (not somente_sem_imagem) or (grid_data is None):
-        lista_itens.append(item)
+        if item.codigoConteiner:
+            lista_itens.append(item)
     return lista_itens
