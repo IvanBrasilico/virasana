@@ -90,9 +90,16 @@
                 <div class="col-sm-12"><b>Manifesto:</b>
                     {{ item.manifesto.numero }} Operador: {{ item.manifesto.codigoTerminalDescarregamento}}
                 </div>
+                <div class="col-sm-12"><b>Ficha n.: </b>
+                    {% for ficha in item.fichas %}
+                    <a href="https://ajna.labin.rf08.srf/bhadrasana2/ovr?ovr_id={{ ficha }}">{{ ficha }}</a>
+                    {% endfor %}
+                    &nbsp;RVFs: {{ item.rvfs }} Fotos: {{ item.qtdefotos }}
+                </div>
                 <div class="col-sm-12"><b>GMCI:</b>
                     {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}
                 </div>
+
                 <div class="col-sm-12"><b>Conhecimentos:</b></div>
                 {% for conhecimento in item.conhecimentos %}
                 <div class="col-sm-12">

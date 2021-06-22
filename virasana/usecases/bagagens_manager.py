@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 from typing import List
 
 from bhadrasana.models.ovr import Recinto, OVR
+from bhadrasana.models.rvf import RVF, ImagemRVF
 from pymongo.database import Database
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from virasana.integracao.bagagens.viajantesalchemy import Viagem
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
@@ -52,6 +53,8 @@ def get_bagagens(mongodb: Database,
         filter(Item.numeroCEmercante.in_(numeros_ces)).all()
     print(f'{len(itens)} itens encontrados...')
     for item in itens:
+        if not item.codigoConteiner:
+            continue
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == item.numeroCEmercante).one_or_none()
         if not int(conhecimento.tipoBLConhecimento) in (10, 11):
@@ -68,6 +71,17 @@ def get_bagagens(mongodb: Database,
         print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
         item.conhecimentos = [conhecimento, *filhotes]
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
+        # Pegar info Fichas e RVFs
+        rvfs = session.query(RVF).filter(RVF.numerolote == item.codigoConteiner).all()
+        item.rvfs = [rvf.id for rvf in rvfs]
+        conhecimentos_ids = [ce.numeroCEmercante for ce in item.conhecimentos]
+        rvfs = session.query(RVF).filter(RVF.numeroCEmercante.in_(conhecimentos_ids)).all()
+        item.rvfs.extend([rvf.id for rvf in rvfs if rvf.id not in item.rvfs])
+        item.qtdefotos = session.query(func.count(ImagemRVF.id)). \
+            filter(ImagemRVF.rvf_id.in_(item.rvfs)).scalar()
+        ovrs = session.query(OVR).filter(OVR.numeroCEmercante.in_(conhecimentos_ids)).all()
+        item.fichas = [ovr.id for ovr in ovrs]
+        # Pegar viagens do CPF
         for ce in item.conhecimentos:
             print(ce)
             if int(ce.tipoBLConhecimento) in (11, 12):
