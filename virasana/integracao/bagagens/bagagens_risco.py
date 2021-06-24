@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pandas as pd
@@ -10,13 +11,14 @@ sys.path.insert(0, '../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
 from ajna_commons.flask.conf import SQL_URI
-from virasana.integracao.bagagens.viajantesalchemy import Viagem
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa
 
 
-def pessoa_bagagens_sem_info(con, opcao:str):
+def pessoa_bagagens_sem_info(con, opcao: str):
     adicoes_sql = {
         'viagem': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_viagens)',
-        'pessoa': 'AND c.consignatario NOT IN (SELECT DISTINCT cnpj from laudo_empresas)'
+        'empresa': 'AND c.consignatario NOT IN (SELECT DISTINCT cnpj from laudo_empresas)',
+        'pessoa': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_pessoas)'
     }
     sql_novos_viajantes = """SELECT DISTINCT c.consignatario as cpf_cnpj FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
@@ -28,30 +30,50 @@ def pessoa_bagagens_sem_info(con, opcao:str):
 
 
 def importa_viagens(session):
+    if not os.path.exists('viagens.csv'):
+        print('Pulando viagens - arquivo não existe')
+        return
     df = pd.read_csv('viagens.csv')
     df = df.fillna('')
     for index, row in df.iterrows():
         viagem = Viagem()
         viagem.cpf = str(row['cpf']).zfill(11)
-        viagem.data_chegada = row['apvj_apva_apvo_dt_chegada']
-        viagem.origem = row['apvj_cd_local_embarque']
-        viagem.destino = row['apvj_cd_local_destino']
-        viagem.localizador = row['apvj_cd_loc_reserva']
-        viagem.voo = row['apvj_apva_apvo_nr_voo']
+        viagem.data_chegada = row['data_chegada']
+        viagem.origem = row['codigo_local_embarque']
+        viagem.destino = row['codigo_local_destino']
+        viagem.localizador = row['codigo_reserva']
+        viagem.voo = row['numero_voo']
         session.add(viagem)
     session.commit()
+    os.remove('viagens.csv')
 
 
-def importa_pessoas(session, fisica=True):
-    if fisica:
-        df = pd.read_csv('pessoas.csv')
-    else:
-        df = pd.read_csv('empresas.csv')
+def importa_cpfs(session):
+    if not os.path.exists('cpfs.csv'):
+        print('Pulando cpfs - arquivo não existe')
+        return
+    df = pd.read_csv('cpfs.csv')
     for index, row in df.iterrows():
-        if fisica:
-            cnpj = row['cpf']
-        else:
-            cnpj = row['cnpj']
+        cpf = row['cpf']
+        cpf = str(int(cpf)).zfill(11)
+        pessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
+        if pessoa is None:
+            pessoa = Pessoa()
+        pessoa.cpf = cpf
+        pessoa.nome = row['nome']
+        session.add(pessoa)
+    session.commit()
+    os.remove('cpfs.csv')
+
+
+def importa_cnpjs(session):
+    if not os.path.exists('cnpjs.csv'):
+        print('Pulando cnpjs - arquivo não existe')
+        return
+    df = pd.read_csv('cnpjs.csv')
+    for index, row in df.iterrows():
+        cnpj = row['cnpj']
+        cnpj = str(int(cnpj)).zfill(8)
         try:
             empresa = get_empresa(session, cnpj)
         except ValueError:
@@ -62,6 +84,7 @@ def importa_pessoas(session, fisica=True):
         empresa.nome = row['nome']
         session.add(empresa)
     session.commit()
+    os.remove('cnpjs.csv')
 
 
 if __name__ == '__main__':
@@ -74,14 +97,16 @@ if __name__ == '__main__':
         print('Importando viagens...')
         importa_viagens(session)
         print('Importando pessoas físicas...')
-        importa_pessoas(session)
+        importa_cpfs(session)
         print('Importando pessoas juridicas...')
-        importa_pessoas(session, fisica=False)
+        importa_cnpjs(session)
     else:
         print('Exportando listas de CFPs de CEs de bagagem sem informação...')
         print('Exportando CPFs/CNPJs sem viagens...')
         pessoa_bagagens_sem_info(engine, 'viagem')
-        print('Exportando CPFs/CNPJs sem nomes...')
+        print('Exportando CNPJs sem nomes...')
+        pessoa_bagagens_sem_info(engine, 'empresa')
+        print('Exportando CPFs sem nomes...')
         pessoa_bagagens_sem_info(engine, 'pessoa')
         print('Exportando CPFs sem DIRFs...')
         print('Exportando CEs sem DSIs...')

@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
 from typing import List
 
+from ajna_commons.flask.log import logger
+from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.ovr import Recinto, OVR
 from bhadrasana.models.rvf import RVF, ImagemRVF
 from pymongo.database import Database
 from sqlalchemy import desc, func
-from virasana.integracao.bagagens.viajantesalchemy import Viagem
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
@@ -84,6 +86,21 @@ def get_bagagens(mongodb: Database,
         # Pegar viagens do CPF
         for ce in item.conhecimentos:
             print(ce)
+            ce.nome_consignatario = ''
+            cpf_cnpj = ce.consignatario
+            print('*************', cpf_cnpj)
+            if len(cpf_cnpj) < 13:
+                pessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf_cnpj).one_or_none()
+                if pessoa:
+                    ce.nome_consignatario = pessoa.nome
+            else:
+                try:
+                    empresa = session.query(Empresa). \
+                        filter(Empresa.cnpj.like(cpf_cnpj[:8] + '%')).limit(1).first()
+                    ce.nome_consignatario = empresa.nome
+                except Exception as err:
+                    logger.error(str(err))
+                    ce.nome_consignatario = ''
             if int(ce.tipoBLConhecimento) in (11, 12):
                 viagens = session.query(Viagem).filter(Viagem.cpf == ce.consignatario). \
                     filter(Viagem.data_chegada > data_inicial_viagens). \
