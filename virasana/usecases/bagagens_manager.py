@@ -41,6 +41,8 @@ def get_bagagens(mongodb: Database,
         filter(Conhecimento.portoOrigemCarga.like(portoorigem + '%')). \
         filter(Conhecimento.consignatario.like(cpf_cnpj + '%')). \
         filter(Conhecimento.dataEmissao.between(datainicio, datafim))
+    if selecionados:
+        q = q.filter(OVR.fase < 3)
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')

@@ -18,12 +18,13 @@ def pessoa_bagagens_sem_info(con, opcao: str):
     adicoes_sql = {
         'viagem': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_viagens)',
         'empresa': 'AND c.consignatario NOT IN (SELECT DISTINCT cnpj from laudo_empresas)',
-        'pessoa': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_pessoas)'
+        'pessoa': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_pessoas)',
+        'dsi': ''
     }
     sql_novos_viajantes = """SELECT DISTINCT c.consignatario as cpf_cnpj FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
     WHERE NCM LIKE '9797%' AND c.tipoTrafego = 5
-    AND c.dataEmissao >= '2021-04-01'"""
+    AND c.dataEmissao >= '2021-02-01'"""
     sql_novos_viajantes += adicoes_sql[opcao.lower()]
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv(f'{opcao}.csv')
@@ -110,4 +111,5 @@ if __name__ == '__main__':
         pessoa_bagagens_sem_info(engine, 'pessoa')
         print('Exportando CPFs sem DIRFs...')
         print('Exportando CEs sem DSIs...')
+        pessoa_bagagens_sem_info(engine, 'dsi')
         print('Listas devem ser fornecidas ao notebook que faz as consultas no RD.')
