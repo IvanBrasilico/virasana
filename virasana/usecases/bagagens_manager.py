@@ -16,6 +16,7 @@ from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Man
 def get_bagagens(mongodb: Database,
                  session, datainicio: datetime, datafim: datetime,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
+                 ncm='9797', portodestino='BRSSZ',
                  selecionados=False,
                  descartados=False,
                  somente_sem_imagem=False
@@ -34,9 +35,9 @@ def get_bagagens(mongodb: Database,
         join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
     if selecionados:
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
-    q = q.filter(Item.NCM.like('9797%')). \
+    q = q.filter(Item.NCM.like(ncm + '%')). \
         filter(Conhecimento.tipoTrafego == 5). \
-        filter(Conhecimento.portoDestFinal == 'BRSSZ'). \
+        filter(Conhecimento.portoDestFinal.like(portodestino + '%')). \
         filter(Item.codigoConteiner.like(numero_conteiner + '%')). \
         filter(Conhecimento.portoOrigemCarga.like(portoorigem + '%')). \
         filter(Conhecimento.consignatario.like(cpf_cnpj + '%')). \

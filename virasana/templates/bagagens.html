@@ -48,6 +48,12 @@
                         Etapa da seleção
                     </div>
                     <div class="col-sm-2">
+                        Porto de destino
+                    </div>
+                    <div class="col-sm-2">
+                        NCM
+                    </div>
+                    <div class="col-sm-2">
                         Filtro de imagem
                     </div>
                 </div>
@@ -59,6 +65,12 @@
                                {% if oform.selecionados.data %} checked {% endif %}>Exibir selecionados<br>
                         <input type="checkbox" name="semimagem" id="semimagem"
                                {% if oform.semimagem.data %} checked {% endif %}>Exibir sem imagem
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.portodestino(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.ncm(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
                         {{oform.colormap(class='form-control')}}

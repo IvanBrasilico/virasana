@@ -205,6 +205,10 @@ class FormFiltroBagagem(FlaskForm):
                            validators=[optional()], default='')
     conteiner = StringField(u'Número do contêiner',
                             validators=[optional()], default='')
+    portodestino = StringField(u'Porto de Destino',
+                            validators=[optional()], default='BRSSZ')
+    ncm = StringField(u'NCM a pesquisar',
+                            validators=[optional()], default='9797')
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='contraste')
     descartados = BooleanField('Exibir descartados', default=False)
