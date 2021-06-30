@@ -62,6 +62,7 @@ def importa_cpfs(session):
             pessoa = Pessoa()
         pessoa.cpf = cpf
         pessoa.nome = row['nome']
+        pessoa.endereco = row['endereco']
         session.add(pessoa)
     session.commit()
     os.remove('cpfs.csv')

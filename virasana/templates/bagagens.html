@@ -106,7 +106,9 @@
                     {% for ficha in item.fichas %}
                     <a href="https://ajna.labin.rf08.srf/bhadrasana2/ovr?id={{ ficha }}">{{ ficha }}</a>
                     {% endfor %}
-                    &nbsp;RVFs: {{ item.rvfs }} Fotos: {{ item.qtdefotos }}
+                    &nbsp;RVFs: {% for rvf in item.rvfs %}
+                    {{rvf.id}} - {% if rvf.datahora %}{{rvf.datahora.strftime("%d/%m/%Y")}}{% endif %}
+                    {% endfor %} Fotos: {{ item.qtdefotos }}
                 </div>
                 <div class="col-sm-12"><b>GMCI:</b>
                     {{ item.gmci.num_gmci }} - {{ item.gmci.datahora }} - {{ item.gmci.nome_recinto }}

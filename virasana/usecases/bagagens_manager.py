@@ -78,12 +78,12 @@ def get_bagagens(mongodb: Database,
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
         # Pegar info Fichas e RVFs
         rvfs = session.query(RVF).filter(RVF.numerolote == item.codigoConteiner).all()
-        item.rvfs = [rvf.id for rvf in rvfs]
+        item.rvfs = rvfs
         conhecimentos_ids = [ce.numeroCEmercante for ce in item.conhecimentos]
         rvfs = session.query(RVF).filter(RVF.numeroCEmercante.in_(conhecimentos_ids)).all()
-        item.rvfs.extend([rvf.id for rvf in rvfs if rvf.id not in item.rvfs])
+        item.rvfs.extend([rvf for rvf in rvfs if rvf not in item.rvfs])
         item.qtdefotos = session.query(func.count(ImagemRVF.id)). \
-            filter(ImagemRVF.rvf_id.in_(item.rvfs)).scalar()
+            filter(ImagemRVF.rvf_id.in_([rvf.id for rvf in item.rvfs])).scalar()
         ovrs = session.query(OVR).filter(OVR.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.fichas = [ovr.id for ovr in ovrs]
         # Pegar viagens do CPF
