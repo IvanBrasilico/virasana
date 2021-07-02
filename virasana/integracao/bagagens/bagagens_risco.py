@@ -65,7 +65,11 @@ def importa_cpfs(session):
             pessoa = Pessoa()
         pessoa.cpf = cpf
         pessoa.nome = row['nome']
-        # pessoa.endereco = row['endereco']
+        pessoa.endereco = row['endereco']
+        complemento = row['complemento']
+        if complemento != 'Não informado':
+            pessoa.endereco = pessoa.endereco + ' ' + complemento
+        pessoa.cep = row['cep']
         session.add(pessoa)
     session.commit()
     os.remove('cpfs.csv')

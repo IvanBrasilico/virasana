@@ -33,6 +33,7 @@ class Pessoa(Base):
     data_nascimento = Column(DateTime(), index=True)
     nome = Column(String(50), index=True)
     endereco = Column(String(200), index=True)
+    cep = Column(CHAR(9), index=True)
 
 
 class DSI(Base):
