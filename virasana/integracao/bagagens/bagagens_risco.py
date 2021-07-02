@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime, timedelta
 
 import pandas as pd
 from bhadrasana.models.laudo import Empresa, get_empresa
@@ -11,20 +12,22 @@ sys.path.insert(0, '../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
 from ajna_commons.flask.conf import SQL_URI
-from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI
 
 
 def pessoa_bagagens_sem_info(con, opcao: str):
     adicoes_sql = {
-        'viagem': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_viagens)',
-        'empresa': 'AND c.consignatario NOT IN (SELECT DISTINCT cnpj from laudo_empresas)',
-        'pessoa': 'AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_pessoas)',
-        'dsi': ''
+        'viagem': ' AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_viagens)',
+        'empresa': ' AND  SUBSTR(c.consignatario, 1, 8) NOT IN (SELECT DISTINCT cnpj from laudo_empresas)',
+        'pessoa': ' AND c.consignatario NOT IN (SELECT DISTINCT cpf from bagagens_pessoas)',
+        'dsi': ' AND c.consignatario NOT IN (SELECT DISTINCT consignatario from bagagens_dsi)'
     }
     sql_novos_viajantes = """SELECT DISTINCT c.consignatario as cpf_cnpj FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
-    WHERE NCM LIKE '9797%' AND c.tipoTrafego = 5
-    AND c.dataEmissao >= '2021-02-01'"""
+    WHERE NCM LIKE '9797%%' AND c.tipoTrafego = 5
+    AND c.dataEmissao >= '%s'"""
+    data_inicial = datetime.strftime(datetime.now() - timedelta(days=60), '%Y-%m-%d')
+    sql_novos_viajantes = sql_novos_viajantes % data_inicial
     sql_novos_viajantes += adicoes_sql[opcao.lower()]
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv(f'{opcao}.csv')
@@ -62,7 +65,7 @@ def importa_cpfs(session):
             pessoa = Pessoa()
         pessoa.cpf = cpf
         pessoa.nome = row['nome']
-        pessoa.endereco = row['endereco']
+        # pessoa.endereco = row['endereco']
         session.add(pessoa)
     session.commit()
     os.remove('cpfs.csv')
@@ -89,6 +92,29 @@ def importa_cnpjs(session):
     os.remove('cnpjs.csv')
 
 
+def importa_dsis(session):
+    if not os.path.exists('dsis.csv'):
+        print('Pulando dsis - arquivo não existe')
+        return
+    df = pd.read_csv('dsis.csv')
+    for index, row in df.iterrows():
+        numero = row['numero']
+        try:
+            dsi = session.query(DSI).filter(DSI.numero == numero).one_or_none()
+        except ValueError:
+            dsi = None
+        if dsi is None:
+            dsi = DSI()
+        dsi.numero = numero
+        dsi.consignatario = row['consignatario']
+        dsi.despachante = row['despachante']
+        dsi.descricao = row['descricao']
+        dsi.data_registro = row['data_registro']
+        session.add(dsi)
+    session.commit()
+    os.remove('dsis.csv')
+
+
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
     Session = sessionmaker(bind=engine)
@@ -102,6 +128,8 @@ if __name__ == '__main__':
         importa_cpfs(session)
         print('Importando pessoas juridicas...')
         importa_cnpjs(session)
+        print('Importando DSIs...')
+        importa_dsis(session)
     else:
         print('Exportando listas de CFPs de CEs de bagagem sem informação...')
         print('Exportando CPFs/CNPJs sem viagens...')
@@ -111,6 +139,6 @@ if __name__ == '__main__':
         print('Exportando CPFs sem nomes...')
         pessoa_bagagens_sem_info(engine, 'pessoa')
         print('Exportando CPFs sem DIRFs...')
-        print('Exportando CEs sem DSIs...')
+        print('Exportando CPFs sem DSIs...')
         pessoa_bagagens_sem_info(engine, 'dsi')
         print('Listas devem ser fornecidas ao notebook que faz as consultas no RD.')

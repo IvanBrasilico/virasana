@@ -120,7 +120,10 @@
                     {{ conhecimento.numeroCEmercante }} -
                     {{ conhecimento.dataEmissao }} -
                     {{ conhecimento.portoOrigemCarga }}<br>
-                    {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}
+                    {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
+                    {% for dsi in conhecimento.dsis %}
+                        DSI: {{ dsi.numero }} - {{ dsi.data_registro }} - {{ dsi.despachante }}<br>
+                    {% endfor %}
                 </div>
                 {% if conhecimento.viagens %}
                 {% for viagem in conhecimento.viagens %}

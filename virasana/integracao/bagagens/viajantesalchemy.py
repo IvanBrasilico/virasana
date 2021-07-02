@@ -34,11 +34,13 @@ class Pessoa(Base):
     nome = Column(String(50), index=True)
     endereco = Column(String(200), index=True)
 
+
 class DSI(Base):
     __tablename__ = 'bagagens_dsi'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
-    numero = Column(CHAR(11), index=True)
+    numero = Column(CHAR(11), unique=True)
+    data_registro = Column(DateTime, index=True)
     consignatario = Column(CHAR(11), index=True)
     despachante = Column(CHAR(11), index=True)
     descricao = Column(String(1000), index=True)

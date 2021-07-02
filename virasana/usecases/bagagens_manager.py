@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta
 from typing import List
 
@@ -7,7 +8,7 @@ from bhadrasana.models.ovr import Recinto, OVR
 from bhadrasana.models.rvf import RVF, ImagemRVF
 from pymongo.database import Database
 from sqlalchemy import desc, func
-from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
@@ -96,6 +97,8 @@ def get_bagagens(mongodb: Database,
                 pessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf_cnpj).one_or_none()
                 if pessoa:
                     ce.nome_consignatario = pessoa.nome
+                dsis = session.query(DSI).filter(DSI.consignatario == cpf_cnpj).all()
+                ce.dsis = dsis
             else:
                 try:
                     empresa = session.query(Empresa). \
