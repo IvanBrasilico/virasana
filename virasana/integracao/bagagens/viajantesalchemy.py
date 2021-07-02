@@ -23,6 +23,7 @@ class Viagem(Base):
     destino = Column(CHAR(3), index=True)
     localizador = Column(CHAR(10), index=True)
     voo = Column(CHAR(10), index=True)
+    codigo_vu = Column(CHAR(17), index=True)
 
 
 class Pessoa(Base):

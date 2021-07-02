@@ -34,10 +34,10 @@ def pessoa_bagagens_sem_info(con, opcao: str):
 
 
 def importa_viagens(session):
-    if not os.path.exists('viagens.csv'):
+    if not os.path.exists('viagens_nome.csv'):
         print('Pulando viagens - arquivo não existe')
         return
-    df = pd.read_csv('viagens.csv')
+    df = pd.read_csv('viagens_nome.csv')
     df = df.fillna('')
     for index, row in df.iterrows():
         viagem = Viagem()
@@ -47,9 +47,10 @@ def importa_viagens(session):
         viagem.destino = row['codigo_local_destino']
         viagem.localizador = row['codigo_reserva']
         viagem.voo = row['numero_voo']
+        viagem.codigo_vu = row['codigo_vu']
         session.add(viagem)
     session.commit()
-    os.remove('viagens.csv')
+    os.remove('viagens_nome.csv')
 
 
 def importa_cpfs(session):
