@@ -110,7 +110,7 @@ def get_bagagens(mongodb: Database,
             if int(ce.tipoBLConhecimento) in (11, 12):
                 viagens = session.query(Viagem).filter(Viagem.cpf == ce.consignatario). \
                     filter(Viagem.data_chegada > data_inicial_viagens). \
-                    order_by(desc(Viagem.data_chegada))
+                    order_by(desc(Viagem.data_chegada)).limit(7)
                 ce.viagens = viagens
         # Procura escaneamentos do contêiner até 32 dias após emissão do conhecimento
         # Se não encontrar, procura pelo conhecimento
