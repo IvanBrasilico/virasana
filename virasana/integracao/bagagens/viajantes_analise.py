@@ -18,6 +18,16 @@ on b1.cpf = b2.cpf and b1.data_chegada = b2.data_chegada
 inner join bagagens_pessoas p on p.cpf = b1.cpf
 '''
 
+
+sql_bagagens_e_viajante = """
+SELECT DISTINCT c.consignatario as cpf_cnpj, c.portoDestFinal, b.codigo_vu, 
+c.portoOrigemCarga FROM itensresumo i 
+INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
+LEFT JOIN bagagens_viagens b ON b.cpf = c.consignatario 
+WHERE NCM LIKE '9797%%' AND c.tipoTrafego = 5 
+AND c.dataEmissao >= '2021-03-01' 
+"""
+
 AEROPORTOS_BRASILEIROS = [
     'CGH', 'GRU', 'RAO', 'SJP', 'MII', 'BAU', 'CPQ', 'GIG', 'LDB', 'BPS',
     'SDU', 'BHZ', 'UDI', 'GYN', 'BSB', 'CWB', 'FLN', 'JOI', 'BNU', 'ITJ', 'CXJ',
@@ -26,9 +36,8 @@ AEROPORTOS_BRASILEIROS = [
 
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
-    Session = sessionmaker(bind=engine)
-    session = Session()
     df = pd.read_sql(sql_ultima_viagem, engine)
+    df_ces_vu = pd.read_sql(sql_bagagens_e_viajante, engine)
     df_brasil = df[df.destino.isin(AEROPORTOS_BRASILEIROS)]
     df_estrangeiro = df[~ df.destino.isin(AEROPORTOS_BRASILEIROS)]
     print('Análise de viagens finais de viajantes com CEs de 2021.')
@@ -44,3 +53,17 @@ if __name__ == '__main__':
     print(f'Total de {len(df_estrangeiro)} viagens finais para aeroportos estrangeiros '
           f'({int(len(df_estrangeiro)/len(df)*100)}%)')
     print(f'Total de {len(df)} viagens finais')
+
+    print('Considerando os CEs com data de emissão a partir de 01/03/2021:')
+    sum_ces = len(df_ces_vu)
+    sum_ces_sem = sum(df_ces_vu.codigo_vu.isna())
+    df_ces_vu_us = df_ces_vu[df_ces_vu.portoOrigemCarga.str.startswith('US')]
+    sum_ces_us = len(df_ces_vu_us)
+    sum_ces_sem_us = sum(df_ces_vu_us.codigo_vu.isna())
+    print(f'Total de CEs de bagagens: {sum_ces}')
+    print(f'Total de CEs de bagagens com viajantes sem viagens: {sum_ces_sem} '
+          f'({sum_ces_sem*100/sum_ces:0.0f}%)')
+    print(f'Total de CEs de bagagens US: {sum_ces_us} ({sum_ces_us*100/sum_ces:0.0f}%)')
+    print(f'Total de CEs de bagagens US com viajantes sem viagens: {sum_ces_sem_us} '
+          f'({sum_ces_sem_us*100/sum_ces_us:0.0f}%)')
+

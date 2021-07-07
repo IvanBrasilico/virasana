@@ -93,7 +93,7 @@ def get_bagagens(mongodb: Database,
             ce.nome_consignatario = ''
             cpf_cnpj = ce.consignatario
             print('*************', cpf_cnpj)
-            if len(cpf_cnpj) < 13:
+            if len(cpf_cnpj) == 11:
                 pessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf_cnpj).one_or_none()
                 if pessoa:
                     ce.nome_consignatario = pessoa.nome

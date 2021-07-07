@@ -45,6 +45,7 @@ class DSI(Base):
     data_registro = Column(DateTime, index=True)
     consignatario = Column(CHAR(11), index=True)
     despachante = Column(CHAR(11), index=True)
+    numeroCEmercante = Column(CHAR(15), index=True)
     descricao = Column(String(1000), index=True)
 
 
@@ -64,7 +65,7 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        # metadata.drop_all(engine)
+        metadata.drop_all(engine, [metadata.tables['bagagens_dsi']])
         metadata.create_all(engine)
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')

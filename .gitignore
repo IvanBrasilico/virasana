@@ -163,3 +163,7 @@ alembic*
 mercante/*
 jupapi.info
 *.csv
+/virasana/integracao/bagagens/bagagens.zip
+/virasana/integracao/bagagens/RD-Viajantes-PorNome-Limpo.py
+/virasana/integracao/bagagens/viajantes_relatorio.txt
+/viajantes_relatorio.txt

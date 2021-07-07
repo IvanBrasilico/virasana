@@ -103,6 +103,7 @@ def importa_dsis(session):
         return
     df = pd.read_csv('dsis.csv')
     for index, row in df.iterrows():
+        print(row)
         numero = row['numero']
         try:
             dsi = session.query(DSI).filter(DSI.numero == numero).one_or_none()
@@ -115,6 +116,7 @@ def importa_dsis(session):
         dsi.despachante = row['despachante']
         dsi.descricao = row['descricao']
         dsi.data_registro = row['data_registro']
+        dsi.numeroCEmercante = row['nr_conhec_carga'][-15:]
         session.add(dsi)
     session.commit()
     os.remove('dsis.csv')
