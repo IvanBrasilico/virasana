@@ -24,13 +24,15 @@ def get_bagagens(mongodb: Database,
                  ) -> List[Item]:
     # tipoTrafego 5 = lci
     # tipoBLConhecimento 10 = MBL 11 = BL 12 = HBL 15 = MHBL
+    cpf_cnpj_lista = None
     if numero_conteiner:
         numero_conteiner = numero_conteiner.upper()
     numero_conteiner = ''.join([s for s in numero_conteiner if s.isdigit() or s.isalpha()])
     if portoorigem:
         portoorigem = portoorigem.upper()
     if cpf_cnpj:
-        cpf_cnpj = ''.join([s for s in cpf_cnpj if s.isdigit()])
+        cpf_cnpj = ''.join([s for s in cpf_cnpj if s.isdigit() or s == ';'])
+        cpf_cnpj_lista = cpf_cnpj.split(';')
     q = session.query(Conhecimento.numeroCEmercante, Conhecimento.tipoBLConhecimento,
                       Item.codigoConteiner). \
         join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
@@ -41,8 +43,9 @@ def get_bagagens(mongodb: Database,
         filter(Conhecimento.portoDestFinal.like(portodestino + '%')). \
         filter(Item.codigoConteiner.like(numero_conteiner + '%')). \
         filter(Conhecimento.portoOrigemCarga.like(portoorigem + '%')). \
-        filter(Conhecimento.consignatario.like(cpf_cnpj + '%')). \
         filter(Conhecimento.dataEmissao.between(datainicio, datafim))
+    if cpf_cnpj_lista:
+        q = q.filter(Conhecimento.consignatario.in_(cpf_cnpj_lista))
     if selecionados:
         q = q.filter(OVR.fase < 3)
     print(str(q))

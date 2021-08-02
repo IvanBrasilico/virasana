@@ -26,7 +26,7 @@ def pessoa_bagagens_sem_info(con, opcao: str):
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
     WHERE NCM LIKE '9797%%' AND c.tipoTrafego = 5
     AND c.dataEmissao >= '%s'"""
-    data_inicial = datetime.strftime(datetime.now() - timedelta(days=60), '%Y-%m-%d')
+    data_inicial = datetime.strftime(datetime.now() - timedelta(days=120), '%Y-%m-%d')
     sql_novos_viajantes = sql_novos_viajantes % data_inicial
     sql_novos_viajantes += adicoes_sql[opcao.lower()]
     df = pd.read_sql(sql_novos_viajantes, con)

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 import sys
 
@@ -18,7 +20,6 @@ on b1.cpf = b2.cpf and b1.data_chegada = b2.data_chegada
 inner join bagagens_pessoas p on p.cpf = b1.cpf
 '''
 
-
 sql_bagagens_e_viajante = """
 SELECT DISTINCT c.consignatario as cpf_cnpj, c.portoDestFinal, b.codigo_vu, 
 c.portoOrigemCarga FROM itensresumo i 
@@ -27,6 +28,8 @@ LEFT JOIN bagagens_viagens b ON b.cpf = c.consignatario
 WHERE NCM LIKE '9797%%' AND c.tipoTrafego = 5 
 AND c.dataEmissao >= '2021-03-01' 
 """
+
+sql_data_emissao = 'SELECT consignatario as cpf, dataEmissao FROM conhecimentosresumo WHERE consignatario in ("%s")'
 
 AEROPORTOS_BRASILEIROS = [
     'CGH', 'GRU', 'RAO', 'SJP', 'MII', 'BAU', 'CPQ', 'GIG', 'LDB', 'BPS',
@@ -37,9 +40,14 @@ AEROPORTOS_BRASILEIROS = [
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
     df = pd.read_sql(sql_ultima_viagem, engine)
-    df_ces_vu = pd.read_sql(sql_bagagens_e_viajante, engine)
     df_brasil = df[df.destino.isin(AEROPORTOS_BRASILEIROS)]
     df_estrangeiro = df[~ df.destino.isin(AEROPORTOS_BRASILEIROS)]
+    consignatarios = '" ,"'.join(list(df_brasil.cpf.values))
+    df_dataemissao = pd.read_sql(sql_data_emissao % consignatarios, engine)
+    df_dataemissao['dataEmissao'] = df_dataemissao['dataEmissao'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
+    df_emissao_chegada = pd.merge(df, df_dataemissao, on='cpf')
+    df_emissao_chegada['diferenca'] = df_emissao_chegada['data_chegada'] - df_emissao_chegada['dataEmissao']
+    df_ces_vu = pd.read_sql(sql_bagagens_e_viajante, engine)
     print('Análise de viagens finais de viajantes com CEs de 2021.')
     print('Foram considerados aeroportos brasileiros:')
     print(AEROPORTOS_BRASILEIROS)
@@ -66,4 +74,12 @@ if __name__ == '__main__':
     print(f'Total de CEs de bagagens US: {sum_ces_us} ({sum_ces_us*100/sum_ces:0.0f}%)')
     print(f'Total de CEs de bagagens US com viajantes sem viagens: {sum_ces_sem_us} '
           f'({sum_ces_sem_us*100/sum_ces_us:0.0f}%)')
+
+    print(df_emissao_chegada.head())
+    print(len(df_emissao_chegada))
+    mais_de_3_meses_antes = len(df_emissao_chegada[df_emissao_chegada['diferenca'] < timedelta(days=-90)])
+    ate_3_meses_antes = len(df_emissao_chegada[df_emissao_chegada['diferenca'] > timedelta(days=-90)][df_emissao_chegada['diferenca'] < timedelta(days=0)])
+    ate_6_meses_depois = len(df_emissao_chegada[df_emissao_chegada['diferenca'] > timedelta(days=0)][df_emissao_chegada['diferenca'] < timedelta(days=180)])
+    mais_de_6_meses_depois = len(df_emissao_chegada[df_emissao_chegada['diferenca'] > timedelta(days=180)])
+    print(mais_de_3_meses_antes, ate_3_meses_antes, ate_6_meses_depois, mais_de_6_meses_depois)
 
