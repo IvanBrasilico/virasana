@@ -61,9 +61,13 @@ def get_bagagens(mongodb: Database,
     itens = session.query(Item). \
         filter(Item.numeroCEmercante.in_(numeros_ces)).all()
     print(f'{len(itens)} itens encontrados...')
+    conteineres_incluidos = set()
     for item in itens:
         if not item.codigoConteiner:
             continue
+        if item.codigoConteiner in conteineres_incluidos:
+            continue
+        conteineres_incluidos.add(item.codigoConteiner)
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == item.numeroCEmercante).one_or_none()
         if not int(conhecimento.tipoBLConhecimento) in (10, 11):
@@ -147,6 +151,5 @@ def get_bagagens(mongodb: Database,
             item.id_imagem = grid_data.get('_id')
             item.pesoBalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
         # if (not somente_sem_imagem) or (grid_data is None):
-        if item.codigoConteiner:
-            lista_itens.append(item)
+        lista_itens.append(item)
     return lista_itens
