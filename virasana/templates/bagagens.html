@@ -110,7 +110,7 @@
                 </div>
                 <div class="col-sm-12"><b>Ficha n.: </b>
                     {% for ficha in item.fichas %}
-                    <a href="https://ajna.labin.rf08.srf/bhadrasana2/ovr?id={{ ficha }}">{{ ficha }}</a>
+                    <a href="https://ajna.labin.rf08.srf/bhadrasana2/ovr?id={{ ficha }}" target="_blank">{{ ficha }}</a>
                     {% endfor %}
                     &nbsp;RVFs: {% for rvf in item.rvfs %}
                     {{rvf.id}} - {% if rvf.datahora %}{{rvf.datahora.strftime("%d/%m/%Y")}}{% endif %}
