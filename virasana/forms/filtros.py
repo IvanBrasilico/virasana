@@ -212,7 +212,7 @@ class FormFiltroBagagem(FlaskForm):
                       validators=[optional()], default='9797')
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='contraste')
-    descartados = BooleanField('Exibir descartados', default=False)
+    classificados = BooleanField('Exibir descartados', default=False)
     selecionados = BooleanField('Exibir selecionados', default=False)
     semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem', default=False)
 

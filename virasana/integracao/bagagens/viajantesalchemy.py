@@ -62,7 +62,7 @@ class ClassificacaoRisco(Base):
     __tablename__ = 'risco_classificacao'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
-    numeroCEmercante = Column(CHAR(15), index=True)
+    numeroCEmercante = Column(CHAR(15), unique=True)
     classerisco = Column(Integer(), index=True)
     descricao = Column(CHAR(200), index=True)
 

@@ -59,12 +59,12 @@
                 </div>
                 <div class="row">
                     <div class="col-sm-2">
-                        <input type="checkbox" name="descartados" id="descartados"
-                               {% if oform.descartados.data %} checked {% endif %}>Exibir descartados<br>
+                        <input type="checkbox" name="classificados" id="classificados"
+                               {% if oform.classificados.data %} checked {% endif %}>Classificados com risco<br>
                         <input type="checkbox" name="selecionados" id="selecionados"
-                               {% if oform.selecionados.data %} checked {% endif %}>Exibir selecionados<br>
+                               {% if oform.selecionados.data %} checked {% endif %}>Exibir com Ficha ativa<br>
                         <input type="checkbox" name="semimagem" id="semimagem"
-                               {% if oform.semimagem.data %} checked {% endif %}>Exibir sem imagem
+                               {% if oform.semimagem.data %} checked {% endif %}>Exibir com imagem faltando
                     </div>
                     <div class="col-sm-2">
                         {{oform.portodestino(class='form-control')}}

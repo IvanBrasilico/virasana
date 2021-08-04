@@ -8,7 +8,7 @@ from bhadrasana.models.rvf import RVF, ImagemRVF
 from virasana.forms.filtros import FormClassificacaoRisco
 from pymongo.database import Database
 from sqlalchemy import desc, func
-from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI, ClassificacaoRisco
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI, ClassificacaoRisco, ClasseRisco
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
@@ -19,7 +19,7 @@ def get_bagagens(mongodb: Database,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
                  ncm='9797', portodestino='BRSSZ',
                  selecionados=False,
-                 descartados=False,
+                 classificados=False,
                  somente_sem_imagem=False
                  ) -> List[Item]:
     # tipoTrafego 5 = lci
@@ -38,6 +38,8 @@ def get_bagagens(mongodb: Database,
         join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
     if selecionados:
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
+    if classificados:
+        q = q.join(ClassificacaoRisco, ClassificacaoRisco.numeroCEmercante == Conhecimento.numeroCEmercante)
     q = q.filter(Item.NCM.like(ncm + '%')). \
         filter(Conhecimento.tipoTrafego == 5). \
         filter(Conhecimento.portoDestFinal.like(portodestino + '%')). \
@@ -48,6 +50,8 @@ def get_bagagens(mongodb: Database,
         q = q.filter(Conhecimento.consignatario.in_(cpf_cnpj_lista))
     if selecionados:
         q = q.filter(OVR.fase < 3)
+    if classificados:
+        q = q.filter(ClassificacaoRisco.classerisco > ClasseRisco.VERDE)
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
@@ -150,6 +154,6 @@ def get_bagagens(mongodb: Database,
         if grid_data:
             item.id_imagem = grid_data.get('_id')
             item.pesoBalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
-        # if (not somente_sem_imagem) or (grid_data is None):
-        lista_itens.append(item)
+        if (not somente_sem_imagem) or (grid_data is None):
+            lista_itens.append(item)
     return lista_itens

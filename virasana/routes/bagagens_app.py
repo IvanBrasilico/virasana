@@ -42,7 +42,7 @@ def configure(app):
                             portodestino=form.portodestino.data,
                             ncm=form.ncm.data,
                             selecionados=form.selecionados.data,
-                            descartados=form.descartados.data,
+                            classificados=form.classificados.data,
                             somente_sem_imagem=form.semimagem.data)
 
     @app.route('/bagagens_redirect', methods=['GET'])
