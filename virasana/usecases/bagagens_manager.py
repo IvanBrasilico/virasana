@@ -51,7 +51,7 @@ def get_bagagens(mongodb: Database,
     if selecionados:
         q = q.filter(OVR.fase < 3)
     if classificados:
-        q = q.filter(ClassificacaoRisco.classerisco > ClasseRisco.VERDE)
+        q = q.filter(ClassificacaoRisco.classerisco > ClasseRisco.VERDE.value)
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
