@@ -4,6 +4,7 @@ from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
+from virasana.integracao.bagagens.viajantesalchemy import ClasseRisco
 from virasana.models.auditoria import Auditoria
 from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
@@ -206,9 +207,9 @@ class FormFiltroBagagem(FlaskForm):
     conteiner = StringField(u'Número do contêiner',
                             validators=[optional()], default='')
     portodestino = StringField(u'Porto de Destino',
-                            validators=[optional()], default='BRSSZ')
+                               validators=[optional()], default='BRSSZ')
     ncm = StringField(u'NCM a pesquisar',
-                            validators=[optional()], default='9797')
+                      validators=[optional()], default='9797')
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='contraste')
     descartados = BooleanField('Exibir descartados', default=False)
@@ -220,3 +221,19 @@ class FormFiltroBagagem(FlaskForm):
         self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
                                  'tab10']
+
+
+class FormClassificacaoRisco(FlaskForm):
+    """Interface para classe ClassificacaoRisco.
+
+    Usa wtforms para facilitar a validação dos campos da tela.
+
+    """
+    numeroCEmercante = StringField('Número do CE Mercante')
+    classerisco = SelectField('Classificação de risco',
+                              validators=[optional()], default=0)
+    descricao = StringField('Descrição do motivo da classificação', default='')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.classerisco.choices = [(i.value, i.name) for i in ClasseRisco]

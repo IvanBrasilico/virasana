@@ -1,5 +1,5 @@
 {% extends "layout.html" %} {% block content %}{{super()}}
-<div id="main" class="container-fluid">
+<div id="main" class="container-fluid" xmlns="http://www.w3.org/1999/html">
     {% for field, errors in oform.errors.items() %}
     <div class="alert alert-error row col-sm-12">
         {{ oform[field].label }}: {{ ', '.join(errors) }}
@@ -78,6 +78,12 @@
                     <div class="col-sm-2">
                         <input class="btn btn-default btn-info form-control" type="submit" value="Filtrar"/>
                     </div>
+                    <div class="col-sm-2">
+                        <button id="btn_incluir" type="button" class="btn btn-primary form-control"
+                                data-toggle="modal" data-target="#importa_csv">Importar DSIs
+                        </button>
+                    </div>
+
                 </div>
             </div>
             <div class="row col-sm-12">
@@ -117,12 +123,21 @@
                 <div class="col-sm-12"><b>Conhecimentos:</b></div>
                 {% for conhecimento in item.conhecimentos %}
                 <div class="col-sm-12">
+                    {% if conhecimento.classificacaorisco %}
+                    <form method="POST" id="form_classificacao" action="classificaCE">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="numeroCEmercante" value="{{conhecimento.form_classificacao.numeroCEmercante.data}}"/>
+                        {{ conhecimento.form_classificacao.classerisco(class='form-control') }}
+                        {{ conhecimento.form_classificacao.descricao(class='form-control') }}
+                        <input class="btn btn-default btn-info form-control" type="submit" value="Classificar"/>
+                    </form>
+                    {% endif %}
                     {{ conhecimento.numeroCEmercante }} -
                     {{ conhecimento.dataEmissao }} -
                     {{ conhecimento.portoOrigemCarga }}<br>
                     {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
                     {% for dsi in conhecimento.dsis %}
-                        DSI: {{ dsi.numero }} - {{ dsi.data_registro }} - {{ dsi.despachante }}<br>
+                    DSI: {{ dsi.numero }} - {{ dsi.data_registro }} - {{ dsi.despachante }}<br>
                     {% endfor %}
                 </div>
                 {% if conhecimento.viagens %}
@@ -150,10 +165,6 @@
                             onclick="window.open('https://ajna.labin.rf08.srf/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
                         Abrir Ficha
                     </button>
-                    <button class="btn btn-success"
-                            onclick="window.open('bagagem_descarta?numeroCEmercante={{item.numeroCEmercante}}')">
-                        Descartar
-                    </button>
                     <button class="btn btn-info"
                             onclick="window.open('files?numero={{item.codigoConteiner}}')">
                         Outras imagens
@@ -175,9 +186,77 @@
     <div id="bottom" class="row col-sm-12">
         AJNA - Receita Federal do Brasil 2017
     </div>
-    <!-- /#main -->
-    {% endblock %} {% block scripts %} {{super()}}
-    <script type="text/javascript">
+</div>
+<div class="modal fade" id="importa_csv" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title" id="ModalLabel">Importar CSV</h1>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="importa_dsis" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="active_tab" value="{{active_tab}}">
+                    <label class="btn btn-default btn-choose" for="planilha">
+                        <input id="planilha" name="planilha" type="file" style="display:none"
+                               onchange="$('#upload-file-info').html(this.files[0].name)"> Escolha a planilha
+                    </label>
+                    <big>
+                        <span class='label label-success' id="upload-file-info"></span>
+                    </big>
+                    &nbsp;
+                    <input class="btn btn-primary" type="submit" value="Importar CSV"/>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade modal-lg" id="classificacaorisco" tabindex="-1" role="dialog"
+     aria-labelledby="ModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title" id="ModalLabel2">Registra classificação do CE-Mercante</h1>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="classifica_risco" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-sm-3">
+                            <label for="classificacaorisco_numeroCEmercante"></label>
+                        </div>
+                        <div class="col-sm-5">
+                            <div class="form-control">
+                                <input type="text" name="classificacaorisco_numeroCEmercante">
+                            </div>
+                        </div>
+                        <div class="col-sm-1">
+                            <label for="classificacaorisco_descricao">Fase</label>
+                        </div>
+                        <div class="col-sm-3">
+                            <div class="form-control">
+                                <input type="text" name="classificacaorisco_descricao">
+                            </div>
+                        </div>
+                    </div>
+                    <input class="btn btn-primary" type="submit" value="Classificar"/>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- /#main -->
+{% endblock %} {% block scripts %} {{super()}}
+<script type="text/javascript">
     $('th').click(function(){
         var table = $(this).parents('table').eq(0)
         var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
@@ -193,10 +272,5 @@
     }
     function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
 
-
-
-
-
-
-    </script>
-    {% endblock %}
+</script>
+{% endblock %}

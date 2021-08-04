@@ -72,20 +72,27 @@ def get_conformidade_recinto(session, recinto=None, datainicio=None,
 
 def get_completude_mercante(session, datainicio: str, datafim: str, cod_recinto=''):
     sql_completude = '''
-    SELECT cod_recinto as "Recinto", count(*) as "Qtde de contêineres",
+    SELECT Recinto, count(*) as "Qtde de contêineres",
            sum(id_imagem is not null) as "Contêineres com escaneamento",
            sum(id_imagem is null) as "Contêineres sem escaneamento" FROM
-    (SELECT cod_recinto, codigoConteiner, Atracacao, id_imagem FROM 
+    (SELECT Recinto, codigoConteiner, Atracacao, id_imagem FROM 
+    (select codigoConteiner, Atracacao, IF(r2.nome is not null, r2.nome, rcarga) as Recinto  from
     (SELECT distinct i.codigoConteiner, 
-    e.dataEfetivaPrimeiraAtracacao as 'Atracacao'
+    e.dataEfetivaPrimeiraAtracacao as 'Atracacao', r.nome as rcarga
     FROM conhecimentosresumo c 
     INNER JOIN itensresumo i ON i.`numeroCEmercante` = c.`numeroCEmercante`
     INNER JOIN manifestosresumo m on c.manifestoCE = m.numero
     INNER JOIN escalamanifestoresumo em ON em.manifesto = m.numero
     INNER JOIN escalasresumo e ON em.escala = e.numeroDaEscala
+    INNER JOIN ovr_recintos r ON r.cod_carga = m.codigoTerminalDescarregamento
     where c.tipoTrafego = 5 and m.portoDescarregamento = 'BRSSZ' 
     and e.dataEfetivaPrimeiraAtracacao >= :datainicio 
     and e.dataEfetivaPrimeiraAtracacao < :datafim
+    and codigoConteiner is not null and codigoConteiner != '') as atr
+    LEFT JOIN dte_gmcis gmci ON gmci.num_conteiner = atr.codigoConteiner
+    LEFT JOIN ovr_recintos r2 ON r2.ID = gmci.cod_recinto
+    AND gmci.datahora >=  atr.Atracacao - INTERVAL 1 DAY
+    AND gmci.datahora < atr.Atracacao + INTERVAL 10 DAY 
     and codigoConteiner is not null and codigoConteiner != '') as atr
     LEFT JOIN ajna_conformidade co ON co.numeroinformado = atr.codigoConteiner
     AND co.dataescaneamento >=  atr.Atracacao - INTERVAL 1 DAY
@@ -110,3 +117,21 @@ def get_completude_mercante(session, datainicio: str, datafim: str, cod_recinto=
         lista_completude.append(linha)
     print(lista_completude)
     return rs.keys(), lista_completude
+
+
+
+def gera_escaneamentos_obrigatorios():
+    sql_importacao = '''
+    SELECT distinct i.codigoConteiner, recinto, 
+    e.dataEfetivaPrimeiraAtracacao as 'Atracacao'
+    FROM conhecimentosresumo c 
+    INNER JOIN itensresumo i ON i.`numeroCEmercante` = c.`numeroCEmercante`
+    INNER JOIN manifestosresumo m on c.manifestoCE = m.numero
+    INNER JOIN escalamanifestoresumo em ON em.manifesto = m.numero
+    INNER JOIN escalasresumo e ON em.escala = e.numeroDaEscala
+    where c.tipoTrafego = 5 and m.portoDescarregamento = 'BRSSZ' 
+    and e.dataEfetivaPrimeiraAtracacao >= :datainicio 
+    and e.dataEfetivaPrimeiraAtracacao < :datafim
+    and codigoConteiner is not null and codigoConteiner != ''
+    '''
+

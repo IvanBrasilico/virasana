@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 from typing import List
 
@@ -6,9 +5,10 @@ from ajna_commons.flask.log import logger
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.ovr import Recinto, OVR
 from bhadrasana.models.rvf import RVF, ImagemRVF
+from virasana.forms.filtros import FormClassificacaoRisco
 from pymongo.database import Database
 from sqlalchemy import desc, func
-from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI
+from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI, ClassificacaoRisco
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
@@ -32,7 +32,7 @@ def get_bagagens(mongodb: Database,
         portoorigem = portoorigem.upper()
     if cpf_cnpj:
         cpf_cnpj = ''.join([s for s in cpf_cnpj if s.isdigit() or s == ';'])
-        cpf_cnpj_lista = cpf_cnpj.split(';')
+        cpf_cnpj_lista = [item.strip() for item in cpf_cnpj.split(';')]
     q = session.query(Conhecimento.numeroCEmercante, Conhecimento.tipoBLConhecimento,
                       Item.codigoConteiner). \
         join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
@@ -71,7 +71,17 @@ def get_bagagens(mongodb: Database,
                 Conhecimento.numeroCEmercante == conhecimento.numeroCEMaster).one_or_none()
             if conhecimento_master:
                 conhecimento = conhecimento_master
-        print(item.codigoConteiner)
+        classificacaorisco = session.query(ClassificacaoRisco). \
+            filter(ClassificacaoRisco.numeroCEmercante == conhecimento.numeroCEmercante).one_or_none()
+        if classificacaorisco is None:
+            form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante)
+        else:
+            form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante,
+                                                        classerisco=classificacaorisco.classerisco,
+                                                        descricao=classificacaorisco.descricao)
+        conhecimento.classificacaorisco = classificacaorisco
+        conhecimento.form_classificacao = form_classificacao
+        #print(item.codigoConteiner)
         manifesto = session.query(Manifesto).filter(
             Manifesto.numero == conhecimento.manifestoCE).one_or_none()
         item.manifesto = manifesto
@@ -92,10 +102,10 @@ def get_bagagens(mongodb: Database,
         item.fichas = [ovr.id for ovr in ovrs]
         # Pegar viagens do CPF
         for ce in item.conhecimentos:
-            print(ce)
+            # print(ce)
             ce.nome_consignatario = ''
             cpf_cnpj = ce.consignatario
-            print('*************', cpf_cnpj)
+            # print('*************', cpf_cnpj)
             if len(cpf_cnpj) == 11:
                 pessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf_cnpj).one_or_none()
                 if pessoa:

@@ -1,4 +1,5 @@
 import sys
+from enum import Enum
 
 from sqlalchemy import Column, CHAR, \
     DateTime, Integer, BigInteger, String
@@ -49,11 +50,26 @@ class DSI(Base):
     descricao = Column(String(1000), index=True)
 
 
-class Descartado(Base):
-    __tablename__ = 'risco_descartados'
+class ClasseRisco(Enum):
+    NAO_CLASSIFICADO = 0
+    VERDE = 1
+    AMARELO = 2
+    VERMELHO = 3
+    SAFIA = 4
+    REPRESSAO = 5
+
+class ClassificacaoRisco(Base):
+    __tablename__ = 'risco_classificacao'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
                 primary_key=True, autoincrement=True)
     numeroCEmercante = Column(CHAR(15), index=True)
+    classerisco = Column(Integer(), index=True)
+    descricao = Column(CHAR(200), index=True)
+
+    @property
+    def classerisco_name(self):
+        return ClasseRisco(self.classerisco).name
+
 
 
 if __name__ == '__main__':
@@ -65,7 +81,7 @@ if __name__ == '__main__':
     banco = input('Escolha a opção de Banco (1 - MySQL/ 2 - Sqlite)')
     if banco == '1':
         engine = create_engine(SQL_URI)
-        metadata.drop_all(engine, [metadata.tables['bagagens_dsi']])
+        metadata.drop_all(engine, [metadata.tables['risco_classificacao']])
         metadata.create_all(engine)
     if banco == '2':
         engine = create_engine('sqlite:///teste.db')
