@@ -95,7 +95,9 @@ def get_bagagens(mongodb: Database,
         item.manifesto = manifesto
         filhotes = session.query(Conhecimento).filter(
             Conhecimento.numeroCEMaster == conhecimento.numeroCEmercante).all()
-        print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
+        for ce in filhotes:
+            ce.classificacaorisco = None
+        # print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
         item.conhecimentos = [conhecimento, *filhotes]
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
         # Pegar info Fichas e RVFs
@@ -112,6 +114,7 @@ def get_bagagens(mongodb: Database,
         for ce in item.conhecimentos:
             # print(ce)
             ce.nome_consignatario = ''
+            ce.dsis = []
             cpf_cnpj = ce.consignatario
             # print('*************', cpf_cnpj)
             if len(cpf_cnpj) == 11:

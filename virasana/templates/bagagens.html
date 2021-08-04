@@ -42,6 +42,11 @@
                     <div class="col-sm-2">
                         {{oform.conteiner(class='form-control')}}
                     </div>
+                    <div class="col-sm-2">
+                        <button id="btn_incluir" type="button" class="btn btn-primary form-control"
+                                data-toggle="modal" data-target="#importa_csv">Importar DSIs
+                        </button>
+                    </div>
                 </div>
                 <div class="row">
                     <div class="col-sm-2">
@@ -76,14 +81,13 @@
                         {{oform.colormap(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
-                        <input class="btn btn-default btn-info form-control" type="submit" value="Filtrar"/>
+                        <input name="btnfiltrar" class="btn btn-default btn-info form-control"
+                               type="submit" value="Filtrar"/>
                     </div>
                     <div class="col-sm-2">
-                        <button id="btn_incluir" type="button" class="btn btn-primary form-control"
-                                data-toggle="modal" data-target="#importa_csv">Importar DSIs
-                        </button>
+                        <input name="btn_exportar" class="btn btn-warning form-control"
+                               type="submit" value="Exportar DSIs"/>
                     </div>
-
                 </div>
             </div>
             <div class="row col-sm-12">
