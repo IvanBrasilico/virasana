@@ -147,7 +147,7 @@ def configure(app):
                             adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
                             if adsi is None:
                                 adsi = DSI()
-                                ocemercante = session.query(Conhecimento).filter(Conhecimento.consignatario). \
+                                ocemercante = session.query(Conhecimento).filter(Conhecimento.consignatario == cpf). \
                                     order_by(Conhecimento.dataEmissao.desc()).first()
                                 adsi.numero = dsi
                                 adsi.consignatario = cpf
@@ -157,7 +157,7 @@ def configure(app):
                                 session.add(adsi)
                     session.commit()
             except Exception as err:
-                logger.log(str(err), exc_info=True)
+                logger.error(str(err), exc_info=True)
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
         return redirect('bagagens_redirect?cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
