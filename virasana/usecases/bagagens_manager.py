@@ -19,8 +19,10 @@ def get_bagagens(mongodb: Database,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
                  ncm='9797', portodestino='BRSSZ',
                  selecionados=False,
+                 concluidos=False,
                  classificados=False,
-                 somente_sem_imagem=False
+                 somente_sem_imagem=False,
+                 filtrar_dsi=False
                  ) -> List[Item]:
     # tipoTrafego 5 = lci
     # tipoBLConhecimento 10 = MBL 11 = BL 12 = HBL 15 = MHBL
@@ -38,20 +40,29 @@ def get_bagagens(mongodb: Database,
         join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
     if selecionados:
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
+    if concluidos:
+        q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
+    if filtrar_dsi:
+        q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
     if classificados:
         q = q.join(ClassificacaoRisco, ClassificacaoRisco.numeroCEmercante == Conhecimento.numeroCEmercante)
     q = q.filter(Item.NCM.like(ncm + '%')). \
         filter(Conhecimento.tipoTrafego == 5). \
         filter(Conhecimento.portoDestFinal.like(portodestino + '%')). \
         filter(Item.codigoConteiner.like(numero_conteiner + '%')). \
-        filter(Conhecimento.portoOrigemCarga.like(portoorigem + '%')). \
-        filter(Conhecimento.dataEmissao.between(datainicio, datafim))
+        filter(Conhecimento.portoOrigemCarga.like(portoorigem + '%'))
     if cpf_cnpj_lista:
         q = q.filter(Conhecimento.consignatario.in_(cpf_cnpj_lista))
     if selecionados:
         q = q.filter(OVR.fase < 3)
+    if concluidos:
+        q = q.filter(OVR.fase >= 3)
     if classificados:
         q = q.filter(ClassificacaoRisco.classerisco > ClasseRisco.VERDE.value)
+    if filtrar_dsi:
+        q = q.filter(DSI.data_registro.between(datainicio, datafim))
+    else:
+        q = q.filter(Conhecimento.dataEmissao.between(datainicio, datafim))
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
@@ -106,11 +117,16 @@ def get_bagagens(mongodb: Database,
         conhecimentos_ids = [ce.numeroCEmercante for ce in item.conhecimentos]
         rvfs = session.query(RVF).filter(RVF.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.rvfs.extend([rvf for rvf in rvfs if rvf not in item.rvfs])
+        if rvfs and len(rvfs) > 0:
+            item.max_data_rvf = max([rvf.create_date for rvf in rvfs])
+        else:
+            item.max_data_rvf = datetime.strptime(conhecimento.dataEmissao, '%Y-%m-%d')
         item.qtdefotos = session.query(func.count(ImagemRVF.id)). \
             filter(ImagemRVF.rvf_id.in_([rvf.id for rvf in item.rvfs])).scalar()
         ovrs = session.query(OVR).filter(OVR.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.fichas = [ovr.id for ovr in ovrs]
         # Pegar viagens do CPF
+        item.max_data_dsi = datetime.min
         for ce in item.conhecimentos:
             # print(ce)
             ce.nome_consignatario = ''
@@ -123,6 +139,8 @@ def get_bagagens(mongodb: Database,
                     ce.nome_consignatario = pessoa.nome
                 dsis = session.query(DSI).filter(DSI.consignatario == cpf_cnpj).all()
                 ce.dsis = dsis
+                for dsi in dsis:
+                    item.max_data_dsi = max(item.max_data_dsi, dsi.data_registro)
             else:
                 try:
                     empresa = session.query(Empresa). \
@@ -136,10 +154,10 @@ def get_bagagens(mongodb: Database,
                     filter(Viagem.data_chegada > data_inicial_viagens). \
                     order_by(desc(Viagem.data_chegada)).limit(7)
                 ce.viagens = viagens
-        # Procura escaneamentos do contêiner até 32 dias após emissão do conhecimento
+        # Procura escaneamentos do contêiner até 45 dias após emissão do conhecimento
         # Se não encontrar, procura pelo conhecimento
-        dataminima = datetime.strptime(conhecimento.dataEmissao, '%Y-%m-%d') + timedelta(days=2)
-        datamaxima = dataminima + timedelta(days=30)
+        dataminima = datetime.strptime(conhecimento.dataEmissao, '%Y-%m-%d') + timedelta(days=5)
+        datamaxima = dataminima + timedelta(days=40)
         gmci = session.query(GMCI).filter(GMCI.num_conteiner == item.codigoConteiner). \
             filter(GMCI.datahora.between(dataminima, datamaxima)).first()
         if gmci:

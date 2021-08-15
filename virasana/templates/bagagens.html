@@ -65,11 +65,17 @@
                 <div class="row">
                     <div class="col-sm-2">
                         <input type="checkbox" name="classificados" id="classificados"
-                               {% if oform.classificados.data %} checked {% endif %}>Classificados com risco<br>
+                               {% if oform.classificados.data %} checked {% endif %}/>Classificados com risco<br>
                         <input type="checkbox" name="selecionados" id="selecionados"
-                               {% if oform.selecionados.data %} checked {% endif %}>Exibir com Ficha ativa<br>
+                               {% if oform.selecionados.data %} checked {% endif %}/>Exibir com Ficha ativa<br>
+                        <input type="checkbox" name="concluidos" id="concluidos"
+                               {% if oform.concluidos.data %} checked {% endif %}/>Exibir com Ficha concluída<br>
                         <input type="checkbox" name="semimagem" id="semimagem"
-                               {% if oform.semimagem.data %} checked {% endif %}>Exibir com imagem faltando
+                               {% if oform.semimagem.data %} checked {% endif %}/>Exibir somente com imagem faltando<br>
+                        <input type="checkbox" name="ordenar_dsi" id="ordenar_dsi"
+                               {% if oform.ordenar_dsi.data %} checked {% endif %}/>Ordenar por data da emissão de DSI<br>
+                        <input type="checkbox" name="ordenar_rvf" id="ordenar_rvf"
+                               {% if oform.ordenar_rvf.data %} checked {% endif %}/>Ordenar por data da RVF
                     </div>
                     <div class="col-sm-2">
                         {{oform.portodestino(class='form-control')}}
@@ -91,7 +97,7 @@
                 </div>
             </div>
             <div class="row col-sm-12">
-                Ordenado por Data de Emissão do BL
+                Ordenado por Data de Emissão do BL, depois por data da DSI ou da RVF, se existirem e se selecionado acima.
             </div>
         </form>
     </div>

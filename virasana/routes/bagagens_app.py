@@ -36,15 +36,22 @@ def configure(app):
     def lista_bagagens_html(mongodb, session, form: FormFiltroBagagem):
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
-        return get_bagagens(mongodb, session, start, end,
-                            portoorigem=form.portoorigem.data,
-                            cpf_cnpj=form.cpf_cnpj.data,
-                            numero_conteiner=form.conteiner.data,
-                            portodestino=form.portodestino.data,
-                            ncm=form.ncm.data,
-                            selecionados=form.selecionados.data,
-                            classificados=form.classificados.data,
-                            somente_sem_imagem=form.semimagem.data)
+        bagagens = get_bagagens(mongodb, session, start, end,
+                                portoorigem=form.portoorigem.data,
+                                cpf_cnpj=form.cpf_cnpj.data,
+                                numero_conteiner=form.conteiner.data,
+                                portodestino=form.portodestino.data,
+                                ncm=form.ncm.data,
+                                selecionados=form.selecionados.data,
+                                concluidos=form.concluidos.data,
+                                classificados=form.classificados.data,
+                                somente_sem_imagem=form.semimagem.data,
+                                filtrar_dsi=form.ordenar_dsi.data)
+        if form.ordenar_dsi.data:
+            bagagens = sorted(bagagens, key=lambda x: x.max_data_dsi)
+        if form.ordenar_rvf.data:
+            bagagens = sorted(bagagens, key=lambda x: x.max_data_rvf)
+        return bagagens
 
     @app.route('/bagagens_redirect', methods=['GET'])
     @login_required
