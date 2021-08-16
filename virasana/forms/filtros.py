@@ -4,7 +4,6 @@ from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
-from virasana.integracao.bagagens.viajantesalchemy import ClasseRisco
 from virasana.models.auditoria import Auditoria
 from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
@@ -44,7 +43,7 @@ class FilesForm(FlaskForm):
         super().__init__(*args, **kwargs)
         self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
-                                 'tab10']
+                                 'jet', 'gnuplot', 'tab10']
 
 
 class FormFiltro(FlaskForm):
@@ -206,38 +205,13 @@ class FormFiltroBagagem(FlaskForm):
                            validators=[optional()], default='')
     conteiner = StringField(u'Número do contêiner',
                             validators=[optional()], default='')
-    portodestino = StringField(u'Porto de Destino',
-                               validators=[optional()], default='BRSSZ')
-    ncm = StringField(u'NCM a pesquisar',
-                      validators=[optional()], default='9797')
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='contraste')
-    classificados = BooleanField('Exibir descartados', default=False)
-    selecionados = BooleanField('Exibir selecionados', default=False)
-    concluidos = BooleanField('Exibir selecionados', default=False)
-    semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem', default=False)
-    filtrar_dsi = BooleanField('Filtrar por data de emissão da DSI', default=False)
-    ordenar_dsi = BooleanField('Ordenar por data de emissão da DSI', default=False)
-    ordenar_rvf = BooleanField('Ordenar por data da RVF', default=False)
+    semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem',
+                             default=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
-                                 'tab10']
-
-
-class FormClassificacaoRisco(FlaskForm):
-    """Interface para classe ClassificacaoRisco.
-
-    Usa wtforms para facilitar a validação dos campos da tela.
-
-    """
-    numeroCEmercante = StringField('Número do CE Mercante')
-    classerisco = SelectField('Classificação de risco',
-                              validators=[optional()], default=0)
-    descricao = StringField('Descrição do motivo da classificação', default='')
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.classerisco.choices = [(i.value, i.name) for i in ClasseRisco]
+                                 'jet', 'gnuplot', 'tab10']
