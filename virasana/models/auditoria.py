@@ -1,6 +1,6 @@
 """Funções para Auditoria/comparação nos metadados de fs.files."""
-import sys
 import json
+import sys
 from collections import defaultdict
 
 sys.path.append('.')
@@ -65,21 +65,28 @@ class Auditoria:
               'descricao': 'Imagens com NCM único'
               },
         '10': {'filtro': {'metadata.contentType': 'image/jpeg',
-                         'metadata.carga.ncm': {'$size': 2},
-                         'metadata.carga.container.indicadorusoparcial': {'$ne': 's'}
-                         },
-              'order': [('metadata.dataescaneamento', 1)],
-              'descricao': 'Imagens com dois NCMs'
-              },
+                          'metadata.carga.ncm': {'$size': 2},
+                          'metadata.carga.container.indicadorusoparcial': {'$ne': 's'}
+                          },
+               'order': [('metadata.dataescaneamento', 1)],
+               'descricao': 'Imagens com dois NCMs'
+               },
         '11': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_contaminado': True,
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
                           'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
-                         },
-              'order': [('metadata.dataescaneamento', 1)],
-              'descricao': 'Motor Reefer com suspeita de contaminação'
-              },
+                          },
+               'order': [('metadata.dataescaneamento', 1)],
+               'descricao': 'Motor Reefer com suspeita de contaminação'
+               },
+        '12': {'filtro': {'metadata.contentType': 'image/jpeg',
+                          'metadata.carga.ncm': {'$size': 1},
+                          'metadata.predictions.0.ncm.0.ncm.divergent': True
+                          },
+               'order': [('metadata.dataescaneamento', 1)],
+               'descricao': 'NCM Único com declaração divergente'
+               },
     }
 
     def __init__(self, db):
@@ -108,11 +115,11 @@ class Auditoria:
             for id, campos in self.FILTROS_AUDITORIA.items():
                 logger.debug(id + ' ' + campos['descricao'])
                 self.db['Auditorias'].insert_one(
-                     {'id': id,
-                      'filtro': json.dumps(campos['filtro']),
-                      'order': json.dumps(campos['order']),
-                      'descricao': campos['descricao']
-                      })
+                    {'id': id,
+                     'filtro': json.dumps(campos['filtro']),
+                     'order': json.dumps(campos['order']),
+                     'descricao': campos['descricao']
+                     })
                 # self.add_relatorio(id, **campos)
             self.mount_filtros()
             return
@@ -145,7 +152,7 @@ class Auditoria:
              'filtro': json.dumps(filtro),
              'order': json.dumps(order),
              'descricao': descricao
-            }
+             }
         )
         return True
 

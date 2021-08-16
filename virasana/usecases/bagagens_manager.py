@@ -5,9 +5,9 @@ from ajna_commons.flask.log import logger
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.ovr import Recinto, OVR
 from bhadrasana.models.rvf import RVF, ImagemRVF
-from virasana.forms.filtros import FormClassificacaoRisco
 from pymongo.database import Database
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
+from virasana.forms.filtros import FormClassificacaoRisco
 from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI, ClassificacaoRisco, ClasseRisco
 from virasana.integracao.carga import get_peso_balanca
 from virasana.integracao.gmci_alchemy import GMCI
@@ -36,8 +36,11 @@ def get_bagagens(mongodb: Database,
         cpf_cnpj = ''.join([s for s in cpf_cnpj if s.isdigit() or s == ';'])
         cpf_cnpj_lista = [item.strip() for item in cpf_cnpj.split(';')]
     q = session.query(Conhecimento.numeroCEmercante, Conhecimento.tipoBLConhecimento,
-                      Item.codigoConteiner). \
-        join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
+                      Item.codigoConteiner, Conhecimento.numeroCEMaster). \
+        join(Item, or_(
+        Item.numeroCEmercante == Conhecimento.numeroCEmercante,
+        Item.numeroCEmercante == Conhecimento.numeroCEMaster)
+             )
     if selecionados:
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
     if concluidos:
@@ -73,6 +76,10 @@ def get_bagagens(mongodb: Database,
         print(row)
     numeros_ces = set([row[0] for row in conteineres])
     print(numeros_ces)
+    numeros_ces_master = set([row[3] for row in conteineres if row[3] and len(row[3]) == 15])
+    print(numeros_ces_master)
+    numeros_ces = numeros_ces.union(numeros_ces_master)
+    print(numeros_ces)
     itens = session.query(Item). \
         filter(Item.numeroCEmercante.in_(numeros_ces)).all()
     print(f'{len(itens)} itens encontrados...')
@@ -100,7 +107,7 @@ def get_bagagens(mongodb: Database,
                                                         descricao=classificacaorisco.descricao)
         conhecimento.classificacaorisco = classificacaorisco
         conhecimento.form_classificacao = form_classificacao
-        #print(item.codigoConteiner)
+        print('****', item.codigoConteiner)
         manifesto = session.query(Manifesto).filter(
             Manifesto.numero == conhecimento.manifestoCE).one_or_none()
         item.manifesto = manifesto
