@@ -118,7 +118,7 @@ def get_bagagens(mongodb: Database,
         rvfs = session.query(RVF).filter(RVF.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.rvfs.extend([rvf for rvf in rvfs if rvf not in item.rvfs])
         if rvfs and len(rvfs) > 0:
-            item.max_data_rvf = max([rvf.create_date for rvf in rvfs])
+            item.max_data_rvf = max([rvf.datahora for rvf in rvfs])
         else:
             item.max_data_rvf = datetime.strptime(conhecimento.dataEmissao, '%Y-%m-%d')
         item.qtdefotos = session.query(func.count(ImagemRVF.id)). \
