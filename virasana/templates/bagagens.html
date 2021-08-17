@@ -103,8 +103,8 @@
     </div>
     <div id="list" class="row col-sm-12">
         <div class="row col-sm-12">
-            {{ conteineres | length }} ces encontradas de um limite máximo de 200.
-            Exibindo {{ lista_bagagens | length }} sumários por contêiner.
+            Exibindo {{ lista_bagagens | length }} contêiners com sumários de
+            {{ conteineres | length }} ces encontrados com os filtros (limite máximo de 200).
         </div>
         {% for item in lista_bagagens %}
         <div class="row col-xl-12 bg-white text-primary">
