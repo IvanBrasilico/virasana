@@ -36,7 +36,7 @@ def configure(app):
     def lista_bagagens_html(mongodb, session, form: FormFiltroBagagem):
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
-        bagagens = get_bagagens(mongodb, session, start, end,
+        bagagens, conteineres = get_bagagens(mongodb, session, start, end,
                                 portoorigem=form.portoorigem.data,
                                 cpf_cnpj=form.cpf_cnpj.data,
                                 numero_conteiner=form.conteiner.data,
@@ -51,7 +51,7 @@ def configure(app):
             bagagens = sorted(bagagens, key=lambda x: x.max_data_dsi)
         if form.ordenar_rvf.data:
             bagagens = sorted(bagagens, key=lambda x: x.max_data_rvf)
-        return bagagens
+        return bagagens, conteineres
 
     @app.route('/bagagens_redirect', methods=['GET'])
     @login_required
@@ -59,16 +59,18 @@ def configure(app):
         mongodb = app.config['mongodb']
         session = app.config['db_session']
         lista_bagagens = []
+        conteineres = []
         form = FormFiltroBagagem(request.args,
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
         try:
-            lista_bagagens = lista_bagagens_html(mongodb, session, form)
+            lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
         return render_template('bagagens.html',
                                lista_bagagens=lista_bagagens,
+                               conteineres=conteineres,
                                oform=form)
 
     def get_user_save_path():
@@ -85,13 +87,14 @@ def configure(app):
         mongodb = app.config['mongodb']
         session = app.config['db_session']
         lista_bagagens = []
+        conteineres = []
         print(request.form)
         form = FormFiltroBagagem(request.form,
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
         try:
             if request.method == 'POST' and form.validate():
-                lista_bagagens = lista_bagagens_html(mongodb, session, form)
+                lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
                 # logger.debug(stats_cache)
                 if request.form.get('btn_exportar'):
                     out_filename = 'ListaDSIs_{}.csv'.format(
@@ -120,6 +123,7 @@ def configure(app):
             logger.error(err, exc_info=True)
         return render_template('bagagens.html',
                                lista_bagagens=lista_bagagens,
+                               conteineres=conteineres,
                                oform=form)
 
     @app.route('/importa_dsis', methods=['POST', 'GET'])

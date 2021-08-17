@@ -103,13 +103,15 @@
     </div>
     <div id="list" class="row col-sm-12">
         <div class="row col-sm-12">
-            {{ lista_bagagens | length }} linhas encontradas de um limite de 200.
+            {{ conteineres | length }} ces encontradas de um limite máximo de 200.
+            Exibindo {{ lista_bagagens | length }} sumários por contêiner.
         </div>
         {% for item in lista_bagagens %}
         <div class="row col-xl-12 bg-white text-primary">
             <div class="col-sm-4">
                 <div class="col-sm-12 text-danger">
                     <h2>{{ item.codigoConteiner }}</h2>
+                    DSIs do contêiner: {% for dsi in item.dsis|sort(attribute='numero') %}{{dsi.numero}} - {% endfor %}
                 </div>
                 <div class="col-sm-12">
                     Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }} Balança: {{

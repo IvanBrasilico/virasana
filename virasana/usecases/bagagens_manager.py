@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Tuple
 
 from ajna_commons.flask.log import logger
 from bhadrasana.models.laudo import Empresa
@@ -23,7 +23,7 @@ def get_bagagens(mongodb: Database,
                  classificados=False,
                  somente_sem_imagem=False,
                  filtrar_dsi=False
-                 ) -> List[Item]:
+                 ) -> Tuple[List[Item], list]:
     # tipoTrafego 5 = lci
     # tipoBLConhecimento 10 = MBL 11 = BL 12 = HBL 15 = MHBL
     cpf_cnpj_lista = None
@@ -90,6 +90,7 @@ def get_bagagens(mongodb: Database,
         if item.codigoConteiner in conteineres_incluidos:
             continue
         conteineres_incluidos.add(item.codigoConteiner)
+        item.dsis = []
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == item.numeroCEmercante).one_or_none()
         if not int(conhecimento.tipoBLConhecimento) in (10, 11):
@@ -147,6 +148,7 @@ def get_bagagens(mongodb: Database,
                 dsis = session.query(DSI).filter(DSI.consignatario == cpf_cnpj).all()
                 ce.dsis = dsis
                 for dsi in dsis:
+                    item.dsis.append(dsi)
                     item.max_data_dsi = max(item.max_data_dsi, dsi.data_registro)
             else:
                 try:
@@ -184,4 +186,4 @@ def get_bagagens(mongodb: Database,
             item.pesoBalanca = get_peso_balanca(grid_data.get('metadata').get('pesagens'))
         if (not somente_sem_imagem) or (grid_data is None):
             lista_itens.append(item)
-    return lista_itens
+    return lista_itens, conteineres
