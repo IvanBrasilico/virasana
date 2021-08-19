@@ -73,7 +73,8 @@
                         <input type="checkbox" name="semimagem" id="semimagem"
                                {% if oform.semimagem.data %} checked {% endif %}/>Exibir somente com imagem faltando<br>
                         <input type="checkbox" name="ordenar_dsi" id="ordenar_dsi"
-                               {% if oform.ordenar_dsi.data %} checked {% endif %}/>Ordenar e filtrar por data da emissão de DSI<br>
+                               {% if oform.ordenar_dsi.data %} checked {% endif %}/>Ordenar e filtrar por data da
+                        emissão de DSI<br>
                         <input type="checkbox" name="ordenar_rvf" id="ordenar_rvf"
                                {% if oform.ordenar_rvf.data %} checked {% endif %}/>Ordenar por data da RVF
                     </div>
@@ -97,7 +98,8 @@
                 </div>
             </div>
             <div class="row col-sm-12">
-                Ordenado por Data de Emissão do BL, depois por data da DSI ou da RVF, se existirem e se selecionado acima.
+                Ordenado por Data de Emissão do BL, depois por data da DSI ou da RVF, se existirem e se selecionado
+                acima.
             </div>
         </form>
     </div>
@@ -138,16 +140,17 @@
                     {% if conhecimento.form_classificacao %}
                     <form method="POST" id="form_classificacao" action="classificaCE">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="numeroCEmercante" value="{{conhecimento.form_classificacao.numeroCEmercante.data}}"/>
+                        <input type="hidden" name="numeroCEmercante"
+                               value="{{conhecimento.form_classificacao.numeroCEmercante.data}}"/>
                         {{ conhecimento.form_classificacao.classerisco(class='form-control') }}
                         {{ conhecimento.form_classificacao.descricao(class='form-control') }}
                         <input class="btn btn-default btn-info form-control" type="submit" value="Classificar"/>
                     </form>
                     {% endif %}
-                    {{ conhecimento.numeroCEmercante }} -
-                    {{ conhecimento.dataEmissao }} -
-                    {{ conhecimento.portoOrigemCarga }}<br>
-                    {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
+                    CE-Mercante {{ conhecimento.numeroCEmercante }} -
+                    emissão {{ conhecimento.dataEmissao }} -
+                    Porto de Origem {{ conhecimento.portoOrigemCarga }}<br>
+                    CPF {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
                     {% for dsi in conhecimento.dsis %}
                     DSI: {{ dsi.numero }} - {{ dsi.data_registro }} - {{ dsi.despachante }}<br>
                     {% endfor %}
@@ -173,14 +176,31 @@
                 {% endif %}
                 {% endfor %}
                 <div class="col-sm-12">
-                    <button class="btn btn-danger"
-                            onclick="window.open('https://ajna.labin.rf08.srf/bhadrasana2/ovr?numeroCEmercante={{item.numeroCEmercante}}')">
-                        Abrir Ficha
-                    </button>
-                    <button class="btn btn-info"
-                            onclick="window.open('files?numero={{item.codigoConteiner}}')">
-                        Outras imagens
-                    </button>
+                    <form method="POST" id="form_nova_ficha" action="/bhadrasana/ovr">
+                        <input type="hidden" name="tipooperacao" value="1"/>
+                        {% if item.gmci %}
+                        <input type="hidden" name="recinto_id" value="{{item.gmci.cod_recinto}}"/>
+                        {% endif %}
+                        {% if item.conhecimentos | length > 0 %}
+                        <input type="hidden" name="numeroCEmercante"
+                               value="{{item.conhecimentos[0].numeroCEmercante}}"/>
+                        {% set oconhecimento = item.conhecimentos[-1] %}
+                        <input type="hidden" name="observacoes" value="
+                        CE-Mercante {{ oconhecimento.numeroCEmercante }} -
+                        emissão {{ oconhecimento.dataEmissao }} -
+                        Porto de Origem {{ oconhecimento.portoOrigemCarga }}<br>
+                        CPF {{ oconhecimento.consignatario }} - {{ oconhecimento.nome_consignatario }}
+                        "/>
+                        {% endif %}
+                        <button class="btn {% if item.fichas | length == 0 %} btn-danger{% else %}btn-secondary{% endif %}"
+                                type="submit">
+                            {% if item.fichas | length == 0 %}Abrir Ficha{% else %}Abrir Ficha Adicional{% endif %}
+                        </button>
+                        <button class="btn btn-info" type="button"
+                                onclick="window.open('files?numero={{item.codigoConteiner}}')">
+                            Outras imagens
+                        </button>
+                    </form>
                 </div>
             </div>
             <div class="col-sm-8">
@@ -283,6 +303,23 @@
         }
     }
     function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
+    function showMsg(img,_id) {
+        xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status == 200) {
+                    img.title = this.responseText;
+                }
+            }
+        }
+        xhttp.open("GET", "/virasana/summary/" + _id, true);
+        xhttp.send();
+    }
+    function clearMsg(img) {
+        img.title = "";
+    }
+
 
 </script>
 {% endblock %}
