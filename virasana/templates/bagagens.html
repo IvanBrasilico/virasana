@@ -185,12 +185,7 @@
                         <input type="hidden" name="numeroCEmercante"
                                value="{{item.conhecimentos[0].numeroCEmercante}}"/>
                         {% set oconhecimento = item.conhecimentos[-1] %}
-                        <input type="hidden" name="observacoes" value="
-                        CE-Mercante {{ oconhecimento.numeroCEmercante }} -
-                        emissão {{ oconhecimento.dataEmissao }} -
-                        Porto de Origem {{ oconhecimento.portoOrigemCarga }}<br>
-                        CPF {{ oconhecimento.consignatario }} - {{ oconhecimento.nome_consignatario }}
-                        "/>
+                        <input type="hidden" name="observacoes" value="CE-Mercante {{ oconhecimento.numeroCEmercante }} - Porto de Origem {{ oconhecimento.portoOrigemCarga }} CPF {{ oconhecimento.consignatario }} - {{ oconhecimento.nome_consignatario }}"/>
                         {% endif %}
                         <button class="btn {% if item.fichas | length == 0 %} btn-danger{% else %}btn-secondary{% endif %}"
                                 type="submit">
