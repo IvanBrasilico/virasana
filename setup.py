@@ -34,7 +34,7 @@ setup(
         'requests',
         'scipy',
         'sklearn',
-        'sqlalchemy',
+        'sqlalchemy==1.3.24'
         'selenium'
     ],
     dependency_links=[
