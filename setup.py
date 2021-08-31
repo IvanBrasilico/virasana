@@ -23,6 +23,8 @@ setup(
         'Flask-wtf',
         'gunicorn',
         'matplotlib',
+        'marshmallow==3.2.2',
+        'marshmallow-sqlalchemy==0.19',
         'opencv-python',
         'plotly',
         'pandas',
