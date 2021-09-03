@@ -664,21 +664,21 @@ def image_id(_id):
 
 def get_image(_id, n, pil=False):
     """Recupera, recorta a imagem do banco e retorna."""
+    image = None
     db = app.config['mongodb']
     fs = GridFS(db)
     _id = ObjectId(_id)
     if fs.exists(_id):
         grid_data = fs.get(_id)
+        image = grid_data.read()
         if n is not None:
             n = int(n)
             preds = grid_data.metadata.get('predictions')
             if preds:
                 bboxes = [pred.get('bbox') for pred in preds]
                 if len(bboxes) >= n + 1 and bboxes[n]:
-                    image = grid_data.read()
                     image = recorta_imagem(image, bboxes[n], pil=pil)
-                    return image
-    return None
+    return image
 
 
 def do_mini(_id, n):
