@@ -4,6 +4,7 @@ Módulo Virasana é o Servidor de imagens e a interface para carga,
 consulta e integração das imagens com outras bases.
 
 """
+import io
 import json
 import os
 from base64 import b64encode
@@ -14,6 +15,7 @@ from sys import platform
 import ajna_commons.flask.login as login_ajna
 import ajna_commons.flask.user as user_ajna
 import requests
+from PIL.Image import Image
 from ajna_commons.flask.conf import (BSON_REDIS, DATABASE, logo, MONGODB_URI,
                                      PADMA_URL, SECRET, redisdb)
 from ajna_commons.flask.log import logger
@@ -671,6 +673,7 @@ def get_image(_id, n, pil=False):
     if fs.exists(_id):
         grid_data = fs.get(_id)
         image = grid_data.read()
+        image = Image.open(io.BytesIO(image))
         if n is not None:
             n = int(n)
             preds = grid_data.metadata.get('predictions')
