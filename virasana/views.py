@@ -15,7 +15,7 @@ from sys import platform
 import ajna_commons.flask.login as login_ajna
 import ajna_commons.flask.user as user_ajna
 import requests
-from PIL.Image import Image
+from PIL import Image
 from ajna_commons.flask.conf import (BSON_REDIS, DATABASE, logo, MONGODB_URI,
                                      PADMA_URL, SECRET, redisdb)
 from ajna_commons.flask.log import logger
