@@ -142,7 +142,10 @@ def configure(app):
                     save_name = os.path.join(tmpdir, filename)
                     csvf.save(save_name)
                     logger.info('CSV RECEBIDO: %s' % save_name)
-                    df = pd.read_excel(save_name)
+                    if 'xlsx' in filename:
+                        df = pd.read_excel(save_name, engine='openpyxl')
+                    else:
+                        df = pd.read_excel(save_name)
                     achou = False
                     for row in df.itertuples():
                         if achou is False:
