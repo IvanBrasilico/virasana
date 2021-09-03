@@ -26,6 +26,7 @@ setup(
         'marshmallow==3.2.2',
         'marshmallow-sqlalchemy==0.19',
         'opencv-python',
+        'openpyxl',
         'plotly',
         'pandas',
         'pillow',
@@ -36,8 +37,9 @@ setup(
         'requests',
         'scipy',
         'sklearn',
-        'sqlalchemy==1.3.24'
-        'selenium'
+        'sqlalchemy==1.3.24',
+        'selenium',
+        'xlrd',
     ],
     dependency_links=[
         'git+https://github.com/IvanBrasilico/ajna_commons.git#egg=ajna_commons-0.0.1'
