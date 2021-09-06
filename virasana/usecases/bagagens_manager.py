@@ -41,7 +41,7 @@ def get_bagagens(mongodb: Database,
                          Item.numeroCEmercante == Conhecimento.numeroCEMaster)
                )
     if selecionados or concluidos:
-        q = q.join(OVR, or_(OVR.numeroCEmercante == Conhecimento.numeroCEmercante))\
+        q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
             #,  OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
     if filtrar_dsi:
         q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
