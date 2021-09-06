@@ -156,3 +156,9 @@ if __name__ == '__main__':
                 counter += 1
                 periodic_updates(db, connection)
                 s0 = time.time()
+
+
+if __name__ == '__main__':
+    # Se rodando via supervisor, o próprio supervisor grava os logs em arquivo
+    from ajna_commons.flask.log import error_handler
+    logger.removeHandler(error_handler) # Remover
