@@ -37,16 +37,12 @@ def get_bagagens(mongodb: Database,
         cpf_cnpj_lista = [item.strip() for item in cpf_cnpj.split(';')]
     q = session.query(Conhecimento.numeroCEmercante, Conhecimento.tipoBLConhecimento,
                       Item.codigoConteiner, Conhecimento.numeroCEMaster)
+    q = q.join(Item, or_(Item.numeroCEmercante == Conhecimento.numeroCEmercante,
+                         Item.numeroCEmercante == Conhecimento.numeroCEMaster)
+               )
     if selecionados or concluidos:
-        q = q.join(Item, or_(Item.numeroCEmercante == Conhecimento.numeroCEmercante)
-                   )
         q = q.join(OVR, or_(OVR.numeroCEmercante == Conhecimento.numeroCEmercante,
-                            OVR.numeroCEmercante == Conhecimento.numeroCEMaster)
-                   )
-    else:
-        q = q.join(Item, or_(Item.numeroCEmercante == Conhecimento.numeroCEmercante,
-                             Item.numeroCEmercante == Conhecimento.numeroCEMaster)
-                   )
+                            OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
     if filtrar_dsi:
         q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
     if classificados:
