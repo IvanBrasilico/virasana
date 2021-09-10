@@ -35,7 +35,7 @@ def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False,
                   {'$gt': inicio, '$lt': fim},
               'metadata.recinto': {'$in': recintos_destino},
               'metadata.contentType': 'image/jpeg'}
-    print(filtro)
+    print(filtro, limit)
     cursor = db.fs.files.find(filtro,
                               {'_id': 1}).limit(limit)
     for row in cursor:
