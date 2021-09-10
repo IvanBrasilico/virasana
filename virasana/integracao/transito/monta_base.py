@@ -31,10 +31,12 @@ def get_img_recortada(db, _id) -> Image:
 def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False,
                       limit=1000, outpath='pares_transito'):
     result = []
-    cursor = db.fs.files.find({'metadata.dataescaneamento':
-                                   {'$gt': inicio, '$lt': fim},
-                               'metadata.recinto': {'$in': recintos_destino},
-                               'metadata.contentType': 'image/jpeg'},
+    filtro = {'metadata.dataescaneamento':
+                  {'$gt': inicio, '$lt': fim},
+              'metadata.recinto': {'$in': recintos_destino},
+              'metadata.contentType': 'image/jpeg'}
+    print(filtro)
+    cursor = db.fs.files.find(filtro,
                               {'_id': 1}).limit(limit)
     for row in cursor:
         try:
