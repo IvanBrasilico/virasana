@@ -28,7 +28,8 @@ def get_img_recortada(db, _id) -> Image:
         return image
 
 
-def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False, limit=100):
+def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False,
+                      limit=1000, outpath='pares_transito'):
     result = []
     cursor = db.fs.files.find({'metadata.dataescaneamento':
                                    {'$gt': inicio, '$lt': fim},
@@ -39,7 +40,7 @@ def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False, limit=100
         try:
             if save:
                 # salva pares no disco
-                grava_imagens(db, row['_id'])
+                grava_imagens(db, row['_id'], outpath)
             else:
                 # retorna pares origem e destino
                 result.append(get_pares(db, row['_id']))
@@ -65,26 +66,15 @@ def get_pares(db, _id: ObjectId) -> Tuple[dict, dict]:
                                        {'metadata.numeroinformado': 1,
                                         'metadata.dataescaneamento': 1})
 
-        """
-        # FIXME: Como entra a data para os recintos de destino?? (duas ou mais passagens)
-        destino = db.fs.files.find_one({'metadata.numeroinformado': codigo_conteiner,
-                                        'metadata.recinto': {'$in': recintos_destino},
-                                        'metadata.contentType': 'image/jpeg'},
-                                       {'metadata.numeroinformado': 1,
-                                        'metadata.dataescaneamento': 1})
-        """
-        # Achei uma passagem do contêiner, e agora?
-        print(destino)
         metadata = destino['metadata']
         origem = db.fs.files.find({'metadata.numeroinformado': metadata['numeroinformado'],
-                                       'metadata.dataescaneamento':
-                                           {'$lt': metadata['dataescaneamento']},
-                                       'metadata.recinto': {'$nin': recintos_destino},
-                                       'metadata.contentType': 'image/jpeg'},
-                                      {'metadata.numeroinformado': 1,
-                                       'metadata.dataescaneamento': 1}). \
+                                   'metadata.dataescaneamento':
+                                       {'$lt': metadata['dataescaneamento']},
+                                   'metadata.recinto': {'$nin': recintos_destino},
+                                   'metadata.contentType': 'image/jpeg'},
+                                  {'metadata.numeroinformado': 1,
+                                   'metadata.dataescaneamento': 1}). \
             sort([('metadata.dataescaneamento', pymongo.DESCENDING)])[0]
-        print(origem)
         return destino, origem
     except Exception as err:
         logger.error(err, exc_info=True)
@@ -96,13 +86,12 @@ def save_image(db, savepath, _id):
     img_save.save(os.path.join(savepath, str(_id) + '.jpg'))
 
 
-def grava_imagens(db, _id: ObjectId):
-    OUTPATH = 'pares_transito'
-    if not os.path.exists(OUTPATH):
-        os.mkdir(OUTPATH)
+def grava_imagens(db, _id: ObjectId, outpath='pares_transito'):
+    if not os.path.exists(outpath):
+        os.mkdir(outpath)
     destino, origem = get_pares(db, _id)
     if destino and origem:
-        savepath = os.path.join(OUTPATH, destino['metadata']['numeroinformado'])
+        savepath = os.path.join(outpath, destino['metadata']['numeroinformado'])
         if not os.path.exists(savepath):
             os.mkdir(savepath)
         save_image(db, savepath, destino['_id'])
@@ -116,6 +105,6 @@ if __name__ == '__main__':  # pragma: no cover
     db = MongoClient(host=MONGODB_URI)[DATABASE]
     print('Recuperando pares...')
     # grava_imagens(db, 'MSKU9918380')
-    inicio = datetime(2021, 6, 1)
+    inicio = datetime(2021, 1, 1)
     fim = datetime(2021, 9, 1)
     get_pares_periodo(db, inicio, fim, save=True)
