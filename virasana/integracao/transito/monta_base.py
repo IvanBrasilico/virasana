@@ -22,7 +22,7 @@ def get_img_recortada(db, _id) -> Image:
     preds = grid_data.metadata.get('predictions')
     if preds:
         bboxes = preds[0].get('bbox')
-        print(bboxes)
+        # print(bboxes)
         image = grid_data.read()
         image = recorta_imagem(image, bboxes, pil=True)
         return image
@@ -35,7 +35,6 @@ def get_pares_periodo(db, inicio: datetime, fim: datetime, save=False,
                   {'$gt': inicio, '$lt': fim},
               'metadata.recinto': {'$in': recintos_destino},
               'metadata.contentType': 'image/jpeg'}
-    print(filtro, limit)
     cursor = db.fs.files.find(filtro,
                               {'_id': 1}).limit(limit)
     for row in cursor:
