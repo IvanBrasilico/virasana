@@ -36,7 +36,7 @@ def update(inicio, fim, caminho):
     start = datetime.strptime(inicio, '%d/%m/%Y')
     end = datetime.strptime(fim, '%d/%m/%Y')
     print('Começando a gravação da base... Inicio %s Fim %s' % (inicio, fim))
-    get_pares_periodo(db, inicio, fim, save=True, outpath=caminho)
+    get_pares_periodo(db, start, end, save=True, outpath=caminho)
 
 
 if __name__ == '__main__':
