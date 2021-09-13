@@ -91,6 +91,14 @@ class Auditoria:
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'NCM Único com declaração divergente'
                },
+        '13': {'filtro': {'metadata.contentType': 'image/jpeg',
+                          'metadata.predictions.reefer.reefer_class': 0,
+                          'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
+                          'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
+                          },
+               'order': [('metadata.dataescaneamento', 1)],
+               'descricao': 'Reefers - todos'
+               },
         # '13': {'filtro': {'_id': {'$in': [ObjectId('60993da9364ebd08e9b5ec63'),
         #                                   ObjectId('5fc1224cc19b6697bda04aea'),
         #                                   ObjectId('5f3d31e08f17e86b2f3f6f07'),
