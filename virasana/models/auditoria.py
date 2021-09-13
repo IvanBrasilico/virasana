@@ -20,7 +20,7 @@ class Auditoria:
               },
         '1': {'filtro': {'metadata.carga.vazio': True,
                          'metadata.predictions.vazio': False,
-#                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
+                         #                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
                          },
               'order': [('metadata.predictions.peso', -1)],
               'descricao': 'Contêineres informados como vazios mas detectados ' +
@@ -28,7 +28,7 @@ class Auditoria:
               },
         '2': {'filtro': {'metadata.carga.vazio': False,
                          'metadata.predictions.vazio': True,
-#                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
+                         #                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
                          },
               'order': [('metadata.predictions.peso', 1)],
               'descricao': 'Contêineres informados como contendo carga mas ' +
@@ -88,6 +88,23 @@ class Auditoria:
                           },
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'NCM Único com declaração divergente'
+               },
+        '13': {'filtro': {'_id': {'$in': ['60993da9364ebd08e9b5ec63',
+                                          '5fc1224cc19b6697bda04aea',
+                                          '5f3d31e08f17e86b2f3f6f07',
+                                          '61128ae941cf8b44f40fce23',
+                                          '5f8da2932860640c37492f33',
+                                          '60929d32364ebd08e9b59e88',
+                                          '5f5113ef93363e841b089fb0',
+                                          '6026848e475b3868bc7f74ff',
+                                          '5efa306ff8734183a94fe03a',
+                                          '5f58f9a193363e841b099aba',
+                                          '6061f459061ba9a83a765832',
+                                          '6067e2dbb261939fbff51f57',
+                                          '5fc121e6c19b6697bda03909', ]}
+                          },
+               'order': [('metadata.dataescaneamento', -1)],
+               'descricao': 'Reefers contaminados'
                },
     }
 
