@@ -97,7 +97,7 @@ class Auditoria:
                           'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
                           },
                'order': [('metadata.dataescaneamento', 1)],
-               'descricao': 'Reefers - todos'
+               'descricao': 'Motor Reefers - total'
                },
         # '13': {'filtro': {'_id': {'$in': [ObjectId('60993da9364ebd08e9b5ec63'),
         #                                   ObjectId('5fc1224cc19b6697bda04aea'),
