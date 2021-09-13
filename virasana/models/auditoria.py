@@ -3,6 +3,8 @@ import json
 import sys
 from collections import defaultdict
 
+from bson import ObjectId
+
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons/')
 from ajna_commons.flask.log import logger
@@ -89,19 +91,19 @@ class Auditoria:
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'NCM Único com declaração divergente'
                },
-        '13': {'filtro': {'_id': {'$in': ['60993da9364ebd08e9b5ec63',
-                                          '5fc1224cc19b6697bda04aea',
-                                          '5f3d31e08f17e86b2f3f6f07',
-                                          '61128ae941cf8b44f40fce23',
-                                          '5f8da2932860640c37492f33',
-                                          '60929d32364ebd08e9b59e88',
-                                          '5f5113ef93363e841b089fb0',
-                                          '6026848e475b3868bc7f74ff',
-                                          '5efa306ff8734183a94fe03a',
-                                          '5f58f9a193363e841b099aba',
-                                          '6061f459061ba9a83a765832',
-                                          '6067e2dbb261939fbff51f57',
-                                          '5fc121e6c19b6697bda03909', ]}
+        '13': {'filtro': {'_id': {'$in': [ObjectId('60993da9364ebd08e9b5ec63'),
+                                          ObjectId('5fc1224cc19b6697bda04aea'),
+                                          ObjectId('5f3d31e08f17e86b2f3f6f07'),
+                                          ObjectId('61128ae941cf8b44f40fce23'),
+                                          ObjectId('5f8da2932860640c37492f33'),
+                                          ObjectId('60929d32364ebd08e9b59e88'),
+                                          ObjectId('5f5113ef93363e841b089fb0'),
+                                          ObjectId('6026848e475b3868bc7f74ff'),
+                                          ObjectId('5efa306ff8734183a94fe03a'),
+                                          ObjectId('5f58f9a193363e841b099aba'),
+                                          ObjectId('6061f459061ba9a83a765832'),
+                                          ObjectId('6067e2dbb261939fbff51f57'),
+                                          ObjectId('5fc121e6c19b6697bda03909'), ]}
                           },
                'order': [('metadata.dataescaneamento', -1)],
                'descricao': 'Reefers contaminados'
