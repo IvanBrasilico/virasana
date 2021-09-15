@@ -146,7 +146,7 @@ def configure(app):
                     else:
                         df = pd.read_excel(save_name)
                     achou = False
-                    df = df.dropna()
+                    # df = df.dropna()
                     for row in df.itertuples():
                         if achou is False:
                             if row[1] == 'DSI' and row[2] == 'CPF':
@@ -154,7 +154,7 @@ def configure(app):
                                 continue
                         else:
                             logger.info('Recuperando row[1] "%s"' % row[1])
-                            if row[1] is None or row[1] == 0 or \
+                            if row[1] is None or row[1] == 0 or row[1] == 'nan' or \
                                     (isinstance(row[1], str) and row[1].strip() == ''):
                                 break
                             dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
