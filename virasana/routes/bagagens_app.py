@@ -146,6 +146,7 @@ def configure(app):
                     else:
                         df = pd.read_excel(save_name)
                     achou = False
+                    df = df.dropna()
                     for row in df.itertuples():
                         if achou is False:
                             if row[1] == 'DSI' and row[2] == 'CPF':
