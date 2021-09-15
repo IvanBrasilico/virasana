@@ -158,7 +158,7 @@ def configure(app):
                                 break
                             dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
                             cpf = ''.join([s for s in str(row[2]) if s.isdigit()])
-                            if dsi == 'nan':
+                            if not dsi:
                                 break
                             lista_cpf.append(cpf)
                             logger.info('Recuperando dsi "%s"' % dsi)
