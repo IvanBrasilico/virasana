@@ -37,16 +37,16 @@ def configure(app):
         start = datetime.combine(form.start.data, datetime.min.time())
         end = datetime.combine(form.end.data, datetime.max.time())
         bagagens, conteineres = get_bagagens(mongodb, session, start, end,
-                                portoorigem=form.portoorigem.data,
-                                cpf_cnpj=form.cpf_cnpj.data,
-                                numero_conteiner=form.conteiner.data,
-                                portodestino=form.portodestino.data,
-                                ncm=form.ncm.data,
-                                selecionados=form.selecionados.data,
-                                concluidos=form.concluidos.data,
-                                classificados=form.classificados.data,
-                                somente_sem_imagem=form.semimagem.data,
-                                filtrar_dsi=form.ordenar_dsi.data)
+                                             portoorigem=form.portoorigem.data,
+                                             cpf_cnpj=form.cpf_cnpj.data,
+                                             numero_conteiner=form.conteiner.data,
+                                             portodestino=form.portodestino.data,
+                                             ncm=form.ncm.data,
+                                             selecionados=form.selecionados.data,
+                                             concluidos=form.concluidos.data,
+                                             classificados=form.classificados.data,
+                                             somente_sem_imagem=form.semimagem.data,
+                                             filtrar_dsi=form.ordenar_dsi.data)
         if form.ordenar_dsi.data:
             bagagens = sorted(bagagens, key=lambda x: x.max_data_dsi)
         if form.ordenar_rvf.data:
@@ -133,7 +133,6 @@ def configure(app):
         """
         session = app.config.get('db_session')
         lista_cpf = []
-        lista_dsi = []
         if request.method == 'POST':
             try:
                 csvf = get_planilha_valida(request, 'planilha')
@@ -155,13 +154,14 @@ def configure(app):
                         else:
                             if row[1] is None:
                                 break
-
                             dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
                             cpf = ''.join([s for s in str(row[2]) if s.isdigit()])
                             lista_cpf.append(cpf)
+                            logger.info('Recuperando dsi %s' % dsi)
                             adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
                             if adsi is None:
                                 adsi = DSI()
+                                logger.info('Recuperando mercante cpf %s' % cpf)
                                 ocemercante = session.query(Conhecimento).filter(Conhecimento.consignatario == cpf). \
                                     order_by(Conhecimento.dataEmissao.desc()).first()
                                 adsi.numero = dsi
@@ -170,10 +170,9 @@ def configure(app):
                                     adsi.numeroCEmercante = ocemercante.numeroCEmercante
                                 adsi.data_registro = datetime.today()
                                 session.add(adsi)
+                    logger.info('Salvando %s dsis' % len(lista_cpf))
                     session.commit()
             except Exception as err:
-                logger.error(row)
-                logger.error(row[1])
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
