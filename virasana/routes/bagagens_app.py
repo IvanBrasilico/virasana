@@ -155,6 +155,7 @@ def configure(app):
                         else:
                             if row[1] is None:
                                 break
+
                             dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
                             cpf = ''.join([s for s in str(row[2]) if s.isdigit()])
                             lista_cpf.append(cpf)
@@ -171,6 +172,8 @@ def configure(app):
                                 session.add(adsi)
                     session.commit()
             except Exception as err:
+                logger.error(row)
+                logger.error(row[1])
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
