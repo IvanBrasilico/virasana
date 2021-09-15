@@ -47,8 +47,8 @@ def configure(app):
                                              classificados=form.classificados.data,
                                              somente_sem_imagem=form.semimagem.data,
                                              filtrar_dsi=form.ordenar_dsi.data)
-        if form.ordenar_dsi.data:
-            bagagens = sorted(bagagens, key=lambda x: x.max_data_dsi)
+        #if form.ordenar_dsi.data:
+        #    bagagens = sorted(bagagens, key=lambda x: x.max_data_dsi)
         if form.ordenar_rvf.data:
             bagagens = sorted(bagagens, key=lambda x: x.max_data_rvf)
         return bagagens, conteineres
