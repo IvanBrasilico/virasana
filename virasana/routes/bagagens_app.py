@@ -155,8 +155,8 @@ def configure(app):
                         else:
                             if row[1] is None:
                                 break
-                            dsi = ''.join([s for s in row[1] if s.isdigit()])
-                            cpf = ''.join([s for s in row[2] if s.isdigit()])
+                            dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
+                            cpf = ''.join([s for s in str(row[2]) if s.isdigit()])
                             lista_cpf.append(cpf)
                             adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
                             if adsi is None:
