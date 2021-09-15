@@ -68,7 +68,7 @@ def get_bagagens(mongodb: Database,
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
     if filtrar_dsi:
-        conteineres = q.order_by(DSI.data_registro).limit(200).all()
+        conteineres = q.order_by(DSI.numero).limit(200).all()
     else:
         conteineres = q.order_by(Conhecimento.dataEmissao).limit(200).all()
     print(f'{len(conteineres)} itens totais encontrados...')
