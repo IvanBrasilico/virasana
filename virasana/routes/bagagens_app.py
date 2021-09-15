@@ -180,7 +180,7 @@ def configure(app):
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
-        return redirect('bagagens_redirect?cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
+        return redirect('bagagens_redirect?filtrar_dsi=1&cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
 
     @app.route('/classificaCE', methods=['POST'])
     @login_required

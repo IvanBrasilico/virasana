@@ -42,7 +42,7 @@ def get_bagagens(mongodb: Database,
                )
     if selecionados or concluidos:
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
-            #,  OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
+        # ,  OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
     if filtrar_dsi:
         q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
     if classificados:
@@ -67,7 +67,10 @@ def get_bagagens(mongodb: Database,
     print(str(q))
     print(f'numero_conteiner:{numero_conteiner}, portoorigem:{portoorigem}, '
           f'datainicio: {datainicio}, datafim:{datafim}')
-    conteineres = q.order_by(Conhecimento.dataEmissao).limit(200).all()
+    if filtrar_dsi:
+        conteineres = q.order_by(DSI.data_registro).limit(200).all()
+    else:
+        conteineres = q.order_by(Conhecimento.dataEmissao).limit(200).all()
     print(f'{len(conteineres)} itens totais encontrados...')
     lista_itens = []
     for row in conteineres:
