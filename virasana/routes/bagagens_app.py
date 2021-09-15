@@ -154,11 +154,12 @@ def configure(app):
                                 continue
                         else:
                             logger.info('Recuperando row[1] "%s"' % row[1])
-                            if row[1] is None or row[1] == 0 or row[1] == 'nan' or \
-                                    (isinstance(row[1], str) and row[1].strip() == ''):
+                            if row[1] is None:
                                 break
                             dsi = ''.join([s for s in str(row[1]) if s.isdigit()])
                             cpf = ''.join([s for s in str(row[2]) if s.isdigit()])
+                            if dsi == 'nan':
+                                break
                             lista_cpf.append(cpf)
                             logger.info('Recuperando dsi "%s"' % dsi)
                             adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
