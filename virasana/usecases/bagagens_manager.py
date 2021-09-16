@@ -135,7 +135,7 @@ def get_bagagens(mongodb: Database,
         ovrs = session.query(OVR).filter(OVR.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.fichas = [ovr.id for ovr in ovrs]
         # Pegar viagens do CPF
-        item.max_numero_dsi = 0.
+        item.max_numero_dsi = ''
         for ce in item.conhecimentos:
             # print(ce)
             ce.nome_consignatario = ''
