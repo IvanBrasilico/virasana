@@ -135,7 +135,7 @@ def get_bagagens(mongodb: Database,
         ovrs = session.query(OVR).filter(OVR.numeroCEmercante.in_(conhecimentos_ids)).all()
         item.fichas = [ovr.id for ovr in ovrs]
         # Pegar viagens do CPF
-        item.max_data_dsi = datetime.min
+        item.max_numero_dsi = 0.
         for ce in item.conhecimentos:
             # print(ce)
             ce.nome_consignatario = ''
@@ -150,7 +150,7 @@ def get_bagagens(mongodb: Database,
                 ce.dsis = dsis
                 for dsi in dsis:
                     item.dsis.append(dsi)
-                    item.max_data_dsi = max(item.max_data_dsi, dsi.data_registro)
+                    item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
             else:
                 try:
                     empresa = session.query(Empresa). \
