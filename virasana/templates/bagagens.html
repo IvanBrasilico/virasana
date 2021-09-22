@@ -150,7 +150,8 @@
                     CE-Mercante {{ conhecimento.numeroCEmercante }} -
                     emissão {{ conhecimento.dataEmissao }} -
                     Porto de Origem {{ conhecimento.portoOrigemCarga }}<br>
-                    CPF {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
+                    {% if conhecimento.consignatario | length > 10 %}CNPJ{% else %}CPF{% endif %}
+                    {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
                     {% for dsi in conhecimento.dsis %}
                     DSI: {{ dsi.numero }} - {{ dsi.data_registro }} - {{ dsi.despachante }}<br>
                     {% endfor %}
