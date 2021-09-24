@@ -94,7 +94,7 @@ class Auditoria:
         '13': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
-                          'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
+                          'metadata.recinto': {'$in': ['SBT', 'BTP1', 'BTP2']},
                           },
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'Motor Reefers - total'
