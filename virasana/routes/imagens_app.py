@@ -34,7 +34,12 @@ def configure(app):
             return 'Param _id obrigatório'
         # Se não passar colormap, default é contrastcv2
         colormap = request.args.get('colormap', 'contraste')
-        image = get_image(_id, 0, pil=True)
+        marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
+        if marca_reefer:
+            n = None
+        else:
+            n = 0
+        image = get_image(_id, n, pil=True)
         if not image:
             return 'Sem imagem'
         if colormap == 'original':
