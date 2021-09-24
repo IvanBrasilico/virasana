@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 from ajna_commons.utils import ImgEnhance
-from ajna_commons.utils.images import PIL_tobytes
+from ajna_commons.utils.images import PIL_tobytes, draw_bboxes
+from bson import ObjectId
 from flask import request, Response
 from flask_login import login_required
+from gridfs import GridFS
 from matplotlib.cm import _gen_cmap_registry
 from virasana.views import get_image
 
@@ -15,6 +17,8 @@ def configure(app):
     @login_required
     @app.route('/imagens_cmap')
     def imagens_cmap():
+        db = app.config['mongodb']
+        fs = GridFS(db)
         _id = request.args.get('_id')
         if not _id:
             return 'Param _id obrigatório'
@@ -36,4 +40,16 @@ def configure(app):
                 fig = (fig[:, :, 0, :3] * 255).astype(np.uint8)
                 image = Image.fromarray(fig)
         figdata = PIL_tobytes(image)
+        #Marcar BBOX do Reefer
+        marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
+        if marca_reefer:
+            _id = ObjectId(_id)
+            grid_data = fs.get(_id)
+            preds = grid_data.metadata.get('predictions')
+            if preds:
+                reefer = preds[0].get('reefer')
+                if reefer:
+                    reefer_bbox = reefer[0].get('reefer_bbox')
+                    if reefer_bbox:
+                        figdata = draw_bboxes(figdata, reefer_bbox)
         return Response(response=figdata, mimetype='image/jpeg')
