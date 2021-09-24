@@ -1,6 +1,8 @@
+import io
+
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import PIL_tobytes, draw_bboxes
 from bson import ObjectId
@@ -9,6 +11,15 @@ from flask_login import login_required
 from gridfs import GridFS
 from matplotlib.cm import _gen_cmap_registry
 from virasana.views import get_image
+
+
+def draw_bboxes_pil(pil_img: Image, bboxes: list):
+    draw = ImageDraw.Draw(pil_img)
+    for coords in bboxes:
+        draw.rectangle((coords[1] - 2, coords[0] - 2, coords[3] + 2, coords[2] + 2),
+                       outline='#2288EE', width=4)
+        # image.draw()
+    return pil_img
 
 
 def configure(app):
@@ -39,7 +50,6 @@ def configure(app):
                 fig = cm(np.array(image))
                 fig = (fig[:, :, 0, :3] * 255).astype(np.uint8)
                 image = Image.fromarray(fig)
-        figdata = PIL_tobytes(image)
         #Marcar BBOX do Reefer
         marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
         if marca_reefer:
@@ -51,5 +61,7 @@ def configure(app):
                 if reefer:
                     reefer_bbox = reefer[0].get('reefer_bbox')
                     if reefer_bbox:
-                        figdata = draw_bboxes(figdata, reefer_bbox)
+                        image = draw_bboxes_pil(image, reefer_bbox)
+        figdata = PIL_tobytes(image)
+
         return Response(response=figdata, mimetype='image/jpeg')
