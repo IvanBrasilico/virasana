@@ -15,9 +15,8 @@ from virasana.views import get_image
 
 def draw_bboxes_pil(pil_img: Image, bboxes: list):
     draw = ImageDraw.Draw(pil_img)
-    for coords in bboxes:
-        draw.rectangle((coords[1] - 2, coords[0] - 2, coords[3] + 2, coords[2] + 2),
-                       outline='#2288EE', width=4)
+    draw.rectangle((bboxes[1] - 2, bboxes[0] - 2, bboxes[3] + 2, bboxes[2] + 2),
+                   outline='#2288EE', width=4)
         # image.draw()
     return pil_img
 
