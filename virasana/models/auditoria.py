@@ -79,7 +79,7 @@ class Auditoria:
                           'metadata.predictions.reefer.reefer_contaminado': True,
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
-                          'metadata.recinto': {'$in': ['Santos Brasil', 'BTP1', 'BTP2']},
+                          'metadata.recinto': {'$in': ['SBT', 'BTP1', 'BTP2']},
                           },
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'Motor Reefer com suspeita de contaminação'
