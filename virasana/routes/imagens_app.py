@@ -20,6 +20,10 @@ def draw_bboxes_pil(pil_img: Image, bboxes: list):
         # image.draw()
     return pil_img
 
+def recorta_bboxes_pil(pil_img: Image, bboxes: list):
+    pil_img = pil_img.crop(bboxes[0], bboxes[1], bboxes[2], bboxes[3])
+    return pil_img
+
 
 def configure(app):
     """Configura rotas para tratamento de imagens."""
@@ -56,7 +60,8 @@ def configure(app):
                 image = Image.fromarray(fig)
         #Marcar BBOX do Reefer
         marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
-        if marca_reefer:
+        recorta_reefer =  request.args.get('recorta_reefer', 'False').lower() == 'true'
+        if marca_reefer or recorta_reefer:
             _id = ObjectId(_id)
             grid_data = fs.get(_id)
             preds = grid_data.metadata.get('predictions')
@@ -65,7 +70,10 @@ def configure(app):
                 if reefer:
                     reefer_bbox = reefer[0].get('reefer_bbox')
                     if reefer_bbox:
-                        image = draw_bboxes_pil(image, reefer_bbox)
+                        if marca_reefer:
+                            image = draw_bboxes_pil(image, reefer_bbox)
+                        else:
+                            image = draw_bboxes_pil(image, reefer_bbox)
         figdata = PIL_tobytes(image)
 
         return Response(response=figdata, mimetype='image/jpeg')
