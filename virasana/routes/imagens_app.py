@@ -21,7 +21,7 @@ def draw_bboxes_pil(pil_img: Image, bboxes: list):
     return pil_img
 
 def recorta_bboxes_pil(pil_img: Image, bboxes: list):
-    pil_img = pil_img.crop(bboxes[0], bboxes[1], bboxes[2], bboxes[3])
+    pil_img = pil_img.crop((bboxes[0], bboxes[1], bboxes[2], bboxes[3]))
     return pil_img
 
 
