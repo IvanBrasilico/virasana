@@ -39,7 +39,8 @@ def configure(app):
         # Se não passar colormap, default é contrastcv2
         colormap = request.args.get('colormap', 'contraste')
         marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
-        if marca_reefer:
+        recorta_reefer =  request.args.get('recorta_reefer', 'False').lower() == 'true'
+        if marca_reefer or recorta_reefer:
             n = None
         else:
             n = 0
@@ -59,8 +60,6 @@ def configure(app):
                 fig = (fig[:, :, 0, :3] * 255).astype(np.uint8)
                 image = Image.fromarray(fig)
         #Marcar BBOX do Reefer
-        marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
-        recorta_reefer =  request.args.get('recorta_reefer', 'False').lower() == 'true'
         if marca_reefer or recorta_reefer:
             _id = ObjectId(_id)
             grid_data = fs.get(_id)
@@ -73,7 +72,7 @@ def configure(app):
                         if marca_reefer:
                             image = draw_bboxes_pil(image, reefer_bbox)
                         else:
-                            image = draw_bboxes_pil(image, reefer_bbox)
+                            image = recorta_bboxes_pil(image, reefer_bbox)
         figdata = PIL_tobytes(image)
 
         return Response(response=figdata, mimetype='image/jpeg')
