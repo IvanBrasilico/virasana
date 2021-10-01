@@ -110,7 +110,8 @@ def periodic_updates(db, connection, lote=2000):
     carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
     # predictions_update2('ssd', 'bbox', lote, 4)
     try:
-        predictions_update2('index', 'index', lote, 8)
+        print('TFS desligado...')
+        # predictions_update2('index', 'index', lote, 8)
     except Exception as err:
         logger.error(err, exc_info=True)
     # gera_indexes()
