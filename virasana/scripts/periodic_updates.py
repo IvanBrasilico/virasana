@@ -117,7 +117,8 @@ def periodic_updates(db, connection, lote=2000):
     # print(reload_indexes())
     # tfs_predictions_update('vazio', lote, 20)
     try:
-        tfs_predictions_update('peso', lote, 20)
+        # tfs_predictions_update('peso', lote, 20)
+        print('TFS desligado...')
     except Exception as err:
         logger.error(err, exc_info=True)
     # predictions_update2('vaziosvm', 'vazio', lote, 4)

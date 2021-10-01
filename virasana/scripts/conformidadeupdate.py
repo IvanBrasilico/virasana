@@ -179,7 +179,7 @@ def completa_conformidade(db, engine, limit=2000, start=None):
                 f'{tempo_registro} por registro')
 
 
-def preenche_isocode(db, engine, limit=2000, start=None):
+def preenche_isocode(db, engine, limit=5000, start=None):
     Session = sessionmaker(bind=engine)
     session = Session()
     if start:
