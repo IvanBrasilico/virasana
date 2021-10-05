@@ -76,28 +76,26 @@ class Auditoria:
                'descricao': 'Imagens com dois NCMs'
                },
         '11': {'filtro': {'metadata.contentType': 'image/jpeg',
-                          'metadata.predictions.reefer.reefer_contaminado': True,
-                          'metadata.predictions.reefer.reefer_class': 0,
-                          'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
-                          'metadata.recinto': {'$in': ['SBT', 'BTP1', 'BTP2']},
-                          },
-               'order': [('metadata.dataescaneamento', 1)],
-               'descricao': 'Motor Reefer com suspeita de contaminação'
-               },
-        '12': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.carga.ncm': {'$size': 1},
                           'metadata.predictions.0.ncm.0.ncm.divergent': True
                           },
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'NCM Único com declaração divergente'
                },
-        '13': {'filtro': {'metadata.contentType': 'image/jpeg',
+        '12': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
                           'metadata.recinto': {'$in': ['SBT', 'BTP1', 'BTP2']},
                           },
+               'order': [('metadata.predictions.reefer.reefer_contaminado', -1)],
+               'descricao': 'Motor Reefer com suspeita de contaminação'
+               },
+        '13': {'filtro': {'metadata.contentType': 'image/jpeg',
+                          'metadata.predictions.reefer.reefer_class': 0,
+                          'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
+                          },
                'order': [('metadata.dataescaneamento', 1)],
-               'descricao': 'Motor Reefers - total'
+               'descricao': 'Motor Reefer por data de escaneamento'
                },
         # '13': {'filtro': {'_id': {'$in': [ObjectId('60993da9364ebd08e9b5ec63'),
         #                                   ObjectId('5fc1224cc19b6697bda04aea'),
