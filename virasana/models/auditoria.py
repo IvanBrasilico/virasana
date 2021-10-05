@@ -6,7 +6,8 @@ from collections import defaultdict
 from bson import ObjectId
 
 sys.path.append('.')
-sys.path.append('../ajna_docs/commons/')
+sys.path.append('./ajna_docs/commons/')
+sys.path.append('./virasana')
 from ajna_commons.flask.log import logger
 
 from virasana.integracao import carga, info_ade02, xmli
@@ -84,6 +85,7 @@ class Auditoria:
                },
         '12': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_class': 0,
+                          'metadata.predictions.reefer.reefer_contaminado': {'$exists': True},
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
                           'metadata.recinto': {'$in': ['SBT', 'BTP1', 'BTP2']},
                           },
