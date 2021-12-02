@@ -24,11 +24,12 @@ def pessoa_bagagens_sem_info(con, opcao: str):
     }
     sql_novos_viajantes = """SELECT DISTINCT c.consignatario as cpf_cnpj FROM itensresumo i
     INNER JOIN conhecimentosresumo c ON i.numeroCEmercante = c.numeroCEmercante
-    WHERE NCM LIKE '9797%%' AND c.tipoTrafego = 5
+    WHERE NCM LIKE '9797' AND c.tipoTrafego = 5
     AND c.dataEmissao >= '%s'"""
     data_inicial = datetime.strftime(datetime.now() - timedelta(days=90), '%Y-%m-%d')
     sql_novos_viajantes = sql_novos_viajantes % data_inicial
     sql_novos_viajantes += adicoes_sql[opcao.lower()]
+    print(sql_novos_viajantes)
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv(f'{opcao}.csv')
 
@@ -140,11 +141,11 @@ if __name__ == '__main__':
     else:
         print('Exportando listas de CFPs de CEs de bagagem sem informação...')
         print('Exportando CPFs/CNPJs sem viagens...')
-        pessoa_bagagens_sem_info(engine, 'viagem')
+        # pessoa_bagagens_sem_info(engine, 'viagem')
         print('Exportando CNPJs sem nomes...')
-        pessoa_bagagens_sem_info(engine, 'empresa')
+        # pessoa_bagagens_sem_info(engine, 'empresa')
         print('Exportando CPFs sem nomes...')
-        pessoa_bagagens_sem_info(engine, 'pessoa')
+        # pessoa_bagagens_sem_info(engine, 'pessoa')
         print('Exportando CPFs sem DIRFs...')
         print('Exportando CPFs sem DSIs...')
         pessoa_bagagens_sem_info(engine, 'dsi')

@@ -94,6 +94,9 @@ def get_bagagens(mongodb: Database,
         item.dsis = []
         conhecimento = session.query(Conhecimento).filter(
             Conhecimento.numeroCEmercante == item.numeroCEmercante).one_or_none()
+        if conhecimento is None:
+            logger.error(f'Contêiner {item.codigoConteiner} CE {item.numeroCEmercante} não encontrado...')
+            continue
         if not int(conhecimento.tipoBLConhecimento) in (10, 11):
             conhecimento_master = session.query(Conhecimento).filter(
                 Conhecimento.numeroCEmercante == conhecimento.numeroCEMaster).one_or_none()
