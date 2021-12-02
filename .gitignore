@@ -7,6 +7,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+wsgi_debug_copy.py
+
 # C extensions
 *.so
 
