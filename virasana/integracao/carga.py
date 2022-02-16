@@ -800,7 +800,6 @@ def cria_campo_pesos_carga(db, batch_size=1000):
     """
     filtro = {'metadata.contentType': 'image/jpeg',
               'metadata.carga.vazio': False,
-              'metadata.predictions.peso': {'$exists': True},
               'metadata.carga.pesototal': {'$exists': False},
               'metadata.carga.container': {'$exists': True, '$ne': []}
               }
@@ -811,7 +810,6 @@ def cria_campo_pesos_carga(db, batch_size=1000):
     s0 = time.time()
     for linha in file_cursor.limit(batch_size):
         total += 1
-        pesopred = linha.get('metadata').get('predictions')[0].get('peso')
         carga = linha.get('metadata').get('carga')
         _id = linha['_id']
         container = carga.get('container')
@@ -824,6 +822,10 @@ def cria_campo_pesos_carga(db, batch_size=1000):
             if tara == 0.:
                 tara = monta_float(container.get('tara(kg)'))
             pesototal = tara + peso
+            try:
+                pesopred = linha.get('metadata').get('predictions')[0].get('peso')
+            except:
+                pesopred = pesototal
             peso_dif = abs(pesopred - pesototal)
             peso_dif_relativo = peso_dif / (pesopred + pesototal) / 2
             alertapeso = (peso_dif > 2000 and peso_dif_relativo > .15) \
