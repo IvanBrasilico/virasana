@@ -825,6 +825,8 @@ def cria_campo_pesos_carga(db, batch_size=1000):
             try:
                 pesopred = linha.get('metadata').get('predictions')[0].get('peso')
             except:
+                pesopred = None
+            if pesopred is None or not isinstance(pesopred, float):
                 pesopred = pesototal
             peso_dif = abs(pesopred - pesototal)
             peso_dif_relativo = peso_dif / (pesopred + pesototal) / 2
