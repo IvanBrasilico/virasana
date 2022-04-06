@@ -1,6 +1,5 @@
-from marshmallow_sqlalchemy import ModelSchema
-
 from ajna_commons.utils.sanitiza import sanitizar
+from marshmallow_sqlalchemy import ModelSchema
 from virasana.integracao.mercante.mercantealchemy import Manifesto, ConteinerVazio, \
     Conhecimento, Item, NCMItem, Enumerado
 
@@ -9,7 +8,7 @@ class BaseSchema(ModelSchema):
     excluded_keys = ['create_date', 'last_modified',
                      'dataInicioOperacaoDate']
 
-    def dump(self, objeto):
+    def dump(self, objeto) -> dict:
         original = super().dump(objeto)
         result = {}
         for k, v in self.carga_fields.items():
@@ -131,7 +130,7 @@ def manifesto_carga(session, manifestos: list, numeroconteiner: str = None):
 def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None):
     dict_carga = {'vazio': False}
     dict_carga['conhecimento'] = []
-    dict_carga['ncm'] = set()
+    dict_carga['ncm'] = []
     dict_carga['container'] = []
     dict_carga['manifesto'] = []
     for numeroconhecimento in conhecimentos:
@@ -148,7 +147,11 @@ def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None
                 if item.codigoConteiner == numeroconteiner:
                     dict_carga['container'].append(item_schema.dump(item))
         ncms = session.query(NCMItem).filter(NCMItem.numeroCEMercante == numeroconhecimento).all()
+        ncm_dict = {}
         for ncmitem in ncms:
             if ncmitem.codigoConteiner == numeroconteiner:
-                dict_carga['ncm'].add(ncmitem_schema.dump(ncmitem))
+                ncmitem_ = ncmitem_schema.dump(ncmitem)
+                for item in ncmitem_:
+                    ncm_dict[item['ncm']] = item
+        dict_carga['ncm'] = list(ncm_dict.values())
     return dict_carga
