@@ -131,7 +131,7 @@ def manifesto_carga(session, manifestos: list, numeroconteiner: str = None):
 def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None):
     dict_carga = {'vazio': False}
     dict_carga['conhecimento'] = []
-    dict_carga['ncm'] = []
+    dict_carga['ncm'] = set()
     dict_carga['container'] = []
     dict_carga['manifesto'] = []
     for numeroconhecimento in conhecimentos:
@@ -150,5 +150,5 @@ def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None
         ncms = session.query(NCMItem).filter(NCMItem.numeroCEMercante == numeroconhecimento).all()
         for ncmitem in ncms:
             if ncmitem.codigoConteiner == numeroconteiner:
-                dict_carga['ncm'].append(ncmitem_schema.dump(ncmitem))
+                dict_carga['ncm'].add(ncmitem_schema.dump(ncmitem))
     return dict_carga
