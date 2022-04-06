@@ -150,8 +150,7 @@ def conhecimento_carga(session, conhecimentos: list, numeroconteiner: str = None
         ncm_dict = {}
         for ncmitem in ncms:
             if ncmitem.codigoConteiner == numeroconteiner:
-                ncmitem_ = ncmitem_schema.dump(ncmitem)
-                for item in ncmitem_:
-                    ncm_dict[item['ncm']] = item
+                item = ncmitem_schema.dump(ncmitem)
+                ncm_dict[item['ncm']] = item
         dict_carga['ncm'] = list(ncm_dict.values())
     return dict_carga
