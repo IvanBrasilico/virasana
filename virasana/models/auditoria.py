@@ -21,7 +21,7 @@ class Auditoria:
               'order': [],
               'descricao': 'Selecione'
               },
-        '1': {'filtro': {'metadata.carga.vazio': True,
+        '01': {'filtro': {'metadata.carga.vazio': True,
                          'metadata.predictions.vazio': False,
                          #                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
                          },
@@ -29,7 +29,7 @@ class Auditoria:
               'descricao': 'Contêineres informados como vazios mas detectados ' +
                            'como não vazios (ordem decrescente de peso detectado)'
               },
-        '2': {'filtro': {'metadata.carga.vazio': False,
+        '02': {'filtro': {'metadata.carga.vazio': False,
                          'metadata.predictions.vazio': True,
                          #                         'metadata.recinto': {'$ne': 'EMBRAPORT'}
                          },
@@ -37,32 +37,32 @@ class Auditoria:
               'descricao': 'Contêineres informados como contendo carga mas ' +
                            'detectados como vazios (ordem de peso detectado)'
               },
-        '3': {'filtro': {'metadata.alertapeso': True},
+        '03': {'filtro': {'metadata.alertapeso': True},
               'order': [('metadata.diferencapeso', -1)],
               'descricao': 'Contêineres com maiores divergências de peso (Imagem)'
               },
-        '4': {'filtro': {'metadata.alertapeso2': True},
+        '04': {'filtro': {'metadata.alertapeso2': True},
               'order': [('metadata.diferencapeso2', -1)],
               'descricao': 'Contêineres com maiores divergências de peso (Balança)'
               },
-        '5': {'filtro': {'metadata.contentType': 'image/jpeg',
+        '05': {'filtro': {'metadata.contentType': 'image/jpeg',
                          'metadata.predictions.bbox': {'$exists': False}},
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Imagens sem contêiner detectado'
               },
-        '6': {'filtro': carga.FALTANTES,
+        '06': {'filtro': carga.FALTANTES,
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Imagens sem informação do CARGA integrada'
               },
-        '7': {'filtro': xmli.FALTANTES,
+        '07': {'filtro': xmli.FALTANTES,
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Imagens sem informação do XML integrada'
               },
-        '8': {'filtro': info_ade02.FALTANTES,
+        '08': {'filtro': info_ade02.FALTANTES,
               'order': [('metadata.dataescaneamento', 1)],
               'descricao': 'Imagens sem pesagem integrada'
               },
-        '9': {'filtro': {'metadata.contentType': 'image/jpeg',
+        '09': {'filtro': {'metadata.contentType': 'image/jpeg',
                          'metadata.carga.ncm': {'$size': 1},
                          'metadata.carga.container.indicadorusoparcial': {'$ne': 's'}
                          },
@@ -77,13 +77,20 @@ class Auditoria:
                'descricao': 'Imagens com dois NCMs'
                },
         '11': {'filtro': {'metadata.contentType': 'image/jpeg',
+                          'metadata.carga.ncm': {'$size': 3},
+                          'metadata.carga.container.indicadorusoparcial': {'$ne': 's'}
+                          },
+               'order': [('metadata.dataescaneamento', 1)],
+               'descricao': 'Imagens com três NCMs'
+               },
+        '12': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.carga.ncm': {'$size': 1},
                           'metadata.predictions.0.ncm.0.ncm.divergent': True
                           },
                'order': [('metadata.dataescaneamento', 1)],
                'descricao': 'NCM Único com declaração divergente'
                },
-        '12': {'filtro': {'metadata.contentType': 'image/jpeg',
+        '13': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.predictions.reefer.reefer_contaminado': {'$exists': True},
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
@@ -92,7 +99,7 @@ class Auditoria:
                'order': [('metadata.predictions.reefer.reefer_contaminado', -1)],
                'descricao': 'Motor Reefer com suspeita de contaminação'
                },
-        '13': {'filtro': {'metadata.contentType': 'image/jpeg',
+        '14': {'filtro': {'metadata.contentType': 'image/jpeg',
                           'metadata.predictions.reefer.reefer_class': 0,
                           'metadata.carga.manifesto.tipomanifesto': {'$ne': 'lci'},
                           },
