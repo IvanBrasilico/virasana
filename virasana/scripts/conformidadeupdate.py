@@ -14,6 +14,7 @@ import io
 import sys
 import time
 
+import PIL
 import click
 import cv2
 import numpy as np
@@ -76,9 +77,12 @@ def update_conformidade(db, engine, start=None, end=None, limit=2000):
             qtde += 1
         except UnicodeDecodeError:
             logger.error(f'Erro de encoding no id: {linha["_id"]}')
+        except PIL.UnidentifiedImageError:
+            logger.error(f'Erro de imagem no id: {linha["_id"]}')
         except IntegrityError:
             session.rollback()
             logger.error(f'Linha duplicada: {linha["_id"]}')
+
     tempo = time.time() - tempo
     tempo_registro = 0 if (qtde == 0) else (tempo / qtde)
     logger.info(f'{qtde} análises de conformidade inseridas em {tempo} segundos.' +
