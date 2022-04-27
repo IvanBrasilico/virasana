@@ -89,6 +89,7 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
         with engine.connect() as conn:
             conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
             for parametros_pesquisa in parametros_pesquisas:
+                print(sql_manifestos, parametros_pesquisa)
                 cursor = conn.execute(sql_manifestos, parametros_pesquisa)
                 result = cursor.fetchall()
                 logger.info('%s Manifestos encontrados para parâmetros %s' %
