@@ -57,6 +57,7 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
 def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     if len(listanumerocc) == 0:
         return {}, {}
+    listanumerocc = [numerocontainer for numerocontainer in listanumerocc if '%' not in numerocontainer]
     before = dia - timedelta(days=6)
     before = datetime.strftime(before, '%Y-%m-%d')
     today = datetime.strftime(dia, '%Y-%m-%d')
