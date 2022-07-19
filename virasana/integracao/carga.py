@@ -175,7 +175,7 @@ def get_dados_ncm(grid_data):
     return ''
 
 
-def summary(grid_data=None, registro=None):
+def summary(grid_data=None, registro=None, session=None):
     """Selecionar campos mais importantes para exibição.
 
     Args:

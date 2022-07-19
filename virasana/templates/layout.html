@@ -34,17 +34,20 @@ AJNA - Virasana - Visão computacional e Aprendizado de máquina na vigilância 
     }
 .zoom {
   transition: transform .2s;
-  # border: 1px solid #000;
+  border: 1px solid #00F;
   max-width:800px;
-  max-height:350px;
+  max-height:340px;
   width: 800px;
-  height: 320px;
+  height: 340px;
   margin: auto;
   padding: 10px;
+  position: relative;
+  display: flex;
 }
 
 .zoom:hover {
   transform: scale(1.8);
+  z-index: 9999;
 }
 
 .bg-white {

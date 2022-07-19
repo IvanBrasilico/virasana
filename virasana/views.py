@@ -23,6 +23,7 @@ from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
 from ajna_commons.utils.sanitiza import mongo_sanitizar
 from bhadrasana.models import Usuario
+from bhadrasana.models.ovr import OVR
 from bson import json_util
 from bson.objectid import ObjectId
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
@@ -346,6 +347,7 @@ def file(_id=None):
 
     Exibe o arquivo e os metadados associados a ele.
     """
+    session = app.config['db_session']
     db = app.config['mongodb']
     fs = GridFS(db)
     tags_object = Tags(db)
@@ -365,6 +367,15 @@ def file(_id=None):
         summary_carga = dict_to_html(carga.summary(grid_data=grid_data))
         tags = tags_object.list(_id)
         ocorrencias = Ocorrencias(db).list(_id)
+        try:
+            metacarga = grid_data.metadata.get('carga')
+            if metacarga is not None:
+                conhecimento = metacarga.get('conhecimento')
+                if isinstance(conhecimento, list):
+                    conhecimento = conhecimento[0].get('conhecimento')
+                    ovrs = session.query(OVR).filter(OVR.numeroCEmercante == conhecimento).all()
+        except:
+            ovrs = []
     else:
         summary_ = summary_carga = 'Arquivo não encontrado.'
         ocorrencias = []
@@ -373,7 +384,8 @@ def file(_id=None):
                            summary=summary_,
                            summary_carga=summary_carga,
                            form_tags=form_tags, tags=tags,
-                           ocorrencias=ocorrencias)
+                           ocorrencias=ocorrencias,
+                           ovrs=ovrs)
 
 
 @login_required
@@ -677,7 +689,7 @@ def get_image(_id, n, pil=False):
         if n is not None:
             n = int(n)
             preds = grid_data.metadata.get('predictions')
-            if preds:
+            if preds and isinstance(preds, list) and len(preds) > 0:
                 bboxes = [pred.get('bbox') for pred in preds]
                 if len(bboxes) >= n + 1 and bboxes[n]:
                     image = recorta_imagem(image, bboxes[n], pil=pil)
@@ -981,7 +993,8 @@ def files():
             form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
             form_files.classe.choices = get_classes()
             filtro['metadata.numeroinformado'] = mongo_sanitizar(numero).upper()
-    print(filtro)
+    logger.debug(f'FILTRO {filtro}')
+    # print(filtro)
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
         # filtro['metadata.predictions.bbox'] = {'$exists': True}
@@ -996,13 +1009,14 @@ def files():
                       'metadata.predictions': 1,
                       'metadata.pesagens': 1,
                       'metadata.dataescaneamento': 1,
-                      'metadata.carga': 1}
+                      'metadata.carga': 1,
+                      'metadata.xml': 1}
         skip = (pagina_atual - 1) * PAGE_ROWS
-        logger.debug(filtro)
-        logger.debug(projection)
-        logger.debug('order: %s' % order)
-        logger.debug(PAGE_ROWS)
-        logger.debug(skip)
+        # logger.debug(filtro)
+        # logger.debug(projection)
+        # logger.debug('order: %s' % order)
+        # logger.debug(PAGE_ROWS)
+        # logger.debug(skip)
         count = db['fs.files'].count_documents(filtro, limit=PAGES * PAGE_ROWS)
         # print(count)
         # count = 100
@@ -1018,6 +1032,16 @@ def files():
             linha['filename'] = grid_data['filename']
             linha['dataescaneamento'] = datetime.strftime(grid_data['metadata'].get(
                 'dataescaneamento'), '%d/%m/%Y %H:%M:%S')
+            xmldoc = grid_data['metadata'].get('xml')
+            logger.debug(f'XMLDOC {grid_data}')
+            logger.debug(f'XMLDOC {xmldoc}')
+            if xmldoc is not None:
+                print('ALERTA!!!!!!!!!!!', xmldoc.get('alerta'), type(xmldoc.get('alerta')))
+                logger.debug('ALERTA:')
+                logger.debug(xmldoc.get('alerta'))
+                if xmldoc.get('alerta'):
+                    print('ALERTA!!!!!!!!!!!', xmldoc.get('alerta'), type(xmldoc.get('alerta')))
+                linha['alerta'] = xmldoc.get('alerta')
             linha['ncms'] = carga.get_dados_ncm(grid_data)
             linha['infocarga'] = carga.get_dados_conteiner(grid_data)
             linha['pesocarga'] = carga.get_peso_conteiner(grid_data)
@@ -1026,7 +1050,7 @@ def files():
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
             preds = grid_data['metadata'].get('predictions')
-            if preds:
+            if preds and isinstance(preds, list) and len(preds) > 0:
                 classe = preds[0].get('class')
                 if classe:
                     linha['classe'] = classes.get(classe)

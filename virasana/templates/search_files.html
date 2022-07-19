@@ -99,7 +99,7 @@
     </div>
     <div class="row">
         <h4>OU Definir filtro personalizado</h4>
-        <div id="list" class="row col-sm-6">
+        <div id="list_filtro" class="row col-sm-6">
             <form id="frmfiltros" class="form-group">
                 <div class="form-group col-sm-4">
                     <select class="form-control" name="campos" id="campos">
@@ -119,7 +119,7 @@
                 </div>
             </form>
         </div>
-        <div id="list" class="row col-sm-6">
+        <div id="list_filtropersonalizado" class="row col-sm-6">
             <div class="table">
                 <table class="inlineTable table table-bordered table-hover table-responsive"
                        id="filtro_personalizado_table">
@@ -146,51 +146,35 @@
     </div>
 </div>
 
-<div id="list" class="row">
-    &nbsp;
-    <div class="col-sm-1">
-        &nbsp;
+<div id="list" class="row col-xl-12">
+    {% for myfile in paginated_files %}
+    <div class="row col-sm-12 bg-white text-primary">
+        <div class="col-sm-4">
+            {% if myfile['alerta'] %}<font color="red">{% endif %}
+            Contêiner nº <b>{{ myfile['numero'] }}</b> escaneado <b>{{ myfile['dataescaneamento'] }}</b> <br>
+            {% if myfile['alerta'] %}</font>{% endif %}
+            {{ myfile['classe'] }}<br>
+            <div title="Visualizar lote (CE Mercante) em nova tela">
+                <a href="cemercante/{{ myfile['conhecimento'] }}" target="_BLANK">
+                    {{ myfile['infocarga'] }}<br>
+                </a>
+            </div>
+            {{ myfile['infodue'] }}<br>
+            {{ myfile['pesocarga'] }}<br>
+            {{ myfile['peso'] }}<br>
+            {{ myfile['ncms'] }}<br>
+        </div>
+        <div class="col-sm-8">
+            <a href="file?_id={{ myfile['_id'] }}" target="_BLANK">
+                <img src="imagens_cmap?_id={{myfile['_id']}}&colormap={{oform.colormap.data}}"
+                     alt="Sem imagem" width="auto" height="auto"
+                     class="zoom"
+                     onmouseover="showMsg(this, '{{myfile['_id']}}')" onmouseout="clearMsg(this)"
+                />
+            </a>
+        </div>
     </div>
-    <div class="table table-responsive col-sm-10">
-        {# Display a page of todos #}
-        <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
-            <thead>
-            <tr>
-                <td width="400" style="text-align:left">Dados</td>
-                <td>Imagem</td>
-            </tr>
-            </thead>
-            {% for myfile in paginated_files %}
-            <tr>
-                <td width="400" style="text-align:left">
-                    Contêiner nº <b>{{ myfile['numero'] }}</b> escaneado <b>{{ myfile['dataescaneamento'] }}</b> <br>
-                    {{ myfile['classe'] }}<br>
-                    <div title="Visualizar lote (CE Mercante) em nova tela">
-                        <a href="cemercante/{{ myfile['conhecimento'] }}" target="_BLANK">
-                            {{ myfile['infocarga'] }}<br>
-                        </a>
-                    </div>
-                    {{ myfile['infodue'] }}<br>
-                    {{ myfile['pesocarga'] }}<br>
-                    {{ myfile['peso'] }}<br>
-                    {{ myfile['ncms'] }}<br>
-                </td>
-                <td>
-                    <a href="file?_id={{ myfile['_id'] }}" target="_BLANK">
-                        <img src="imagens_cmap?_id={{myfile['_id']}}&colormap={{oform.colormap.data}}"
-                             alt="Sem imagem" width="auto" height="auto"
-                             class="zoom"
-                             onmouseover="showMsg(this, '{{myfile['_id']}}')" onmouseout="clearMsg(this)"
-                        />
-                    </a>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-    </div>
-    <div class="col-sm-1">
-        &nbsp;
-    </div>
+    {% endfor %}
 </div>
 <div id="bottom_buttons" class="row">
     <div class="col-sm-6">
@@ -282,6 +266,8 @@
     function clearMsg(img) {
         img.title = "";
     }
+
+
 
 
 

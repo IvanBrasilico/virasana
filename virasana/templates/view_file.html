@@ -16,23 +16,13 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="similar/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Buscar imagens similares</u>
-                                </a>
-                            </li>
-                            <li>
                                 <a href="view_image/{{ myfile['_id'] }}" target="_BLANK">
                                     <u>Analisar imagem</u>
                                 </a>
                             </li>
                             <li>
-                                <a href="similar2/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Buscar imagens</u>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="image-editor/{{myfile['_id']}}" target="_BLANK">
-                                    <u>Abrir com editor</u>
+                                <a href="/bhadrasana/nova_inspecaoni/{{ myfile['_id'] }}" target="_BLANK">
+                                    <u>Registrar inspeção não-invasiva</u>
                                 </a>
                             </li>
                         </ul>
@@ -45,6 +35,9 @@
                     {% endif %}
                 </div>
                 <div class="col-md-5">
+                    {% for ovr in ovrs %}
+                    <b>Ficha n.: </b> <a href="/bhadrasana2/ovr?id={{ ovr.id }}" target="_blank">{{ ovr.id }}</a>
+                    {% endfor %}
                     <br> {{ summary|safe }}
                     <br> {{ summary_carga|safe }}
                 </div>
@@ -164,9 +157,13 @@
             <h3>Dados do módulo PADMA - Predições por IA</h3>
             <div id="padma">
                 {% if myfile['metadata']['predictions'] %}
-                <ul>{% for pred in myfile['metadata']['predictions'] %} {% for key, value in pred.items() %}
+                <ul>{% for pred in myfile['metadata']['predictions'] %}
+                    {% if (pred is iterable) and (pred is not string)%}
+                    {% for key, value in pred.items() %}
                     <li> {{ key }}: {{ value }}</li>
-                    {% endfor %} {% endfor %}
+                    {% endfor %}
+                    {% endif %}
+                    {% endfor %}
                 </ul>
                 {% endif %}
             </div>
