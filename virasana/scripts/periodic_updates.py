@@ -100,7 +100,7 @@ def periodic_updates(db, connection, lote=2000):
     processa_xml_mercante.get_arquivos_novos(connection)
     processa_xml_mercante.xml_para_mercante(connection)
     resume_mercante.mercante_resumo(connection)
-    mercante_fsfiles.update_mercante_fs.files_dias(db, connection, hoje, 10)
+    mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, hoje, 10)
     # carga.dados_carga_grava_fsfiles(db, lote * 2, doisdias)
     anomalia_lote.processa_zscores(db, cincodias, ontem)
     info_ade02.adquire_pesagens(db, cincodias, ontem)
