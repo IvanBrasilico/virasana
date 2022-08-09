@@ -70,7 +70,7 @@ def importa_cpfs(session):
         pessoa.endereco = row['endereco']
         complemento = row['complemento']
         if complemento != 'Não informado':
-            pessoa.endereco = pessoa.endereco + ' ' + complemento
+            pessoa.endereco = pessoa.endereco + ' ' + str(complemento)
         pessoa.cep = row['cep']
         session.add(pessoa)
     session.commit()
@@ -117,7 +117,7 @@ def importa_dsis(session):
         dsi.despachante = row['despachante']
         dsi.descricao = row['descricao']
         dsi.data_registro = row['data_registro']
-        dsi.numeroCEmercante = row['nr_conhec_carga'][-15:]
+        dsi.numeroCEmercante = str(row['nr_conhec_carga'])[-15:]
         session.add(dsi)
     session.commit()
     os.remove('dsis.csv')
