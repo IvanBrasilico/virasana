@@ -8,29 +8,40 @@
             <div id="resumo">
                 <div class="col-md-7">
                     {% if myfile %}
-                    <div class="navbar-collapse collapse">
+                    <div class="row">
+                    <div class="navbar-collapse collapse col-md-8">
                         <ul class="nav navbar-nav">
                             <li>
                                 <a href="files?numero={{ myfile['metadata']['numeroinformado'] }}">
-                                    <u>Listar todas as passages por escâner</u>
+                                    <u>Listar todas as passagens</u>
                                 </a>
                             </li>
                             <li>
                                 <a href="view_image/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Analisar imagem</u>
+                                    <u>Tela análise de imagem</u>
                                 </a>
                             </li>
                             <li>
                                 <a href="/bhadrasana2/nova_inspecaoni/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Registrar inspeção não-invasiva</u>
+                                    <u>Registra análise de imagem</u>
                                 </a>
                             </li>
                         </ul>
                     </div>
+                    <div class="col-md-4">
+                        <form method="GET" id="formcolormap" action="file">
+                            <input type="hidden" name="_id" value="{{myfile['_id']}}">
+                            {{form_colormap.colormap(class='form-control', onchange='this.form.submit()')}}
+                        </form>
+                    </div>
+                    </div>
                     <div class="row" align="center" style="vertical-align: middle;">
-                    <img src="image/{{ myfile['_id'] }}" width="auto" height="auto"
-                     style="border: 1px solid #000; max-width:700px; max-height:300px;"
-                    />
+                        <a href="file?_id={{ myfile['_id'] }}" target="_BLANK">
+                            <img src="imagens_cmap?_id={{myfile['_id']}}&colormap={{colormap}}"
+                                 alt="Sem imagem" width="auto" height="auto"
+                                 class="zoom2"
+                                 onmouseover="showMsg(this, '{{myfile['_id']}}')" onmouseout="clearMsg(this)"
+                            /></a>
                     </div>
                     {% endif %}
                 </div>
@@ -47,14 +58,14 @@
             <div id="anotacoes">
                 <h4>Tags</h4>
                 <div class="row">
-                <form id="frmtags" class="form-group">
-                    <div class="form-group col-sm-6">
-                        {{ form_tags.tags(class='form-control') }}
-                    </div>
-                    <div class="form-group col-sm-4">
-                        <button id="btnaddtag" type="button" class="btn btn-default btn-info">Adicionar</button>
-                    </div>
-                </form>
+                    <form id="frmtags" class="form-group">
+                        <div class="form-group col-sm-6">
+                            {{ form_tags.tags(class='form-control') }}
+                        </div>
+                        <div class="form-group col-sm-4">
+                            <button id="btnaddtag" type="button" class="btn btn-default btn-info">Adicionar</button>
+                        </div>
+                    </form>
                 </div>
                 <div id="listtag" class="row">
                     <div class="col-sm-8">
@@ -90,14 +101,15 @@
                 </div>
                 <h4>Ocorrências</h4>
                 <div class="row">
-                <form id="frmocorrencias" class="form-group">
-                    <div class="form-group col-sm-6">
-                        <input id="ocorrencia" class="form-control" type="text" placeholder="Texto da ocorrência">
-                    </div>
-                    <div class="form-group col-sm-4">
-                        <button id="btnaddocorrencia" type="button" class="btn btn-default btn-info">Adicionar</button>
-                    </div>
-                </form>
+                    <form id="frmocorrencias" class="form-group">
+                        <div class="form-group col-sm-6">
+                            <input id="ocorrencia" class="form-control" type="text" placeholder="Texto da ocorrência">
+                        </div>
+                        <div class="form-group col-sm-4">
+                            <button id="btnaddocorrencia" type="button" class="btn btn-default btn-info">Adicionar
+                            </button>
+                        </div>
+                    </form>
                 </div>
                 <div id="list" class="row">
                     <div class="col-sm-8">
@@ -180,28 +192,28 @@
                     <li>{{key}}</li>
                     <ul>
                         {% if key == 'atracacao' %}
-                            {% if value is mapping %}
-                                {% for campo, valor in value.items() %}
-                                    <li> {{ campo }}: {{ valor }}</li>
-                                {% endfor %}
-                            {% endif %}
+                        {% if value is mapping %}
+                        {% for campo, valor in value.items() %}
+                        <li> {{ campo }}: {{ valor }}</li>
+                        {% endfor %}
+                        {% endif %}
                         {% else %}
-                            {% if value is iterable and value is not mapping %}
-                                {% for linha in value %}
-                                    {% if linha is mapping %}
-                                        <ul>{% for campo, valor in linha.items() %}
-                                            <li> {{ campo }}: {{ valor }}</li>
-                                            {% endfor %}
-                                        </ul>
-                                    {% endif %}
-                                {% endfor %}
-                            {% else %}
-                                {% if value is mapping %}
-                                    {% for campo, valor in value.items() %}
-                                        <li> {{ campo }}: {{ valor }}</li>
-                                    {% endfor %}
-                                {% endif %}
-                            {% endif %}
+                        {% if value is iterable and value is not mapping %}
+                        {% for linha in value %}
+                        {% if linha is mapping %}
+                        <ul>{% for campo, valor in linha.items() %}
+                            <li> {{ campo }}: {{ valor }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% endfor %}
+                        {% else %}
+                        {% if value is mapping %}
+                        {% for campo, valor in value.items() %}
+                        <li> {{ campo }}: {{ valor }}</li>
+                        {% endfor %}
+                        {% endif %}
+                        {% endif %}
                         {% endif %}
                     </ul>
                     {% endif %} {% endfor %}
@@ -211,25 +223,25 @@
             <h3>Dados do PUCOMEX</h3>
             <div id="PUCOMEX">
                 {% if myfile['metadata']['due'] %}
-                    {% for due in myfile['metadata']['due'] %}
-                        <ul>
-                            {% for key, value in due.items() %}
-                                <li> {{ key }}: {{ value }}</li>
-                            {% endfor %}
-                        </ul>
+                {% for due in myfile['metadata']['due'] %}
+                <ul>
+                    {% for key, value in due.items() %}
+                    <li> {{ key }}: {{ value }}</li>
                     {% endfor %}
+                </ul>
+                {% endfor %}
                 {% endif %}
             </div>
             <h3>Dados de pesagens - integração recintos aduaneiros</h3>
             <div id="ade022003">
                 {% if myfile['metadata']['pesagens'] %}
-                    {% for pesagem in myfile['metadata']['pesagens'] %}
-                        <ul>
-                            {% for key, value in pesagem.items() %}
-                                <li> {{ key }}: {{ value }}</li>
-                            {% endfor %}
-                        </ul>
+                {% for pesagem in myfile['metadata']['pesagens'] %}
+                <ul>
+                    {% for key, value in pesagem.items() %}
+                    <li> {{ key }}: {{ value }}</li>
                     {% endfor %}
+                </ul>
+                {% endfor %}
                 {% endif %}
             </div>
         </div>
@@ -318,6 +330,8 @@
             $('button#btnaddtag').bind('click', add_tag);
         });
      });
+
+
 
 
 

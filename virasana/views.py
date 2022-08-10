@@ -38,7 +38,7 @@ from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
-from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm
+from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  dict_to_text, info_ade02, plot_bar_plotly,
                                  plot_pie_plotly, stats_resumo_imagens,
@@ -350,11 +350,13 @@ def file(_id=None):
     session = app.config['db_session']
     db = app.config['mongodb']
     fs = GridFS(db)
+    colormap = request.args.get('colormap', 'original')
     ovrs = []
     tags = []
     tags_object = Tags(db)
     form_tags = TagsForm()
     form_tags.tags.choices = tags_object.tags_text
+    form_colormap = ColorMapForm(request.args)
     if request.args.get('filename'):
         filename = mongo_sanitizar(request.args.get('filename'))
         logger.warn('Filename %s ' % filename)
@@ -381,11 +383,14 @@ def file(_id=None):
     else:
         summary_ = summary_carga = 'Arquivo não encontrado.'
         ocorrencias = []
+        grid_data = {'_id': 0}
     return render_template('view_file.html',
                            myfile=grid_data,
+                           colormap=colormap,
                            summary=summary_,
                            summary_carga=summary_carga,
                            form_tags=form_tags, tags=tags,
+                           form_colormap=form_colormap,
                            ocorrencias=ocorrencias,
                            ovrs=ovrs)
 

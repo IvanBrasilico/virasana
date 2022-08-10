@@ -47,10 +47,13 @@ def configure(app):
         image = get_image(_id, n, pil=True)
         if not image:
             return 'Sem imagem'
+        print(colormap)
         if colormap == 'original':
             pass
-        elif colormap == 'contraste':
+        elif colormap == 'Contraste':
             image = ImgEnhance.enhancedcontrast_cv2(image)
+        elif colormap == 'Equaliza histograma':
+            image = ImgEnhance.equalize(image)
         else:
             # Evitar erro ao chamar colormaps
             if colormap in _gen_cmap_registry():

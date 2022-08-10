@@ -38,13 +38,25 @@ class FilesForm(FlaskForm):
                                    validators=[optional()], default='')
     classe = SelectField(u'Classe de contêiner detectado', default='0')
     colormap = SelectField('Mapa de cores para visualizar imagem',
-                           validators=[optional()], default='contraste')
+                           validators=[optional()], default='Contraste')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.colormap.choices = ['original', 'contraste', 'flag', 'winter', 'hsv',
+        self.colormap.choices = ['original', 'Contraste', 'Equaliza histograma',
+                                 'flag', 'winter', 'hsv',
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
                                  'jet', 'gnuplot', 'tab10']
+
+class ColorMapForm(FlaskForm):
+    colormap = SelectField('Mapa de cores para visualizar imagem',
+                           validators=[optional()], default='original')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.colormap.choices = ['original', 'Contraste', 'Equaliza histograma',
+                                 'flag', 'winter', 'hsv',
+                                 'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
+                                 'jet', 'gnuplot', 'tab10']
+
 
 
 class FormFiltro(FlaskForm):
