@@ -40,6 +40,7 @@ def configure(app):
         colormap = request.args.get('colormap', 'contraste')
         marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
         recorta_reefer =  request.args.get('recorta_reefer', 'False').lower() == 'true'
+        imagem_inteira =  request.args.get('imagem_inteira', 'False').lower() == 'true'
         if marca_reefer or recorta_reefer:
             n = None
         else:
@@ -47,7 +48,7 @@ def configure(app):
         image = get_image(_id, n, pil=True)
         if not image:
             return 'Sem imagem'
-        print(colormap)
+        # print(colormap)
         if colormap == 'original':
             pass
         elif colormap == 'Contraste':
