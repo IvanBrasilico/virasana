@@ -41,7 +41,7 @@ def configure(app):
         marca_reefer =  request.args.get('marca_reefer', 'False').lower() == 'true'
         recorta_reefer =  request.args.get('recorta_reefer', 'False').lower() == 'true'
         imagem_inteira =  request.args.get('imagem_inteira', 'False').lower() == 'true'
-        if marca_reefer or recorta_reefer:
+        if marca_reefer or recorta_reefer or imagem_inteira:
             n = None
         else:
             n = 0
