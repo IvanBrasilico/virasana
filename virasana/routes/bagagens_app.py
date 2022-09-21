@@ -1,6 +1,7 @@
 import io
 import os
 from datetime import date, timedelta, datetime
+from random import randint
 
 import pandas as pd
 from ajna_commons.flask.conf import tmpdir
@@ -64,9 +65,6 @@ def configure(app):
         form = FormFiltroBagagem(request.args,
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
-        print(form)
-        print(request.args)
-        print(form.filtrar_dsi.data)
         try:
             lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
         except Exception as err:
@@ -97,31 +95,30 @@ def configure(app):
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
         try:
-            if request.method == 'POST' and form.validate():
-                lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
-                # logger.debug(stats_cache)
-                if request.form.get('btn_exportar'):
-                    out_filename = 'ListaDSIs_{}.csv'.format(
-                        datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
-                    )
-                    lista_final = []
-                    for item in lista_bagagens:
-                        linha_risco = ['', '']
-                        lista_dsis = []
-                        for conhecimento in item.conhecimentos:
-                            if conhecimento.classificacaorisco:
-                                cl = conhecimento.classificacaorisco
-                                linha_risco = [ClasseRisco(cl.classerisco).name, cl.descricao]
-                            if conhecimento.dsis:
-                                for dsi in conhecimento.dsis:
-                                    lista_dsis.append([dsi.numero, dsi.consignatario])
-                        for linha_dsi in lista_dsis:
-                            lista_final.append([*linha_dsi, *linha_risco])
-                    print(lista_final)
-                    df = pd.DataFrame(lista_final,
-                                      columns=['DSI', 'CPF', 'Classifição de Risco', 'Observação'])
-                    df.to_csv(os.path.join(get_user_save_path(), out_filename), index=False)
-                    return redirect('static/%s/%s' % (current_user.name, out_filename))
+            lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
+            # logger.debug(stats_cache)
+            if request.form.get('btn_exportar'):
+                out_filename = 'ListaDSIs_{}.csv'.format(
+                    datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
+                )
+                lista_final = []
+                for item in lista_bagagens:
+                    linha_risco = ['', '']
+                    lista_dsis = []
+                    for conhecimento in item.conhecimentos:
+                        if conhecimento.classificacaorisco:
+                            cl = conhecimento.classificacaorisco
+                            linha_risco = [ClasseRisco(cl.classerisco).name, cl.descricao]
+                        if conhecimento.dsis:
+                            for dsi in conhecimento.dsis:
+                                lista_dsis.append([dsi.numero, dsi.consignatario])
+                    for linha_dsi in lista_dsis:
+                        lista_final.append([*linha_dsi, *linha_risco])
+                print(lista_final)
+                df = pd.DataFrame(lista_final,
+                                  columns=['DSI', 'CPF', 'Classificação de Risco', 'Observação'])
+                df.to_csv(os.path.join(get_user_save_path(), out_filename), index=False)
+                return redirect('static/%s/%s' % (current_user.name, out_filename))
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
@@ -184,8 +181,33 @@ def configure(app):
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
-        return redirect('bagagens_redirect?filtrar_dsi=1&cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
+        return redirect('bagagens?filtrar_dsi=1&cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
 
+    def classifica_ce(session,
+                      numeroCEmercante: str,
+                      classerisco=ClasseRisco.VERDE,
+                      descricao=''):
+        classificacaorisco = ClassificacaoRisco()
+        classificacaorisco.numeroCEmercante = numeroCEmercante
+        classificacaorisco.classerisco = classerisco
+        classificacaorisco.descricao = descricao
+        session.add(classificacaorisco)
+
+    PERCENT = 2
+
+    def pseudo_random(numero_dsi: int, data_registro: datetime):
+        divisor = 100 / PERCENT
+        dia = data_registro.day
+        selecionado = (numero_dsi % (divisor + randint(-5, 5))) == abs(dia + randint(-5, 21))
+        return selecionado
+
+    def classifica_aleatoriamente(session, numeroCEmercante: str,
+                                  num_dsi: str, data_registro: datetime):
+        numero_dsi = int(num_dsi)
+        classerisco = ClasseRisco.VERDE
+        if pseudo_random(numero_dsi, data_registro):
+            classerisco = ClasseRisco.VERMELHO
+        classifica_ce(session, numeroCEmercante, classerisco, 'Classificação aleatória')
 
     def le_linha_csvportal(row, session):
         # session = app.config.get('db_session')
@@ -221,11 +243,11 @@ def configure(app):
         inicio = fim = datetime.strftime(datetime.today() - timedelta(days=1), '%Y-%m-%d')
         if request.method == 'POST':
             try:
-                csvf = get_planilha_valida(request, 'planilha')
+                csvf = get_planilha_valida(request, 'csv')
                 if csvf:
                     df = pd.read_csv(io.StringIO(csvf.stream.read().decode('utf-8')))
                     logger.info(df.columns)
-                    # df = df[df[' Código Natureza da Operação'] == 10]
+                    df = df[df[' Código Natureza da Operação'] == 10]
                     df['data'] = pd.to_datetime(df[' Data de Registro'], format=' %d/%m/%Y %H:%M')
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
@@ -236,8 +258,7 @@ def configure(app):
             except Exception as err:
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
-        return redirect('bagagens_redirect?filtrar_dsi=1&start=%send=%s' % (inicio, fim))
-
+        return redirect('bagagens?filtrar_dsi=1&start=%s&end=%s' % (inicio, fim))
 
     @app.route('/classificaCE', methods=['POST'])
     @login_required

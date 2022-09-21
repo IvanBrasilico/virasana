@@ -46,6 +46,9 @@
                         <button id="btn_incluir" type="button" class="btn btn-primary form-control"
                                 data-toggle="modal" data-target="#importa_csv">Importar DSIs
                         </button>
+                        <button id="btn_incluir_old" type="button" class="btn form-control"
+                                data-toggle="modal" data-target="#importa_planilha_old">Imp DSIs (ANTIGO)
+                        </button>
                     </div>
                 </div>
                 <div class="row">
@@ -226,12 +229,40 @@
                 <form method="POST" action="importa_dsis" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="active_tab" value="{{active_tab}}">
-                    <label class="btn btn-default btn-choose" for="planilha">
-                        <input id="planilha" name="planilha" type="file" style="display:none"
+                    <label class="btn btn-default btn-choose" for="csv">
+                        <input id="csv" name="csv" type="file" style="display:none"
                                onchange="$('#upload-file-info').html(this.files[0].name)"> Escolha a planilha
                     </label>
                     <big>
                         <span class='label label-success' id="upload-file-info"></span>
+                    </big>
+                    &nbsp;
+                    <input class="btn btn-primary" type="submit" value="Importar CSV"/>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="importa_planilha_old" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title" id="ModalLabelold">Importar CSV</h1>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="importa_dsisold" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="active_tab" value="{{active_tab}}">
+                    <label class="btn btn-default btn-choose" for="planilha">
+                        <input id="planilha" name="planilha" type="file" style="display:none"
+                               onchange="$('#upload-file-info_old').html(this.files[0].name)"> Escolha a planilha
+                    </label>
+                    <big>
+                        <span class='label label-success' id="upload-file-info_old"></span>
                     </big>
                     &nbsp;
                     <input class="btn btn-primary" type="submit" value="Importar CSV"/>
