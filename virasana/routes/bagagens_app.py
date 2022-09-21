@@ -1,3 +1,4 @@
+import io
 import os
 from datetime import date, timedelta, datetime
 
@@ -8,7 +9,7 @@ from flask import render_template, request, flash
 from flask_login import login_required, current_user
 from virasana.conf import APP_PATH
 from virasana.forms.filtros import FormFiltroBagagem, FormClassificacaoRisco
-from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco
+from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco, Pessoa
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.usecases.bagagens_manager import get_bagagens
 from werkzeug.utils import secure_filename, redirect
@@ -46,8 +47,8 @@ def configure(app):
                                              concluidos=form.concluidos.data,
                                              classificados=form.classificados.data,
                                              somente_sem_imagem=form.semimagem.data,
-                                             filtrar_dsi=form.ordenar_dsi.data)
-        if form.ordenar_dsi.data:
+                                             filtrar_dsi=form.filtrar_dsi.data)
+        if form.filtrar_dsi.data:
             bagagens = sorted(bagagens, key=lambda x: x.max_numero_dsi)
         if form.ordenar_rvf.data:
             bagagens = sorted(bagagens, key=lambda x: x.max_data_rvf)
@@ -63,6 +64,9 @@ def configure(app):
         form = FormFiltroBagagem(request.args,
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
+        print(form)
+        print(request.args)
+        print(form.filtrar_dsi.data)
         try:
             lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
         except Exception as err:
@@ -88,8 +92,8 @@ def configure(app):
         session = app.config['db_session']
         lista_bagagens = []
         conteineres = []
-        print(request.form)
-        form = FormFiltroBagagem(request.form,
+        print(request.values)
+        form = FormFiltroBagagem(request.values,
                                  start=date.today() - timedelta(days=30),
                                  end=date.today())
         try:
@@ -126,7 +130,7 @@ def configure(app):
                                conteineres=conteineres,
                                oform=form)
 
-    @app.route('/importa_dsis', methods=['POST', 'GET'])
+    @app.route('/importa_dsisold', methods=['POST', 'GET'])
     @login_required
     def importacsv():
         """Importar arquivo com lista de DSI e CPF
@@ -181,6 +185,59 @@ def configure(app):
                 flash(str(err))
         inicio = datetime.strftime(datetime.today() - timedelta(days=120), '%Y-%m-%d')
         return redirect('bagagens_redirect?filtrar_dsi=1&cpf_cnpj=%s&start=%s' % (';'.join(lista_cpf), inicio))
+
+
+    def le_linha_csvportal(row, session):
+        # session = app.config.get('db_session')
+        recinto = row.get('Número do Recinto Aduaneiro')
+        ce = row.get(' Conhecimento de Carga').strip()
+        dsi = row.get(' Número DSI')
+        cpf = str(row.get(' Número Importador')).zfill(11)
+        nome = row.get(' Nome Importador').strip()
+        data = row['data']
+        apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
+        if apessoa is None:
+            logger.info(f'Adicionando pessoa {cpf, nome}')
+            apessoa = Pessoa()
+            apessoa.cpf = cpf
+            apessoa.nome = nome
+            session.add(apessoa)
+        adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
+        if adsi is None:
+            adsi = DSI()
+            logger.info(f'Adicionando DSI {dsi, data, ce}')
+            adsi.numero = dsi
+            adsi.consignatario = cpf
+            adsi.numeroCEmercante = ce
+            adsi.data_registro = data
+            session.add(adsi)
+        print(recinto, ce, dsi, cpf, nome, data)
+
+    @app.route('/importa_dsis', methods=['POST', 'GET'])
+    @login_required
+    def importacsvportal():
+        """Importar arquivo com lista de DSIs a selecionar do Portal Único
+        """
+        inicio = fim = datetime.strftime(datetime.today() - timedelta(days=1), '%Y-%m-%d')
+        if request.method == 'POST':
+            try:
+                csvf = get_planilha_valida(request, 'planilha')
+                if csvf:
+                    df = pd.read_csv(io.StringIO(csvf.stream.read().decode('utf-8')))
+                    logger.info(df.columns)
+                    # df = df[df[' Código Natureza da Operação'] == 10]
+                    df['data'] = pd.to_datetime(df[' Data de Registro'], format=' %d/%m/%Y %H:%M')
+                    df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
+                    inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
+                    fim = datetime.strftime(df_maior_2022.data.max(), '%Y-%m-%d')
+                    session = app.config.get('db_session')
+                    df_maior_2022.apply(lambda x: le_linha_csvportal(x, session), axis=1)
+                    session.commit()
+            except Exception as err:
+                logger.error(str(err), exc_info=True)
+                flash(str(err))
+        return redirect('bagagens_redirect?filtrar_dsi=1&start=%send=%s' % (inicio, fim))
+
 
     @app.route('/classificaCE', methods=['POST'])
     @login_required

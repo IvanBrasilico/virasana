@@ -228,8 +228,7 @@ class FormFiltroBagagem(FlaskForm):
     selecionados = BooleanField('Exibir selecionados', default=False)
     concluidos = BooleanField('Exibir selecionados', default=False)
     semimagem = BooleanField('Exibir somente os sem imagem ou sem pesagem', default=False)
-    filtrar_dsi = BooleanField('Filtrar por data de emissão da DSI', default=False)
-    ordenar_dsi = BooleanField('Ordenar por data de emissão da DSI', default=False)
+    filtrar_dsi = BooleanField('Filtrar e ordenar por data de emissão da DSI', default=False)
     ordenar_rvf = BooleanField('Ordenar por data da RVF', default=False)
 
     def __init__(self, *args, **kwargs):
