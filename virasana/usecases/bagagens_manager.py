@@ -127,7 +127,9 @@ def get_bagagens(mongodb: Database,
         item.manifesto = manifesto
         for ce in filhotes:
             ce.classificacaorisco, _ = get_classificacaorisco(session, ce, [])
-            ce.canal = ClasseRisco(ce.classificacaorisco.classerisco).name
+            ce.canal = None
+            if ce.classificacaorisco:
+                ce.canal = ClasseRisco(ce.classificacaorisco.classerisco).name
         # print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
         item.conhecimentos = [conhecimento, *filhotes]
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
