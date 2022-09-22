@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, date
 
 from ajna_commons.utils.sanitiza import mongo_sanitizar
 from flask import g
@@ -208,8 +208,8 @@ class FormFiltroBagagem(FlaskForm):
     search_files.html
 
     """
-    start = DateField('Start', validators=[optional()])
-    end = DateField('End', validators=[optional()])
+    start = DateField('Start', default=date.today() - timedelta(days=3))
+    end = DateField('End', default=date.today())
     recinto = StringField(u'Nome do Recinto',
                           validators=[optional()], default='')
     portoorigem = StringField(u'Porto de Origem',

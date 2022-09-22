@@ -14,6 +14,19 @@ from virasana.integracao.gmci_alchemy import GMCI
 from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Manifesto
 
 
+def get_classificacaorisco(session, conhecimento, filhotes):
+    ces_risco_pesquisa = [*[ce.numeroCEmercante for ce in filhotes], conhecimento.numeroCEmercante]
+    classificacaorisco = session.query(ClassificacaoRisco). \
+        filter(ClassificacaoRisco.numeroCEmercante.in_(ces_risco_pesquisa)).first()
+    if classificacaorisco is None:
+        form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante)
+    else:
+        form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante,
+                                                    classerisco=classificacaorisco.classerisco,
+                                                    descricao=classificacaorisco.descricao)
+    return classificacaorisco, form_classificacao
+
+
 def get_bagagens(mongodb: Database,
                  session, datainicio: datetime, datafim: datetime,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
@@ -44,6 +57,7 @@ def get_bagagens(mongodb: Database,
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
         # ,  OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
     if filtrar_dsi:
+        print()
         q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
     if classificados:
         q = q.join(ClassificacaoRisco, ClassificacaoRisco.numeroCEmercante == Conhecimento.numeroCEmercante)
@@ -102,24 +116,18 @@ def get_bagagens(mongodb: Database,
                 Conhecimento.numeroCEmercante == conhecimento.numeroCEMaster).one_or_none()
             if conhecimento_master:
                 conhecimento = conhecimento_master
-        classificacaorisco = session.query(ClassificacaoRisco). \
-            filter(ClassificacaoRisco.numeroCEmercante == conhecimento.numeroCEmercante).one_or_none()
-        if classificacaorisco is None:
-            form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante)
-        else:
-            form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante,
-                                                        classerisco=classificacaorisco.classerisco,
-                                                        descricao=classificacaorisco.descricao)
-        conhecimento.classificacaorisco = classificacaorisco
-        conhecimento.form_classificacao = form_classificacao
         print('****', item.codigoConteiner)
+        print(f'****Pesquisando classificacaorisco {conhecimento.numeroCEmercante} e filhos...')
+        filhotes = session.query(Conhecimento).filter(
+            Conhecimento.numeroCEMaster == conhecimento.numeroCEmercante).all()
+        conhecimento.classificacaorisco, conhecimento.form_classificacao = \
+            get_classificacaorisco(session, conhecimento, filhotes)
         manifesto = session.query(Manifesto).filter(
             Manifesto.numero == conhecimento.manifestoCE).one_or_none()
         item.manifesto = manifesto
-        filhotes = session.query(Conhecimento).filter(
-            Conhecimento.numeroCEMaster == conhecimento.numeroCEmercante).all()
         for ce in filhotes:
-            ce.classificacaorisco = None
+            ce.classificacaorisco, _ = get_classificacaorisco(session, ce, [])
+            ce.canal = ClasseRisco(ce.classificacaorisco.classerisco).name
         # print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
         item.conhecimentos = [conhecimento, *filhotes]
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
@@ -153,14 +161,14 @@ def get_bagagens(mongodb: Database,
                 ce.dsis = dsis
                 for dsi in dsis:
                     item.dsis.append(dsi)
-                    item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
+                item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
             else:
                 try:
                     empresa = session.query(Empresa). \
                         filter(Empresa.cnpj.like(cpf_cnpj[:8] + '%')).limit(1).first()
                     ce.nome_consignatario = empresa.nome
                 except Exception as err:
-                    logger.error(str(err))
+                    logger.error(f'Empresa {cpf_cnpj} não encontrada')
                     ce.nome_consignatario = ''
             if int(ce.tipoBLConhecimento) in (11, 12):
                 viagens = session.query(Viagem).filter(Viagem.cpf == ce.consignatario). \

@@ -95,7 +95,7 @@
                                type="submit" value="Filtrar"/>
                     </div>
                     <div class="col-sm-2">
-                        <input name="btn_exportar" class="btn btn-warning form-control"
+                        <input name="exportar" class="btn btn-warning form-control"
                                type="submit" value="Exportar DSIs"/>
                     </div>
                 </div>
@@ -152,7 +152,12 @@
                     {% endif %}
                     CE-Mercante {{ conhecimento.numeroCEmercante }} -
                     emissão {{ conhecimento.dataEmissao }} -
-                    Porto de Origem {{ conhecimento.portoOrigemCarga }}<br>
+                    Porto de Origem {{ conhecimento.portoOrigemCarga }}
+                    {% if conhecimento.canal %}
+                        <span style="color:{% if conhecimento.canal == 'VERMELHO' %}red{% endif %}">
+                        CANAL {{ conhecimento.canal }}</span>
+                    {% endif %}
+                    <br>
                     {% if conhecimento.consignatario | length > 12 %}CNPJ{% else %}CPF{% endif %}
                     {{ conhecimento.consignatario }} - {{ conhecimento.nome_consignatario }}<br>
                     {% for dsi in conhecimento.dsis %}

@@ -1,7 +1,7 @@
 import io
 import os
-from datetime import date, timedelta, datetime
-from random import randint
+from datetime import timedelta, datetime
+from random import randint, seed
 
 import pandas as pd
 from ajna_commons.flask.conf import tmpdir
@@ -14,6 +14,8 @@ from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisc
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.usecases.bagagens_manager import get_bagagens
 from werkzeug.utils import secure_filename, redirect
+
+seed(13)
 
 
 def get_planilha_valida(request, anexo_name='csv',
@@ -62,9 +64,7 @@ def configure(app):
         session = app.config['db_session']
         lista_bagagens = []
         conteineres = []
-        form = FormFiltroBagagem(request.args,
-                                 start=date.today() - timedelta(days=30),
-                                 end=date.today())
+        form = FormFiltroBagagem(request.args)
         try:
             lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
         except Exception as err:
@@ -83,6 +83,29 @@ def configure(app):
             os.mkdir(user_save_path)
         return user_save_path
 
+    def exporta_dsis(lista_bagagens):
+        out_filename = 'ListaDSIs_{}.xlsx'.format(
+            datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
+        )
+        lista_final = []
+        for item in lista_bagagens:
+            linha_risco = ['', '']
+            lista_dsis = []
+            for conhecimento in item.conhecimentos:
+                if conhecimento.classificacaorisco:
+                    cl = conhecimento.classificacaorisco
+                    linha_risco = [ClasseRisco(cl.classerisco).name, cl.descricao]
+                if conhecimento.dsis:
+                    for dsi in conhecimento.dsis:
+                        lista_dsis.append([dsi.numero, dsi.consignatario])
+            for linha_dsi in lista_dsis:
+                lista_final.append([*linha_dsi, *linha_risco])
+        print(lista_final)
+        df = pd.DataFrame(lista_final,
+                          columns=['DSI', 'CPF', 'Classificação de Risco', 'Observação'])
+        df.to_excel(os.path.join(get_user_save_path(), out_filename), index=False)
+        return out_filename
+
     @app.route('/bagagens', methods=['GET', 'POST'])
     @login_required
     def bagagens():
@@ -90,42 +113,24 @@ def configure(app):
         session = app.config['db_session']
         lista_bagagens = []
         conteineres = []
+        oform = FormFiltroBagagem(request.values)
+        print('*****************************')
         print(request.values)
-        form = FormFiltroBagagem(request.values,
-                                 start=date.today() - timedelta(days=30),
-                                 end=date.today())
+        print(oform.start.data, oform.end.data)
         try:
-            lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, form)
-            # logger.debug(stats_cache)
-            if request.form.get('btn_exportar'):
-                out_filename = 'ListaDSIs_{}.csv'.format(
-                    datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
-                )
-                lista_final = []
-                for item in lista_bagagens:
-                    linha_risco = ['', '']
-                    lista_dsis = []
-                    for conhecimento in item.conhecimentos:
-                        if conhecimento.classificacaorisco:
-                            cl = conhecimento.classificacaorisco
-                            linha_risco = [ClasseRisco(cl.classerisco).name, cl.descricao]
-                        if conhecimento.dsis:
-                            for dsi in conhecimento.dsis:
-                                lista_dsis.append([dsi.numero, dsi.consignatario])
-                    for linha_dsi in lista_dsis:
-                        lista_final.append([*linha_dsi, *linha_risco])
-                print(lista_final)
-                df = pd.DataFrame(lista_final,
-                                  columns=['DSI', 'CPF', 'Classificação de Risco', 'Observação'])
-                df.to_csv(os.path.join(get_user_save_path(), out_filename), index=False)
-                return redirect('static/%s/%s' % (current_user.name, out_filename))
+            if (request.method == 'GET' and request.values.get('filtrar_dsi')) or \
+                    (request.method == 'POST'):  # Listar por GET somente no caso de redirect do Importa DSI
+                lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, oform)
+                # logger.debug(stats_cache)
+                if request.values.get('exportar'):
+                    return redirect('static/%s/%s' % (current_user.name, exporta_dsis(lista_bagagens)))
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
         return render_template('bagagens.html',
                                lista_bagagens=lista_bagagens,
                                conteineres=conteineres,
-                               oform=form)
+                               oform=oform)
 
     @app.route('/importa_dsisold', methods=['POST', 'GET'])
     @login_required
@@ -185,13 +190,18 @@ def configure(app):
 
     def classifica_ce(session,
                       numeroCEmercante: str,
-                      classerisco=ClasseRisco.VERDE,
+                      classerisco: int=ClasseRisco.VERDE.value,
                       descricao=''):
-        classificacaorisco = ClassificacaoRisco()
+        classificacaorisco = session.query(ClassificacaoRisco). \
+            filter(ClassificacaoRisco.numeroCEmercante ==
+                   numeroCEmercante).one_or_none()
+        if classificacaorisco is None:
+            classificacaorisco = ClassificacaoRisco()
         classificacaorisco.numeroCEmercante = numeroCEmercante
         classificacaorisco.classerisco = classerisco
         classificacaorisco.descricao = descricao
         session.add(classificacaorisco)
+        print(f'Classificando risco {numeroCEmercante} {classerisco} {descricao}')
 
     PERCENT = 2
 
@@ -204,9 +214,9 @@ def configure(app):
     def classifica_aleatoriamente(session, numeroCEmercante: str,
                                   num_dsi: str, data_registro: datetime):
         numero_dsi = int(num_dsi)
-        classerisco = ClasseRisco.VERDE
+        classerisco = ClasseRisco.VERDE.value
         if pseudo_random(numero_dsi, data_registro):
-            classerisco = ClasseRisco.VERMELHO
+            classerisco = ClasseRisco.VERMELHO.value
         classifica_ce(session, numeroCEmercante, classerisco, 'Classificação aleatória')
 
     def le_linha_csvportal(row, session):
@@ -214,9 +224,10 @@ def configure(app):
         recinto = row.get('Número do Recinto Aduaneiro')
         ce = row.get(' Conhecimento de Carga').strip()
         dsi = row.get(' Número DSI')
-        cpf = str(row.get(' Número Importador')).zfill(11)
+        cpf = str(row.get(' Número Importador')).strip().zfill(11)
         nome = row.get(' Nome Importador').strip()
         data = row['data']
+        classifica_aleatoriamente(session, ce, dsi, data)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
         if apessoa is None:
             logger.info(f'Adicionando pessoa {cpf, nome}')
@@ -267,15 +278,10 @@ def configure(app):
         form_classificacao = FormClassificacaoRisco()
         try:
             if request.method == 'POST' and form_classificacao.validate():
-                classificacaorisco = session.query(ClassificacaoRisco). \
-                    filter(ClassificacaoRisco.numeroCEmercante ==
-                           form_classificacao.numeroCEmercante.data).one_or_none()
-                if classificacaorisco is None:
-                    classificacaorisco = ClassificacaoRisco()
-                classificacaorisco.numeroCEmercante = form_classificacao.numeroCEmercante.data
-                classificacaorisco.classerisco = form_classificacao.classerisco.data
-                classificacaorisco.descricao = form_classificacao.descricao.data
-                session.add(classificacaorisco)
+                classifica_ce(session,
+                              form_classificacao.numeroCEmercante.data,
+                              form_classificacao.classerisco.data,
+                              form_classificacao.descricao.data)
                 session.commit()
                 flash('CE Classificado!')
             # logger.debug(stats_cache)
