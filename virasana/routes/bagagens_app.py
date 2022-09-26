@@ -233,17 +233,17 @@ def configure(app):
             logger.info(f'Adicionando pessoa {cpf, nome}')
             apessoa = Pessoa()
             apessoa.cpf = cpf
-            apessoa.nome = nome
-            session.add(apessoa)
+        apessoa.nome = nome
+        session.add(apessoa)
         adsi = session.query(DSI).filter(DSI.numero == dsi).one_or_none()
         if adsi is None:
             adsi = DSI()
             logger.info(f'Adicionando DSI {dsi, data, ce}')
             adsi.numero = dsi
             adsi.consignatario = cpf
-            adsi.numeroCEmercante = ce
-            adsi.data_registro = data
-            session.add(adsi)
+        adsi.numeroCEmercante = ce
+        adsi.data_registro = data
+        session.add(adsi)
         print(recinto, ce, dsi, cpf, nome, data)
 
     @app.route('/importa_dsis', methods=['POST', 'GET'])

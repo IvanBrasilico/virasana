@@ -16,15 +16,23 @@ from virasana.integracao.mercante.mercantealchemy import Item, Conhecimento, Man
 
 def get_classificacaorisco(session, conhecimento, filhotes):
     ces_risco_pesquisa = [*[ce.numeroCEmercante for ce in filhotes], conhecimento.numeroCEmercante]
-    classificacaorisco = session.query(ClassificacaoRisco). \
-        filter(ClassificacaoRisco.numeroCEmercante.in_(ces_risco_pesquisa)).first()
+    classificacoes = session.query(ClassificacaoRisco). \
+        filter(ClassificacaoRisco.numeroCEmercante.in_(ces_risco_pesquisa)).all()
+    classificacaorisco = None
+    classeriscoatual = ClasseRisco.NAO_CLASSIFICADO.value
+    for classificacao in classificacoes:
+        if classificacao.classerisco > classeriscoatual:
+            classificacaorisco = classificacao
+            classeriscoatual = classificacao.classerisco
     if classificacaorisco is None:
         form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante)
+        canal = None
     else:
         form_classificacao = FormClassificacaoRisco(numeroCEmercante=conhecimento.numeroCEmercante,
                                                     classerisco=classificacaorisco.classerisco,
                                                     descricao=classificacaorisco.descricao)
-    return classificacaorisco, form_classificacao
+        canal = ClasseRisco(classificacaorisco.classerisco).name
+    return classificacaorisco, form_classificacao, canal
 
 
 def get_bagagens(mongodb: Database,
@@ -116,20 +124,18 @@ def get_bagagens(mongodb: Database,
                 Conhecimento.numeroCEmercante == conhecimento.numeroCEMaster).one_or_none()
             if conhecimento_master:
                 conhecimento = conhecimento_master
-        print('****', item.codigoConteiner)
-        print(f'****Pesquisando classificacaorisco {conhecimento.numeroCEmercante} e filhos...')
         filhotes = session.query(Conhecimento).filter(
             Conhecimento.numeroCEMaster == conhecimento.numeroCEmercante).all()
-        conhecimento.classificacaorisco, conhecimento.form_classificacao = \
-            get_classificacaorisco(session, conhecimento, filhotes)
+        print('****', item.codigoConteiner)
+        print(f'****Pesquisando classificacaorisco {conhecimento.numeroCEmercante} e filhos...')
+        ### No caso de Master, pesquisará todas as classificações dos filhotes e exibirá a maior
+        conhecimento.classificacaorisco, conhecimento.form_classificacao, \
+        conhecimento.canal = get_classificacaorisco(session, conhecimento, filhotes)
         manifesto = session.query(Manifesto).filter(
             Manifesto.numero == conhecimento.manifestoCE).one_or_none()
         item.manifesto = manifesto
         for ce in filhotes:
-            ce.classificacaorisco, _ = get_classificacaorisco(session, ce, [])
-            ce.canal = None
-            if ce.classificacaorisco:
-                ce.canal = ClasseRisco(ce.classificacaorisco.classerisco).name
+            ce.classificacaorisco, _, ce.canal = get_classificacaorisco(session, ce, [])
         # print(conhecimento.tipoBLConhecimento, conhecimento.numeroCEmercante, filhotes)
         item.conhecimentos = [conhecimento, *filhotes]
         data_inicial_viagens = datetime.now() - timedelta(days=365 * 2)
