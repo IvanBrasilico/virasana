@@ -8,6 +8,7 @@ from ajna_commons.flask.conf import tmpdir
 from ajna_commons.flask.log import logger
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
+from integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
 from virasana.conf import APP_PATH
 from virasana.forms.filtros import FormFiltroBagagem, FormClassificacaoRisco
 from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco, Pessoa
@@ -205,7 +206,8 @@ def configure(app):
 
     PERCENT = 2
 
-    def pseudo_random(numero_dsi: int, data_registro: datetime):
+    def pseudo_random(num_dsi: int, data_registro: datetime):
+        numero_dsi = int(num_dsi)
         divisor = 100 / PERCENT
         dia = data_registro.day
         selecionado = (numero_dsi % (divisor + randint(-5, 5))) == abs(dia + randint(-5, 21))
@@ -213,9 +215,8 @@ def configure(app):
 
     def classifica_aleatoriamente(session, numeroCEmercante: str,
                                   num_dsi: str, data_registro: datetime):
-        numero_dsi = int(num_dsi)
         classerisco = ClasseRisco.VERDE.value
-        if pseudo_random(numero_dsi, data_registro):
+        if e_canal_vermelho(num_dsi, data_registro):
             classerisco = ClasseRisco.VERMELHO.value
         classifica_ce(session, numeroCEmercante, classerisco, 'Classificação aleatória')
 
