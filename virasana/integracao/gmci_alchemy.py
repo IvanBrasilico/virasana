@@ -18,7 +18,7 @@ class GMCI(Base):
                 primary_key=True, autoincrement=True)
     cod_recinto = Column(Integer(), index=True)
     num_conteiner = Column(VARCHAR(20), index=True)
-    num_gmci = Column(Integer(), unique=True)
+    num_gmci = Column(Integer(), index=True)
     datahora = Column(DateTime, index=True)
     create_date = Column(TIMESTAMP, index=True,
                          server_default=func.current_timestamp())

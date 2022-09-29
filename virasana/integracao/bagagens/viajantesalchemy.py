@@ -2,8 +2,9 @@ import sys
 from enum import Enum
 
 from sqlalchemy import Column, CHAR, \
-    DateTime, Integer, BigInteger, String
+    DateTime, Integer, BigInteger, String, func
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.mysql import TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 
 sys.path.append('../ajna_docs/commons')
@@ -58,6 +59,7 @@ class ClasseRisco(Enum):
     SAFIA = 4
     REPRESSAO = 5
 
+
 class ClassificacaoRisco(Base):
     __tablename__ = 'risco_classificacao'
     ID = Column(BigInteger().with_variant(Integer, 'sqlite'),
@@ -65,11 +67,15 @@ class ClassificacaoRisco(Base):
     numeroCEmercante = Column(CHAR(15), unique=True)
     classerisco = Column(Integer(), index=True)
     descricao = Column(CHAR(200), index=True)
+    user_name = Column(CHAR(14), index=True)
+    create_date = Column(TIMESTAMP, index=True,
+                         server_default=func.current_timestamp())
+    last_modified = Column(DateTime, index=True,
+                           onupdate=func.current_timestamp())
 
     @property
     def classerisco_name(self):
         return ClasseRisco(self.classerisco).name
-
 
 
 if __name__ == '__main__':
