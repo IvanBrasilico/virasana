@@ -252,6 +252,7 @@ def configure(app):
     def importacsvportal():
         """Importar arquivo com lista de DSIs a selecionar do Portal Único
         """
+        session = app.config.get('db_session')
         inicio = fim = datetime.strftime(datetime.today() - timedelta(days=1), '%Y-%m-%d')
         if request.method == 'POST':
             try:
@@ -264,10 +265,10 @@ def configure(app):
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
                     fim = datetime.strftime(df_maior_2022.data.max(), '%Y-%m-%d')
-                    session = app.config.get('db_session')
                     df_maior_2022.apply(lambda x: le_linha_csvportal(x, session), axis=1)
                     session.commit()
             except Exception as err:
+                session.rollback()
                 logger.error(str(err), exc_info=True)
                 flash(str(err))
         return redirect('bagagens?filtrar_dsi=1&start=%s&end=%s' % (inicio, fim))
