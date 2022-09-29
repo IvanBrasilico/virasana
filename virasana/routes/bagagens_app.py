@@ -192,7 +192,8 @@ def configure(app):
     def classifica_ce(session,
                       numeroCEmercante: str,
                       classerisco: int=ClasseRisco.VERDE.value,
-                      descricao=''):
+                      descricao='',
+                      user_name=''):
         classificacaorisco = session.query(ClassificacaoRisco). \
             filter(ClassificacaoRisco.numeroCEmercante ==
                    numeroCEmercante).one_or_none()
@@ -201,6 +202,7 @@ def configure(app):
         classificacaorisco.numeroCEmercante = numeroCEmercante
         classificacaorisco.classerisco = classerisco
         classificacaorisco.descricao = descricao
+        classificacaorisco.user_name = user_name
         session.add(classificacaorisco)
         print(f'Classificando risco {numeroCEmercante} {classerisco} {descricao}')
 
@@ -214,13 +216,14 @@ def configure(app):
         return selecionado
 
     def classifica_aleatoriamente(session, numeroCEmercante: str,
-                                  num_dsi: str, data_registro: datetime):
+                                  num_dsi: str, data_registro: datetime,
+                                  user_name):
         classerisco = ClasseRisco.VERDE.value
         if e_canal_vermelho(num_dsi, data_registro):
             classerisco = ClasseRisco.VERMELHO.value
         classifica_ce(session, numeroCEmercante, classerisco, 'Classificação aleatória')
 
-    def le_linha_csvportal(row, session):
+    def le_linha_csvportal(row, session, user_name):
         # session = app.config.get('db_session')
         recinto = row.get('Número do Recinto Aduaneiro')
         ce = row.get(' Conhecimento de Carga').strip()
@@ -228,7 +231,7 @@ def configure(app):
         cpf = str(row.get(' Número Importador')).strip().zfill(11)
         nome = row.get(' Nome Importador').strip()
         data = row['data']
-        classifica_aleatoriamente(session, ce, str(dsi), data)
+        classifica_aleatoriamente(session, ce, str(dsi), data, user_name)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
         if apessoa is None:
             logger.info(f'Adicionando pessoa {cpf, nome}')
@@ -265,7 +268,8 @@ def configure(app):
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
                     fim = datetime.strftime(df_maior_2022.data.max(), '%Y-%m-%d')
-                    df_maior_2022.apply(lambda x: le_linha_csvportal(x, session), axis=1)
+                    df_maior_2022.apply(lambda x: le_linha_csvportal(x, session, current_user.name),
+                                        axis=1)
                     session.commit()
             except Exception as err:
                 session.rollback()
@@ -283,7 +287,8 @@ def configure(app):
                 classifica_ce(session,
                               form_classificacao.numeroCEmercante.data,
                               form_classificacao.classerisco.data,
-                              form_classificacao.descricao.data)
+                              form_classificacao.descricao.data,
+                              current_user.name)
                 session.commit()
                 flash('CE Classificado!')
             # logger.debug(stats_cache)
