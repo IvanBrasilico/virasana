@@ -8,7 +8,7 @@ from ajna_commons.flask.conf import tmpdir
 from ajna_commons.flask.log import logger
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
-from integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
+from virasana.integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
 from virasana.conf import APP_PATH
 from virasana.forms.filtros import FormFiltroBagagem, FormClassificacaoRisco
 from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco, Pessoa
