@@ -228,7 +228,7 @@ def configure(app):
         cpf = str(row.get(' Número Importador')).strip().zfill(11)
         nome = row.get(' Nome Importador').strip()
         data = row['data']
-        classifica_aleatoriamente(session, ce, dsi, data)
+        classifica_aleatoriamente(session, ce, str(dsi), data)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
         if apessoa is None:
             logger.info(f'Adicionando pessoa {cpf, nome}')
