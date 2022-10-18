@@ -98,12 +98,15 @@ def configure(app):
                     linha_risco = [ClasseRisco(cl.classerisco).name, cl.descricao]
                 if conhecimento.dsis:
                     for dsi in conhecimento.dsis:
-                        lista_dsis.append([dsi.numero, dsi.consignatario])
+                        lista_dsis.append([dsi.numero, dsi.consignatario, dsi.data_registro])
             for linha_dsi in lista_dsis:
                 lista_final.append([*linha_dsi, *linha_risco])
         print(lista_final)
         df = pd.DataFrame(lista_final,
-                          columns=['DSI', 'CPF', 'Classificação de Risco', 'Observação'])
+                          columns=['DSI', 'CPF', 'Data Registro',
+                                   'Classificação de Risco', 'Observação'])
+        df = df.drop_duplicates()
+        df = df[df['Data Registro'] >= datetime.today() - timedelta(days=10)]
         df.to_excel(os.path.join(get_user_save_path(), out_filename), index=False)
         return out_filename
 
@@ -218,10 +221,12 @@ def configure(app):
     def classifica_aleatoriamente(session, numeroCEmercante: str,
                                   num_dsi: str, data_registro: datetime,
                                   user_name):
-        classerisco = ClasseRisco.VERDE.value
         if e_canal_vermelho(num_dsi, data_registro):
-            classerisco = ClasseRisco.VERMELHO.value
-        classifica_ce(session, numeroCEmercante, classerisco, 'Classificação aleatória')
+            classifica_ce(session, numeroCEmercante,
+                          ClasseRisco.VERMELHO.value, 'Classificação aleatória')
+        else:
+            classifica_ce(session, numeroCEmercante,
+                          ClasseRisco.VERDE.value)
 
     def le_linha_csvportal(row, session, user_name):
         # session = app.config.get('db_session')
