@@ -8,9 +8,9 @@ from ajna_commons.flask.conf import tmpdir
 from ajna_commons.flask.log import logger
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
-from virasana.integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
 from virasana.conf import APP_PATH
 from virasana.forms.filtros import FormFiltroBagagem, FormClassificacaoRisco
+from virasana.integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
 from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco, Pessoa
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.usecases.bagagens_manager import get_bagagens
@@ -84,7 +84,7 @@ def configure(app):
             os.mkdir(user_save_path)
         return user_save_path
 
-    def exporta_dsis(lista_bagagens):
+    def exporta_dsis(lista_bagagens, data_inicio):
         out_filename = 'ListaDSIs_{}.xlsx'.format(
             datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
         )
@@ -106,7 +106,8 @@ def configure(app):
                           columns=['DSI', 'CPF', 'Data Registro',
                                    'Classificação de Risco', 'Observação'])
         df = df.drop_duplicates()
-        df = df[df['Data Registro'] >= datetime.today() - timedelta(days=10)]
+        start = datetime.combine(data_inicio, datetime.min.time())
+        df = df[df['Data Registro'] >= start]
         df.to_excel(os.path.join(get_user_save_path(), out_filename), index=False)
         return out_filename
 
@@ -127,7 +128,10 @@ def configure(app):
                 lista_bagagens, conteineres = lista_bagagens_html(mongodb, session, oform)
                 # logger.debug(stats_cache)
                 if request.values.get('exportar'):
-                    return redirect('static/%s/%s' % (current_user.name, exporta_dsis(lista_bagagens)))
+                    planilha = exporta_dsis(lista_bagagens, oform.start.data)
+                    print(planilha)
+                    return redirect(
+                        'static/%s/%s' % (current_user.name, planilha))
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
@@ -194,7 +198,7 @@ def configure(app):
 
     def classifica_ce(session,
                       numeroCEmercante: str,
-                      classerisco: int=ClasseRisco.VERDE.value,
+                      classerisco: int = ClasseRisco.VERDE.value,
                       descricao='',
                       user_name=''):
         classificacaorisco = session.query(ClassificacaoRisco). \
