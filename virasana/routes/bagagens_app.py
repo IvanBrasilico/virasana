@@ -228,11 +228,11 @@ def configure(app):
         if e_canal_vermelho(num_dsi, data_registro):
             classifica_ce(session, numeroCEmercante,
                           ClasseRisco.VERMELHO.value, 'Classificação aleatória')
-        else:
-            classifica_ce(session, numeroCEmercante,
-                          ClasseRisco.VERDE.value)
+            return 'VERMELHO'
+        classifica_ce(session, numeroCEmercante, ClasseRisco.VERDE.value)
+        return 'VERDE'
 
-    def le_linha_csvportal(row, session, user_name):
+    def le_linha_csvportal(row, session, user_name, lista_dsis_sem_ce):
         # session = app.config.get('db_session')
         recinto = row.get('Número do Recinto Aduaneiro')
         ce = row.get(' Conhecimento de Carga').strip()
@@ -240,7 +240,7 @@ def configure(app):
         cpf = str(row.get(' Número Importador')).strip().zfill(11)
         nome = row.get(' Nome Importador').strip()
         data = row['data']
-        classifica_aleatoriamente(session, ce, str(dsi), data, user_name)
+        canal = classifica_aleatoriamente(session, ce, str(dsi), data, user_name)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
         if apessoa is None:
             logger.info(f'Adicionando pessoa {cpf, nome}')
@@ -257,6 +257,9 @@ def configure(app):
         adsi.numeroCEmercante = ce
         adsi.data_registro = data
         session.add(adsi)
+        cemercante = session.query(Conhecimento).filter(Conhecimento.numeroCEmercante == ce).one_or_none()
+        if cemercante is None:
+            lista_dsis_sem_ce.append(f'DSI {dsi} - canal {canal} NÃO será exibida. CE-Mercante {ce} não encontrado.')
         print(recinto, ce, dsi, cpf, nome, data)
 
     @app.route('/importa_dsis', methods=['POST', 'GET'])
@@ -277,9 +280,12 @@ def configure(app):
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
                     fim = datetime.strftime(df_maior_2022.data.max(), '%Y-%m-%d')
-                    df_maior_2022.apply(lambda x: le_linha_csvportal(x, session, current_user.name),
+                    lista_dsis_sem_ce = []
+                    df_maior_2022.apply(lambda x: le_linha_csvportal(x, session, current_user.name, lista_dsis_sem_ce),
                                         axis=1)
                     session.commit()
+                    # Alertar sobre DSIs que não serão exibidas a seguir
+                    flash('<br'.join(lista_dsis_sem_ce))
             except Exception as err:
                 session.rollback()
                 logger.error(str(err), exc_info=True)
