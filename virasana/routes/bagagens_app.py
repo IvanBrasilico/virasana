@@ -200,10 +200,14 @@ def configure(app):
                       numeroCEmercante: str,
                       classerisco: int = ClasseRisco.VERDE.value,
                       descricao='',
-                      user_name=''):
+                      user_name='',
+                      bloquear_edicao=False):
         classificacaorisco = session.query(ClassificacaoRisco). \
             filter(ClassificacaoRisco.numeroCEmercante ==
                    numeroCEmercante).one_or_none()
+        #  Se edição bloqueado, só permite criação de novo, senão apagaria classificação manual
+        if bloquear_edicao and classificacaorisco is not None:
+            return
         if classificacaorisco is None:
             classificacaorisco = ClassificacaoRisco()
         classificacaorisco.numeroCEmercante = numeroCEmercante
@@ -235,10 +239,11 @@ def configure(app):
     def le_linha_csvportal(row, session, user_name, lista_dsis_sem_ce):
         # session = app.config.get('db_session')
         recinto = row.get('Número do Recinto Aduaneiro')
-        ce = row.get(' Conhecimento de Carga').strip()
+        ce = row.get(' Conhecimento de Carga', '').strip()
+        operacao = row.get(' Código Natureza da Operação', '').strip()
         dsi = row.get(' Número DSI')
-        cpf = str(row.get(' Número Importador')).strip().zfill(11)
-        nome = row.get(' Nome Importador').strip()
+        cpf = str(row.get(' Número Importador', '')).strip().zfill(11)
+        nome = row.get(' Nome Importador', '').strip()
         data = row['data']
         canal = classifica_aleatoriamente(session, ce, str(dsi), data, user_name)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
@@ -275,7 +280,7 @@ def configure(app):
                 if csvf:
                     df = pd.read_csv(io.StringIO(csvf.stream.read().decode('utf-8')))
                     logger.info(df.columns)
-                    df = df[df[' Código Natureza da Operação'] == 10]
+                    df = df[df[' Código Natureza da Operação'].isin(9, 10)]
                     df['data'] = pd.to_datetime(df[' Data de Registro'], format=' %d/%m/%Y %H:%M')
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
