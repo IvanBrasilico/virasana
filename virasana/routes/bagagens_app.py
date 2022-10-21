@@ -231,9 +231,10 @@ def configure(app):
                                   user_name):
         if e_canal_vermelho(num_dsi, data_registro):
             classifica_ce(session, numeroCEmercante,
-                          ClasseRisco.VERMELHO.value, 'Classificação aleatória')
+                          ClasseRisco.VERMELHO.value, 'Classificação aleatória',
+                          bloquear_edicao=True)
             return 'VERMELHO'
-        classifica_ce(session, numeroCEmercante, ClasseRisco.VERDE.value)
+        classifica_ce(session, numeroCEmercante, ClasseRisco.VERDE.value, bloquear_edicao=True)
         return 'VERDE'
 
     def le_linha_csvportal(row, session, user_name, lista_dsis_sem_ce):
