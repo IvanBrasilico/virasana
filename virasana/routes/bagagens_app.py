@@ -280,7 +280,7 @@ def configure(app):
                 if csvf:
                     df = pd.read_csv(io.StringIO(csvf.stream.read().decode('utf-8')))
                     logger.info(df.columns)
-                    df = df[df[' Código Natureza da Operação'].isin(9, 10)]
+                    df = df[df[' Código Natureza da Operação'].isin([9, 10])]
                     df['data'] = pd.to_datetime(df[' Data de Registro'], format=' %d/%m/%Y %H:%M')
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
                     inicio = datetime.strftime(df_maior_2022.data.min(), '%Y-%m-%d')
