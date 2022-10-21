@@ -169,7 +169,7 @@ def get_bagagens(mongodb: Database,
                 ce.dsis = dsis
                 for dsi in dsis:
                     item.dsis.append(dsi)
-                item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
+                    item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
             else:
                 try:
                     empresa = session.query(Empresa). \
