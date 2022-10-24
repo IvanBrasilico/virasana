@@ -241,7 +241,7 @@ def configure(app):
         # session = app.config.get('db_session')
         recinto = row.get('Número do Recinto Aduaneiro')
         ce = row.get(' Conhecimento de Carga', '').strip()
-        operacao = row.get(' Código Natureza da Operação', '').strip()
+        operacao = row.get(' Código Natureza da Operação', '')
         dsi = row.get(' Número DSI')
         cpf = str(row.get(' Número Importador', '')).strip().zfill(11)
         nome = row.get(' Nome Importador', '').strip()
