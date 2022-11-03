@@ -224,10 +224,12 @@
             <div id="PUCOMEX">
                 {% if myfile['metadata']['due'] %}
                 {% for due in myfile['metadata']['due'] %}
-                <ul>
+                <ul>{% if due is mapping %}
                     {% for key, value in due.items() %}
                     <li> {{ key }}: {{ value }}</li>
                     {% endfor %}
+                    {% endif %}
+                    {{ due }}
                 </ul>
                 {% endfor %}
                 {% endif %}
