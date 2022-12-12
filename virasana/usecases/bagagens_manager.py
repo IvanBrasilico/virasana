@@ -65,7 +65,6 @@ def get_bagagens(mongodb: Database,
         q = q.join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante)
         # ,  OVR.numeroCEmercante == Conhecimento.numeroCEMaster))
     if filtrar_dsi:
-        print()
         q = q.join(DSI, DSI.numeroCEmercante == Conhecimento.numeroCEmercante)
     if classificados:
         q = q.join(ClassificacaoRisco, ClassificacaoRisco.numeroCEmercante == Conhecimento.numeroCEmercante)
