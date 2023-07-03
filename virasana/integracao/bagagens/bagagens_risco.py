@@ -33,6 +33,14 @@ def pessoa_bagagens_sem_info(con, opcao: str):
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv(f'{opcao}.csv')
 
+def dsis_sem_despachante(con):
+    sql_dsis_sem_despachante = """
+    SELECT numero FROM dbmercante.bagagens_dsi
+    where despachante is null;
+    """
+    df = pd.read_sql(sql_dsis_sem_despachante, con)
+    df.to_csv('dsis_sem_despachante.csv')
+
 
 def importa_viagens(session):
     if not os.path.exists('viagens_nome.csv'):
@@ -122,6 +130,24 @@ def importa_dsis(session):
     session.commit()
     os.remove('dsis.csv')
 
+def importa_despachantes_dsis(session):
+    if not os.path.exists('despachantes_dsis.csv'):
+        print('Pulando Despachantes das DSIs - arquivo não existe')
+        return
+    df = pd.read_csv('despachantes_dsis.csv')
+    for index, row in df.iterrows():
+        # print(row)
+        numero = row['numero']
+        try:
+            dsi = session.query(DSI).filter(DSI.numero == numero).one_or_none()
+        except ValueError:
+            continue
+        dsi.despachante = row['despachante']
+        session.add(dsi)
+    session.commit()
+    os.remove('despachantes_dsis.csv')
+
+
 
 if __name__ == '__main__':
     engine = create_engine(SQL_URI)
@@ -138,6 +164,8 @@ if __name__ == '__main__':
         importa_cnpjs(session)
         print('Importando DSIs...')
         importa_dsis(session)
+        print('Importando Despachantes das DSIs...')
+        importa_despachantes_dsis(session)
     else:
         print('Exportando listas de CFPs de CEs de bagagem sem informação...')
         print('Exportando CPFs/CNPJs sem viagens...')
@@ -149,4 +177,6 @@ if __name__ == '__main__':
         print('Exportando CPFs sem DIRFs...')
         print('Exportando CPFs sem DSIs...')
         pessoa_bagagens_sem_info(engine, 'dsi')
+        print('Exportando DSIs sem despachante...')
+        dsis_sem_despachante(engine)
         print('Listas devem ser fornecidas ao notebook que faz as consultas no RD.')

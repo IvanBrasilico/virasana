@@ -35,6 +35,18 @@ def get_classificacaorisco(session, conhecimento, filhotes):
     return classificacaorisco, form_classificacao, canal
 
 
+def risco_despachante(session, despachante):
+    total_dsis = session.query(DSI.numero).filter(DSI.despachante == despachante).count()
+    total_eua = session.query(DSI).join(Conhecimento, DSI.numeroCEmercante == Conhecimento.numeroCEmercante). \
+        filter(DSI.despachante == despachante). \
+        filter(Conhecimento.portoOrigemCarga.like('US%')).count()
+    total_autuacoes = session.query(DSI).join(Conhecimento, DSI.numeroCEmercante == Conhecimento.numeroCEmercante). \
+        join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante). \
+        filter(DSI.despachante == despachante). \
+        filter(OVR.fase == 4).count()
+    return f'Despachante {despachante} DSIs: {total_dsis} EUA: {total_eua} Autos: {total_autuacoes}'
+
+
 def get_bagagens(mongodb: Database,
                  session, datainicio: datetime, datafim: datetime,
                  portoorigem: str, cpf_cnpj: str, numero_conteiner: str,
@@ -167,9 +179,12 @@ def get_bagagens(mongodb: Database,
                     ce.nome_consignatario = pessoa.nome
                 dsis = session.query(DSI).filter(DSI.consignatario == cpf_cnpj).all()
                 ce.dsis = dsis
+                despachantes_set = set()
                 for dsi in dsis:
                     item.dsis.append(dsi)
                     item.max_numero_dsi = max(item.max_numero_dsi, dsi.numero)
+                    despachantes_set.add(dsi.despachante)
+                item.despachantes_risco = [risco_despachante(session, despachante) for despachante in despachantes_set]
             else:
                 try:
                     empresa = session.query(Empresa). \

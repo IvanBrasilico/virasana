@@ -117,6 +117,10 @@
                 <div class="col-sm-12 text-danger">
                     <h2>{{ item.codigoConteiner }}</h2>
                     DSIs do contêiner: {% for dsi in item.dsis|sort(attribute='numero') %}{{dsi.numero}} - {% endfor %}
+                    <br>
+                    {% for despachante in item.despachantes_risco %}
+                      {{despachante}}
+                    {% endfor %}
                 </div>
                 <div class="col-sm-12">
                     Peso Declarado: {{ "%d"|format(item.pesoBruto|float) }} Balança: {{
