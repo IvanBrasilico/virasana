@@ -247,6 +247,7 @@ def configure(app):
         dsi = row.get(' Número DSI')
         cpf = str(row.get(' Número Importador', '')).strip().zfill(11)
         nome = row.get(' Nome Importador', '').strip()
+        despachante = str(row.get('CPF Despachante', '')).strip().zfill(11)
         data = row['data']
         canal = classifica_aleatoriamente(session, ce, str(dsi), data, user_name)
         apessoa = session.query(Pessoa).filter(Pessoa.cpf == cpf).one_or_none()
@@ -262,6 +263,8 @@ def configure(app):
             logger.info(f'Adicionando DSI {dsi, data, ce}')
             adsi.numero = dsi
             adsi.consignatario = cpf
+            if despachante:
+                adsi.despachante = despachante
         adsi.numeroCEmercante = ce
         adsi.data_registro = data
         session.add(adsi)
