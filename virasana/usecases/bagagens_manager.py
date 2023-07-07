@@ -44,7 +44,7 @@ def risco_despachante(session, despachante):
         join(OVR, OVR.numeroCEmercante == Conhecimento.numeroCEmercante). \
         filter(DSI.despachante == despachante). \
         filter(OVR.fase == 4).count()
-    return f'Despachante {despachante} DSIs: {total_dsis} EUA: {total_eua} Autos: {total_autuacoes}'
+    return f'Despachante {despachante} DSIs {total_dsis}({total_eua} EUA) Autos: {total_autuacoes}'
 
 
 def get_bagagens(mongodb: Database,

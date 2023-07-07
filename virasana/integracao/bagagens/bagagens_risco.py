@@ -39,6 +39,8 @@ def dsis_sem_despachante(con):
     where despachante is null;
     """
     df = pd.read_sql(sql_dsis_sem_despachante, con)
+    df['numero'] = df['numero'].astype(str)
+    print(df.head())
     df.to_csv('dsis_sem_despachante.csv')
 
 
@@ -106,6 +108,12 @@ def importa_cnpjs(session):
     os.remove('cnpjs.csv')
 
 
+def numeric(seq: str):
+    if not isinstance(seq, str):
+        return seq
+    return ''.join([c for c in seq if c.isnumeric()])
+
+
 def importa_dsis(session):
     if not os.path.exists('dsis.csv'):
         print('Pulando dsis - arquivo não existe')
@@ -121,8 +129,8 @@ def importa_dsis(session):
         if dsi is None:
             dsi = DSI()
         dsi.numero = numero
-        dsi.consignatario = row['consignatario']
-        dsi.despachante = row['despachante']
+        dsi.consignatario = numeric(row['consignatario'])
+        dsi.despachante = numeric(row['despachante'])
         dsi.descricao = row['descricao']
         dsi.data_registro = row['data_registro']
         dsi.numeroCEmercante = str(row['nr_conhec_carga'])[-15:]
@@ -142,7 +150,7 @@ def importa_despachantes_dsis(session):
             dsi = session.query(DSI).filter(DSI.numero == numero).one_or_none()
         except ValueError:
             continue
-        dsi.despachante = row['despachante']
+        dsi.despachante = numeric(row['despachante'])
         session.add(dsi)
     session.commit()
     os.remove('despachantes_dsis.csv')
