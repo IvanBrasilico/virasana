@@ -10,7 +10,6 @@ from ajna_commons.flask.log import logger
 from bson import ObjectId
 from pymongo import MongoClient
 from sqlalchemy.orm import sessionmaker
-
 from virasana.integracao.mercante.mercante_marshmallow import \
     conhecimento_carga, manifesto_carga
 
@@ -49,7 +48,7 @@ def get_conteineres_semcarga_dia(diaapesquisar: datetime) -> dict:
         numero = item['metadata']['numeroinformado']
         if not numero or numero == 'ERRO' or '\\' in numero:
             continue
-        dict_numerocc[numero]  = item['_id']
+        dict_numerocc[numero] = item['_id']
     logger.info('%s imagens encontradas sem metadata do carga' % len(dict_numerocc))
     return dict_numerocc
 
@@ -87,6 +86,13 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
             ' m.tipoTrafego = %s AND' \
             ' dataInicioOperacaoDate >= %s AND dataInicioOperacaoDate <= %s AND ' \
             ' i.codigoConteiner IN ' + lista
+        sql_conhecimentos_cabotagem = \
+            'SELECT c.numeroCEmercante, codigoConteiner FROM itensresumo i' \
+            ' inner join conhecimentosresumo c on i.numeroCEmercante = c.numeroCEmercante' \
+            ' WHERE c.tipoBLConhecimento in (\'10\', \'11\', \'12\') AND' \
+            ' c.tipoTrafego = %s AND' \
+            ' c.create_date >= %s AND c.create_date <= %s AND ' \
+            ' i.codigoConteiner IN ' + lista
         with engine.connect() as conn:
             conn.execute(sqlalchemy.sql.text(UPDATE_DATAOPERACAO_SQL))
             for parametros_pesquisa in parametros_pesquisas:
@@ -97,7 +103,10 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
                             (len(result), parametros_pesquisa))
                 for linha in result:
                     manifestos[linha['idConteinerVazio']].add(linha['numero'])
-                cursor = conn.execute(sql_conhecimentos, parametros_pesquisa)
+                if parametros_pesquisa[0] == 3:
+                    cursor = conn.execute(sql_conhecimentos_cabotagem, parametros_pesquisa)
+                else:
+                    cursor = conn.execute(sql_conhecimentos, parametros_pesquisa)
                 result = cursor.fetchall()
                 logger.info('%s Conhecimentos encontrados para parâmetros %s' %
                             (len(result), parametros_pesquisa))
