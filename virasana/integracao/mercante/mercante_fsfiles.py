@@ -63,8 +63,8 @@ def pesquisa_containers_no_mercante(engine, dia: datetime, listanumerocc: list):
     today = datetime.strftime(dia, '%Y-%m-%d')
     after = dia + timedelta(days=10)
     after = datetime.strftime(after, '%Y-%m-%d')
-    # Pesquisar importação (5) e exportação (7)
-    parametros_pesquisas = [(5, before, today), (7, today, after)]
+    # Pesquisar importação (5), cabotagem (3) e exportação (7)
+    parametros_pesquisas = [(5, before, today), (3, before, today), (7, today, after)]
     manifestos = defaultdict(set)
     conhecimentos = defaultdict(set)
     STEP = 400
