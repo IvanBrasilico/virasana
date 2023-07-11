@@ -73,6 +73,8 @@ def get_tipo_manifesto(grid_data):
     if manifesto is None:
         return '', ''
     if isinstance(manifesto, list):
+        if len(manifesto) == 0:
+            return '', ''
         manifesto = manifesto[0]
     tipo = manifesto.get('tipomanifesto').lower()
     tipos = {'lci': 'Importação',
@@ -113,7 +115,6 @@ def get_dados_conteiner(grid_data):
                     return ''
                 tara = monta_float(conteiner.get('tara(kg)'))
                 return 'Contêiner VAZIO Tara: %d %s' % (tara, descricaotipo)
-
             conhecimento = metadata_carga.get('conhecimento')
             if conhecimento is None:
                 return ''
