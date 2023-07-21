@@ -11,9 +11,10 @@ def configure(app):
     """Configura rotas para evento."""
 
     def lista_eventos_html(mongodb, session, form: FormFiltroAPIRecintos):
-        start = datetime.combine(form.start.data, datetime.min.time())
-        end = datetime.combine(form.end.data, datetime.max.time())
-        eventos = get_eventos(mongodb, session, start, end, form.placa.data)
+        # start = datetime.combine(form.start.data, datetime.min.time())
+        # end = datetime.combine(form.end.data, datetime.max.time())
+        eventos = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
+                              form.numeroConteiner.data, form.cpfMotorista.data)
         return eventos
 
     @app.route('/eventos_redirect', methods=['GET'])

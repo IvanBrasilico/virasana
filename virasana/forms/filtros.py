@@ -9,6 +9,7 @@ from virasana.models.auditoria import Auditoria
 from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
+from wtforms.fields.html5 import DateTimeLocalField
 from wtforms.validators import optional
 
 MAXROWS = 50
@@ -261,7 +262,11 @@ class FormFiltroAPIRecintos(FlaskForm):
     search_files.html
 
     """
-    start = DateField('Start', default=date.today() - timedelta(days=3))
-    end = DateField('End', default=date.today())
+    start = DateTimeLocalField('Start', default=date.today() - timedelta(days=3))
+    end = DateTimeLocalField('End', default=date.today())
     placa = StringField(u'Placa do Cavalo ou reboque',
+                          validators=[optional()], default='')
+    numeroConteiner = StringField(u'Número do contêiner',
+                          validators=[optional()], default='')
+    cpfMotorista = StringField(u'CPF do Motorista',
                           validators=[optional()], default='')

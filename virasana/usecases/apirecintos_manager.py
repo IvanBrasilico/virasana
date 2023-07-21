@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva
+from bhadrasana.models.ovr import Recinto
 from pymongo.database import Database
 
 
 def get_pesagem_entrada(session, entrada: AcessoVeiculo) -> PesagemVeiculo:
     q = session.query(PesagemVeiculo).filter(PesagemVeiculo.placa == entrada.placa)
+    q = q.filter(PesagemVeiculo.codigoRecinto == entrada.codigoRecinto)
     q = q.filter(PesagemVeiculo.dataHoraOcorrencia.between(
         entrada.dataHoraOcorrencia, entrada.dataHoraOcorrencia + timedelta(hours=12)
     )).order_by(PesagemVeiculo.dataHoraOcorrencia)
@@ -16,6 +18,7 @@ def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo) -> Inspecao
     if not entrada.numeroConteiner:
         return None
     q = session.query(InspecaoNaoInvasiva).filter(InspecaoNaoInvasiva.numeroConteiner == entrada.numeroConteiner)
+    q = q.filter(InspecaoNaoInvasiva.codigoRecinto == entrada.codigoRecinto)
     q = q.filter(InspecaoNaoInvasiva.dataHoraOcorrencia.between(
         entrada.dataHoraOcorrencia, entrada.dataHoraOcorrencia + timedelta(hours=12)
     )).order_by(InspecaoNaoInvasiva.dataHoraOcorrencia)
@@ -24,6 +27,7 @@ def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo) -> Inspecao
 
 def get_saida_entrada(session, entrada: AcessoVeiculo) -> AcessoVeiculo:
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
+    q = q.filter(AcessoVeiculo.codigoRecinto == entrada.codigoRecinto)
     q = q.filter(AcessoVeiculo.direcao == 'S')
     q = q.filter(AcessoVeiculo.placa == entrada.placa)
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(
@@ -49,13 +53,25 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     return ''
 
 
+def get_recinto_nome(session, entrada: AcessoVeiculo) -> str:
+    recinto_nome = entrada.codigoRecinto
+    recinto = session.query(Recinto).filter(Recinto.cod_siscomex == entrada.codigoRecinto).one_or_none()
+    if recinto:
+        recinto_nome = recinto_nome + ' - ' + recinto.nome
+    return recinto_nome
+
+
 def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
-                placa=''):
+                placa='', numeroConteiner='', cpfMotorista=''):
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     q = q.filter(AcessoVeiculo.direcao == 'E')
     if placa:
         q = q.filter(AcessoVeiculo.placa == placa)
+    if numeroConteiner:
+        q = q.filter(AcessoVeiculo.numeroConteiner == numeroConteiner)
+    if cpfMotorista:
+        q = q.filter(AcessoVeiculo.cpfMotorista == cpfMotorista)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
     lista_eventos = []
     for entrada in lista_entradas:
@@ -63,6 +79,7 @@ def get_eventos(mongodb: Database, session,
         datasaida = dataentradaouescaneamento
         numeroConteiner = entrada.numeroConteiner
         dict_eventos = {}
+        dict_eventos['recinto'] = get_recinto_nome(session, entrada)
         dict_eventos['entrada'] = entrada
         dict_eventos['pesagem'] = get_pesagem_entrada(session, entrada)
         inspecaonaoinvasiva = get_inspecaonaoinvasiva_entrada(session, entrada)
@@ -73,6 +90,7 @@ def get_eventos(mongodb: Database, session,
         saida = get_saida_entrada(session, entrada)
         if saida:
             datasaida = saida.dataHoraOcorrencia
+            dict_eventos['permanencia'] = saida.dataHoraOcorrencia - entrada.dataHoraOcorrencia
         dict_eventos['saida'] = saida
         dict_eventos['id_imagem'] = get_id_imagem(mongodb, numeroConteiner,
                                                   dataentradaouescaneamento, datasaida)

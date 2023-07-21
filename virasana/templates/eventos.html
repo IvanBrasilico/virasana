@@ -19,29 +19,33 @@
                         <label for="placa">Placa do veículo</label>
                     </div>
                     <div class="col-sm-2">
+                        <label for="numeroConteiner">Número do contêiner</label>
                     </div>
                     <div class="col-sm-2">
+                        <label for="cpfMotorista">CPF do Motorista</label>
                     </div>
                     <div class="col-sm-2">
                     </div>
                 </div>
                 <div class="row">
                     <div class="col-sm-2">
-                        <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
+                        {{oform.start(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
-                        <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
+                        {{oform.end(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
                         {{oform.placa(class='form-control')}}
                     </div>
                     <div class="col-sm-2">
+                        {{oform.numeroConteiner(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.cpfMotorista(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
                         <input name="btnfiltrar" class="btn btn-default btn-info form-control"
                                type="submit" value="Filtrar"/>
-                    </div>
-                    <div class="col-sm-2">
-                    </div>
-                    <div class="col-sm-2">
                     </div>
                 </div>
             </div>
@@ -57,6 +61,7 @@
         {% for evento in lista_eventos %}
         <div class="row col-xl-12 bg-white text-primary">
             <div class="col-sm-4">
+                <h4>{{ evento.recinto }}</h4>
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
                 <h4>Entrada</h4>
@@ -88,6 +93,7 @@
                 {{ saida.nomeMotorista }}
                 <br>
                 {{ saida.numeroConteiner }}
+                <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 {% endif %}
             </div>
             <div class="col-sm-8">
