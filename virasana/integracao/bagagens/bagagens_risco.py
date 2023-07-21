@@ -3,7 +3,6 @@ import sys
 from datetime import datetime, timedelta
 
 import pandas as pd
-from bhadrasana.models.laudo import Empresa, get_empresa
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -12,6 +11,7 @@ sys.path.insert(0, '../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
 from ajna_commons.flask.conf import SQL_URI
+from bhadrasana.models.laudo import Empresa, get_empresa
 from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI
 
 
@@ -32,6 +32,7 @@ def pessoa_bagagens_sem_info(con, opcao: str):
     print(sql_novos_viajantes)
     df = pd.read_sql(sql_novos_viajantes, con)
     df.to_csv(f'{opcao}.csv')
+
 
 def dsis_sem_despachante(con):
     sql_dsis_sem_despachante = """
@@ -138,6 +139,7 @@ def importa_dsis(session):
     session.commit()
     os.remove('dsis.csv')
 
+
 def importa_despachantes_dsis(session):
     if not os.path.exists('despachantes_dsis.csv'):
         print('Pulando Despachantes das DSIs - arquivo não existe')
@@ -154,7 +156,6 @@ def importa_despachantes_dsis(session):
         session.add(dsi)
     session.commit()
     os.remove('despachantes_dsis.csv')
-
 
 
 if __name__ == '__main__':

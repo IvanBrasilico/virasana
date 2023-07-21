@@ -1518,6 +1518,7 @@ def mynavbar():
                  View('Alertas', 'alertas'),
                  View('Conformidade', 'conformidade'),
                  View('Bagagens', 'bagagens'),
+                 View('API Recintos', 'eventos'),
                  Separator(),
                  View('Pesquisa imagem externa', 'similar_file'),
                  View('Pesquisa textual', 'text_search'),

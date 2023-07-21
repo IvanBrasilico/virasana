@@ -252,3 +252,16 @@ class FormClassificacaoRisco(FlaskForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.classerisco.choices = [(i.value, i.name) for i in ClasseRisco]
+
+
+class FormFiltroAPIRecintos(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', default=date.today() - timedelta(days=3))
+    end = DateField('End', default=date.today())
+    placa = StringField(u'Placa do Cavalo ou reboque',
+                          validators=[optional()], default='')

@@ -13,6 +13,7 @@ from virasana.db import mongodb, mysql, mongodb_risco
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import imagens_app
+from virasana.routes import apirecintos_app
 from virasana.views import configure_app, csrf
 
 # from bhadrasana.models import db_session
@@ -23,6 +24,7 @@ db_session = scoped_session(sessionmaker(autocommit=False,
 
 app = configure_app(mongodb, mongodb_risco, db_session)
 bagagens_app.configure(app)
+apirecintos_app.configure(app)
 conformidade_app.configure(app)
 pyxvis_app.configure(app)
 imagens_app.configure(app)

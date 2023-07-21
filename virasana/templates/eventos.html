@@ -1,0 +1,149 @@
+{% extends "layout.html" %} {% block content %}{{super()}}
+<div id="main" class="container-fluid" xmlns="http://www.w3.org/1999/html">
+    {% for field, errors in oform.errors.items() %}
+    <div class="alert alert-error row col-sm-12">
+        {{ oform[field].label }}: {{ ', '.join(errors) }}
+    </div>
+    {% endfor %}
+    <div id="top" class="row col-sm-12">
+        <form method="POST" id="formfiltroevento" action="eventos">
+            <div class="form-group">
+                <div class="row">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                </div>
+                <div class="row">
+                    <div class="col-sm-4">
+                        <label for="date">Data de ocorrência do evento</label>
+                    </div>
+                    <div class="col-sm-2">
+                        <label for="placa">Placa do veículo</label>
+                    </div>
+                    <div class="col-sm-2">
+                    </div>
+                    <div class="col-sm-2">
+                    </div>
+                    <div class="col-sm-2">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        {{oform.placa(class='form-control')}}
+                    </div>
+                    <div class="col-sm-2">
+                        <input name="btnfiltrar" class="btn btn-default btn-info form-control"
+                               type="submit" value="Filtrar"/>
+                    </div>
+                    <div class="col-sm-2">
+                    </div>
+                    <div class="col-sm-2">
+                    </div>
+                </div>
+            </div>
+            <div class="row col-sm-12">
+                Ordenado por Data de Ocorrência.
+            </div>
+        </form>
+    </div>
+    <div class="row col-sm-12">
+        Exibindo {{ lista_eventos | length }} eventos (limite máximo de 200).
+    </div>
+    <div id="list" class="row col-sm-12">
+        {% for evento in lista_eventos %}
+        <div class="row col-xl-12 bg-white text-primary">
+            <div class="col-sm-4">
+                {% set entrada = evento["entrada"] %}
+                {% if entrada %}
+                <h4>Entrada</h4>
+                {{ entrada.placa }}
+                {{ entrada.dataHoraOcorrencia }}
+                <br>
+                {{ entrada.cpfMotorista }}
+                {{ entrada.nomeMotorista }}
+                <br>
+                {{ entrada.numeroConteiner }}
+                {% endif %}
+                {% set pesagem = evento["pesagem"] %}
+                {% if pesagem %}
+                <h4>Pesagem</h4>
+                {{ pesagem.dataHoraOcorrencia }}
+                {{ pesagem.pesoBrutoBalanca }}
+                {% endif %}
+                {% set inspecaonaoinvasiva = evento["inspecaonaoinvasiva"] %}
+                {% if inspecaonaoinvasiva %}
+                <h4>Escaneamento</h4>
+                {{ inspecaonaoinvasiva.dataHoraOcorrencia }}
+                {% endif %}
+                {% set saida = evento["saida"] %}
+                {% if saida %}
+                <h4>Saída</h4>
+                {{ saida.dataHoraOcorrencia }}
+                <br>
+                {{ saida.cpfMotorista }}
+                {{ saida.nomeMotorista }}
+                <br>
+                {{ saida.numeroConteiner }}
+                {% endif %}
+            </div>
+            <div class="col-sm-8">
+                <a href="file?_id={{evento.id_imagem}}" target="_BLANK">
+                    <img src="imagens_cmap?_id={{evento.id_imagem}}"
+                         alt="Sem imagem" width="auto" height="auto"
+                         class="zoom"
+                         onmouseover="showMsg(this, '{{ evento.id_imagem}}')" onmouseout="clearMsg(this)"
+                    />
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2017
+    </div>
+</div>
+
+
+<!-- /#main -->
+{% endblock %} {% block scripts %} {{super()}}
+<script type="text/javascript">
+    $('th').click(function(){
+        var table = $(this).parents('table').eq(0)
+        var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+        this.asc = !this.asc
+        if (!this.asc){rows = rows.reverse()}
+        for (var i = 0; i < rows.length; i++){table.append(rows[i])}
+    })
+    function comparer(index) {
+        return function(a, b) {
+            var valA = getCellValue(a, index), valB = getCellValue(b, index)
+            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+        }
+    }
+    function getCellValue(row, index){ return $(row).children('td').eq(index).text() }
+
+    function showMsg(img,_id) {
+        xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status == 200) {
+                    img.title = this.responseText;
+                }
+            }
+        }
+        xhttp.open("GET", "/virasana/summary/" + _id, true);
+        xhttp.send();
+    }
+    function clearMsg(img) {
+        img.title = "";
+    }
+
+
+
+
+</script>
+{% endblock %}
