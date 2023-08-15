@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva
+from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovr import Recinto
 from pymongo.database import Database
 
@@ -61,38 +62,64 @@ def get_recinto_nome(session, entrada: AcessoVeiculo) -> str:
     return recinto_nome
 
 
-def get_eventos(mongodb: Database, session,
-                datainicio: datetime, datafim: datetime,
-                placa='', numeroConteiner='', cpfMotorista=''):
-    q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
-    q = q.filter(AcessoVeiculo.direcao == 'E')
+def aplica_filtros(q, placa, numeroConteiner, cpfMotorista):
     if placa:
         q = q.filter(AcessoVeiculo.placa == placa)
     if numeroConteiner:
         q = q.filter(AcessoVeiculo.numeroConteiner == numeroConteiner)
     if cpfMotorista:
         q = q.filter(AcessoVeiculo.cpfMotorista == cpfMotorista)
-    lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
+    return q
+
+
+def get_eventos_entradas(session, mongodb, lista_entradas):
     lista_eventos = []
     for entrada in lista_entradas:
         dataentradaouescaneamento = entrada.dataHoraOcorrencia
         datasaida = dataentradaouescaneamento
         numeroConteiner = entrada.numeroConteiner
         dict_eventos = {}
+        # Recinto
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        # Entrada
         dict_eventos['entrada'] = entrada
+        # Pesagem
         dict_eventos['pesagem'] = get_pesagem_entrada(session, entrada)
+        # InspecaoNaoInvasiva
         inspecaonaoinvasiva = get_inspecaonaoinvasiva_entrada(session, entrada)
         dict_eventos['inspecaonaoinvasiva'] = inspecaonaoinvasiva
         if inspecaonaoinvasiva:
             dataentradaouescaneamento = inspecaonaoinvasiva.dataHoraOcorrencia
             numeroConteiner = inspecaonaoinvasiva.numeroConteiner
+        # Saída
         saida = get_saida_entrada(session, entrada)
         if saida:
             datasaida = saida.dataHoraOcorrencia
             dict_eventos['permanencia'] = saida.dataHoraOcorrencia - entrada.dataHoraOcorrencia
         dict_eventos['saida'] = saida
+        # Imagem do Ajna
         dict_eventos['id_imagem'] = get_id_imagem(mongodb, numeroConteiner,
                                                   dataentradaouescaneamento, datasaida)
+
         lista_eventos.append(dict_eventos)
+    return lista_eventos
+
+
+def aplica_risco_motorista(q):
+    return q.join(Motorista)
+
+
+def get_eventos(mongodb: Database, session,
+                datainicio: datetime, datafim: datetime,
+                placa='', numeroConteiner='', cpfMotorista='',
+                motoristas_de_risco=True):
+    q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
+    print(datainicio, datafim)
+    q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
+    q = q.filter(AcessoVeiculo.direcao == 'E')
+    q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista)
+    if motoristas_de_risco:
+        q = aplica_risco_motorista(q)
+    lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
+    lista_eventos = get_eventos_entradas(session, mongodb, lista_entradas)
     return lista_eventos

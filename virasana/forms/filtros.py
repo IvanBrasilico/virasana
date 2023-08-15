@@ -262,8 +262,8 @@ class FormFiltroAPIRecintos(FlaskForm):
     search_files.html
 
     """
-    start = DateTimeLocalField('Start', default=date.today() - timedelta(days=3))
-    end = DateTimeLocalField('End', default=date.today())
+    start = DateTimeLocalField('Start', default=date.today() - timedelta(days=3), format='%Y-%m-%dT%H:%M')
+    end = DateTimeLocalField('End', default=date.today(), format='%Y-%m-%dT%H:%M')
     placa = StringField(u'Placa do Cavalo ou reboque',
                           validators=[optional()], default='')
     numeroConteiner = StringField(u'Número do contêiner',
