@@ -198,7 +198,10 @@
                         <input type="hidden" name="numeroCEmercante"
                                value="{{item.conhecimentos[0].numeroCEmercante}}"/>
                         {% set oconhecimento = item.conhecimentos[-1] %}
-                        <input type="hidden" name="observacoes" value="CE-Mercante {{ oconhecimento.numeroCEmercante }} - Porto de Origem {{ oconhecimento.portoOrigemCarga }} CPF {{ oconhecimento.consignatario }} - {{ oconhecimento.nome_consignatario }}"/>
+                        <input type="hidden" name="observacoes" value=
+                                "CE-Mercante {{ oconhecimento.numeroCEmercante }} - Porto de Origem {{ oconhecimento.portoOrigemCarga }}
+                                CPF {{ oconhecimento.consignatario }} - {{ oconhecimento.nome_consignatario }}
+                                 DSIs: {% for dsi in item.dsis|sort(attribute='numero') %}{{dsi.numero}} - {% endfor %}"/>
                         {% endif %}
                         <button class="btn {% if item.fichas | length == 0 %} btn-danger{% else %}btn-secondary{% endif %}"
                                 type="submit">
@@ -215,9 +218,8 @@
                 <a href="file?_id={{item.id_imagem}}" target="_BLANK">
                     <img src="imagens_cmap?_id={{item.id_imagem}}&colormap={{oform.colormap.data}}"
                          alt="Sem imagem" width="auto" height="auto"
-                         class="zoom"
-                         onmouseover="showMsg(this, '{{ item.id_imagem}}')" onmouseout="clearMsg(this)"
-                    />
+                         class="zoom">
+                    <!--onmouseover="showMsg(this, '{{ item.id_imagem}}')" onmouseout="clearMsg(this)"-->
                 </a>
             </div>
         </div>
