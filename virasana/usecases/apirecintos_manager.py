@@ -81,6 +81,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas):
         dict_eventos = {}
         # Recinto
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        dict_eventos['motorista'] = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
         # Entrada
         dict_eventos['entrada'] = entrada
         # Pesagem
@@ -106,13 +107,13 @@ def get_eventos_entradas(session, mongodb, lista_entradas):
 
 
 def aplica_risco_motorista(q):
-    return q.join(Motorista)
+    return q.join(Motorista, Motorista.cpf == AcessoVeiculo.cpfMotorista)
 
 
 def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
                 placa='', numeroConteiner='', cpfMotorista='',
-                motoristas_de_risco=True):
+                motoristas_de_risco=False):
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     print(datainicio, datafim)
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))

@@ -270,3 +270,4 @@ class FormFiltroAPIRecintos(FlaskForm):
                           validators=[optional()], default='')
     cpfMotorista = StringField(u'CPF do Motorista',
                           validators=[optional()], default='')
+    motoristas_de_risco = BooleanField('Motoristas de Risco', default=False)

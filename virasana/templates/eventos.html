@@ -42,6 +42,7 @@
                     </div>
                     <div class="col-sm-2">
                         {{oform.cpfMotorista(class='form-control')}}
+                        <label>{{oform.motoristas_de_risco}} Filtrar cadastrados </label>
                     </div>
                     <div class="col-sm-2">
                         <input name="btnfiltrar" class="btn btn-default btn-info form-control"
@@ -62,6 +63,10 @@
         <div class="row col-xl-12 bg-white text-primary">
             <div class="col-sm-4">
                 <h4>{{ evento.recinto }}</h4>
+                {% set motorista = evento["motorista"] %}
+                {% if motorista %}
+                <h5>Risco Motorista: "{{ motorista.get_risco() }}"</h5>
+                {% endif %}
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
                 <h4>Entrada</h4>
