@@ -17,7 +17,7 @@ def configure(app):
         form.validate()
         eventos = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
                               form.numeroConteiner.data, form.cpfMotorista.data, form.motoristas_de_risco.data,
-                              form.codigoRecinto.data)
+                              form.codigoRecinto.data, form.tempo_permanencia.data)
         return eventos
 
     @app.route('/eventos_redirect', methods=['GET'])

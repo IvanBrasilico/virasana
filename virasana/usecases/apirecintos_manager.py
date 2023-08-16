@@ -115,7 +115,8 @@ def aplica_risco_motorista(q):
 def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
                 placa='', numeroConteiner='', cpfMotorista='',
-                motoristas_de_risco=False, codigoRecinto=''):
+                motoristas_de_risco=False, codigoRecinto='',
+                tempo_permanencia=0):
     print(f'motoristas_de_risco: {motoristas_de_risco} - {type(motoristas_de_risco)}')
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     print(datainicio, datafim)
@@ -126,4 +127,6 @@ def get_eventos(mongodb: Database, session,
         q = aplica_risco_motorista(q)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
     lista_eventos = get_eventos_entradas(session, mongodb, lista_entradas)
+    if tempo_permanencia > 0:  # Filtrar por tempo de permanencia:
+        lista_eventos = [evento for evento in lista_eventos if evento['permanencia'] > tempo_permanencia]
     return lista_eventos
