@@ -128,5 +128,5 @@ def get_eventos(mongodb: Database, session,
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
     lista_eventos = get_eventos_entradas(session, mongodb, lista_entradas)
     if tempo_permanencia > 0:  # Filtrar por tempo de permanencia:
-        lista_eventos = [evento for evento in lista_eventos if evento['permanencia'] > tempo_permanencia]
+        lista_eventos = [evento for evento in lista_eventos if int(evento['permanencia']) > tempo_permanencia]
     return lista_eventos
