@@ -271,3 +271,10 @@ class FormFiltroAPIRecintos(FlaskForm):
     cpfMotorista = StringField(u'CPF do Motorista',
                           validators=[optional()], default='')
     motoristas_de_risco = BooleanField('Motoristas de Risco', default=False)
+    codigoRecinto = SelectField('Recinto Aduaneiro', default=-1)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.codigoRecinto.choices = [['', 'Selecione']]
+        if kwargs.get('recintos'):
+            self.codigoRecinto.choices.extend(kwargs.get('recintos'))

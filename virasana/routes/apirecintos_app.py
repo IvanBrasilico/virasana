@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from ajna_commons.flask.log import logger
+from bhadrasana.models.ovrmanager import get_recintos, get_recintos_api
 from flask import render_template, request, flash
 from flask_login import login_required
 from virasana.forms.filtros import FormFiltroAPIRecintos
@@ -15,7 +16,8 @@ def configure(app):
         # end = datetime.combine(form.end.data, datetime.max.time())
         form.validate()
         eventos = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
-                              form.numeroConteiner.data, form.cpfMotorista.data, form.motoristas_de_risco.data)
+                              form.numeroConteiner.data, form.cpfMotorista.data, form.motoristas_de_risco.data,
+                              form.codigoRecinto.data)
         return eventos
 
     @app.route('/eventos_redirect', methods=['GET'])
@@ -40,9 +42,10 @@ def configure(app):
         mongodb = app.config['mongodb']
         session = app.config['db_session']
         lista_eventos = []
-        oform = FormFiltroAPIRecintos(request.values)
+        recintos = get_recintos_api(session)
+        oform = FormFiltroAPIRecintos(request.values, recintos=recintos)
         try:
-            if request.method == 'POST':  # Listar por GET somente no caso de redirect do Importa DSI
+            if request.method == 'POST':
                 lista_eventos = lista_eventos_html(mongodb, session, oform)
         except Exception as err:
             flash(err)

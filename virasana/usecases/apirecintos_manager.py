@@ -62,13 +62,15 @@ def get_recinto_nome(session, entrada: AcessoVeiculo) -> str:
     return recinto_nome
 
 
-def aplica_filtros(q, placa, numeroConteiner, cpfMotorista):
+def aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto):
     if placa:
         q = q.filter(AcessoVeiculo.placa == placa)
     if numeroConteiner:
         q = q.filter(AcessoVeiculo.numeroConteiner == numeroConteiner)
     if cpfMotorista:
         q = q.filter(AcessoVeiculo.cpfMotorista == cpfMotorista)
+    if codigoRecinto:
+        q = q.filter(AcessoVeiculo.codigoRecinto == codigoRecinto)
     return q
 
 
@@ -113,12 +115,13 @@ def aplica_risco_motorista(q):
 def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
                 placa='', numeroConteiner='', cpfMotorista='',
-                motoristas_de_risco=False):
+                motoristas_de_risco=False, codigoRecinto=''):
+    print(f'motoristas_de_risco: {motoristas_de_risco} - {type(motoristas_de_risco)}')
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     print(datainicio, datafim)
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
     q = q.filter(AcessoVeiculo.direcao == 'E')
-    q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista)
+    q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto)
     if motoristas_de_risco:
         q = aplica_risco_motorista(q)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
