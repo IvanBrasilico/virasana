@@ -98,13 +98,15 @@
                 {{ entrada.cpfMotorista }}
                 {{ entrada.nomeMotorista }}
                 <br>
-                {{ entrada.numeroConteiner }}
+                {{ entrada.numeroConteiner }} - {{ entrada.numeroDeclaracao }} - {{ entrada.numeroConhecimento }}
+                <br>
+                {{ entrada.listaNfe }}
                 {% endif %}
                 {% set pesagem = evento["pesagem"] %}
                 {% if pesagem %}
                 <h4>Pesagem</h4>
                 {{ pesagem.dataHoraOcorrencia }}
-                {{ pesagem.pesoBrutoBalanca }}
+                <strong>Peso:</strong> {{ pesagem.pesoBrutoBalanca }}
                 {% endif %}
                 {% set inspecaonaoinvasiva = evento["inspecaonaoinvasiva"] %}
                 {% if inspecaonaoinvasiva %}
@@ -119,7 +121,9 @@
                 {{ saida.cpfMotorista }}
                 {{ saida.nomeMotorista }}
                 <br>
-                {{ saida.numeroConteiner }}
+                {{ saida.numeroConteiner }} - {{ saida.numeroDeclaracao }} - {{ saida.numeroConhecimento }}
+                <br>
+                {{ saida.listaNfe }}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 {% endif %}
             </div>
