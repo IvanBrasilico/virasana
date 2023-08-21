@@ -121,9 +121,11 @@
                 {{ saida.cpfMotorista }}
                 {{ saida.nomeMotorista }}
                 <br>
-                {{ saida.numeroConteiner }} - {{ saida.numeroDeclaracao }} - {{ saida.numeroConhecimento }}
+                {{ saida.numeroConteiner }} -
+                {{ saida.tipoDeclaracao }} - {{ saida.numeroDeclaracao }}
+                {{ saida.tipoConhecimento }} - {{ saida.numeroConhecimento }}
                 <br>
-                {{ saida.listaNfe }}
+                Notas: {{ saida.listaNfe }}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 {% endif %}
             </div>
