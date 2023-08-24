@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva
 from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovr import Recinto
+from bhadrasana.models.virasana_manager import get_conhecimento
+from integracao.mercante.mercantealchemy import Conhecimento
 from pymongo.database import Database
 
 
@@ -15,7 +18,7 @@ def get_pesagem_entrada(session, entrada: AcessoVeiculo) -> PesagemVeiculo:
     return q.first()
 
 
-def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo) -> InspecaoNaoInvasiva:
+def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo) -> Optional[InspecaoNaoInvasiva]:
     if not entrada.numeroConteiner:
         return None
     q = session.query(InspecaoNaoInvasiva).filter(InspecaoNaoInvasiva.numeroConteiner == entrada.numeroConteiner)
@@ -74,6 +77,31 @@ def aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto):
     return q
 
 
+
+
+def search_conhecimento(session, entrada)-> Optional[Conhecimento]:
+    if entrada.numeroConhecimento:
+        return get_conhecimento(session, entrada.numeroConhecimento)
+    return None
+
+
+def get_missao(session, entrada: AcessoVeiculo, conhecimento:Conhecimento):
+    if entrada.vazioSemirreboque:
+        return 'Veículo Vazio'
+    if entrada.vazioConteiner:
+        return 'Contêiner Vazio'
+    if conhecimento is not None:
+        if conhecimento.tipoTrafego == 5:
+            return 'Importação'
+        elif conhecimento.tipoTrafego == 7:
+            return 'Exportação'
+        elif conhecimento.tipoTrafego == 3:
+            return 'Cabotagem'
+        else:
+            return 'Passagem'
+    return 'Não foi possível determinar'
+
+
 def get_eventos_entradas(session, mongodb, lista_entradas):
     lista_eventos = []
     for entrada in lista_entradas:
@@ -83,6 +111,9 @@ def get_eventos_entradas(session, mongodb, lista_entradas):
         dict_eventos = {}
         # Recinto
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        conhecimento = search_conhecimento(session, entrada)
+        dict_eventos['conhecimento'] = conhecimento
+        dict_eventos['missao'] = get_missao(session, entrada, conhecimento)
         dict_eventos['motorista'] = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
         # Entrada
         dict_eventos['entrada'] = entrada
