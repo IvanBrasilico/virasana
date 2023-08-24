@@ -89,6 +89,10 @@
                 {% if motorista %}
                 <h5>Risco Motorista: "{{ motorista.get_risco() }}"</h5>
                 {% endif %}
+                <h5>Missão: "{{ evento["missao"] }}"</h5>
+                {% if conhecimento %}
+                   {{ conhecimento.descricao }}
+                {% endif %}
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
                 <h4>Entrada</h4>
