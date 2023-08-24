@@ -122,10 +122,16 @@
                 {{ saida.nomeMotorista }}
                 <br>
                 {{ saida.numeroConteiner }} -
+                {% if saida.numeroDeclaracao %}
                 {{ saida.tipoDeclaracao }} - {{ saida.numeroDeclaracao }}
+                {% endif %}
+                {% if saida.numeroConhecimento %}
                 {{ saida.tipoConhecimento }} - {{ saida.numeroConhecimento }}
+                {% endif %}
+                {% if saida.listaNfe %}
                 <br>
-                Notas: {{ saida.listaNfe }}
+                Notas Fiscais: {{ saida.listaNfe }}
+                {% endif %}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 {% endif %}
             </div>
