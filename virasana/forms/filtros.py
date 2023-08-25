@@ -273,7 +273,7 @@ class FormFiltroAPIRecintos(FlaskForm):
     motoristas_de_risco = BooleanField('Motoristas de Risco', default=False)
     codigoRecinto = SelectField('Recinto Aduaneiro', default=-1)
     tempo_permanencia = IntegerField('Tempo entre entrada e saída', default=0)
-    missao = SelectField('Missão do acesso ao Recinto', default=0)
+    missao = SelectField('Missão do acesso ao Recinto', default=99)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

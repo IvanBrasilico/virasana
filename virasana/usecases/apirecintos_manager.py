@@ -98,7 +98,7 @@ class Missao():
              'Exportação', 'Cabotagem', 'Passagem', 'Não foi possível determinar'])]
 
     def get_tipos_missao(self):
-        return sorted(self.missoes_list, key=lambda x: x[1])
+        return sorted(self.missoes_select, key=lambda x: x[1])
 
     def get_descricao_missao(self, ind):
         try:
@@ -134,7 +134,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
         # Missão
         conhecimento = search_conhecimento(session, entrada)
         dict_eventos['conhecimento'] = conhecimento
-        missao = dict_eventos['missao'] = Missao().get_missao(session, entrada, conhecimento)
+        missao = Missao().get_missao(session, entrada, conhecimento)
         if filtra_missao and filtra_missao != missao:  # Pular linha se não for da missão desejada
             continue
         dict_eventos['missao'] = missao
@@ -184,18 +184,19 @@ def get_eventos(mongodb: Database, session,
     if motoristas_de_risco:
         q = aplica_risco_motorista(q)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
-    lista_eventos = get_eventos_entradas(session, mongodb, lista_entradas)
+    lista_eventos, count_missao = get_eventos_entradas(session, mongodb, lista_entradas, missao)
     if tempo_permanencia > 0:  # Filtrar por tempo de permanencia:
         lista_eventos = [evento for evento in lista_eventos
                          if evento.get('permanencia') and
                          evento['permanencia'].seconds > (tempo_permanencia * 60)]
-    return lista_eventos
+    return lista_eventos, count_missao
 
 
 if __name__ == '__main__':
     missao = Missao()
     print(missao.missoes_list)
     print(missao.missoes_select)
+    print(missao.get_tipos_missao())
     print(missao.get_descricao_missao(0))
     print(missao.get_descricao_missao(6))
     print(missao.get_descricao_missao(99))

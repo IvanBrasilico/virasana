@@ -13,11 +13,12 @@ def configure(app):
         # start = datetime.combine(form.start.data, datetime.min.time())
         # end = datetime.combine(form.end.data, datetime.max.time())
         form.validate()
-        eventos = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
-                              form.numeroConteiner.data, form.cpfMotorista.data, form.motoristas_de_risco.data,
-                              form.codigoRecinto.data, form.tempo_permanencia.data,
-                              Missao().get_descricao_missao(form.missao.data))
-        return eventos
+        eventos, count_missao = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
+                                            form.numeroConteiner.data, form.cpfMotorista.data,
+                                            form.motoristas_de_risco.data,
+                                            form.codigoRecinto.data, form.tempo_permanencia.data,
+                                            Missao().get_descricao_missao(form.missao.data))
+        return eventos, count_missao
 
     @app.route('/eventos_redirect', methods=['GET'])
     @login_required
@@ -25,14 +26,16 @@ def configure(app):
         mongodb = app.config['mongodb']
         session = app.config['db_session']
         lista_eventos = []
+        count_missao = {}
         form = FormFiltroAPIRecintos(request.args)
         try:
-            lista_eventos = lista_eventos_html(mongodb, session, form)
+            lista_eventos, count_missao = lista_eventos_html(mongodb, session, form)
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
         return render_template('eventos.html',
                                lista_eventos=lista_eventos,
+                               count_missao=count_missao,
                                oform=form)
 
     @app.route('/eventos', methods=['GET', 'POST'])
@@ -41,15 +44,17 @@ def configure(app):
         mongodb = app.config['mongodb']
         session = app.config['db_session']
         lista_eventos = []
+        count_missao = {}
         recintos = get_recintos_api(session)
-        missoes = get_tipos_missao()
+        missoes = Missao().get_tipos_missao()
         oform = FormFiltroAPIRecintos(request.values, recintos=recintos, missoes=missoes)
         try:
             if request.method == 'POST':
-                lista_eventos = lista_eventos_html(mongodb, session, oform)
+                lista_eventos, count_missao = lista_eventos_html(mongodb, session, oform)
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)
         return render_template('eventos.html',
                                lista_eventos=lista_eventos,
+                               count_missao=count_missao,
                                oform=oform)
