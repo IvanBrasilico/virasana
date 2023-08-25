@@ -17,7 +17,7 @@ def configure(app):
                                             form.numeroConteiner.data, form.cpfMotorista.data,
                                             form.motoristas_de_risco.data,
                                             form.codigoRecinto.data, form.tempo_permanencia.data,
-                                            Missao().get_descricao_missao(form.missao.data))
+                                            Missao().get_descricao_missao(int(form.missao.data)))
         return eventos, count_missao
 
     @app.route('/eventos_redirect', methods=['GET'])

@@ -138,8 +138,9 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
         conhecimento = search_conhecimento(session, entrada)
         dict_eventos['conhecimento'] = conhecimento
         missao = Missao().get_missao(session, entrada, conhecimento)
-        if filtra_missao and filtra_missao != missao:  # Pular linha se não for da missão desejada
-            continue
+        if filtra_missao:  # Pular linha se não for da missão desejada
+            if missao != filtra_missao:
+                continue
         dict_eventos['missao'] = missao
         count_missao[missao] += 1
         # Recinto
