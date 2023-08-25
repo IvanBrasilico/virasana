@@ -92,10 +92,9 @@ def search_conhecimento(session, entrada) -> Optional[Conhecimento]:
 class Missao():
     def __init__(self):
         self.missoes_list = ['Veículo Vazio', 'Contêiner Vazio', 'Importação',
-                             'Exportação', 'Cabotagem', 'Passagem', 'Não foi possível determinar']
-        self.missoes_select = [(ind, descricao) for ind, descricao in enumerate(
-            ['Veículo Vazio', 'Contêiner Vazio', 'Importação',
-             'Exportação', 'Cabotagem', 'Passagem', 'Não foi possível determinar'])]
+                             'Exportação', 'Cabotagem', 'Passagem', 'Interior',
+                             'Não foi possível determinar']
+        self.missoes_select = [(ind, descricao) for ind, descricao in enumerate(self.missoes_list)]
 
     def get_tipos_missao(self):
         return sorted(self.missoes_select, key=lambda x: x[1])
@@ -107,20 +106,24 @@ class Missao():
             return None
 
     def get_missao(self, session, entrada: AcessoVeiculo, conhecimento: Conhecimento):
-        if entrada.vazioSemirreboque:  # Veículo descarregado/vazio
-            return self.get_descricao_missao(0)
+        if (entrada.tipoDeclaracao and entrada.tipoDeclaracao == 'DUE') or entrada.listaNfe:  # Exportação
+            return self.get_descricao_missao(3)
+        if conhecimento is not None:
+            if conhecimento.tipoTrafego == '5':  # lci
+                return self.get_descricao_missao(2)
+            elif conhecimento.tipoTrafego == '7':  # lce
+                return self.get_descricao_missao(3)
+            elif conhecimento.tipoTrafego == '3':  # cabotagem
+                return self.get_descricao_missao(4)
+            elif conhecimento.tipoTrafego == '9':  # passagem
+                return self.get_descricao_missao(5)
+            elif conhecimento.tipoTrafego == '1':  # interior
+                return self.get_descricao_missao(6)
         if entrada.vazioConteiner:  # Veículo com contêiner vazio
             return self.get_descricao_missao(1)
-        if conhecimento is not None:
-            if conhecimento.tipoTrafego == 5:  # lci
-                return self.get_descricao_missao(2)
-            elif conhecimento.tipoTrafego == 7:  # lce
-                return self.get_descricao_missao(3)
-            elif conhecimento.tipoTrafego == 3:  # cabotagem
-                return self.get_descricao_missao(4)
-            else:  # passagem
-                return self.get_descricao_missao(5)
-        return self.get_descricao_missao(6)  # Sem informações
+        if entrada.vazioSemirreboque:  # Veículo descarregado/vazio
+            return self.get_descricao_missao(0)
+        return self.get_descricao_missao(7)  # Sem informações
 
 
 def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
@@ -138,6 +141,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
         if filtra_missao and filtra_missao != missao:  # Pular linha se não for da missão desejada
             continue
         dict_eventos['missao'] = missao
+        count_missao[missao] += 1
         # Recinto
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
         # Motorista

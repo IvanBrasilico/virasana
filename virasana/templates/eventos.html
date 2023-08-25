@@ -73,8 +73,12 @@
                     <div class="col-sm-2">
                         {{oform.missao(class='form-control')}}
                     </div>
-                    <div class="col-sm-6">
+                    <div class="col-sm-4">
                         &nbsp;
+                    </div>
+                    <div class="col-sm-2">
+                        <input name="btnplanilha" class="btn btn-default btn-info form-control"
+                               type="submit" value="Planilha"/>
                     </div>
                 </div>
             </div>
@@ -84,7 +88,10 @@
         </form>
     </div>
     <div class="row col-sm-12">
-        Exibindo {{ lista_eventos | length }} eventos (limite máximo de 200).
+        Exibindo {{ lista_eventos | length }} eventos (limite máximo de ???).<br>
+        {% for k, v in count_missao.items() %}
+        {{k}}: {{v}}<br>
+        {% endfor %}
     </div>
     <div id="list" class="row col-sm-12">
         {% for evento in lista_eventos %}
@@ -96,8 +103,9 @@
                 <h5>Risco Motorista: "{{ motorista.get_risco() }}"</h5>
                 {% endif %}
                 <h5>Missão: "{{ evento["missao"] }}"</h5>
+                {% set conhecimento = evento["conhecimento"] %}
                 {% if conhecimento %}
-                   {{ conhecimento.descricao }}
+                {{ conhecimento.descricao }}
                 {% endif %}
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
@@ -108,9 +116,17 @@
                 {{ entrada.cpfMotorista }}
                 {{ entrada.nomeMotorista }}
                 <br>
-                {{ entrada.numeroConteiner }} - {{ entrada.numeroDeclaracao }} - {{ entrada.numeroConhecimento }}
+                {{ entrada.numeroConteiner }}
+                {% if entrada.numeroDeclaracao %}
+                - {{ entrada.tipoDeclaracao }} - {{ entrada.numeroDeclaracao }}
+                {% endif %}
+                {% if entrada.numeroConhecimento %}
+                - {{ entrada.tipoConhecimento }} - {{ entrada.numeroConhecimento }}
+                {% endif %}
+                {% if entrada.listaNfe %}
                 <br>
-                {{ entrada.listaNfe }}
+                Notas fiscais: {{ entrada.listaNfe }}
+                {% endif %}
                 {% endif %}
                 {% set pesagem = evento["pesagem"] %}
                 {% if pesagem %}
@@ -131,12 +147,12 @@
                 {{ saida.cpfMotorista }}
                 {{ saida.nomeMotorista }}
                 <br>
-                {{ saida.numeroConteiner }} -
+                {{ saida.numeroConteiner }}
                 {% if saida.numeroDeclaracao %}
-                {{ saida.tipoDeclaracao }} - {{ saida.numeroDeclaracao }}
+                - {{ saida.tipoDeclaracao }} - {{ saida.numeroDeclaracao }}
                 {% endif %}
                 {% if saida.numeroConhecimento %}
-                {{ saida.tipoConhecimento }} - {{ saida.numeroConhecimento }}
+                - {{ saida.tipoConhecimento }} - {{ saida.numeroConhecimento }}
                 {% endif %}
                 {% if saida.listaNfe %}
                 <br>
@@ -196,6 +212,7 @@
     function clearMsg(img) {
         img.title = "";
     }
+
 
 
 
