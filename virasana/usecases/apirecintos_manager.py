@@ -1,5 +1,11 @@
+import sys
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
+
+sys.path.append('../bhadrasana2')
+sys.path.append('.')
+sys.path.append('virasana')
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva
 from bhadrasana.models.apirecintos_risco import Motorista
@@ -77,43 +83,64 @@ def aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto):
     return q
 
 
-
-
-def search_conhecimento(session, entrada)-> Optional[Conhecimento]:
+def search_conhecimento(session, entrada) -> Optional[Conhecimento]:
     if entrada.numeroConhecimento:
         return get_conhecimento(session, entrada.numeroConhecimento)
     return None
 
 
-def get_missao(session, entrada: AcessoVeiculo, conhecimento:Conhecimento):
-    if entrada.vazioSemirreboque:
-        return 'Veículo Vazio'
-    if entrada.vazioConteiner:
-        return 'Contêiner Vazio'
-    if conhecimento is not None:
-        if conhecimento.tipoTrafego == 5:
-            return 'Importação'
-        elif conhecimento.tipoTrafego == 7:
-            return 'Exportação'
-        elif conhecimento.tipoTrafego == 3:
-            return 'Cabotagem'
-        else:
-            return 'Passagem'
-    return 'Não foi possível determinar'
+class Missao():
+    def __init__(self):
+        self.missoes_list = ['Veículo Vazio', 'Contêiner Vazio', 'Importação',
+                             'Exportação', 'Cabotagem', 'Passagem', 'Não foi possível determinar']
+        self.missoes_select = [(ind, descricao) for ind, descricao in enumerate(
+            ['Veículo Vazio', 'Contêiner Vazio', 'Importação',
+             'Exportação', 'Cabotagem', 'Passagem', 'Não foi possível determinar'])]
+
+    def get_tipos_missao(self):
+        return sorted(self.missoes_list, key=lambda x: x[1])
+
+    def get_descricao_missao(self, ind):
+        try:
+            return self.missoes_list[ind]
+        except:
+            return None
+
+    def get_missao(self, session, entrada: AcessoVeiculo, conhecimento: Conhecimento):
+        if entrada.vazioSemirreboque:  # Veículo descarregado/vazio
+            return self.get_descricao_missao(0)
+        if entrada.vazioConteiner:  # Veículo com contêiner vazio
+            return self.get_descricao_missao(1)
+        if conhecimento is not None:
+            if conhecimento.tipoTrafego == 5:  # lci
+                return self.get_descricao_missao(2)
+            elif conhecimento.tipoTrafego == 7:  # lce
+                return self.get_descricao_missao(3)
+            elif conhecimento.tipoTrafego == 3:  # cabotagem
+                return self.get_descricao_missao(4)
+            else:  # passagem
+                return self.get_descricao_missao(5)
+        return self.get_descricao_missao(6)  # Sem informações
 
 
-def get_eventos_entradas(session, mongodb, lista_entradas):
+def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
     lista_eventos = []
+    count_missao = defaultdict(int)
     for entrada in lista_entradas:
         dataentradaouescaneamento = entrada.dataHoraOcorrencia
         datasaida = dataentradaouescaneamento
         numeroConteiner = entrada.numeroConteiner
         dict_eventos = {}
-        # Recinto
-        dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        # Missão
         conhecimento = search_conhecimento(session, entrada)
         dict_eventos['conhecimento'] = conhecimento
-        dict_eventos['missao'] = get_missao(session, entrada, conhecimento)
+        missao = dict_eventos['missao'] = Missao().get_missao(session, entrada, conhecimento)
+        if filtra_missao and filtra_missao != missao:  # Pular linha se não for da missão desejada
+            continue
+        dict_eventos['missao'] = missao
+        # Recinto
+        dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        # Motorista
         dict_eventos['motorista'] = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
         # Entrada
         dict_eventos['entrada'] = entrada
@@ -136,7 +163,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas):
                                                   dataentradaouescaneamento, datasaida)
 
         lista_eventos.append(dict_eventos)
-    return lista_eventos
+    return lista_eventos, count_missao
 
 
 def aplica_risco_motorista(q):
@@ -147,7 +174,7 @@ def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
                 placa='', numeroConteiner='', cpfMotorista='',
                 motoristas_de_risco=False, codigoRecinto='',
-                tempo_permanencia=0):
+                tempo_permanencia=0, missao=None):
     print(f'motoristas_de_risco: {motoristas_de_risco} - {type(motoristas_de_risco)}')
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     print(datainicio, datafim)
@@ -161,5 +188,14 @@ def get_eventos(mongodb: Database, session,
     if tempo_permanencia > 0:  # Filtrar por tempo de permanencia:
         lista_eventos = [evento for evento in lista_eventos
                          if evento.get('permanencia') and
-                         evento['permanencia'].seconds >  (tempo_permanencia * 60)]
+                         evento['permanencia'].seconds > (tempo_permanencia * 60)]
     return lista_eventos
+
+
+if __name__ == '__main__':
+    missao = Missao()
+    print(missao.missoes_list)
+    print(missao.missoes_select)
+    print(missao.get_descricao_missao(0))
+    print(missao.get_descricao_missao(6))
+    print(missao.get_descricao_missao(99))
