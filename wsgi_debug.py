@@ -22,4 +22,4 @@ if __name__ == '__main__':
                                     {
                                         '/virasana': app
                                     })
-    run_simple('localhost', port, application, use_reloader=True)
+    run_simple('localhost', port, application, use_reloader=False)

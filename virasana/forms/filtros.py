@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, date
 
 from ajna_commons.utils.sanitiza import mongo_sanitizar
+from bhadrasana.models.apirecintos_risco import DescricaoRiscoMotorista
 from flask import g
 from flask_login import current_user
 from flask_wtf import FlaskForm
@@ -48,16 +49,17 @@ class FilesForm(FlaskForm):
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
                                  'jet', 'gnuplot', 'tab10']
 
+
 class ColorMapForm(FlaskForm):
     colormap = SelectField('Mapa de cores para visualizar imagem',
                            validators=[optional()], default='original')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.colormap.choices = ['original', 'Contraste', 'Equaliza histograma',
                                  'flag', 'winter', 'hsv',
                                  'gist_rainbow', 'gist_stern', 'nipy_spectral_r',
                                  'jet', 'gnuplot', 'tab10']
-
 
 
 class FormFiltro(FlaskForm):
@@ -265,12 +267,13 @@ class FormFiltroAPIRecintos(FlaskForm):
     start = DateTimeLocalField('Start', default=date.today() - timedelta(days=3), format='%Y-%m-%dT%H:%M')
     end = DateTimeLocalField('End', default=date.today(), format='%Y-%m-%dT%H:%M')
     placa = StringField(u'Placa do Cavalo ou reboque',
-                          validators=[optional()], default='')
+                        validators=[optional()], default='')
     numeroConteiner = StringField(u'Número do contêiner',
-                          validators=[optional()], default='')
+                                  validators=[optional()], default='')
     cpfMotorista = StringField(u'CPF do Motorista',
-                          validators=[optional()], default='')
+                               validators=[optional()], default='')
     motoristas_de_risco = BooleanField('Motoristas de Risco', default=False)
+    motoristas_de_risco_select = SelectField('Motoristas de Risco', default='0')
     codigoRecinto = SelectField('Recinto Aduaneiro', default=-1)
     tempo_permanencia = IntegerField('Tempo entre entrada e saída', default=0)
     missao = SelectField('Missão do acesso ao Recinto', default=99)
@@ -283,3 +286,5 @@ class FormFiltroAPIRecintos(FlaskForm):
         self.missao.choices = [[99, 'Selecione']]
         if kwargs.get('missoes'):
             self.missao.choices.extend(kwargs.get('missoes'))
+        self.motoristas_de_risco_select.choices = [('0', 'Ignorar'), ('99', 'TODOS'),
+                                                   *[(k, v) for k, v in DescricaoRiscoMotorista.items()]]

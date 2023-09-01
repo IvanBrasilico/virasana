@@ -1,9 +1,17 @@
+import os
+from datetime import datetime
+
+import pandas as pd
 from ajna_commons.flask.log import logger
+from bhadrasana.models.apirecintos import AcessoVeiculo
+from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovrmanager import get_recintos_api
+from bhadrasana.views import get_user_save_path
 from flask import render_template, request, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 from virasana.forms.filtros import FormFiltroAPIRecintos
 from virasana.usecases.apirecintos_manager import get_eventos, Missao
+from werkzeug.utils import redirect
 
 
 def configure(app):
@@ -15,7 +23,7 @@ def configure(app):
         form.validate()
         eventos, count_missao = get_eventos(mongodb, session, form.start.data, form.end.data, form.placa.data,
                                             form.numeroConteiner.data, form.cpfMotorista.data,
-                                            form.motoristas_de_risco.data,
+                                            form.motoristas_de_risco_select.data,
                                             form.codigoRecinto.data, form.tempo_permanencia.data,
                                             Missao().get_descricao_missao(int(form.missao.data)))
         return eventos, count_missao
@@ -30,6 +38,32 @@ def configure(app):
         form = FormFiltroAPIRecintos(request.args)
         try:
             lista_eventos, count_missao = lista_eventos_html(mongodb, session, form)
+            if request.values.get('planilha'):
+                titulos=['recinto', 'missao',
+                         'motorista.cpf', 'motorista.nome', 'motorista.risco',
+                         'entrada.placa', 'entrada.numeroConteiner', 'entrada.cnpjTransportador',
+                         'entrada.numeroDeclaracao', 'entrada.numeroConhecimento', 'entrada.listaNfe',
+                         'saida.placa', 'saida.numeroConteiner', 'saida.cnpjTransportador',
+                         'saida.numeroDeclaracao', 'saida.numeroConhecimento', 'saida.listaNfe']
+                linhas = []
+                for evento in lista_eventos:
+                    motorista: Motorista = evento['motorista']
+                    entrada: AcessoVeiculo = evento['entrada']
+                    saida: AcessoVeiculo = evento['saida']
+                    linha = [evento['recinto'], evento['missao'],
+                             motorista.cpfMotorista, motorista.nomeMotorista, motorista.get_risco(),
+                             entrada.placa, entrada.numeroConteiner, entrada.cnpjTransportador, 
+                             entrada.numeroDeclaracao, entrada.numeroConhecimento, entrada.listaNfe,
+                             saida.placa, saida.numeroConteiner, saida.cnpjTransportador, 
+                             saida.numeroDeclaracao, saida.numeroConhecimento, saida.listaNfe]
+                    linhas.append(linha)
+                df = pd.DataFrame(linhas)
+                df.columns = titulos
+                out_filename = '{}_{}.xls'.format('PesquisaAPIRecintos_',
+                                                  datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
+                                                  )
+                df.to_excel(os.path.join(get_user_save_path(), out_filename), index=False)
+                return redirect('static/%s/%s' % (current_user.name, out_filename))
         except Exception as err:
             flash(err)
             logger.error(err, exc_info=True)

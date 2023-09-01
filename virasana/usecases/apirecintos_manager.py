@@ -178,15 +178,14 @@ def aplica_risco_motorista(q):
 def get_eventos(mongodb: Database, session,
                 datainicio: datetime, datafim: datetime,
                 placa='', numeroConteiner='', cpfMotorista='',
-                motoristas_de_risco=False, codigoRecinto='',
+                motoristas_de_risco_select='0', codigoRecinto='',
                 tempo_permanencia=0, missao=None):
-    print(f'motoristas_de_risco: {motoristas_de_risco} - {type(motoristas_de_risco)}')
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     print(datainicio, datafim)
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
     q = q.filter(AcessoVeiculo.direcao == 'E')
     q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto)
-    if motoristas_de_risco:
+    if motoristas_de_risco_select != '0':
         q = aplica_risco_motorista(q)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
     lista_eventos, count_missao = get_eventos_entradas(session, mongodb, lista_entradas, missao)
