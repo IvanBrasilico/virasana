@@ -50,8 +50,6 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto_origem):
     df_escaneamentos_obrigatorios = get_escaneamentos_obrigatorios(session.get_bind(), inicio, fim, porto_origem)
     # print(df_escaneamentos_obrigatorios)
     for row in df_escaneamentos_obrigatorios.itertuples(index=False):
-        if len(comimagem) >= 5:
-            break
         cemercante = row.numeroCEmercante
         lpais = session.query(Pais).filter(Pais.sigla == row.pais_porto_final).one()
         nome_pais_porto_final = f'{lpais.sigla} - {lpais.nome}'
