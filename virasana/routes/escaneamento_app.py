@@ -2,6 +2,7 @@ from datetime import date, timedelta, datetime, time
 
 import pandas as pd
 from ajna_commons.flask.log import logger
+from bhadrasana.models.apirecintos_risco import Pais
 from flask import render_template, request, flash
 from flask_login import login_required
 from virasana.forms.filtros import FormFiltroData
@@ -49,14 +50,22 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto_origem):
     df_escaneamentos_obrigatorios = get_escaneamentos_obrigatorios(session.get_bind(), inicio, fim, porto_origem)
     # print(df_escaneamentos_obrigatorios)
     for row in df_escaneamentos_obrigatorios.itertuples(index=False):
+        if len(comimagem) >= 5:
+            break
         cemercante = row.numeroCEmercante
-        pais_porto_final = row.pais_porto_final
-        pais_porto_baldeacao = row.pais_porto_baldeacao
+        lpais = session.query(Pais).filter(Pais.sigla == row.pais_porto_final).one()
+        nome_pais_porto_final = f'{lpais.sigla} - {lpais.nome}'
+        if row.pais_porto_baldeacao == row.pais_porto_final:
+            nome_pais_porto_baldeacao = nome_pais_porto_final
+        else:
+            lpais = session.query(Pais).filter(Pais.sigla == row.pais_porto_baldeacao).one()
+            nome_pais_porto_baldeacao = f'{lpais.sigla} - {lpais.nome}'
         itens = session.query(Item).filter(Item.numeroCEmercante == cemercante).all()
         for item in itens:
             imagens = get_imagens_container_data(mongodb, item.codigoConteiner, inicio_scan, fim_scan)
             if len(imagens) == 0:
-                semimagem.append((cemercante, item.codigoConteiner, pais_porto_final, pais_porto_baldeacao))
+                semimagem.append((cemercante, item.codigoConteiner,
+                                  nome_pais_porto_final, nome_pais_porto_baldeacao))
                 continue
             else:
                 vazio = True
@@ -65,9 +74,11 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto_origem):
                         vazio = False
                         break
                 if vazio:
-                    vazios.append((cemercante, item.codigoConteiner, pais_porto_final, pais_porto_baldeacao))
+                    vazios.append((cemercante, item.codigoConteiner,
+                                   nome_pais_porto_final, nome_pais_porto_baldeacao))
                     continue
-            comimagem.append((cemercante, item.codigoConteiner, pais_porto_final, pais_porto_baldeacao,
+            comimagem.append((cemercante, item.codigoConteiner,
+                              nome_pais_porto_final, nome_pais_porto_baldeacao,
                               imagens[0]['_id']))
     return semimagem, vazios, comimagem
 
