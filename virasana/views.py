@@ -37,6 +37,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
+from virasana.conf import APP_PATH
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
 from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
@@ -69,6 +70,15 @@ nav.init_app(app)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+
+def get_user_save_path(app):
+    user_save_path = os.path.join(APP_PATH,
+                                  app.config.get('STATIC_FOLDER', 'static'),
+                                  current_user.name)
+    if not os.path.exists(user_save_path):
+        os.mkdir(user_save_path)
+    return user_save_path
 
 
 def configure_app(mongodb, mongodb_risco, db_session):
@@ -1517,6 +1527,7 @@ def mynavbar():
                  'Outros',
                  View('Alertas', 'alertas'),
                  View('Conformidade', 'conformidade'),
+                 View('Confere escaneamentos', 'confere_escaneamento'),
                  View('Bagagens', 'bagagens'),
                  View('API Recintos', 'eventos'),
                  Separator(),

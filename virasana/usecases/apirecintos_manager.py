@@ -126,7 +126,7 @@ class Missao():
         return self.get_descricao_missao(7)  # Sem informações
 
 
-def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
+def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, motoristas_risco=None):
     lista_eventos = []
     count_missao = defaultdict(int)
     for entrada in lista_entradas:
@@ -146,7 +146,11 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None):
         # Recinto
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
         # Motorista
-        dict_eventos['motorista'] = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
+        motorista: Motorista = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
+        if motoristas_risco and motoristas_risco != '99':  # 99 = TODOS
+            if motorista.classificacao != motoristas_risco:
+                continue
+        dict_eventos['motorista'] = motorista
         # Entrada
         dict_eventos['entrada'] = entrada
         # Pesagem
@@ -188,7 +192,8 @@ def get_eventos(mongodb: Database, session,
     if motoristas_de_risco_select != '0':
         q = aplica_risco_motorista(q)
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
-    lista_eventos, count_missao = get_eventos_entradas(session, mongodb, lista_entradas, missao)
+    lista_eventos, count_missao = get_eventos_entradas(session, mongodb, lista_entradas,
+                                                       missao, motoristas_de_risco_select)
     if tempo_permanencia > 0:  # Filtrar por tempo de permanencia:
         lista_eventos = [evento for evento in lista_eventos
                          if evento.get('permanencia') and

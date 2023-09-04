@@ -8,12 +8,12 @@ from ajna_commons.flask.conf import tmpdir
 from ajna_commons.flask.log import logger
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
-from virasana.conf import APP_PATH
 from virasana.forms.filtros import FormFiltroBagagem, FormClassificacaoRisco
 from virasana.integracao.bagagens.regra_vermelho_portaria import e_canal_vermelho
 from virasana.integracao.bagagens.viajantesalchemy import DSI, ClassificacaoRisco, ClasseRisco, Pessoa
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.usecases.bagagens_manager import get_bagagens
+from virasana.views import get_user_save_path
 from werkzeug.utils import secure_filename, redirect
 
 seed(13)
@@ -76,14 +76,6 @@ def configure(app):
                                conteineres=conteineres,
                                oform=form)
 
-    def get_user_save_path():
-        user_save_path = os.path.join(APP_PATH,
-                                      app.config.get('STATIC_FOLDER', 'static'),
-                                      current_user.name)
-        if not os.path.exists(user_save_path):
-            os.mkdir(user_save_path)
-        return user_save_path
-
     def exporta_dsis(lista_bagagens, data_inicio):
         out_filename = 'ListaDSIs_{}.xlsx'.format(
             datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S')
@@ -108,7 +100,7 @@ def configure(app):
         df = df.drop_duplicates()
         start = datetime.combine(data_inicio, datetime.min.time())
         df = df[df['Data Registro'] >= start]
-        df.to_excel(os.path.join(get_user_save_path(), out_filename), index=False)
+        df.to_excel(os.path.join(get_user_save_path(app), out_filename), index=False)
         return out_filename
 
     @app.route('/bagagens', methods=['GET', 'POST'])

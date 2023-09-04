@@ -8,12 +8,13 @@ consulta e integração das imagens com outras bases.
 import ajna_commons.flask.log as log
 from ajna_commons.flask import api_login
 from ajna_commons.flask.flask_log import configure_applog
+from virasana.routes import escaneamento_app
 from sqlalchemy.orm import sessionmaker, scoped_session
 from virasana.db import mongodb, mysql, mongodb_risco
+from virasana.routes import apirecintos_app
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import imagens_app
-from virasana.routes import apirecintos_app
 from virasana.views import configure_app, csrf
 
 # from bhadrasana.models import db_session
@@ -28,6 +29,7 @@ apirecintos_app.configure(app)
 conformidade_app.configure(app)
 pyxvis_app.configure(app)
 imagens_app.configure(app)
+escaneamento_app.configure(app)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)

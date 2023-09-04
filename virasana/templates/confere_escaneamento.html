@@ -1,0 +1,117 @@
+{% extends "layout.html" %} {% block content %}{{super()}}
+<div id="main" class="container-fluid">
+    {% for field, errors in oform.errors.items() %}
+    <div class="alert alert-error row col-sm-12">
+        {{ oform[field].label }}: {{ ', '.join(errors) }}
+    </div>
+    {% endfor %}
+    <div id="top" class="row col-sm-12">
+        <form method="POST" id="formfiltrodata" action="confere_escaneamento">
+            <div class="col-sm-12">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="recinto" id="recinto" value=""/>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                    <h3>Confêrencia de escaneamentos obrigatórios da EXPO. Informe data início e fim da emissão do
+                        CE:</h3>
+                </div>
+                <div class="col-sm-4">
+                    <label for="date">Período de escaneamento</label>
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="start" value="{{oform.start.data}}"/>
+                    </div>
+                    <div class="col-sm-2">
+                        <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
+                    </div>
+                    <div class="col-sm-8">
+                        <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div id="list_semimagem" class="row">
+        <h4>Contêineres sem escaneanento: {{semimagem | length}}</h4>
+        <div class="table table-responsive col-sm-12">
+            <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+                <thead>
+                <tr>
+                    <th>CE</th>
+                    <th>Conteiner</th>
+                    <th>País do porto de destino</th>
+                    <th>País do porto de baldeação</th>
+                </tr>
+                </thead>
+                {% for row in semimagem %}
+                <tr>
+                    <td><a href="cemercante/{{row[0]}}">{{row[0]}}</a></td>
+                    <td><a href="files?numero={{row[1]}}">{{row[1]}}</a></td>
+                    <td>{{row[2]}}</td>
+                    <td>{{row[3]}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    <div id="list_vazios" class="row">
+        <h4>Contêineres somente com imagem de vazio: {{vazios | length}}</h4>
+        <div class="table table-responsive col-sm-12">
+            <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+                <thead>
+                <tr>
+                    <th>CE</th>
+                    <th>Conteiner</th>
+                    <th>País do porto de destino</th>
+                    <th>País do porto de baldeação</th>
+                </tr>
+                </thead>
+                {% for row in vazios %}
+                <tr>
+                    <td><a href="cemercante/{{row[0]}}">{{row[0]}}</a></td>
+                    <td><a href="files?numero={{row[1]}}">{{row[1]}}</a></td>
+                    <td>{{row[2]}}</td>
+                    <td>{{row[3]}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    <div id="list_comimagem" class="row">
+        <h4>Contêineres com imagem: {{comimagem | length}}</h4>
+        <div class="table table-responsive col-sm-12">
+            <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
+                <thead>
+                <tr>
+                    <th>CE</th>
+                    <th>Conteiner</th>
+                    <th>País do porto de destino</th>
+                    <th>País do porto de baldeação</th>
+                    <th>Imagem</th>
+                </tr>
+                </thead>
+                {% for row in comimagem %}
+                <tr>
+                    <td><a href="cemercante/{{row[0]}}">{{row[0]}}</a></td>
+                    <td><a href="files?numero={{row[1]}}">{{row[1]}}</a></td>
+                    <td>{{row[2]}}</td>
+                    <td>{{row[3]}}</td>
+                    <td><a href="file?_id={{row[4]}}" target="_BLANK">
+                        <img src="image/{{row[4]}}" width="auto" height="280"/></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2017
+    </div>
+</div>
+<!-- /#main -->
+{% endblock %} {% block scripts %} {{super()}}
+{% endblock %}
