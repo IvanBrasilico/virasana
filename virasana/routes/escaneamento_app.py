@@ -39,6 +39,13 @@ def get_escaneamentos_obrigatorios(engine, inicio, fim, porto_origem):
     return pd.read_sql(SQL_ESCANEAMENTOS, engine)
 
 
+def completa_nome_pais(session, sigla):
+    lpais = session.query(Pais).filter(Pais.sigla == sigla).one_or_none()
+    if lpais is None:
+        return sigla
+    return f'{lpais.sigla} - {lpais.nome}'
+
+
 def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto_origem):
     inicio_scan = datetime.combine(inicio - timedelta(days=10), time.min)
     fim_scan = datetime.combine(fim + timedelta(days=10), time.max)
@@ -51,13 +58,11 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto_origem):
     # print(df_escaneamentos_obrigatorios)
     for row in df_escaneamentos_obrigatorios.itertuples(index=False):
         cemercante = row.numeroCEmercante
-        lpais = session.query(Pais).filter(Pais.sigla == row.pais_porto_final).one()
-        nome_pais_porto_final = f'{lpais.sigla} - {lpais.nome}'
+        nome_pais_porto_final = completa_nome_pais(session, row.pais_porto_final)
         if row.pais_porto_baldeacao == row.pais_porto_final:
             nome_pais_porto_baldeacao = nome_pais_porto_final
         else:
-            lpais = session.query(Pais).filter(Pais.sigla == row.pais_porto_baldeacao).one()
-            nome_pais_porto_baldeacao = f'{lpais.sigla} - {lpais.nome}'
+            nome_pais_porto_baldeacao = completa_nome_pais(session, row.pais_porto_baldeacao)
         itens = session.query(Item).filter(Item.numeroCEmercante == cemercante).all()
         for item in itens:
             imagens = get_imagens_container_data(mongodb, item.codigoConteiner, inicio_scan, fim_scan)
