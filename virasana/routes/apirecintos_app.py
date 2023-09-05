@@ -72,6 +72,8 @@ def configure(app):
                         motorista: Motorista = evento['motorista']
                         entrada: AcessoVeiculo = evento['entrada']
                         saida: AcessoVeiculo = evento['saida']
+                        if saida is None:
+                            saida = AcessoVeiculo()
                         linha = [evento['recinto'], evento['missao'],
                                  motorista.cpf, motorista.nome, motorista.get_risco(),
                                  entrada.placa, entrada.numeroConteiner, entrada.cnpjTransportador,
@@ -82,7 +84,7 @@ def configure(app):
                     if len(linhas) > 0:
                         df = pd.DataFrame(linhas)
                         df.columns = titulos
-                        out_filename = '{}_{}.xls'.format('PesquisaAPIRecintos_',
+                        out_filename = '{}_{}.xlsx'.format('PesquisaAPIRecintos_',
                                                           datetime.strftime(datetime.now(), '%Y-%m-%dT%H-%M-%S'))
                         print(os.path.join(get_user_save_path(app), out_filename))
                         df.to_excel(os.path.join(get_user_save_path(app), out_filename), index=False)

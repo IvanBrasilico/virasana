@@ -17,7 +17,7 @@
                         CE:</h3>
                 </div>
                 <div class="col-sm-4">
-                    <label for="date">Período de escaneamento</label>
+                    <label for="date">Período de emissão do BL</label>
                 </div>
             </div>
             <div class="row">
@@ -37,6 +37,7 @@
     </div>
     <div id="list_semimagem" class="row">
         <h4>Contêineres sem escaneanento: {{semimagem | length}}</h4>
+        Critério: escaneamentos até 10 dias antes ou 10 dias depois da emissão do BL
         <div class="table table-responsive col-sm-12">
             <table class="inlineTable table table-striped table-bordered table-hover table-condensed table-responsive">
                 <thead>
