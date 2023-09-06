@@ -33,7 +33,7 @@ def get_escaneamentos_obrigatorios(engine, inicio, fim, porto_origem):
         (substring(c.portoDestFinal, 1, 2) IN (SELECT sigla FROM risco_paises WHERE escaneamento is True))
         OR 
         (substring(m.portoDescarregamento, 1, 2) IN (SELECT sigla FROM risco_paises WHERE escaneamento is True))
-        )
+        ) limit 5000
         '''.format(inicio, fim, porto_origem)
     # print(SQL_ESCANEAMENTOS)
     return pd.read_sql(SQL_ESCANEAMENTOS, engine)
@@ -44,7 +44,7 @@ def get_escaneamentos_obrigatorios_impo(engine, inicio, fim, porto_destino):
         SELECT c.numeroCEmercante, c.portoDestFinal as porto_final, m.portoDescarregamento as porto_baldeacao
         FROM conhecimentosresumo c INNER JOIN manifestosresumo m ON c.manifestoCE = m.numero
         WHERE c.dataEmissao between '{}' and '{}'
-        AND (c.portoDestFinal = '{}' or m.portoDescarregamento = '{}')
+        AND (c.portoDestFinal = '{}' or m.portoDescarregamento = '{}') limit 5000
         '''.format(inicio, fim, porto_destino, porto_destino)
     # print(SQL_ESCANEAMENTOS)
     return pd.read_sql(SQL_ESCANEAMENTOS, engine)
@@ -72,8 +72,6 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto, sentido='EXPO
                                                                             fim, porto)
     # print(df_escaneamentos_obrigatorios)
     for row in df_escaneamentos_obrigatorios.itertuples(index=False):
-        if len(comimagem) > 3:
-            break
         cemercante = row.numeroCEmercante
         nome_pais_porto_final = completa_nome_pais(session, row.porto_final)
         if row.porto_baldeacao == row.porto_final:
