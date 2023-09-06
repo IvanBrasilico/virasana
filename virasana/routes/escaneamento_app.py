@@ -43,7 +43,9 @@ def get_escaneamentos_obrigatorios_impo(engine, inicio, fim, porto_destino):
         '''
         SELECT c.numeroCEmercante, c.portoDestFinal as porto_final, m.portoDescarregamento as porto_baldeacao
         FROM conhecimentosresumo c INNER JOIN manifestosresumo m ON c.manifestoCE = m.numero
-        WHERE c.dataEmissao between '{}' and '{}'
+        INNER JOIN escalamanifestoresumo em ON em.manifesto = m.numero
+        INNER JOIN escalasresumo e ON e.numeroDaEscala = em.escala
+        WHERE e.dataPrevistaAtracacao between '{}' and '{}'
         AND c.tipoTrafego = '5'
         AND (c.portoDestFinal = '{}' or m.portoDescarregamento = '{}') limit 5000
         '''.format(inicio, fim, porto_destino, porto_destino)
