@@ -288,3 +288,21 @@ class FormFiltroAPIRecintos(FlaskForm):
             self.missao.choices.extend(kwargs.get('missoes'))
         self.motoristas_de_risco_select.choices = [('0', 'Ignorar'), ('99', 'TODOS'),
                                                    *[(k, v) for k, v in DescricaoRiscoMotorista.items()]]
+
+
+class FormFiltroEscaneamento(FlaskForm):
+    """Valida filtragem por datas
+
+    Usa wtforms para facilitar a validação dos campos de pesquisa da tela
+    search_files.html
+
+    """
+    start = DateField('Start', validators=[optional()])
+    end = DateField('End', validators=[optional()])
+    recinto = StringField(u'Nome do Recinto',
+                          validators=[optional()], default='')
+    sentido = SelectField(u'EXPO ou IMPO',
+                          validators=[optional()], default='EXPO')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sentido.choices = [['EXPO', 'EXPO'], ['IMPO', 'IMPO']]

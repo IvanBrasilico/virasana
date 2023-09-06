@@ -13,11 +13,15 @@
             </div>
             <div class="row">
                 <div class="col-sm-12">
-                    <h3>Confêrencia de escaneamentos obrigatórios da EXPO. Informe data início e fim da emissão do
-                        CE:</h3>
+                    <h3>Confêrencia de escaneamentos obrigatórios. Informe data início e fim da emissão do CE:</h3>
                 </div>
+            </div>
+            <div class="row">
                 <div class="col-sm-4">
                     <label for="date">Período de emissão do BL</label>
+                </div>
+                <div class="col-sm-8">
+                    <label for="sentido">Importação ou Exportação</label>
                 </div>
             </div>
             <div class="row">
@@ -28,7 +32,10 @@
                     <div class="col-sm-2">
                         <input class="form-control" type="date" name="end" value="{{oform.end.data}}"/>
                     </div>
-                    <div class="col-sm-8">
+                    <div class="col-sm-2">
+                        {{oform.sentido(class='form-control')}}
+                    </div>
+                    <div class="col-sm-6">
                         <input class="btn btn-default btn-info" type="submit" value="Filtrar"/>
                     </div>
                 </div>
@@ -44,8 +51,8 @@
                 <tr>
                     <th>CE</th>
                     <th>Conteiner</th>
-                    <th>País do porto de destino</th>
-                    <th>País do porto de baldeação</th>
+                    <th>Porto de destino</th>
+                    <th>Porto de baldeação</th>
                 </tr>
                 </thead>
                 {% for row in semimagem %}
@@ -67,8 +74,8 @@
                 <tr>
                     <th>CE</th>
                     <th>Conteiner</th>
-                    <th>País do porto de destino</th>
-                    <th>País do porto de baldeação</th>
+                    <th>Porto de destino</th>
+                    <th>Porto de baldeação</th>
                 </tr>
                 </thead>
                 {% for row in vazios %}
@@ -90,8 +97,8 @@
                 <tr>
                     <th>CE</th>
                     <th>Conteiner</th>
-                    <th>País do porto de destino</th>
-                    <th>País do porto de baldeação</th>
+                    <th>Porto de destino</th>
+                    <th>Porto de baldeação</th>
                     <th>Imagem</th>
                 </tr>
                 </thead>
