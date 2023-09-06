@@ -110,12 +110,10 @@
                 {% endif %}
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
-                <h4>Entrada</h4>
-                {{ entrada.placa }}
-                {{ entrada.dataHoraOcorrencia }}
+                <h4>Entrada {{entrada.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M')}}</h4>
+                Placa {{ entrada.placa }}
                 <br>
-                {{ entrada.cpfMotorista }}
-                {{ entrada.nomeMotorista }}
+                Motorista {{ entrada.cpfMotorista }} - {{ entrada.nomeMotorista }}
                 <br>
                 {{ entrada.numeroConteiner }}
                 {% if entrada.numeroDeclaracao %}
@@ -131,22 +129,20 @@
                 {% endif %}
                 {% set pesagem = evento["pesagem"] %}
                 {% if pesagem %}
-                <h4>Pesagem</h4>
-                {{ pesagem.dataHoraOcorrencia }}
-                <strong>Peso:</strong> {{ pesagem.pesoBrutoBalanca }}
+                <h4>Pesagem {{pesagem.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M')}}</h4>
+                Peso balança:{{pesagem.pesoBrutoBalanca}}
+                Tara:{{ pesagem.taraSemirreboque }}
+                Peso declarado:{{pesagem.pesoBrutoManifesto}}
                 {% endif %}
                 {% set inspecaonaoinvasiva = evento["inspecaonaoinvasiva"] %}
                 {% if inspecaonaoinvasiva %}
                 <h4>Escaneamento</h4>
-                {{ inspecaonaoinvasiva.dataHoraOcorrencia }}
+                {{ inspecaonaoinvasiva.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M') }}
                 {% endif %}
                 {% set saida = evento["saida"] %}
                 {% if saida %}
-                <h4>Saída</h4>
-                {{ saida.dataHoraOcorrencia }}
-                <br>
-                {{ saida.cpfMotorista }}
-                {{ saida.nomeMotorista }}
+                <h4>Saída {{ saida.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M') }}</h4>
+                Motorista {{ saida.cpfMotorista }} - {{ saida.nomeMotorista }}
                 <br>
                 {{ saida.numeroConteiner }}
                 {% if saida.numeroDeclaracao %}
