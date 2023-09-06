@@ -157,6 +157,28 @@
                 {% endif %}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 {% endif %}
+                <form method="POST" id="form_nova_ficha" action="/bhadrasana2/ovr" target="_blank">
+                    <input type="hidden" name="tipooperacao" value="2"/>
+                    <input type="hidden" name="recinto_id" value="{{evento.recinto}}"/>
+                    <input type="hidden" name="observacoes" value=
+                            "{{motorista.get_risco()}}
+                {{ conhecimento.descricao }}
+                Entrada {{entrada.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M')}}
+                Placa {{ entrada.placa }}
+                Motorista {{ entrada.cpfMotorista }} - {{ entrada.nomeMotorista }}
+                {{ entrada.numeroConteiner }}
+                {% if entrada.numeroDeclaracao %}
+                - {{ entrada.tipoDeclaracao }} - {{ entrada.numeroDeclaracao }}
+                {% endif %}
+                {% if entrada.numeroConhecimento %}
+                - {{ entrada.tipoConhecimento }} - {{ entrada.numeroConhecimento }}
+                {% endif %}
+                {% if entrada.listaNfe %}
+                Notas fiscais: {{ entrada.listaNfe }}"/>
+                    <button class="btn btn-danger" type="submit">
+                        Abrir Ficha
+                    </button>
+                </form>
             </div>
             <div class="col-sm-8">
                 <a href="file?_id={{evento.id_imagem}}" target="_BLANK">
@@ -209,6 +231,8 @@
     function clearMsg(img) {
         img.title = "";
     }
+
+
 
 
 
