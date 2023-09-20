@@ -91,7 +91,11 @@ def get_embarques_sem_imagem(mongodb, session, inicio, fim, porto, sentido='EXPO
             else:
                 vazio = True
                 for imagem in imagens:  # Procura imagem que não seja de vazio.
-                    if imagem['metadata']['predictions'][0]['vazio'] is False:
+                    evazio = True
+                    predictions = imagem['metadata'].get('predictions')
+                    if predictions and isinstance(predictions, list):
+                        evazio = predictions[0].get('vazio', True)
+                    if evazio is False:
                         vazio = False
                         break
                 if vazio:
