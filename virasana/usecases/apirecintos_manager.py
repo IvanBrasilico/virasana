@@ -147,7 +147,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, m
         dict_eventos['recinto'] = get_recinto_nome(session, entrada)
         # Motorista
         motorista: Motorista = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
-        if motoristas_risco and motoristas_risco != '99':  # 99 = TODOS
+        if motoristas_risco and not (motoristas_risco in ['0', '99']):  # 0 = Ignorar, 99 = TODOS
             if motorista.classificacao != motoristas_risco:
                 continue
         dict_eventos['motorista'] = motorista
