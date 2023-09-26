@@ -160,8 +160,9 @@
                 <form method="POST" id="form_nova_ficha" action="/bhadrasana2/ovr" target="_blank">
                     <input type="hidden" name="tipooperacao" value="2"/>
                     <input type="hidden" name="recinto_id" value="{{evento.recinto}}"/>
-                    <input type="hidden" name="observacoes" value=
-                            "{{motorista.get_risco()}}">
+                    {% if motorista %}
+                    <input type="hidden" name="observacoes" value="{{motorista.get_risco()}}">
+                    {% endif %}
                     <button class="btn btn-danger" type="submit">
                         Abrir Ficha
                     </button>
@@ -218,6 +219,7 @@
     function clearMsg(img) {
         img.title = "";
     }
+
 
 
 
