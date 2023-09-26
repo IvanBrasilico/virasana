@@ -38,8 +38,16 @@ def configure(app):
                 pesagem = PesagemVeiculo()
             if saida is None:
                 saida = AcessoVeiculo()
+            if motorista is None:
+                motorista_cpf = ''
+                motorista_nome = ''
+                motorista_risco = ''
+            else:
+                motorista_cpf = motorista.cpf
+                motorista_nome = motorista.nome
+                motorista_risco = motorista.get_risco()
             linha = [evento['recinto'], evento['missao'],
-                     motorista.cpf, motorista.nome, motorista.get_risco(),
+                     motorista_cpf, motorista_nome, motorista_risco,
                      entrada.dataHoraOcorrencia,
                      entrada.placa, entrada.numeroConteiner, entrada.cnpjTransportador,
                      entrada.numeroDeclaracao, entrada.numeroConhecimento, entrada.listaNfe,
