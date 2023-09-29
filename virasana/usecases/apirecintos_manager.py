@@ -3,6 +3,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
+import pandas as pd
+
 sys.path.append('../bhadrasana2')
 sys.path.append('.')
 sys.path.append('virasana')
@@ -199,6 +201,53 @@ def get_eventos(mongodb: Database, session,
                          if evento.get('permanencia') and
                          evento['permanencia'].seconds > (tempo_permanencia * 60)]
     return lista_eventos, count_missao
+
+
+def monta_planilha_apirecintos(lista_eventos):
+    titulos = ['recinto', 'missao',
+               'motorista.cpf', 'motorista.nome', 'motorista.risco',
+               'entrada.dataHoraOcorrencia',
+               'entrada.placa', 'entrada.numeroConteiner', 'entrada.cnpjTransportador',
+               'entrada.numeroDeclaracao', 'entrada.numeroConhecimento', 'entrada.listaNfe',
+               'pesagem.dataHoraOcorrencia', 'pesagem.taraSemirreboque',
+               'pesagem.pesoBrutoManifesto', 'pesagem.pesoBrutoBalanca',
+               'saida.dataHoraOcorrencia',
+               'saida.placa', 'saida.numeroConteiner', 'saida.cnpjTransportador',
+               'saida.numeroDeclaracao', 'saida.numeroConhecimento', 'saida.listaNfe']
+    linhas = []
+    for evento in lista_eventos:
+        motorista: Motorista = evento['motorista']
+        entrada: AcessoVeiculo = evento['entrada']
+        pesagem: PesagemVeiculo = evento.get('pesagem', PesagemVeiculo())
+        saida: AcessoVeiculo = evento.get('saida', AcessoVeiculo())
+        if pesagem is None:
+            pesagem = PesagemVeiculo()
+        if saida is None:
+            saida = AcessoVeiculo()
+        if motorista is None:
+            motorista_cpf = ''
+            motorista_nome = ''
+            motorista_risco = ''
+        else:
+            motorista_cpf = motorista.cpf
+            motorista_nome = motorista.nome
+            motorista_risco = motorista.get_risco()
+        linha = [evento['recinto'], evento['missao'],
+                 motorista_cpf, motorista_nome, motorista_risco,
+                 entrada.dataHoraOcorrencia,
+                 entrada.placa, entrada.numeroConteiner, entrada.cnpjTransportador,
+                 entrada.numeroDeclaracao, entrada.numeroConhecimento, entrada.listaNfe,
+                 pesagem.dataHoraOcorrencia, pesagem.taraSemirreboque,
+                 pesagem.pesoBrutoManifesto, pesagem.pesoBrutoBalanca,
+                 saida.dataHoraOcorrencia,
+                 saida.placa, saida.numeroConteiner, saida.cnpjTransportador,
+                 saida.numeroDeclaracao, saida.numeroConhecimento, saida.listaNfe]
+        linhas.append(linha)
+    if len(linhas) > 0:
+        df = pd.DataFrame(linhas)
+        df.columns = titulos
+        return df
+    return None
 
 
 if __name__ == '__main__':

@@ -9,7 +9,7 @@ from bhadrasana.models.ovrmanager import get_recintos_api
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
 from virasana.forms.filtros import FormFiltroAPIRecintos
-from virasana.usecases.apirecintos_manager import get_eventos, Missao
+from virasana.usecases.apirecintos_manager import get_eventos, Missao, monta_planilha_apirecintos
 from virasana.views import get_user_save_path
 from werkzeug.utils import redirect
 
@@ -17,51 +17,6 @@ from werkzeug.utils import redirect
 def configure(app):
     """Configura rotas para evento."""
 
-    def monta_planilha_apirecintos(lista_eventos):
-        titulos = ['recinto', 'missao',
-                   'motorista.cpf', 'motorista.nome', 'motorista.risco',
-                   'entrada.dataHoraOcorrencia',
-                   'entrada.placa', 'entrada.numeroConteiner', 'entrada.cnpjTransportador',
-                   'entrada.numeroDeclaracao', 'entrada.numeroConhecimento', 'entrada.listaNfe',
-                   'pesagem.dataHoraOcorrencia', 'pesagem.taraSemirreboque',
-                   'pesagem.pesoBrutoManifesto', 'pesagem.pesoBrutoBalanca',
-                   'saida.dataHoraOcorrencia',
-                   'saida.placa', 'saida.numeroConteiner', 'saida.cnpjTransportador',
-                   'saida.numeroDeclaracao', 'saida.numeroConhecimento', 'saida.listaNfe']
-        linhas = []
-        for evento in lista_eventos:
-            motorista: Motorista = evento['motorista']
-            entrada: AcessoVeiculo = evento['entrada']
-            pesagem: PesagemVeiculo = evento.get('pesagem', PesagemVeiculo())
-            saida: AcessoVeiculo = evento.get('saida', AcessoVeiculo())
-            if pesagem is None:
-                pesagem = PesagemVeiculo()
-            if saida is None:
-                saida = AcessoVeiculo()
-            if motorista is None:
-                motorista_cpf = ''
-                motorista_nome = ''
-                motorista_risco = ''
-            else:
-                motorista_cpf = motorista.cpf
-                motorista_nome = motorista.nome
-                motorista_risco = motorista.get_risco()
-            linha = [evento['recinto'], evento['missao'],
-                     motorista_cpf, motorista_nome, motorista_risco,
-                     entrada.dataHoraOcorrencia,
-                     entrada.placa, entrada.numeroConteiner, entrada.cnpjTransportador,
-                     entrada.numeroDeclaracao, entrada.numeroConhecimento, entrada.listaNfe,
-                     pesagem.dataHoraOcorrencia, pesagem.taraSemirreboque,
-                     pesagem.pesoBrutoManifesto, pesagem.pesoBrutoBalanca,
-                     saida.dataHoraOcorrencia,
-                     saida.placa, saida.numeroConteiner, saida.cnpjTransportador,
-                     saida.numeroDeclaracao, saida.numeroConhecimento, saida.listaNfe]
-            linhas.append(linha)
-        if len(linhas) > 0:
-            df = pd.DataFrame(linhas)
-            df.columns = titulos
-            return df
-        return None
 
     def lista_eventos_html(mongodb, session, form: FormFiltroAPIRecintos):
         # start = datetime.combine(form.start.data, datetime.min.time())
