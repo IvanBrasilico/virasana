@@ -17,22 +17,22 @@ from integracao.mercante.mercantealchemy import Conhecimento
 from pymongo.database import Database
 
 
-def get_pesagem_entrada(session, entrada: AcessoVeiculo) -> PesagemVeiculo:
+def get_pesagem_entrada(session, entrada: AcessoVeiculo, datasaida) -> PesagemVeiculo:
     q = session.query(PesagemVeiculo).filter(PesagemVeiculo.placa == entrada.placa)
     q = q.filter(PesagemVeiculo.codigoRecinto == entrada.codigoRecinto)
     q = q.filter(PesagemVeiculo.dataHoraOcorrencia.between(
-        entrada.dataHoraOcorrencia, entrada.dataHoraOcorrencia + timedelta(hours=12)
+        entrada.dataHoraOcorrencia, datasaida
     )).order_by(PesagemVeiculo.dataHoraOcorrencia)
     return q.first()
 
 
-def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo) -> Optional[InspecaoNaoInvasiva]:
+def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo, datasaida) -> Optional[InspecaoNaoInvasiva]:
     if not entrada.numeroConteiner:
         return None
     q = session.query(InspecaoNaoInvasiva).filter(InspecaoNaoInvasiva.numeroConteiner == entrada.numeroConteiner)
     q = q.filter(InspecaoNaoInvasiva.codigoRecinto == entrada.codigoRecinto)
     q = q.filter(InspecaoNaoInvasiva.dataHoraOcorrencia.between(
-        entrada.dataHoraOcorrencia, entrada.dataHoraOcorrencia + timedelta(hours=12)
+        entrada.dataHoraOcorrencia, datasaida
     )).order_by(InspecaoNaoInvasiva.dataHoraOcorrencia)
     return q.first()
 
@@ -52,7 +52,7 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     # Procura escaneamentos do contêiner pela data do escaneamento.
     # Se não tiver esta data, procura até X horas depois da entrada ou X horas antes da saída
     dataminima = dataentradaouescaneamento - timedelta(hours=3)
-    datamaxima = datasaida + timedelta(hours=6)
+    datamaxima = datasaida
     grid_data = mongodb['fs.files'].find_one(
         {'metadata.numeroinformado': numeroConteiner,
          'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
@@ -133,7 +133,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, m
     count_missao = defaultdict(int)
     for entrada in lista_entradas:
         dataentradaouescaneamento = entrada.dataHoraOcorrencia
-        datasaida = dataentradaouescaneamento
+        datasaida = dataentradaouescaneamento + timedelta(hours=12)
         numeroConteiner = entrada.numeroConteiner
         dict_eventos = {}
         # Missão
@@ -155,20 +155,20 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, m
         dict_eventos['motorista'] = motorista
         # Entrada
         dict_eventos['entrada'] = entrada
-        # Pesagem
-        dict_eventos['pesagem'] = get_pesagem_entrada(session, entrada)
-        # InspecaoNaoInvasiva
-        inspecaonaoinvasiva = get_inspecaonaoinvasiva_entrada(session, entrada)
-        dict_eventos['inspecaonaoinvasiva'] = inspecaonaoinvasiva
-        if inspecaonaoinvasiva:
-            dataentradaouescaneamento = inspecaonaoinvasiva.dataHoraOcorrencia
-            numeroConteiner = inspecaonaoinvasiva.numeroConteiner
         # Saída
         saida = get_saida_entrada(session, entrada)
         if saida:
             datasaida = saida.dataHoraOcorrencia
             dict_eventos['permanencia'] = saida.dataHoraOcorrencia - entrada.dataHoraOcorrencia
         dict_eventos['saida'] = saida
+        # Pesagem
+        dict_eventos['pesagem'] = get_pesagem_entrada(session, entrada, datasaida)
+        # InspecaoNaoInvasiva
+        inspecaonaoinvasiva = get_inspecaonaoinvasiva_entrada(session, entrada, datasaida)
+        dict_eventos['inspecaonaoinvasiva'] = inspecaonaoinvasiva
+        if inspecaonaoinvasiva:
+            dataentradaouescaneamento = inspecaonaoinvasiva.dataHoraOcorrencia
+            numeroConteiner = inspecaonaoinvasiva.numeroConteiner
         # Imagem do Ajna
         dict_eventos['id_imagem'] = get_id_imagem(mongodb, numeroConteiner,
                                                   dataentradaouescaneamento, datasaida)
