@@ -65,12 +65,14 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     return ''
 
 
-def get_recinto_nome(session, entrada: AcessoVeiculo) -> str:
+def get_recinto_nome(session, entrada: AcessoVeiculo):
     recinto_nome = entrada.codigoRecinto
+    recinto_id = 99999  # Alfândega
     recinto = session.query(Recinto).filter(Recinto.cod_siscomex == entrada.codigoRecinto).one_or_none()
     if recinto:
         recinto_nome = recinto_nome + ' - ' + recinto.nome
-    return recinto_nome
+        recinto_id = recinto.id
+    return recinto_nome, recinto_id
 
 
 def aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto):
@@ -146,7 +148,7 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, m
         dict_eventos['missao'] = missao
         count_missao[missao] += 1
         # Recinto
-        dict_eventos['recinto'] = get_recinto_nome(session, entrada)
+        dict_eventos['recinto'], dict_eventos['recinto_id'] = get_recinto_nome(session, entrada)
         # Motorista
         motorista: Motorista = session.query(Motorista).filter(Motorista.cpf == entrada.cpfMotorista).one_or_none()
         if motoristas_risco and not (motoristas_risco in ['0', '99']):  # 0 = Ignorar, 99 = TODOS

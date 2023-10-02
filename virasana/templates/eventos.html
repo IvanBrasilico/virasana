@@ -159,9 +159,12 @@
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 <form method="POST" id="form_nova_ficha" action="/bhadrasana2/ovr" target="_blank">
                     <input type="hidden" name="tipooperacao" value="2"/>
-                    <input type="hidden" name="recinto_id" value="{{evento.recinto}}"/>
+                    <input type="hidden" name="recinto_id" value="{{evento.recinto_id}}"/>
                     {% if motorista %}
-                    <input type="hidden" name="observacoes" value="{{motorista.get_risco()}}">
+                    <input type="hidden" name="observacoes" value="{{motorista.get_risco()}}"/>
+                    {% endif %}
+                    {% if conhecimento %}
+                    <input type="hidden" name="numeroCEmercante" value="{{conhecimento.id}}"/>
                     {% endif %}
                     <button class="btn btn-danger" type="submit">
                         Abrir Ficha
@@ -219,6 +222,7 @@
     function clearMsg(img) {
         img.title = "";
     }
+
 
 
 
