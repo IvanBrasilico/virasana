@@ -166,6 +166,9 @@
                     {% if conhecimento %}
                     <input type="hidden" name="numeroCEmercante" value="{{conhecimento.id}}"/>
                     {% endif %}
+                    {% if entrada.numeroDeclaracao %}
+                    <input type="hidden" name="numero" value="{{entrada.numeroDeclaracao}}"/>
+                    {% endif %}
                     <button class="btn btn-danger" type="submit">
                         Abrir Ficha
                     </button>
@@ -222,6 +225,7 @@
     function clearMsg(img) {
         img.title = "";
     }
+
 
 
 
