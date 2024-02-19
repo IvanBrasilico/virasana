@@ -53,13 +53,15 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     # Se não tiver esta data, procura até X horas depois da entrada ou X horas antes da saída
     dataminima = dataentradaouescaneamento - timedelta(hours=3)
     datamaxima = datasaida
+    print({'metadata.numeroinformado': numeroConteiner,
+         'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
     grid_data = mongodb['fs.files'].find_one(
         {'metadata.numeroinformado': numeroConteiner,
          'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
     if not grid_data:
         grid_data = mongodb['fs.files'].find_one(
             {'metadata.numeroinformado': numeroConteiner,
-             'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
+             'metadata.dataescaneamento': {'$gte': dataminima}})
     if grid_data:
         return grid_data.get('_id')
     return ''
