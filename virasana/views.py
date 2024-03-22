@@ -898,7 +898,7 @@ def recupera_user_filtros():
         filtros[current_user.id] = user_filtros
     if user_filtros:  # Adiciona filtro personalizado se houver
         for campo, valor in user_filtros.items():
-            filtro[campo] = valor
+            filtro[campo] = {'$regex': valor, '$options': 'i'}
     return filtro, user_filtros
 
 
