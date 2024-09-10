@@ -11,9 +11,9 @@ setup(
     packages=find_packages(),
     install_requires=[
         'chardet',
-        'Celery',
+        'celery',
         'defusedxml',
-        'Flask',
+        'Flask==1.1.4',
         'Flask-BootStrap',
         'Flask-Login',
         'Flask-cors',
@@ -22,6 +22,7 @@ setup(
         'Flask-session',
         'Flask-wtf',
         'gunicorn',
+        'lxml',
         'matplotlib',
         'marshmallow==3.2.2',
         'marshmallow-sqlalchemy==0.19',
@@ -36,10 +37,13 @@ setup(
         'redis',
         'requests',
         'scipy',
-        'sklearn',
+        'scikit-learn',
         'sqlalchemy==1.3.24',
         'selenium',
         'xlrd',
+        'wtforms==2.3.3',
+        'markupsafe==1.1.1',
+
     ],
     dependency_links=[
         'git+https://github.com/IvanBrasilico/ajna_commons.git#egg=ajna_commons-0.0.1'
