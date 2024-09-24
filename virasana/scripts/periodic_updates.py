@@ -36,7 +36,7 @@ from virasana.models import anomalia_lote
 from virasana.scripts.gera_indexes import gera_indexes
 from virasana.scripts.predictionsupdate import predictions_update2
 from virasana.scripts.tfservingupdate import tfs_predictions_update
-from virasana.scripts import conformidadeupdate
+from virasana.scripts import conformidadeupdate, sivana_update
 
 def get_token(session, url):
     """Faz um get na url e tenta encontrar o csrf_token na resposta."""
@@ -138,6 +138,15 @@ def periodic_updates(db, connection, lote=2000):
     except Exception as err:
         logger.error(err, exc_info=True)
 
+
+    try:
+        sivana_update.update(connection)
+    except Exception as err:
+        logger.error(err, exc_info=True)
+
+
+
+    
 
 if __name__ == '__main__':
     os.environ['DEBUG'] = '1'

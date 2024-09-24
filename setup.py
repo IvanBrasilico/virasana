@@ -32,6 +32,7 @@ setup(
         'pillow',
         'pymongo',
         'pymysql',
+        'python-dotenv',
         'raven',
         'redis',
         'requests',
