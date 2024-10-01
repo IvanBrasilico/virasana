@@ -63,7 +63,7 @@ def update(connection):
     payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
     print(payload)
     r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
-             pkcs12_password=SENHA_PCKS_SIVANA, json=payload) #, verify=False)
+             pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
     if r.status_code != 200:
         logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
     else:
