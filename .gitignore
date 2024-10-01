@@ -170,3 +170,5 @@ jupapi.info
 /virasana/integracao/bagagens/viajantes_relatorio.txt
 /viajantes_relatorio.txt
 /relatorio.xlsx
+*.p12
+ultimo_id_transmitido.txt
