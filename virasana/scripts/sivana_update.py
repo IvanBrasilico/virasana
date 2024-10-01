@@ -75,7 +75,7 @@ def update(connection):
 
 if __name__ == '__main__':
     URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
-    PKCS12_FILENAME = 'C:/Users/25052288840/Downloads/apirecintos1.p12'
+    PKCS12_FILENAME = './apirecintos1.p12'
     SENHA_PCKS_SIVANA = os.environ['SENHA_PCKS_SIVANA']
     os.environ['DEBUG'] = '1'
     logger.setLevel(logging.DEBUG)
