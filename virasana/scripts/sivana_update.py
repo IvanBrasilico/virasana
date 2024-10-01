@@ -75,6 +75,9 @@ def update(connection):
 
 
 if __name__ == '__main__':
+    import ssl
+
+    ssl._create_default_https_context = ssl._create_unverified_context
     URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
     PKCS12_FILENAME = './apirecintos1.p12'
     os.environ['DEBUG'] = '1'

@@ -37,6 +37,7 @@ setup(
         'raven',
         'redis',
         'requests',
+        'requests-pkcs12',
         'scipy',
         'scikit-learn',
         'sqlalchemy==1.3.24',
