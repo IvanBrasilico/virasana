@@ -140,7 +140,8 @@ def periodic_updates(db, connection, lote=2000):
 
 
     try:
-        sivana_update.update(connection)
+        logger.info('Fazendo UPLOAD dos AcessoVeiculo para Sivana')
+        # sivana_update.update(connection)
     except Exception as err:
         logger.error(err, exc_info=True)
 

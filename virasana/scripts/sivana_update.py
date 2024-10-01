@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 from dotenv import load_dotenv  # TODO: COLOCAR NO AJNA COMMONS
 
@@ -58,7 +59,7 @@ def update(connection):
                                           autoflush=False,
                                           bind=connection))
     ultimo_id = le_ultimo_id_transmitido()
-    acessos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id > ultimo_id).limit(100).all()
+    acessos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id > ultimo_id).limit(500).all()
     passagens = [acesso.to_sivana() for acesso in acessos]
     payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
     print(payload)
@@ -75,13 +76,22 @@ def update(connection):
 
 
 if __name__ == '__main__':
-    import ssl
-
-    ssl._create_default_https_context = ssl._create_unverified_context
-    ssl._https_verify_certificates(enable=False)
-    URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
+    # URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
+    URL_API_SIVANA = 'https://sivana.rfb.gov.br/prod/sivana/rest/upload'
     PKCS12_FILENAME = './apirecintos1.p12'
     os.environ['DEBUG'] = '1'
     logger.setLevel(logging.DEBUG)
     connection = create_engine(SQL_URI)
+    s0 = time.time()
+    counter = 1
     update(connection)
+    while True:
+        logger.info('Dormindo 1 minuto... ')
+        logger.info('Tempo decorrido %s segundos.' % (time.time() - s0))
+        time.sleep(10)
+        if time.time() - s0 > 60:
+            logger.info('Chamada periódica rodada %s' % counter)
+            counter += 1
+            update(connection)
+            s0 = time.time()
+
