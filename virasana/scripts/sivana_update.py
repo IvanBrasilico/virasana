@@ -53,6 +53,7 @@ def grava_ultimo_id_transmitido(novo_id):
 
 
 def update(connection):
+    SENHA_PCKS_SIVANA = os.environ['SENHA_PCKS_SIVANA']
     session = scoped_session(sessionmaker(autocommit=False,
                                           autoflush=False,
                                           bind=connection))
@@ -62,7 +63,7 @@ def update(connection):
     payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
     print(payload)
     r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
-             pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
+             pkcs12_password=SENHA_PCKS_SIVANA, json=payload) #, verify=False)
     if r.status_code != 200:
         logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
     else:
@@ -76,7 +77,6 @@ def update(connection):
 if __name__ == '__main__':
     URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
     PKCS12_FILENAME = './apirecintos1.p12'
-    SENHA_PCKS_SIVANA = os.environ['SENHA_PCKS_SIVANA']
     os.environ['DEBUG'] = '1'
     logger.setLevel(logging.DEBUG)
     connection = create_engine(SQL_URI)
