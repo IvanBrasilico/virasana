@@ -58,21 +58,24 @@ def update(connection):
     session = scoped_session(sessionmaker(autocommit=False,
                                           autoflush=False,
                                           bind=connection))
-    ultimo_id = le_ultimo_id_transmitido()
-    acessos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id > ultimo_id).limit(500).all()
-    passagens = [acesso.to_sivana() for acesso in acessos]
-    payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
-    print(payload)
-    r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
-             pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
-    if r.status_code != 200:
-        logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
-    else:
-        # Verifica se houve acessos e pega o maior ID
-        if acessos and len(acessos) > 0:
-            maior_id = max(acesso.id for acesso in acessos)
-            # Atualiza o arquivo com o maior ID encontrado
-            grava_ultimo_id_transmitido(maior_id)
+    try:
+        ultimo_id = le_ultimo_id_transmitido()
+        acessos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id > ultimo_id).limit(500).all()
+        passagens = [acesso.to_sivana() for acesso in acessos]
+        payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
+        print(payload)
+        r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
+                 pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
+        if r.status_code != 200:
+            logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
+        else:
+            # Verifica se houve acessos e pega o maior ID
+            if acessos and len(acessos) > 0:
+                maior_id = max(acesso.id for acesso in acessos)
+                # Atualiza o arquivo com o maior ID encontrado
+                grava_ultimo_id_transmitido(maior_id)
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':
