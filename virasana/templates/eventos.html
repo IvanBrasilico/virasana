@@ -151,10 +151,20 @@
                 {% if saida.numeroConhecimento %}
                 - {{ saida.tipoConhecimento }} - {{ saida.numeroConhecimento }}
                 {% endif %}
+
                 {% if saida.listaNfe %}
                 <br>
                 Notas Fiscais: {{ saida.listaNfe }}
                 {% endif %}
+                {% endif %}
+                {% if lista_embarquedesembarque %}
+                    {% for embarquedesembarque in lista_embarquedesembarque %}
+                       {{ embarquedesembarque.dataHoraOcorrencia }} -
+                       {{ embarquedesembarque.embarqueDesembarque }} -
+                       {{ embarquedesembarque.codigoRecinto }} -
+                       {{ embarquedesembarque.escala }} -
+                       {{ embarquedesembarque.viagem }}
+                    {% endfor %}
                 {% endif %}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 <form method="POST" id="form_nova_ficha" action="/bhadrasana2/ovr" target="_blank">

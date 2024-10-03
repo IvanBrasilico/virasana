@@ -1,15 +1,17 @@
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 
 import pandas as pd
+
+from ajna_commons.flask.log import logger
 
 sys.path.append('../bhadrasana2')
 sys.path.append('.')
 sys.path.append('virasana')
 
-from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva
+from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, PesagemVeiculo, InspecaoNaoInvasiva
 from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovr import Recinto
 from bhadrasana.models.virasana_manager import get_conhecimento
@@ -37,6 +39,22 @@ def get_inspecaonaoinvasiva_entrada(session, entrada: AcessoVeiculo, datasaida) 
     return q.first()
 
 
+def get_embarquesdesembarques_entrada(session, entrada: AcessoVeiculo, datasaida) -> List[EmbarqueDesembarque]:
+    if not entrada.numeroConteiner:
+        return []
+    # IMPO Desembarque ocorre alguns dias ANTES da entrada do caminhão que vai sair com o contêiner
+    # EXPO Embarque ocorre alguns dias DEPOIS da saída do caminhão que trouxe o contêiner
+    # é difícil capturar o embarquedesembarque do fluxo. Por outro lado, pode ser que seja importante
+    # saber embarques e desembarques anteriores e posteriores, portanto vamos trazer uma lista
+    q = session.query(EmbarqueDesembarque).filter(EmbarqueDesembarque.numeroConteiner == entrada.numeroConteiner)
+    q = q.filter(EmbarqueDesembarque.codigoRecinto == entrada.codigoRecinto)
+    q = q.filter(EmbarqueDesembarque.dataHoraOcorrencia.between(
+        entrada.dataHoraOcorrencia - timedelta(days=60),
+        entrada.dataHoraOcorrencia + timedelta(days=60)
+    )).order_by(EmbarqueDesembarque.dataHoraOcorrencia)
+    return q.first()
+
+
 def get_saida_entrada(session, entrada: AcessoVeiculo) -> AcessoVeiculo:
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
     q = q.filter(AcessoVeiculo.codigoRecinto == entrada.codigoRecinto)
@@ -54,7 +72,7 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     dataminima = dataentradaouescaneamento - timedelta(hours=3)
     datamaxima = datasaida
     print({'metadata.numeroinformado': numeroConteiner,
-         'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
+           'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
     grid_data = mongodb['fs.files'].find_one(
         {'metadata.numeroinformado': numeroConteiner,
          'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
@@ -132,7 +150,8 @@ class Missao():
         return self.get_descricao_missao(7)  # Sem informações
 
 
-def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, motoristas_risco=None):
+def get_eventos_entradas(session, mongodb, lista_entradas,
+                         filtra_missao=None, motoristas_risco=None):
     lista_eventos = []
     count_missao = defaultdict(int)
     for entrada in lista_entradas:
@@ -173,6 +192,8 @@ def get_eventos_entradas(session, mongodb, lista_entradas, filtra_missao=None, m
         if inspecaonaoinvasiva:
             dataentradaouescaneamento = inspecaonaoinvasiva.dataHoraOcorrencia
             numeroConteiner = inspecaonaoinvasiva.numeroConteiner
+        embarquesdesembarques = get_embarquesdesembarques_entrada(session, entrada, datasaida)
+        dict_eventos['lista_embarquedesembarque'] = embarquesdesembarques
         # Imagem do Ajna
         dict_eventos['id_imagem'] = get_id_imagem(mongodb, numeroConteiner,
                                                   dataentradaouescaneamento, datasaida)
@@ -191,7 +212,7 @@ def get_eventos(mongodb: Database, session,
                 motoristas_de_risco_select='0', codigoRecinto='',
                 tempo_permanencia=0, missao=None):
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
-    print(datainicio, datafim)
+    logger.info(datainicio, datafim)
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
     q = q.filter(AcessoVeiculo.direcao == 'E')
     q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto)

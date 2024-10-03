@@ -1,22 +1,19 @@
 import os
 from datetime import datetime
 
-import pandas as pd
-from ajna_commons.flask.log import logger
-from bhadrasana.models.apirecintos import AcessoVeiculo, PesagemVeiculo
-from bhadrasana.models.apirecintos_risco import Motorista
-from bhadrasana.models.ovrmanager import get_recintos_api
 from flask import render_template, request, flash
 from flask_login import login_required, current_user
+from werkzeug.utils import redirect
+
+from ajna_commons.flask.log import logger
+from bhadrasana.models.ovrmanager import get_recintos_api
 from virasana.forms.filtros import FormFiltroAPIRecintos
 from virasana.usecases.apirecintos_manager import get_eventos, Missao, monta_planilha_apirecintos
 from virasana.views import get_user_save_path
-from werkzeug.utils import redirect
 
 
 def configure(app):
     """Configura rotas para evento."""
-
 
     def lista_eventos_html(mongodb, session, form: FormFiltroAPIRecintos):
         # start = datetime.combine(form.start.data, datetime.min.time())
