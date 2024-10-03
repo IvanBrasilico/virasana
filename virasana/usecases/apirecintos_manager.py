@@ -212,7 +212,7 @@ def get_eventos(mongodb: Database, session,
                 motoristas_de_risco_select='0', codigoRecinto='',
                 tempo_permanencia=0, missao=None):
     q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
-    logger.info(datainicio, datafim)
+    logger.info(f'get_eventos Início: {datainicio} Fim: {datafim}')
     q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
     q = q.filter(AcessoVeiculo.direcao == 'E')
     q = aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto)
