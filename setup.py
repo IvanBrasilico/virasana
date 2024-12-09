@@ -14,7 +14,7 @@ setup(
         'celery',
         'click==7.1.2',
         'defusedxml',
-        'Flask==1.1.4',
+        'Flask==2.2.5',
         'Flask-BootStrap',
         'Flask-Login',
         'Flask-cors',
