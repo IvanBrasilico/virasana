@@ -43,7 +43,6 @@ setup(
         'scikit-learn',
         'sqlalchemy==1.3.24',
         'selenium',
-        'urllib==1.26.6',
         'xlrd',
         'wtforms==2.3.3',
         'markupsafe==1.1.1',
