@@ -11,7 +11,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         'chardet',
-        'celery',
         'click==7.1.2',
         'defusedxml',
         'Flask==1.1.4',
