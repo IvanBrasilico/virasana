@@ -173,3 +173,4 @@ jupapi.info
 *.p12
 ultimo_id_transmitido.txt
 /bhadrasana/*
+/APS.json

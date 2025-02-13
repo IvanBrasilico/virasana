@@ -44,10 +44,10 @@ class TratamentoLPR:
 
     def get(self, url):
         '''
-        Acopla o requests na classe, pois esta tem conhecimento da autenticação
-        Com o tempo, confirmar se é necessário este acoplamente
+        Acopla o requests e o xmletree na classe, pois esta tem conhecimento da autenticação
+        Com o tempo, confirmar se é necessário este acoplamento
 
-        Returns: requests response object
+        Returns: xml ElementTree
         '''
         response = requests.get(aps_manager.get_url(start_date, end_date),
                                 auth=(aps_manager.username, aps_manager.password))
@@ -91,7 +91,13 @@ class APSPortodeSantos(TratamentoLPR):
         return url
 
     def get(self, url):
-        return requests.get(url, auth=(self.username, self.password))
+        response = requests.get(url, auth=(self.username, self.password))
+        # Verificar se a requisição foi bem-sucedida
+        if response.status_code == 200:
+            # Parse do conteúdo XML
+            return ET.fromstring(response.content)
+        logger.error(f'Erro:{response.status_code}, {response.text}')
+        raise ConnectionError(f'Erro:{response.status_code}, {response.text}')
 
     def parse_xml(self, alpr_record):
         self.dataHora = alpr_record.find('DateTime').text
@@ -126,28 +132,23 @@ if __name__ == '__main__':
     # password = input('Password:')
     # Definir as datas de início e fim - testar com a última hora
     end_date = datetime.now()
-    start_date = end_date - timedelta(hours=1)
-
+    start_date = end_date - timedelta(hours=24)
     # Inicia o objeto de tradução do XML
     aps_manager = APSPortodeSantos()
-
     # Baixar o conteúdo XML
-    response = aps_manager.get(aps_manager.get_url(start_date, end_date))
-
-    # Verificar se a requisição foi bem-sucedida
-    if response.status_code != 200:
-        sys.exit(f'Erro:{response.status_code}, {response.text}')
-
-    # Parse do conteúdo XML
-    root = ET.fromstring(response.content)
+    root = aps_manager.get(aps_manager.get_url(start_date, end_date))
     # Iterate over each LPRRecord and put result in a list
     records = [aps_manager.parse_xml(lpr_record).to_sivana()
                for lpr_record in root.findall('.//LPRRecord')]
     payload = {'totalLinhas': len(records), 'offset': '-03:00', 'passagens': records}
-    formated = json.dumps(payload, indent=4)
-    print(formated)
+    # print(json.dumps(payload, indent=4))
     with open('APS.json', 'w') as f:
-        json.dump(formated, f)
+        json.dump(payload, f)
+    pontos = set()
+    for passagem in payload['passagens']:
+        pontos.add(passagem['ponto'])
+    print(pontos)
+
 
 # TODO: incluir código para transmitir para Sivana, após validar mecanismo de salvar
 # avanço (última transmissão) e validar os dados
