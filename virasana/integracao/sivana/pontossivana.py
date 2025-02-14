@@ -6,9 +6,9 @@ sys.path.append('../bhadrasana2')
 from bhadrasana.models import Base
 
 
-class Organizacao(Base):
+class OrganizacaoSivana(Base):
     __tablename__ = 'sivana_organizacao'
-    codigoOrganizacao = Column(String(10), primary_key=True)
+    codigoOrganizacao = Column(String(20), primary_key=True)
     descricao = Column(String(100))
     url = Column(String(100))
     username = Column(String(20))
@@ -21,6 +21,7 @@ class PontoSivana(Base):
     __table_args__ = (UniqueConstraint('codigoOrganizacao', 'codigoPonto'),)
     id = Column(BigInteger(), primary_key=True)
     codigoOrganizacao = Column(String(10), index=True)
+    nomeOrganizacao = Column(String(40), index=True)
     codigoPonto = Column(String(20), index=True)
     codigoUF = Column(String(2), index=True)
     nomeCidade = Column(String(40), index=True)
@@ -36,12 +37,13 @@ def traduz_chaves_aps(umdict_sivana_ponto):
     ponto_sivana.nomeCidade = umdict_sivana_ponto['cidade']
     ponto_sivana.codigoUF = umdict_sivana_ponto['uf']
     ponto_sivana.sentido = umdict_sivana_ponto['sentido']
-    ponto_sivana.latitude = umdict_sivana_ponto['latitude']
-    ponto_sivana.longitude = umdict_sivana_ponto['longitude']
+    ponto_sivana.latitude = umdict_sivana_ponto['latitude'].replace(',', '.')
+    ponto_sivana.longitude = umdict_sivana_ponto['longitude'].replace(',', '.')
     ponto_sivana.codigoPonto = umdict_sivana_ponto['Código do equipamento']
     ponto_sivana.numeroFaixa = umdict_sivana_ponto['Número da faixa']
     ponto_sivana.endereco = umdict_sivana_ponto['endereço']
-    ponto_sivana.codigoOrganizacao = umdict_sivana_ponto['empresa']
+    ponto_sivana.codigoOrganizacao = 'APS'
+    ponto_sivana.nomeOrganizacao = umdict_sivana_ponto['empresa']
     return ponto_sivana
 
 

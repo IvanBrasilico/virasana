@@ -1,5 +1,3 @@
-import csv
-import os
 import sys
 from datetime import datetime
 from typing import Tuple
@@ -7,24 +5,22 @@ from typing import Tuple
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
-from virasana.integracao.sivana.pontossivana import PontoSivana
+from virasana.integracao.sivana.pontossivana import OrganizacaoSivana, PontoSivana
 from ajna_commons.flask.log import logger
 
 CSV_FILE = 'lpr_credentials.csv'
 
 
-# Função para encontrar uma entrada pela classe
-def get_credentials(lpr_name: str) -> dict:
-    if not os.path.isfile(CSV_FILE):
-        logger.error(f'Arquivo CSV {CSV_FILE} não encontrado!!')
-        return {}
-    with open(CSV_FILE, mode="r") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            if row["class"] == lpr_name:
-                return row  # Retorna a linha encontrada
-    logger.error(f'Nenhuma entrada encontrada para a ALPR: {lpr_name}.')
-    return {}
+# Função para encontrar a organização pelo nome da classe
+# Criar classes descendentes de tratamento LPR e cadastrar o nome da classe
+# como campo codigoOrganizacao na classe OrganizacaoSivana
+def get_credentials(session, lpr_name: str) -> Tuple[str, str]:
+    organizacao = session.query(OrganizacaoSivana).filter(
+        OrganizacaoSivana.codigoOrganizacao == lpr_name).one_or_none()
+    if organizacao is None:
+        logger.error(f'Nenhuma entrada encontrada para a ALPR: {lpr_name}.')
+        return '', ''
+    return organizacao.username, organizacao.password
 
 
 class TratamentoLPR:
@@ -34,9 +30,7 @@ class TratamentoLPR:
         self.ponto: str = ''
         self.placa: str = ''
         self.sentido: str = ''
-        credentials = get_credentials(type(self).__name__)
-        self.username = credentials.get('username')
-        self.password = credentials.get('password')
+        self.username, self.password = get_credentials(self.session, type(self).__name__)
 
     def get_url(self, astart_date: datetime, aend_date: datetime) -> str:
         raise NotImplementedError('get_url deve ser implementado!')
