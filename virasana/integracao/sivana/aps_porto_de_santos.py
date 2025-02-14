@@ -33,14 +33,11 @@ class APSPortodeSantos(TratamentoLPR):
         # Formatar as datas para a URL
         start_date_str, start_time_str = self.format_datetime_for_url(astart_date)
         end_date_str, end_time_str = self.format_datetime_for_url(aend_date)
-        url = (
-            f"http://vms3.portodesantos.com.br:8601/Interface/LPR/Search?"
-            f"StartDate={start_date_str}&StartTime={start_time_str}&"
-            f"EndDate={end_date_str}&EndTime={end_time_str}"
-        )
-        return url
+        return self.url + f'?StartDate={start_date_str}&StartTime={start_time_str}&' + \
+              f'EndDate={end_date_str}&EndTime={end_time_str}'
 
     def get(self, url):
+        logger.info(f'Consultando url {url}')
         response = requests.get(url, auth=(self.username, self.password))
         # Verificar se a requisição foi bem-sucedida
         if response.status_code == 200:
@@ -90,23 +87,30 @@ if __name__ == '__main__':
     engine = create_engine(SQL_URI)
     Session = sessionmaker(bind=engine)
     session = Session()
-
-    # username = input('Usuário:')
-    # password = input('Password:')
-    # Definir as datas de início e fim - testar com a última hora
-    end_date = datetime.now()
-    start_date = end_date - timedelta(hours=1)
-    # Inicia o objeto de tradução do XML
+    # Inicia o objeto de conexão à Fonte de dados LPR
     aps_manager = APSPortodeSantos(session)
+    # Definir as datas de início e fim - testar com a última hora
+    start_date = aps_manager.ultima_transmissao
+    end_date = datetime.now()
+    # start_date + timedelta(hours=1)
     # Baixar o conteúdo XML
     root = aps_manager.get(aps_manager.get_url(start_date, end_date))
     # Iterate over each LPRRecord and put result in a list
-    records = [aps_manager.parse_xml(lpr_record).to_sivana()
-               for lpr_record in root.findall('.//LPRRecord')]
+    logger.info('Processando XML..')
+    records = []
+    ultima_transmissao = aps_manager.ultima_transmissao
+    for lpr_record in root.findall('.//LPRRecord'):
+        aps_manager.parse_xml(lpr_record)
+        records.append(aps_manager.to_sivana())
+        ultima_transmissao = max(aps_manager.dataHora, ultima_transmissao)
     payload = {'totalLinhas': len(records), 'offset': '-03:00', 'passagens': records}
-    # print(json.dumps(payload, indent=4))
+    print(json.dumps(payload, indent=4))
+    print(f'ultima_transmissao:{ultima_transmissao}')
     with open('APS.json', 'w') as f:
         json.dump(payload, f)
+    # TODO: incluir código para transmitir para Sivana (abaixo)
+    # IF UPLOAD PARA SIVANA OK:
+    aps_manager.set_ultima_transmissao(ultima_transmissao)
     '''    
     pontos = set()
     for passagem in payload['passagens']:
@@ -114,8 +118,6 @@ if __name__ == '__main__':
     print(pontos)
     '''
 
-# TODO: incluir código para transmitir para Sivana, após validar mecanismo de salvar
-# avanço (última transmissão) e validar os dados
 ''' 
 if passagens and len(passagens) > 0:
     r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,

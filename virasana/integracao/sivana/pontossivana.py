@@ -1,6 +1,6 @@
 import sys
 
-from sqlalchemy import BigInteger, Column, String, UniqueConstraint, Numeric
+from sqlalchemy import BigInteger, Column, String, UniqueConstraint, Numeric, DateTime
 
 sys.path.append('../bhadrasana2')
 from bhadrasana.models import Base
@@ -12,8 +12,9 @@ class OrganizacaoSivana(Base):
     descricao = Column(String(100))
     url = Column(String(100))
     username = Column(String(20))
-    password = Column(String(20), index=True)
-    auth_type = Column(String(4), index=True)  # auth = Simple Authentication
+    password = Column(String(20))
+    auth_type = Column(String(4))  # auth = Simple Authentication
+    ultima_transmissao = Column(DateTime())
 
 
 class PontoSivana(Base):
