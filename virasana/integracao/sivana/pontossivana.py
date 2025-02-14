@@ -6,6 +6,16 @@ sys.path.append('../bhadrasana2')
 from bhadrasana.models import Base
 
 
+class Organizacao(Base):
+    __tablename__ = 'sivana_organizacao'
+    codigoOrganizacao = Column(String(10), primary_key=True)
+    descricao = Column(String(100))
+    url = Column(String(100))
+    username = Column(String(20))
+    password = Column(String(20), index=True)
+    auth_type = Column(String(4), index=True)  # auth = Simple Authentication
+
+
 class PontoSivana(Base):
     __tablename__ = 'sivana_pontos'
     __table_args__ = (UniqueConstraint('codigoOrganizacao', 'codigoPonto'),)
@@ -50,12 +60,13 @@ if __name__ == '__main__':  # pragma: no-cover
     # Sair por segurança. Comentar linha abaixo para funcionar
     # sys.exit(0)
     # Cria tabelas para salvar os pontos de controle do Sivana
-    Base.metadata.create_all(engine, [Base.metadata.tables['sivana_pontos'],])
+    Base.metadata.create_all(engine, [Base.metadata.tables['sivana_pontos'],
+                                      Base.metadata.tables['sivana_organizacao'], ])
     # Código pandas para inserir pontos de controle da *APS* na tabela sivana_pontos
     df = pd.read_csv('C:/Users/25052288840/Downloads/EquipamentosAPS.csv',
                      sep=';', header=None)
     dict_pontos = df.set_index(0).to_dict()
     for dict_sivana_ponto in dict_pontos.values():
-        ponto =  traduz_chaves_aps(dict_sivana_ponto)
+        ponto = traduz_chaves_aps(dict_sivana_ponto)
         session.add(ponto)
     session.commit()
