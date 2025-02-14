@@ -8,8 +8,6 @@ sys.path.append('../ajna_docs/commons')
 from virasana.integracao.sivana.pontossivana import OrganizacaoSivana, PontoSivana
 from ajna_commons.flask.log import logger
 
-CSV_FILE = 'lpr_credentials.csv'
-
 
 # Função para encontrar a organização pelo nome da classe
 # Criar classes descendentes de tratamento LPR e cadastrar o nome da classe
