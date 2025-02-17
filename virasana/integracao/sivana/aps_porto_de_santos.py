@@ -1,11 +1,12 @@
-import json
 import sys
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Tuple
 
 import dateutil
 import requests
+
+from scripts.sivana_update import upload_to_sivana
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -34,7 +35,7 @@ class APSPortodeSantos(TratamentoLPR):
         start_date_str, start_time_str = self.format_datetime_for_url(astart_date)
         end_date_str, end_time_str = self.format_datetime_for_url(aend_date)
         return self.url + f'?StartDate={start_date_str}&StartTime={start_time_str}&' + \
-              f'EndDate={end_date_str}&EndTime={end_time_str}'
+            f'EndDate={end_date_str}&EndTime={end_time_str}'
 
     def get(self, url):
         logger.info(f'Consultando url {url}')
@@ -104,31 +105,16 @@ if __name__ == '__main__':
         records.append(aps_manager.to_sivana())
         ultima_transmissao = max(aps_manager.dataHora, ultima_transmissao)
     payload = {'totalLinhas': len(records), 'offset': '-03:00', 'passagens': records}
+    if upload_to_sivana(payload):
+        aps_manager.set_ultima_transmissao(ultima_transmissao)
+    '''
+    # Códigos para visualização/debug do JSON gerado e dos dados    
     print(json.dumps(payload, indent=4))
     print(f'ultima_transmissao:{ultima_transmissao}')
     with open('APS.json', 'w') as f:
         json.dump(payload, f)
-    # TODO: incluir código para transmitir para Sivana (abaixo)
-    # IF UPLOAD PARA SIVANA OK:
-    aps_manager.set_ultima_transmissao(ultima_transmissao)
-    '''    
     pontos = set()
     for passagem in payload['passagens']:
         pontos.add(passagem['ponto'])
     print(pontos)
     '''
-
-''' 
-if passagens and len(passagens) > 0:
-    r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
-             pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
-    if r.status_code != 200:
-        logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
-    else:
-        # Verifica se houve acessos e pega o maior ID
-        maior_id = max(acesso.id for acesso in acessos)
-        # Atualiza o arquivo com o maior ID encontrado
-        grava_ultimo_id_transmitido(maior_id)
-else:
-    logger.info(f'Não há novos registros de acesso a transmitir')
-'''

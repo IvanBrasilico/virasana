@@ -15,6 +15,7 @@ class OrganizacaoSivana(Base):
     password = Column(String(20))
     auth_type = Column(String(4))  # auth = Simple Authentication
     ultima_transmissao = Column(DateTime())
+    ultimo_id_transmitido = Column(BigInteger())
 
 
 class PontoSivana(Base):
