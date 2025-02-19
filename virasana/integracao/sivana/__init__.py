@@ -1,6 +1,9 @@
 import sys
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Tuple
+
+import requests
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -31,7 +34,13 @@ class TratamentoLPR:
             get_organizacao(self.session, type(self).__name__)
 
     def get_url(self, astart_date: datetime, aend_date: datetime) -> str:
-        raise NotImplementedError('get_url deve ser implementado!')
+        start_date_str, start_time_str = self.format_datetime_for_url(astart_date)
+        end_date_str, end_time_str = self.format_datetime_for_url(aend_date)
+        return self.organizacao.url + f'?StartDate={start_date_str}&StartTime={start_time_str}&' + \
+            f'EndDate={end_date_str}&EndTime={end_time_str}'
+
+    def format_datetime_for_url(self, dt: datetime) -> Tuple[str, str]:
+        return dt.strftime("%Y.%m.%d"), dt.strftime("%H.%M.%S.000")
 
     def get(self, url):
         '''
@@ -40,7 +49,14 @@ class TratamentoLPR:
 
         Returns: xml ElementTree
         '''
-        raise NotImplementedError('get deve ser implementado!')
+        logger.info(f'Consultando url {url}')
+        response = requests.get(url, auth=(self.organizacao.username, self.organizacao.password))
+        # Verificar se a requisição foi bem-sucedida
+        if response.status_code == 200:
+            # Parse do conteúdo XML
+            return ET.fromstring(response.content)
+        logger.error(f'Erro:{response.status_code}, {response.text}')
+        raise ConnectionError(f'Erro:{response.status_code}, {response.text}')
 
     def format_datetime_for_url(self, dt: datetime) -> Tuple[str, str]:
         raise NotImplementedError('format_datetime_for_url deve ser implementado!')
