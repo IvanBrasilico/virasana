@@ -41,12 +41,14 @@ def update(connection):
             else:
                 # Definir as datas de início e fim
                 end_date = datetime.now()
-                # Adiciona um microsegundo à última datahora, para não pegar dado repetido.
-                start_date = lpr_manager.organizacao.ultima_transmissao + timedelta(milliseconds=1)
+                # Pega data inicial, se não tiver sido inicializado pode ser None
+                start_date = lpr_manager.organizacao.ultima_transmissao
                 if start_date is None:
                     logger.info(f'Organização {classe.__name__} não tem data inicializada,'
                                 f' pegando datahora atual menos 1 hora')
                     start_date = end_date - timedelta(hours=1)
+                # Adiciona um microsegundo à última datahora, para não pegar dado repetido.
+                start_date = start_date + timedelta(milliseconds=1)
                 payload, ultima_transmissao = lpr_manager.processa_fonte_alpr(start_date, end_date)
                 logger.debug('%s', payload)
                 url_api_sivana = lpr_manager.organizacao.url_api_sivana
