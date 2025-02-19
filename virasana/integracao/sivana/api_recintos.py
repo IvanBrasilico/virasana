@@ -54,7 +54,8 @@ def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, in
         passagens = [acesso.to_sivana() for acesso in acessos]
         payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
         # print(payload)
-        maior_id = max(acesso.id for acesso in acessos)
+        if len(passagens) >0:
+            maior_id = max(acesso.id for acesso in acessos)
     except Exception as err:
         logger.error(f'Erro ao recuperar registros de AcessoVeiculo. pultimo_id:{pultimo_id}')
         logger.error(err)
