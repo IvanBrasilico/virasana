@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import time
+from typing import Tuple
 
 from dotenv import load_dotenv  # TODO: COLOCAR NO AJNA COMMONS
 from requests_pkcs12 import post
@@ -38,22 +39,49 @@ def grava_ultimo_id_transmitido(psession, novo_id):
     logger.info(f"Atualizado 'ultimo_id_transmitido' com novo ID: {novo_id}")
 
 
-def le_novos_acesssos_veiculo(psession, pultimo_id):
-    acessos = psession.query(AcessoVeiculo).filter(AcessoVeiculo.id > pultimo_id).limit(500).all()
-    passagens = [acesso.to_sivana() for acesso in acessos]
-    payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
-    # print(payload)
-    maior_id = max(acesso.id for acesso in acessos)
+def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, int]:
+    ''' Pesquisa novos registros na tabela.
+    Se retornar payload com passagens vazio, ocorreu erro ou não há registros novos.
+
+    Args:
+        psession: conexão com o Banco SQL
+        pultimo_id: ID do AcessoVeículo a partir do qual transmitir
+        limit: quantidade máxima a buscar por vez
+
+    Returns: dict payload no formato Sivana, maior ID recuperado
+
+    '''
+    maior_id = pultimo_id
+    payload = {'totalLinhas': 0, 'offset': '-03:00', 'passagens': []}
+    try:
+        acessos = psession.query(AcessoVeiculo).filter(AcessoVeiculo.id > pultimo_id).limit(500).all()
+        passagens = [acesso.to_sivana() for acesso in acessos]
+        payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
+        # print(payload)
+        maior_id = max(acesso.id for acesso in acessos)
+    except Exception as err:
+        logger.error(f'Erro ao recuperar registros de AcessoVeiculo. pultimo_id:{pultimo_id}')
+        logger.error(err)
     return payload, maior_id
 
 
 def upload_to_sivana(payload):
-    SENHA_PCKS_SIVANA = os.environ['SENHA_PCKS_SIVANA']
+    # TODO: buscar informações abaixo de acordo com a configuração da organização
+    if os.environ.get('SIVANA_PROD'):  # Produção
+        url_api_sivana = 'https://sivana.rfb.gov.br/prod/sivana/rest/upload'
+        pkcs12_filename = './aps_hom.p12'
+    else:  # Homologação
+        logger.info('Conectando o ambiente de HOMOLOGAÇÃO!!!')
+        url_api_sivana = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
+        pkcs12_filename = './apirecintos1.p12'
+    senha_pcks_sivana = os.environ.get('SENHA_PCKS_SIVANA')
+    if senha_pcks_sivana is None:
+        logger.info('Atenção!!! Senha do certificado SENHA_PCKS_SIVANA não definida no ambiente.')
     # Verifica se há acessos a transmitir
     if len(payload['passagens']) > 0:
-        r = post(URL_API_SIVANA, pkcs12_filename=PKCS12_FILENAME,
-                 pkcs12_password=SENHA_PCKS_SIVANA, json=payload, verify=False)
-
+        # Envia para o Sivana
+        r = post(url_api_sivana, pkcs12_filename=pkcs12_filename,
+                 pkcs12_password=senha_pcks_sivana, json=payload, verify=False)
         if r.status_code != 200:
             logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
         return True
@@ -77,9 +105,7 @@ def update(connection):
 
 
 if __name__ == '__main__':
-    # URL_API_SIVANA = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
-    URL_API_SIVANA = 'https://sivana.rfb.gov.br/prod/sivana/rest/upload'
-    PKCS12_FILENAME = './apirecintos1.p12'
+    # Ambiente de homologação
     os.environ['DEBUG'] = '1'
     logger.setLevel(logging.DEBUG)
     connection = create_engine(SQL_URI)
