@@ -17,6 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
 from ajna_commons.flask.conf import SQL_URI
+from integracao.sivana.api_recintos import APIRecintos
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -31,7 +32,7 @@ def update(connection):
                                           autoflush=False,
                                           bind=connection))
     try:
-        manager_list = [APSPortodeSantos]
+        manager_list = [APSPortodeSantos, APIRecintos]
         for classe in manager_list:
             # Inicia o objeto de conexão à Fonte de dados LPR
             lpr_manager = classe(session)
