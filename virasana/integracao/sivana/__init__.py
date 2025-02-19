@@ -58,9 +58,6 @@ class TratamentoLPR:
         logger.error(f'Erro:{response.status_code}, {response.text}')
         raise ConnectionError(f'Erro:{response.status_code}, {response.text}')
 
-    def format_datetime_for_url(self, dt: datetime) -> Tuple[str, str]:
-        raise NotImplementedError('format_datetime_for_url deve ser implementado!')
-
     def parse_xml(self, alpr_record):
         """
         Retorna o próprio objeto "self" para permitir uso encadeado com to_sivana
