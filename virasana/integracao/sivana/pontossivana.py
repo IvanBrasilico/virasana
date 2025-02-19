@@ -16,6 +16,10 @@ class OrganizacaoSivana(Base):
     auth_type = Column(String(4))  # auth = Simple Authentication
     ultima_transmissao = Column(DateTime())
     ultimo_id_transmitido = Column(BigInteger())
+    url_api_sivana = Column(String(200))
+    pkcs12_filename = Column(String(45))
+    senha_pcks_sivana = Column(String(45))
+    offset = Column(String(10))
 
 
 class PontoSivana(Base):

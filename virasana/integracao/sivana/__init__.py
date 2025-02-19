@@ -1,5 +1,5 @@
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Tuple
 
 sys.path.append('.')
@@ -12,19 +12,15 @@ from ajna_commons.flask.log import logger
 # Função para encontrar a organização pelo nome da classe
 # Criar classes descendentes de tratamento LPR e cadastrar o nome da classe
 # como campo codigoOrganizacao na classe OrganizacaoSivana
-def get_credentials(session, lpr_name: str) -> Tuple[str, str, str, datetime]:
+def get_organizacao(session, lpr_name: str) -> OrganizacaoSivana:
     organizacao: OrganizacaoSivana = session.query(OrganizacaoSivana).filter(
         OrganizacaoSivana.codigoOrganizacao == lpr_name).one_or_none()
     if organizacao is None:
         logger.error(f'Nenhuma entrada encontrada para a ALPR: {lpr_name}.')
-        return '', '', '', datetime.now() - timedelta(hours=1)
-    return (organizacao.username, organizacao.password, organizacao.url,
-            organizacao.ultima_transmissao)
+    return organizacao
 
 
-def set_ultima_transmissao(session, lpr_name: str, ultima_transmissao: datetime):
-    organizacao: OrganizacaoSivana = session.query(OrganizacaoSivana).filter(
-        OrganizacaoSivana.codigoOrganizacao == lpr_name).one()
+def set_ultima_transmissao(session, organizacao, ultima_transmissao: datetime):
     organizacao.ultima_transmissao = ultima_transmissao
     session.add(organizacao)
     session.commit()
@@ -37,8 +33,8 @@ class TratamentoLPR:
         self.ponto: str = ''
         self.placa: str = ''
         self.sentido: str = ''
-        self.username, self.password, self.url, self.ultima_transmissao = \
-            get_credentials(self.session, type(self).__name__)
+        self.organizacao = \
+            get_organizacao(self.session, type(self).__name__)
 
     def get_url(self, astart_date: datetime, aend_date: datetime) -> str:
         raise NotImplementedError('get_url deve ser implementado!')
@@ -66,3 +62,22 @@ class TratamentoLPR:
 
     def set_ultima_transmissao(self, ultima_transmissao: datetime):
         set_ultima_transmissao(self.session, type(self).__name__, ultima_transmissao)
+
+    def processa_fonte_alpr(self, pstart: datetime, pend: datetime):
+        # Baixar o conteúdo XML
+        payload = {'totalLinhas': 0, 'offset': self.organizacao.offset, 'passagens': []}
+        ultima_transmissao = self.organizacao.ultima_transmissao
+        try:
+            root = self.get(self.get_url(pstart, pend))
+            # Iterate over each LPRRecord and put result in a list
+            logger.info('Processando XML..')
+            records = []
+            for lpr_record in root.findall('.//LPRRecord'):
+                self.parse_xml(lpr_record)
+                records.append(self.to_sivana())
+                ultima_transmissao = max(self.dataHora, ultima_transmissao)
+            payload = {'totalLinhas': len(records), 'offset': self.organizacao.offset,
+                       'passagens': records}
+        except Exception as err:
+            logger.error(err)
+        return payload, ultima_transmissao
