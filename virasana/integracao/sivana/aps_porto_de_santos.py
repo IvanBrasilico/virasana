@@ -6,13 +6,12 @@ from typing import Tuple
 import dateutil
 import requests
 
-from scripts.sivana_update import upload_to_sivana
-
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.integracao.sivana import TratamentoLPR
 from virasana.integracao.sivana.pontossivana import PontoSivana
+from virasana.scripts.sivana_update import upload_to_sivana
 from ajna_commons.flask.log import logger
 
 
@@ -65,20 +64,13 @@ class APSPortodeSantos(TratamentoLPR):
         return self
 
     def to_sivana(self):
-        info = f'Reliability:{self.Reliability} - ' + \
-               f'Hit: {self.Hit} - ' + \
-               f'Confidence: {self.Confidence} - ' + \
-               f'Latitude: {self.Latitude} - ' + \
-               f'Longitude: {self.Longitude}'
-        dict_sivana = {
-            'placa': self.placa,
-            'ponto': self.ponto,
-            'sentido': self.sentido,
-            'dataHora': self.dataHora.strftime('%Y-%m-%dT%H:%M:%S'),
-            'info': info
-        }
+        dict_sivana = super().to_sivana()
+        dict_sivana['info'] = f'Reliability:{self.Reliability} - ' + \
+                              f'Hit: {self.Hit} - ' + \
+                              f'Confidence: {self.Confidence} - ' + \
+                              f'Latitude: {self.Latitude} - ' + \
+                              f'Longitude: {self.Longitude}'
         return dict_sivana
-
 
 
 if __name__ == '__main__':

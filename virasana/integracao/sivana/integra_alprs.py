@@ -16,14 +16,14 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-from ajna_commons.flask.conf import SQL_URI
-from integracao.sivana.api_recintos import APIRecintos
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
+from ajna_commons.flask.conf import SQL_URI
 from virasana.scripts.sivana_update import upload_to_sivana
 from virasana.integracao.sivana.aps_porto_de_santos import APSPortodeSantos
+from virasana.integracao.sivana.api_recintos import APIRecintos
 from ajna_commons.flask.log import logger
 
 
@@ -47,6 +47,7 @@ def update(connection):
                                 f' pegando datahora atual menos 1 hora')
                     start_date = end_date - timedelta(hours=1)
                 payload, ultima_transmissao = lpr_manager.processa_fonte_alpr(start_date, end_date)
+                print(payload)
                 url_api_sivana = lpr_manager.organizacao.url_api_sivana
                 pkcs12_filename = lpr_manager.organizacao.pkcs12_filename
                 senha_pcks_sivana = lpr_manager.organizacao.senha_pcks_sivana

@@ -20,16 +20,10 @@ def get_organizacao(session, lpr_name: str) -> OrganizacaoSivana:
     return organizacao
 
 
-def set_ultima_transmissao(session, organizacao, ultima_transmissao: datetime):
-    organizacao.ultima_transmissao = ultima_transmissao
-    session.add(organizacao)
-    session.commit()
-
-
 class TratamentoLPR:
     def __init__(self, psession):
         self.session = psession
-        self.dataHora: datetime
+        self.dataHora: datetime = datetime.now()
         self.ponto: str = ''
         self.placa: str = ''
         self.sentido: str = ''
@@ -61,7 +55,11 @@ class TratamentoLPR:
         raise NotImplementedError('parse_xml deve ser implementado!')
 
     def set_ultima_transmissao(self, ultima_transmissao: datetime):
-        set_ultima_transmissao(self.session, type(self).__name__, ultima_transmissao)
+        self.organizacao.ultima_transmissao = ultima_transmissao
+        self.session.add(self.organizacao)
+        self.session.commit()
+        logger.info(f'Atualizada "ultima_transmissao" da organização {type(self).__name__}'
+                    f' com novo valor: {ultima_transmissao}')
 
     def processa_fonte_alpr(self, pstart: datetime, pend: datetime):
         # Baixar o conteúdo XML
@@ -78,6 +76,20 @@ class TratamentoLPR:
                 ultima_transmissao = max(self.dataHora, ultima_transmissao)
             payload = {'totalLinhas': len(records), 'offset': self.organizacao.offset,
                        'passagens': records}
+            logger.info(f'Recuperadas {len(records)} passagens da organização {type(self).__name__}')
         except Exception as err:
             logger.error(err)
         return payload, ultima_transmissao
+
+    def to_sivana(self):
+        """
+        Retorna o formato de registro do Sivana
+
+        """
+        return {
+            'placa': self.placa,
+            'ponto': self.ponto,
+            'sentido': self.sentido,
+            'dataHora': self.dataHora.strftime('%Y-%m-%dT%H:%M:%S'),
+            'info': ''
+        }

@@ -7,15 +7,13 @@ import sys
 from datetime import datetime
 from typing import Tuple
 
-from integracao.sivana import TratamentoLPR
-
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../commons')
 sys.path.append('../bhadrasana2')
 
 from ajna_commons.flask.log import logger
-from virasana.integracao.sivana import OrganizacaoSivana
+from virasana.integracao.sivana import OrganizacaoSivana, TratamentoLPR
 
 from bhadrasana.models.apirecintos import AcessoVeiculo
 
@@ -80,4 +78,5 @@ class APIRecintos(TratamentoLPR):
         self.organizacao.ultimo_id_transmitido = ultima_transmissao
         self.session.add(self.organizacao)
         self.session.commit()
-        logger.info(f"Atualizado 'ultimo_id_transmitido' com novo ID: {ultima_transmissao}")
+        logger.info(f'Atualizado "ultimo_id_transmitido" da organização APIRecintos '
+                    f'com novo ID: {ultima_transmissao}')
