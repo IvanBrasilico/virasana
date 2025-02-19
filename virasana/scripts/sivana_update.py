@@ -69,11 +69,11 @@ def upload_to_sivana(payload):
     # TODO: buscar informações abaixo de acordo com a configuração da organização
     if os.environ.get('SIVANA_PROD'):  # Produção
         url_api_sivana = 'https://sivana.rfb.gov.br/prod/sivana/rest/upload'
-        pkcs12_filename = './aps_hom.p12'
+        pkcs12_filename = './apirecintos1.p12'
     else:  # Homologação
         logger.info('Conectando o ambiente de HOMOLOGAÇÃO!!!')
         url_api_sivana = 'https://rf0020541092939.intrarfb.rfb.gov.br/prod/sivana/rest/upload'
-        pkcs12_filename = './apirecintos1.p12'
+        pkcs12_filename = './aps_hom.p12'
     senha_pcks_sivana = os.environ.get('SENHA_PCKS_SIVANA')
     if senha_pcks_sivana is None:
         logger.info('Atenção!!! Senha do certificado SENHA_PCKS_SIVANA não definida no ambiente.')
