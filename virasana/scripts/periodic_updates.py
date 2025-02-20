@@ -19,24 +19,23 @@ from datetime import date, datetime, timedelta
 from json.decoder import JSONDecodeError
 
 import requests
+from pymongo import MongoClient
+from sqlalchemy import create_engine
+
 from ajna_commons.flask.conf import (DATABASE,
                                      MONGODB_URI, SQL_URI,
                                      VIRASANA_URL)
 from ajna_commons.flask.log import logger
-from pymongo import MongoClient
-from sqlalchemy import create_engine
-
-from virasana.integracao import jupapi
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
+from virasana.integracao import jupapi
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
+from virasana.integracao.sivana import integra_alprs
 from virasana.models import anomalia_lote
-from virasana.scripts.gera_indexes import gera_indexes
-from virasana.scripts.predictionsupdate import predictions_update2
-from virasana.scripts.tfservingupdate import tfs_predictions_update
-from virasana.scripts import conformidadeupdate, sivana_update
+from virasana.scripts import conformidadeupdate
+
 
 def get_token(session, url):
     """Faz um get na url e tenta encontrar o csrf_token na resposta."""
@@ -95,25 +94,34 @@ def periodic_updates(db, connection, lote=2000):
     dezdias = hoje - timedelta(days=10)
     vintedias = hoje - timedelta(days=20)
     ontem = hoje - timedelta(days=1)
-    xmli.dados_xml_grava_fsfiles(db, lote * 5, cincodias)
-    logger.info('Pegando arquivos XML')
-    processa_xml_mercante.get_arquivos_novos(connection)
-    processa_xml_mercante.xml_para_mercante(connection)
-    resume_mercante.mercante_resumo(connection)
-    mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, hoje, 10)
+    try:
+        xmli.dados_xml_grava_fsfiles(db, lote * 5, cincodias)
+        logger.info('Pegando arquivos XML')
+        processa_xml_mercante.get_arquivos_novos(connection)
+        processa_xml_mercante.xml_para_mercante(connection)
+        resume_mercante.mercante_resumo(connection)
+        mercante_fsfiles.update_mercante_fsfiles_dias(db, connection, hoje, 10)
+    except Exception as err:
+        logger.error(err, exc_info=True)
     # carga.dados_carga_grava_fsfiles(db, lote * 2, doisdias)
-    anomalia_lote.processa_zscores(db, cincodias, ontem)
-    info_ade02.adquire_pesagens(db, cincodias, ontem)
-    info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
-    atualiza_stats(db)
-    carga.cria_campo_pesos_carga(db, lote * 3)
-    carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
-    # predictions_update2('ssd', 'bbox', lote, 4)
+    try:
+        anomalia_lote.processa_zscores(db, cincodias, ontem)
+    except Exception as err:
+        logger.error(err, exc_info=True)
+    try:
+        info_ade02.adquire_pesagens(db, cincodias, ontem)
+        info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
+        atualiza_stats(db)
+        carga.cria_campo_pesos_carga(db, lote * 3)
+        carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
+    except Exception as err:
+        logger.error(err, exc_info=True)
     try:
         print('TFS desligado...')
         # predictions_update2('index', 'index', lote, 8)
     except Exception as err:
         logger.error(err, exc_info=True)
+    # predictions_update2('ssd', 'bbox', lote, 4)
     # gera_indexes()
     # print(reload_indexes())
     # tfs_predictions_update('vazio', lote, 20)
@@ -138,16 +146,12 @@ def periodic_updates(db, connection, lote=2000):
     except Exception as err:
         logger.error(err, exc_info=True)
 
-
     try:
-        logger.info('Fazendo UPLOAD dos AcessoVeiculo para Sivana')
-        # sivana_update.update(connection)
+        logger.info('Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...')
+        integra_alprs.update(connection)
     except Exception as err:
         logger.error(err, exc_info=True)
 
-
-
-    
 
 if __name__ == '__main__':
     os.environ['DEBUG'] = '1'
@@ -169,8 +173,8 @@ if __name__ == '__main__':
                 periodic_updates(db, connection)
                 s0 = time.time()
 
-
 if __name__ == '__main__':
     # Se rodando via supervisor, o próprio supervisor grava os logs em arquivo
     from ajna_commons.flask.log import error_handler
-    logger.removeHandler(error_handler) # Remover
+
+    logger.removeHandler(error_handler)  # Remover
