@@ -51,7 +51,7 @@ def update(connection):
                 start_date = start_date + timedelta(milliseconds=999)
                 logger.debug(lpr_manager.format_datetime_for_url(start_date))
                 payload, ultima_transmissao = lpr_manager.processa_fonte_alpr(start_date, end_date)
-                logger.debug('%s', payload)
+                # logger.debug('%s', payload)
                 url_api_sivana = lpr_manager.organizacao.url_api_sivana
                 pkcs12_filename = lpr_manager.organizacao.pkcs12_filename
                 senha_pcks_sivana = lpr_manager.organizacao.senha_pcks_sivana
