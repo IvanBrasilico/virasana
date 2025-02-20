@@ -32,8 +32,16 @@ def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload
                 logger.info(f'SUCESSO! {len(payload["passagens"])} acessos enviados para a url {url_api_sivana}')
                 return True
             logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
+        except ValueError as err:
+            logger.error(err)
+            #TODO: Gambiarra para atualizar ultima_atualizacao mesmo se retornar o erro
+            # abaixo. Aparentemente é um bug na biblioteca urllib3. Retirar essa
+            # gambiarra assim que for possível atualizar a biblioteca no Servidor
+            # Neste momento não dá para atualizar, pois Servidor roda python 3.6
+            if 'check_hostname' in str(err):
+                return True
         except Exception as err:
-            logger.error(err, exc_info=True)
+            logger.error(type(err), err)
     else:
         logger.info(f'Não há novos registros de acesso a transmitir')
     return False
