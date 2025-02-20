@@ -40,7 +40,7 @@ class TratamentoLPR:
             f'EndDate={end_date_str}&EndTime={end_time_str}'
 
     def format_datetime_for_url(self, dt: datetime) -> Tuple[str, str]:
-        return dt.strftime("%Y.%m.%d"), dt.strftime("%H.%M.%S.000")
+        return dt.strftime("%Y.%m.%d"), dt.strftime("%H.%M.%S.%f")[:-3]
 
     def get(self, url):
         '''

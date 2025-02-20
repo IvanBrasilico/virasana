@@ -71,7 +71,7 @@ class APIRecintos(TratamentoLPR):
 
         """
         ultimo_id = self.organizacao.ultimo_id_transmitido
-        logger.info(f"Iniciando a transmissão a partir do ID: {ultimo_id}")
+        logger.info(f"Organização APIRecintos Iniciando a transmissão a partir do ID: {ultimo_id}")
         payload, maior_id = le_novos_acesssos_veiculo(self.session, ultimo_id)
         return payload, maior_id
 
