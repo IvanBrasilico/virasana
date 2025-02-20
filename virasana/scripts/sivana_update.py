@@ -33,7 +33,7 @@ def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload
                 return True
             logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
         except Exception as err:
-            logger.error(err)
+            logger.error(err, exc_info=True)
     else:
         logger.info(f'Não há novos registros de acesso a transmitir')
     return False
