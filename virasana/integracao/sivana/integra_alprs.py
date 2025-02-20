@@ -39,14 +39,14 @@ def update(connection):
                 logger.error(f'Organização {classe.__name__} não foi encontrada, impossível continuar.')
             else:
                 # Definir as datas de início e fim
-                end_date = datetime.now()
                 # Pega data inicial, se não tiver sido inicializado pode ser None
                 start_date = lpr_manager.organizacao.ultima_transmissao
                 logger.debug(lpr_manager.format_datetime_for_url(start_date))
                 if start_date is None:
                     logger.info(f'Organização {classe.__name__} não tem data inicializada,'
                                 f' pegando datahora atual menos 1 hora')
-                    start_date = end_date - timedelta(hours=1)
+                    start_date = datetime.now() - timedelta(hours=1)
+                end_date = start_date + timedelta(hours=2)
                 # Adiciona milisegundos à última datahora, para evitar pegar dado repetido.
                 start_date = start_date + timedelta(milliseconds=999)
                 logger.debug(lpr_manager.format_datetime_for_url(start_date))
