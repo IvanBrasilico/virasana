@@ -25,12 +25,15 @@ def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload
     # Verifica se há acessos a transmitir
     if len(payload['passagens']) > 0:
         # Envia para o Sivana
-        r = post(url_api_sivana, pkcs12_filename=pkcs12_filename,
-                 pkcs12_password=senha_pcks_sivana, json=payload, verify=False)
-        if r.status_code == 200:
-            logger.info(f'SUCESSO! {len(payload["passagens"])} acessos enviados para a url {url_api_sivana}')
-            return True
-        logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
+        try:
+            r = post(url_api_sivana, pkcs12_filename=pkcs12_filename,
+                     pkcs12_password=senha_pcks_sivana, json=payload, verify=False)
+            if r.status_code == 200:
+                logger.info(f'SUCESSO! {len(payload["passagens"])} acessos enviados para a url {url_api_sivana}')
+                return True
+            logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
+        except Exception as err:
+            logger.error(err)
     else:
         logger.info(f'Não há novos registros de acesso a transmitir')
     return False
