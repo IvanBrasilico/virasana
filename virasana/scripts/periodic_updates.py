@@ -22,13 +22,17 @@ import requests
 from pymongo import MongoClient
 from sqlalchemy import create_engine
 
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
+
 from ajna_commons.flask.conf import (DATABASE,
                                      MONGODB_URI, SQL_URI,
                                      VIRASANA_URL)
 from ajna_commons.flask.log import logger
+from virasana.integracao import acertos_sql
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
-from virasana.integracao import jupapi
+#from virasana.integracao import jupapi
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
@@ -86,8 +90,19 @@ def reload_indexes():
     return result
 
 
+def call_update(connection, mensagem, update_function):
+    s0 = time.time()
+    try:
+        logger.info(mensagem)
+        update_function(connection)
+        logger.info('%s demorou %s segundos.' % (mensagem, (time.time() - s0)))
+    except Exception as err:
+        logger.error(err, exc_info=True)
+
+
 def periodic_updates(db, connection, lote=2000):
     print('Iniciando atualizações...')
+    """
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)
@@ -145,12 +160,13 @@ def periodic_updates(db, connection, lote=2000):
         conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
     except Exception as err:
         logger.error(err, exc_info=True)
-
-    try:
-        logger.info('Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...')
-        integra_alprs.update(connection)
-    except Exception as err:
-        logger.error(err, exc_info=True)
+    """
+    call_update(connection,
+                'Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...',
+                integra_alprs.update)
+    call_update(connection,
+                'Rodando acertos SQL',
+                acertos_sql.update)
 
 
 if __name__ == '__main__':
