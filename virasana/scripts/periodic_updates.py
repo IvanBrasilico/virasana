@@ -32,7 +32,7 @@ from ajna_commons.flask.log import logger
 from virasana.integracao import acertos_sql
 from virasana.integracao import atualiza_stats, \
     carga, get_service_password, info_ade02, xmli
-#from virasana.integracao import jupapi
+from virasana.integracao import jupapi
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
