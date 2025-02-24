@@ -11,7 +11,7 @@ warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
-sys.path.append('../bhadrasana')
+sys.path.append('../bhadrasana2')
 from ajna_commons.flask.log import logger
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, InspecaoNaoInvasiva
