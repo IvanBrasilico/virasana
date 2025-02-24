@@ -102,7 +102,6 @@ def call_update(connection, mensagem, update_function):
 
 def periodic_updates(db, connection, lote=2000):
     print('Iniciando atualizações...')
-    """
     hoje = datetime.combine(date.today(), datetime.min.time())
     doisdias = hoje - timedelta(days=2)
     cincodias = hoje - timedelta(days=5)
@@ -160,7 +159,6 @@ def periodic_updates(db, connection, lote=2000):
         conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
     except Exception as err:
         logger.error(err, exc_info=True)
-    """
     call_update(connection,
                 'Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...',
                 integra_alprs.update)
