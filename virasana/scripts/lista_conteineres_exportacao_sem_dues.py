@@ -1,111 +1,44 @@
 import sys
-import warnings
 from datetime import datetime, timedelta, time
 
 import pandas as pd
-import requests
-import urllib3
-
-# Suppress only the InsecureRequestWarning
-warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
 
 sys.path.append('.')
-sys.path.append('../ajna_docs/commons')
-sys.path.append('../bhadrasana2')
-from ajna_commons.flask.log import logger
-
-from bhadrasana.models.apirecintos import AcessoVeiculo, InspecaoNaoInvasiva
-
-VIRASANA_URL = "https://ajna1.rfoc.srf/virasana/"
+from virasana.integracao.due.due_alchemy import Due, DueItem
+from virasana.integracao.due.manager_conteineres_dues import get_conteineres_escaneados_sem_due
+from virasana.integracao.due.rd_baixa_dues_novas import dues_rd
 
 
-def raspa_container(containeres: list, datainicial: str, datafinal: str,
-                    virasana_url: str = VIRASANA_URL) -> list:
-    logger.debug('Conectando virasana')
-    params = {'query':
-                  {'metadata.dataescaneamento': {'$gte': datainicial, '$lte': datafinal},
-                   'metadata.contentType': 'image/jpeg',
-                   'metadata.numeroinformado': {'$in': containeres},
-                   },
-              'projection':
-                  {'metadata.numeroinformado': 1,
-                   'metadata.dataescaneamento': 1,
-                   'metadata.due': 1,
-                   }
-              }
-    r = requests.post(virasana_url + "grid_data", json=params, verify=False)
-    logger.debug(f'{r}: {r.text}')
-    lista_containeres = list(r.json())
-    logger.info(f'GridData: {lista_containeres[0]}')
-    return lista_containeres
-
-
-def get_eventos(session, datainicio: datetime, datafim: datetime, codigoRecinto=''):
-    # Passo 1 - Pega os acessos para os parâmetros de data e recinto passados.
-    # Filtros: A"C"esso, direção "E"ntrada, numeroNfe não vazio, numeroConteiner não vazio,
-    q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
-    q = q.filter(AcessoVeiculo.direcao == 'E')
-    q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
-    q = q.filter(AcessoVeiculo.codigoRecinto == codigoRecinto)
-    q = q.filter(AcessoVeiculo.numeroConteiner.isnot(None))
-    q = q.filter(AcessoVeiculo.numeroConteiner != '')
-    q = q.filter(AcessoVeiculo.listaNfe != '')
-    lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
-    conteineres_exportacao_detalhes = {}
-    conteineres_exportacao = set()
-    for entrada in lista_entradas:
-        conteineres_exportacao_detalhes[entrada.numeroConteiner] = {
-            'id': entrada.id,
-            'tipoDeclaracao': entrada.tipoDeclaracao,
-            'numeroDeclaracao': entrada.numeroDeclaracao
-        }
-        conteineres_exportacao.add(entrada.numeroConteiner)
-    logger.info(f'Acessos: {list(conteineres_exportacao)[:10]} {len(conteineres_exportacao)}')
-    # Passo 2 - Pega Inspeções não Invasivas para a lista de contêineres extraídos dos Acessos
-    # Filtra o mesmo recinto e adiciona três horas na data fim (escaneamento ocorre depois do acesso)
-    datafim_escaneamento = datafim + timedelta(hours=3)
-    q2 = session.query(InspecaoNaoInvasiva)
-    q2 = q2.filter(InspecaoNaoInvasiva.dataHoraOcorrencia.between(datainicio, datafim_escaneamento))
-    q2 = q2.filter(InspecaoNaoInvasiva.codigoRecinto == codigoRecinto)
-    q2 = q2.filter(InspecaoNaoInvasiva.numeroConteiner.in_(conteineres_exportacao))
-    lista_escaneamentos = q2.order_by(InspecaoNaoInvasiva.dataHoraOcorrencia).all()
-    conteineres_escaneados_detalhes = {}
-    conteineres_exportacao_escaneados = set()
-    for escaneamento in lista_escaneamentos:
-        conteineres_escaneados_detalhes[escaneamento.numeroConteiner] = {
-            'id': escaneamento.id,
-            'dataescaneamento': escaneamento.dataHoraOcorrencia
-        }
-        conteineres_exportacao_escaneados.add(escaneamento.numeroConteiner)
-    logger.info(
-        f'Escaneamentos: {list(conteineres_exportacao_escaneados)[:10]} {len(conteineres_exportacao_escaneados)}')
-    datainicial = datetime.strftime(datainicio, '%Y-%m-%d %H:%M:%S')
-    datafinal = datetime.strftime(datafim_escaneamento, '%Y-%m-%d %H:%M:%S')
-    # Passo 3 - Recupera o _id das imagens capturadas pelo Avatar e outros dados, para completar os dados
-    # e para não pegar DUEs que não tenham imagem?
-    # TODO: due_metadata será o lugar para guardar a DUE? Se for, então mudar raspa_container
-    # para já filtrar se campo due estiver preenchido?
-    griddata = raspa_container(list(conteineres_exportacao_escaneados), datainicial, datafinal)
-    lista_final = [('AcessoVeiculo', 'InspecaoNaoInvasiva',
-                    'numero_conteiner', 'id_imagem', 'dataescaneamento', 'due_metadata', 'due_acesso',
-                    'due_posacd_rd')]
-    for dados_imagem in griddata:
-        _id = dados_imagem['_id']
-        metadata = dados_imagem['metadata']
-        numero_conteiner = metadata['numeroinformado']
-        dataescaneamento = metadata['dataescaneamento']
-        due_metadata = metadata.get('due')
-        dados_acesso = conteineres_exportacao_detalhes[numero_conteiner]
-        dados_inspecao = conteineres_escaneados_detalhes[numero_conteiner]
-        due_acesso = None
-        if dados_acesso.get('tipoDeclaracao') == 'DUE':
-            due_acesso = dados_acesso['numeroDeclaracao']
-        lista_final.append((dados_acesso['id'], dados_inspecao['id'],
-                            numero_conteiner, _id, dataescaneamento, due_metadata, due_acesso,
-                            ''))
-    logger.info(f'Lista final: {lista_final[:2]}, {len(lista_final)}')
+def exporta_ctrs(session):
+    # Obtém a data de ontem
+    lista_final = get_conteineres_escaneados_sem_due(session, datainicio=inicio_ontem,
+                                                     datafim=fim_ontem, codigoRecinto='8931359')
     df = pd.DataFrame(lista_final[1:], columns=lista_final[0])
     df.to_csv('escaneamentos_sem_due.csv', index=False)
+
+
+def insert_from_dataframe(session, classe, df):
+    try:
+        df = df.fillna('').drop_duplicates()
+        _list = [classe(**row.to_dict()) for _, row in df.iterrows()]
+        session.bulk_save_objects(_list)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Erro ao inserir dados: {e}")
+    finally:
+        session.close()
+
+def importa_dues():
+    # Passo 5: Inserir DUEs e itensDUE a partir dos dfs acima
+    # Passo 6: Atualizar metadata e Acesso com número da DUE* (TODO)
+    # Passo 7: Inserir nomes das empresas na tabela XXXXXX (TODO)
+    # *Falta gerar o csv da ligação do contêiner com a DUE na parte do RD
+    df_dues = pd.read_csv('dues.csv')
+    insert_from_dataframe(session, Due, df_dues)
+    df_itens_dues = pd.read_csv('itens_dues.csv')
+    insert_from_dataframe(session, DueItem, df_itens_dues)
+    df_cnpjs = pd.read_csv('cnpjs_nomes.csv')
 
 
 if __name__ == '__main__':  # pragma: no-cover
@@ -116,11 +49,22 @@ if __name__ == '__main__':  # pragma: no-cover
     engine = create_engine(SQL_URI)
     Session = sessionmaker(bind=engine)
     session = Session()
-    # Obtém a data de ontem
-    ontem = datetime.now() - timedelta(days=4)
 
+    ontem = datetime.now() - timedelta(days=1)
     # Define o início e o fim do dia de ontem
     inicio_ontem = datetime.combine(ontem, time.min)
     fim_ontem = datetime.combine(ontem, time.max)
+    operacao = input('Qual a operação desejada? (E)exportar lista, (I)mportar DUEs, (R)eceita Data?')
 
-    get_eventos(session, datainicio=inicio_ontem, datafim=fim_ontem, codigoRecinto='8931359')
+    if operacao == 'E':
+        exporta_ctrs()
+    elif operacao == 'I':
+        importa_dues()
+    elif operacao == 'R':
+        # Passo 4: Recuperar do Receita Data CÓDIGO FAKE DE EXEMPLO!!!
+        # Abaixo apenas exemplo, hoje é preciso rodar no Jupyter Notebook do RD na mão
+        df = pd.read_csv('escaneamentos_sem_due.csv')
+        dues_rd(inicio_ontem, fim_ontem, df['numero_conteiner'].unique(), None)
+        df_dues_conteiner = pd.read_csv('dues_conteiner.csv')
+        merge_df = df.merge(df_dues_conteiner, left_on='numero_container', right_on='id_conteiner', how='inner')
+        merge_df.to_csv('escaneamentos_sem_due_atualizado.csv', index=False)
