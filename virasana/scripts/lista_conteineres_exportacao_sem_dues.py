@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import datetime, timedelta, time
 
@@ -29,16 +30,34 @@ def insert_from_dataframe(session, classe, df):
     finally:
         session.close()
 
+
 def importa_dues():
     # Passo 5: Inserir DUEs e itensDUE a partir dos dfs acima
     # Passo 6: Atualizar metadata e Acesso com número da DUE* (TODO)
     # Passo 7: Inserir nomes das empresas na tabela XXXXXX (TODO)
     # *Falta gerar o csv da ligação do contêiner com a DUE na parte do RD
-    df_dues = pd.read_csv('dues.csv')
-    insert_from_dataframe(session, Due, df_dues)
-    df_itens_dues = pd.read_csv('itens_dues.csv')
-    insert_from_dataframe(session, DueItem, df_itens_dues)
-    df_cnpjs = pd.read_csv('cnpjs_nomes.csv')
+    if not os.path.exists('dues.csv'):
+        print('Pulando dues - arquivo não existe')
+    else:
+        df_dues = pd.read_csv('dues.csv')
+        df_dues['ni_declarante'] = df_dues['ni_declarante'].astype(str).str[:14].str.zfill(14)
+        df_dues['cnpj_estabelecimento_exportador'] = (
+            df_dues['cnpj_estabelecimento_exportador'].astype(str).str[:14].str.zfill(14))
+        insert_from_dataframe(session, Due, df_dues)
+        os.remove('dues.csv')
+
+    if not os.path.exists('itens_dues.csv'):
+        print('Pulando itens_dues - arquivo não existe')
+    else:
+        df_itens_dues = pd.read_csv('itens_dues.csv')
+        insert_from_dataframe(session, DueItem, df_itens_dues)
+        os.remove('itens_dues.csv')
+
+    if not os.path.exists('cnpjs_nomes.csv'):
+        print('Pulando cnpjs_nomes.csv - arquivo não existe')
+    else:
+        df_cnpjs = pd.read_csv('cnpjs_nomes.csv')
+        os.remove('cnpjs_nomes.csv')
 
 
 if __name__ == '__main__':  # pragma: no-cover
