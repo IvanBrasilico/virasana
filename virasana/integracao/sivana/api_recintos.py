@@ -64,7 +64,7 @@ def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, in
 
 class APIRecintos(TratamentoLPR):
     def processa_fonte_alpr(self, pstart: datetime, pend: datetime):
-        """Necessário reescrever este método, porque, ao contrário das demais fontes,
+        """Foi necessário sobreescrever porque, ao contrário das demais fontes,
         a Fonte API recintos não conecta a um servidor de câmeras ALPRs. Além disso, o
         controle de transmissão é pelo ID. Os parâmetros pstart e pend são mantidos para
         compatibilidade de código, e descartados.
