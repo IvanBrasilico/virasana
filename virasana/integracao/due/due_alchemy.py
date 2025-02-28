@@ -36,6 +36,9 @@ class Due(Base):
         return (f"<Due(numero_due={self.numero_due}, data_criacao_due={self.data_criacao_due}, "
                 f"ni_declarante={self.ni_declarante})>")
 
+    def get_lista_conteiners(self):
+        return self.lista_id_conteiner.split(', ')
+
 
 class DueItem(Base):
     __tablename__ = 'pucomex_due_itens'
