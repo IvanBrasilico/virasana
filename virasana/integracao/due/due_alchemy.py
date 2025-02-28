@@ -1,7 +1,6 @@
 import sys
 
-from ipywidgets import Datetime
-from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey, BigInteger
+from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -30,9 +29,8 @@ class Due(Base):
     codigo_recinto_despacho = Column(CHAR(7))
     codigo_recinto_embarque = Column(CHAR(7))
     codigo_unidade_embarque = Column(CHAR(7))
-    lista_id_conteiner = Column(String(650)) # Até 50 contêineres aproximadamente
+    lista_id_conteiner = Column(String(650))  # Até 50 contêineres aproximadamente
     itens = relationship("DueItem", backref="due")
-    conteineres = relationship("DueConteiner", backref="due")
 
     def __repr__(self):
         return (f"<Due(numero_due={self.numero_due}, data_criacao_due={self.data_criacao_due}, "
@@ -59,28 +57,13 @@ class DueItem(Base):
                 f"descricao_item={self.descricao_item})>")
 
 
-# Obs.: a priori, a classe abaixo não será utilizada.
-# Motivo: a lista de contêineres da DUE é mutável, e será complicado implementar
-# a lógica de atualização. Por enquanto, será feito como na DUE uma "lista_id_conteiner"
-class DueConteiner(Base):
-    __tablename__ = 'pucomex_due_conteiner'
-
-    id = Column(BigInteger(), primary_key=True)
-    numero_due = Column(CHAR(14), ForeignKey('pucomex_due.numero_due'), nullable=False)
-    numero_conteiner = Column(String(11), index=True)
-
-    def __repr__(self):
-        return f"<DueConteiner(numero_due={self.numero_due}, numero_conteiner={self.numero_conteiner})>"
-
-
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
     if confirma != 'S':
         exit('Saindo... (só recrio se digitar "S", digitou %s)' % confirma)
     print('Recriando tabelas, aguarde...')
     engine = create_engine(SQL_URI)
-    #metadata.drop_all(engine, [metadata.tables['pucomex_due'],
+    # metadata.drop_all(engine, [metadata.tables['pucomex_due'],
     #                           metadata.tables['pucomex_due_itens'],
-    #                           metadata.tables['pucomex_due_conteiner'],])
     metadata.create_all(engine, [metadata.tables['pucomex_due'],
-                                 metadata.tables['pucomex_due_itens'],])
+                                 metadata.tables['pucomex_due_itens'], ])
