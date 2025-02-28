@@ -88,11 +88,11 @@ def importa_cpfs(session):
     os.remove('cpfs.csv')
 
 
-def importa_cnpjs(session):
-    if not os.path.exists('cnpjs.csv'):
+def importa_cnpjs(session, arquivo='cnpjs.csv'):
+    if not os.path.exists(arquivo):
         print('Pulando cnpjs - arquivo não existe')
         return
-    df = pd.read_csv('cnpjs.csv')
+    df = pd.read_csv(arquivo)
     for index, row in df.iterrows():
         cnpj = row['cnpj']
         cnpj = str(int(cnpj)).zfill(8)
@@ -106,7 +106,7 @@ def importa_cnpjs(session):
         empresa.nome = row['nome']
         session.add(empresa)
     session.commit()
-    os.remove('cnpjs.csv')
+    os.remove(arquivo)
 
 
 def numeric(seq: str):
