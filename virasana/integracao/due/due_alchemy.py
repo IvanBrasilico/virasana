@@ -1,6 +1,6 @@
 import sys
 
-from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey
+from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -60,6 +60,16 @@ class DueItem(Base):
                 f"descricao_item={self.descricao_item})>")
 
 
+class DueConteiner(Base):
+    __tablename__ = 'pucomex_due_conteiner'
+
+    id = Column(BigInteger(), primary_key=True)
+    numero_due = Column(CHAR(14), ForeignKey('pucomex_due.numero_due'), nullable=False)
+    numero_conteiner = Column(String(11), index=True)
+
+    def __repr__(self):
+        return f"<DueConteiner(numero_due={self.numero_due}, numero_conteiner={self.numero_conteiner})>"
+
 if __name__ == '__main__':
     confirma = input('Recriar todas as tabelas ** APAGA TODOS OS DADOS ** (S/N)')
     if confirma != 'S':
@@ -69,4 +79,5 @@ if __name__ == '__main__':
     # metadata.drop_all(engine, [metadata.tables['pucomex_due'],
     #                           metadata.tables['pucomex_due_itens'],
     metadata.create_all(engine, [metadata.tables['pucomex_due'],
-                                 metadata.tables['pucomex_due_itens'], ])
+                                 metadata.tables['pucomex_due_itens'],
+                                 metadata.tables['pucomex_due_conteiner'],])

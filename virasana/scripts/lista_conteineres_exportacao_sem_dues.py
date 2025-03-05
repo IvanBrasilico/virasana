@@ -50,7 +50,7 @@ def importa_dues(session):
         if integra_dues(session, df_dues):
             os.remove('dues.csv')
 
-    # Passo 6b: Inserir DUEItens a partir do df
+    # Passo 6c: Inserir DUEItens a partir do df
     if not os.path.exists('itens_dues.csv'):
         print('Pulando itens_dues - arquivo não existe')
     else:
@@ -86,6 +86,7 @@ if __name__ == '__main__':  # pragma: no-cover
         importa_dues(session)
         # Passo 7: Inserir nomes das empresas na tabela
         importa_cnpjs(session, 'cnpjs_nomes.csv')
+
     elif operacao == 'R':
         # Passo 4: Recuperar do Receita Data CÓDIGO FAKE DE EXEMPLO!!!
         # Abaixo apenas exemplo, hoje é preciso rodar no Jupyter Notebook do RD na mão

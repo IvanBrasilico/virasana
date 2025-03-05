@@ -10,7 +10,7 @@ import requests
 import urllib3
 from bson import ObjectId
 
-from virasana.integracao.due.due_alchemy import Due, DueItem
+from virasana.integracao.due.due_alchemy import Due, DueItem, DueConteiner
 
 # Suppress only the InsecureRequestWarning
 warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
@@ -193,6 +193,17 @@ def integra_dues(session, df_dues):
                     due = Due()
                 update_instance(due, row.to_dict())
                 session.add(due)
+                # Passo 6b - popular DueConteiner
+                for conteiner in due.lista_id_conteiner.split(', '):
+                    conteiner = conteiner.strip()
+                    due_conteiner = session.query(DueConteiner).\
+                                     filter(DueConteiner.numero_due == row['numero_due'],
+                                            DueConteiner.numero_conteiner == conteiner).one_or_none()
+                    if due_conteiner is None:
+                        due_conteiner = DueConteiner()
+                    due_conteiner.numero_due = due.numero_due
+                    due_conteiner.numero_conteiner = conteiner.strip()
+                    session.add(due_conteiner)
             session.commit()
             return True
         except Exception as err:
