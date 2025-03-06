@@ -78,7 +78,7 @@ if __name__ == '__main__':  # pragma: no-cover
 
     if operacao == 'E':
         # Passo 1, 2 e 3
-        exporta_ctrs(session, inicio, fim, ['8931359'])
+        exporta_ctrs(session, inicio, fim, ['8931356','8931359', '8931404'])
     elif operacao == 'I':
         # Passo 5
         atualiza_acesso_e_mongo(mongodb, session)

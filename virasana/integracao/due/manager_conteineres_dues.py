@@ -58,7 +58,7 @@ def raspa_container(containeres: List[str], datainicio: datetime, datafim: datet
     logger.debug(f'{r}: {r.text}')
     lista_containeres = list(r.json())
     if lista_containeres and len(lista_containeres) > 0:
-        logger.info(f'GridData: {lista_containeres[0]}')
+        logger.debug(f'GridData: {lista_containeres[0]}')
     return lista_containeres
 
 
@@ -142,7 +142,7 @@ def update_due_mongo_db(db, dues):
             {'_id': ObjectId(_id)},
             {'$set': {'metadata.due': due, 'metadata.carga.vazio': False}}
         )
-        logger.info(result)
+        logger.debug(result)
 
 
 def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df_dues):
@@ -167,7 +167,7 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
             session.add(acessoveiculo)
             # Monta dict de _id: due
             _ids_dues[_id] = due
-            logger.info(f'{conteiner},{acessoveiculo.id},{_id},{due}')
+            logger.debug(f'{conteiner},{acessoveiculo.id},{_id},{due}')
         update_due_mongo_db(db, _ids_dues)
         session.commit()
     except Exception as err:
