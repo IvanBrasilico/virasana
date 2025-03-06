@@ -1,6 +1,7 @@
 import sys
 
-from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey, BigInteger
+from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey, BigInteger, TIMESTAMP, \
+    func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -9,6 +10,17 @@ from ajna_commons.flask.conf import SQL_URI
 
 Base = declarative_base()
 metadata = Base.metadata
+
+class BaseRastreavel(Base):
+    __abstract__ = True
+    user_name = Column(CHAR(14), index=True)
+    create_date = Column(TIMESTAMP, index=True,
+                         server_default=func.current_timestamp())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        if self.user_name is None and kwargs.get('user_name'):
+            self.user_name = kwargs['user_name']
 
 
 class Due(Base):
