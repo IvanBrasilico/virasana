@@ -72,13 +72,13 @@ if __name__ == '__main__':  # pragma: no-cover
 
     # Define o fim às 00h de hoje e início 5 dias antes
     fim = datetime.combine(datetime.now(), time.min)
-    inicio = fim - timedelta(days=5)
+    inicio = fim - timedelta(days=7)
 
     operacao = input('Qual a operação desejada? (E)exportar lista, (I)mportar DUEs, (R)eceita Data?')
 
     if operacao == 'E':
         # Passo 1, 2 e 3
-        exporta_ctrs(session, inicio, fim, ['8931356','8931359', '8931404'])
+        exporta_ctrs(session, inicio, fim, ['8931318', '8931356','8931359', '8931404'])
     elif operacao == 'I':
         # Passo 5
         atualiza_acesso_e_mongo(mongodb, session)
