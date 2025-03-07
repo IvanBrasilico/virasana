@@ -9,31 +9,31 @@
                 <div class="col-md-7">
                     {% if myfile %}
                     <div class="row">
-                    <div class="navbar-collapse collapse col-md-8">
-                        <ul class="nav navbar-nav">
-                            <li>
-                                <a href="files?numero={{ myfile['metadata']['numeroinformado'] }}">
-                                    <u>Listar todas as passagens</u>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="view_image/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Tela análise de imagem</u>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/bhadrasana2/nova_inspecaoni/{{ myfile['_id'] }}" target="_BLANK">
-                                    <u>Registra análise de imagem</u>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="col-md-4">
-                        <form method="GET" id="formcolormap" action="file">
-                            <input type="hidden" name="_id" value="{{myfile['_id']}}">
-                            {{form_colormap.colormap(class='form-control', onchange='this.form.submit()')}}
-                        </form>
-                    </div>
+                        <div class="navbar-collapse collapse col-md-8">
+                            <ul class="nav navbar-nav">
+                                <li>
+                                    <a href="files?numero={{ myfile['metadata']['numeroinformado'] }}">
+                                        <u>Listar todas as passagens</u>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="view_image/{{ myfile['_id'] }}" target="_BLANK">
+                                        <u>Tela análise de imagem</u>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/bhadrasana2/nova_inspecaoni/{{ myfile['_id'] }}" target="_BLANK">
+                                        <u>Registra análise de imagem</u>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <form method="GET" id="formcolormap" action="file">
+                                <input type="hidden" name="_id" value="{{myfile['_id']}}">
+                                {{form_colormap.colormap(class='form-control', onchange='this.form.submit()')}}
+                            </form>
+                        </div>
                     </div>
                     <div class="row" align="center" style="vertical-align: middle;">
                         <a href="file?_id={{ myfile['_id'] }}" target="_BLANK">
@@ -223,15 +223,8 @@
             <h3>Dados do PUCOMEX</h3>
             <div id="PUCOMEX">
                 {% if myfile['metadata']['due'] %}
-                {% for due in myfile['metadata']['due'] %}
-                <ul>{% if due is mapping %}
-                    {% for key, value in due.items() %}
-                    <li> {{ key }}: {{ value }}</li>
-                    {% endfor %}
-                    {% endif %}
-                    {{ due }}
-                </ul>
-                {% endfor %}
+                DUE: <a href="/bhadrasana2/consulta_due?numero={{ myfile['metadata']['due'] }}" target="_blank">
+                myfile['metadata']['due']</a> <br>
                 {% endif %}
             </div>
             <h3>Dados de pesagens - integração recintos aduaneiros</h3>
@@ -332,9 +325,6 @@
             $('button#btnaddtag').bind('click', add_tag);
         });
      });
-
-
-
 
 
 </script> {% endblock %}
