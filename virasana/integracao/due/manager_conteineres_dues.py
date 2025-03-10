@@ -148,11 +148,13 @@ def update_due_mongo_db(db, dues):
 def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df_dues):
     # Passo 5: Atualizar metadata e Acesso com número da DUE
     conteineres_due = dict()
+    logger.info(f'set_conteineres_escaneados_sem_due: {len(df_dues)} DUEs a atualizar.')
     for index, row in df_dues.iterrows():
         conteineres = row['lista_id_conteiner']
         numero_due = row['numero_due']
         for conteiner in conteineres.split(','):
             conteineres_due[conteiner.strip()] = numero_due
+    logger.info(f'set_conteineres_escaneados_sem_due: {len(conteineres_due)} contêineres a atualizar.')
     try:
         _ids_dues = dict()
         for index, row in df_escaneamentos_sem_due.iterrows():
@@ -170,6 +172,8 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
             logger.debug(f'{conteiner},{acessoveiculo.id},{_id},{due}')
         update_due_mongo_db(db, _ids_dues)
         session.commit()
+        logger.info(f'set_conteineres_escaneados_sem_due: {len(_ids_dues)} imagens '
+                    'MongoDB e AcessosVeiculo atualizados.')
     except Exception as err:
         session.rollback()
         raise err

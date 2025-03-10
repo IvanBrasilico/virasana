@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, time
 
 import pandas as pd
 
+
 sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
+from ajna_commons.flask.log import logger
 from virasana.integracao.bagagens.bagagens_risco import importa_cnpjs
 from virasana.integracao.due.manager_conteineres_dues import (get_conteineres_escaneados_sem_due,
                                                               set_conteineres_escaneados_sem_due,
@@ -48,6 +51,7 @@ def importa_dues(session):
         df_dues = pd.read_csv('dues.csv')
         df_dues = df_dues.fillna('').drop_duplicates()
         if integra_dues(session, df_dues):
+            logger.info(f'{len(df_dues)} DUEs inseridas')
             os.remove('dues.csv')
 
     # Passo 6c: Inserir DUEItens a partir do df
@@ -57,6 +61,7 @@ def importa_dues(session):
         df_itens_dues = pd.read_csv('itens_dues.csv')
         df_itens_dues = df_itens_dues.fillna('').drop_duplicates()
         if integra_dues_itens(session, df_itens_dues):
+            logger.info(f'{len(df_itens_dues)} Itens de DUE inseridos')
             os.remove('itens_dues.csv')
 
 
