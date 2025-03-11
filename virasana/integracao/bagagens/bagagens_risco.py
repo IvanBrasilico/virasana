@@ -6,6 +6,8 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from ajna_commons.flask.log import logger
+
 sys.path.insert(0, '.')
 sys.path.insert(0, '../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
@@ -93,6 +95,7 @@ def importa_cnpjs(session, arquivo='cnpjs.csv'):
         print('Pulando cnpjs - arquivo não existe')
         return
     df = pd.read_csv(arquivo)
+    logger.info(f'Iniciando "UPSERT" de {len(df)} Empresas')
     for index, row in df.iterrows():
         cnpj = row['cnpj']
         cnpj = str(int(cnpj)).zfill(8)

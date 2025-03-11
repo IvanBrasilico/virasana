@@ -45,7 +45,7 @@ def atualiza_acesso_e_mongo(db, session):
 
 def importa_dues(session):
     if not os.path.exists('dues.csv'):
-        print('Pulando dues - arquivo não existe')
+        logger.info('Pulando dues - arquivo não existe')
     else:
         # Passo 6: Inserir DUEs a partir do df
         df_dues = pd.read_csv('dues.csv')
@@ -56,7 +56,7 @@ def importa_dues(session):
 
     # Passo 6c: Inserir DUEItens a partir do df
     if not os.path.exists('itens_dues.csv'):
-        print('Pulando itens_dues - arquivo não existe')
+        logger.info('Pulando itens_dues - arquivo não existe')
     else:
         df_itens_dues = pd.read_csv('itens_dues.csv')
         df_itens_dues = df_itens_dues.fillna('').drop_duplicates()

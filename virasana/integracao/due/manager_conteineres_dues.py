@@ -157,23 +157,28 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
     logger.info(f'set_conteineres_escaneados_sem_due: {len(conteineres_due)} contêineres a atualizar.')
     try:
         _ids_dues = dict()
+        acessos_veiculos_ids = df_escaneamentos_sem_due['AcessoVeiculo'].unique()
+        acessosveiculos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id.in_(acessos_veiculos_ids)).all()
+        for acessoveiculo in acessosveiculos:
+            due = conteineres_due.get(acessoveiculo.numeroConteiner)
+            if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
+                continue
+            acessoveiculo.numeroDeclaracao = due
+            session.add(acessoveiculo)
+            logger.debug(f'{acessoveiculo.numeroConteiner},{acessoveiculo.id},{due}')
+        session.commit()
+        logger.info(f'set_conteineres_escaneados_sem_due: {len(acessosveiculos)} AcessosVeiculo atualizados.')
         for index, row in df_escaneamentos_sem_due.iterrows():
+            _id = row['id_imagem']
             conteiner = row['numero_conteiner']
             due = conteineres_due.get(conteiner)
             if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
                 continue
-            _id = row['id_imagem']
-            # Lista de acessos veículo atualizados
-            acessoveiculo = session.query(AcessoVeiculo).filter(AcessoVeiculo.id == row['AcessoVeiculo']).one()
-            acessoveiculo.numeroDeclaracao = due
-            session.add(acessoveiculo)
             # Monta dict de _id: due
             _ids_dues[_id] = due
-            logger.debug(f'{conteiner},{acessoveiculo.id},{_id},{due}')
+            logger.debug(f'{conteiner},{_id},{due}')
         update_due_mongo_db(db, _ids_dues)
-        session.commit()
-        logger.info(f'set_conteineres_escaneados_sem_due: {len(_ids_dues)} imagens '
-                    'MongoDB e AcessosVeiculo atualizados.')
+        logger.info(f'set_conteineres_escaneados_sem_due: {len(_ids_dues)} imagens MongoDB atualizadas.')
     except Exception as err:
         session.rollback()
         raise err
@@ -190,6 +195,7 @@ def integra_dues(session, df_dues):
         df_dues['ni_declarante'] = df_dues['ni_declarante'].astype(str).str[:14].str.zfill(14)
         df_dues['cnpj_estabelecimento_exportador'] = (
             df_dues['cnpj_estabelecimento_exportador'].astype(str).str[:14].str.zfill(14))
+        logger.info(f'Iniciando "UPSERT" de {len(df_dues)} DUEs')
         try:
             for index, row in df_dues.iterrows():
                 due = session.query(Due).filter(Due.numero_due == row['numero_due']).one_or_none()
@@ -200,9 +206,9 @@ def integra_dues(session, df_dues):
                 # Passo 6b - popular DueConteiner
                 for conteiner in due.lista_id_conteiner.split(', '):
                     conteiner = conteiner.strip()
-                    due_conteiner = session.query(DueConteiner).\
-                                     filter(DueConteiner.numero_due == row['numero_due'],
-                                            DueConteiner.numero_conteiner == conteiner).one_or_none()
+                    due_conteiner = session.query(DueConteiner). \
+                        filter(DueConteiner.numero_due == row['numero_due'],
+                               DueConteiner.numero_conteiner == conteiner).one_or_none()
                     if due_conteiner is None:
                         due_conteiner = DueConteiner()
                     due_conteiner.numero_due = due.numero_due
@@ -219,6 +225,7 @@ def integra_dues(session, df_dues):
 
 
 def integra_dues_itens(session, df_itens_dues):
+    logger.info(f'Iniciando "UPSERT" de {len(df_itens_dues)} Itens de DUEs')
     try:
         for index, row in df_itens_dues.iterrows():
             dueitem = session.query(DueItem).filter(
