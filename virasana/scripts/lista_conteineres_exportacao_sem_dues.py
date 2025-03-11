@@ -38,6 +38,12 @@ def atualiza_acesso_e_mongo(db, session):
     # Passo 5: Atualizar metadata do Mongo por _id e Acesso por id com número da DUE
     # Não tratar erro, se houver, interromper aqui porque senão o passo mais importante ficará para trás
     # Se der erro, operador precisa tratar e identificar, porque esta amarração é a parte mais importante
+    if not os.path.exists('dues.csv'):
+        logger.info('Pulando atualiza_acesso_e_mongo - arquivo dues não existe!!!')
+        return
+    if not os.path.exists('escaneamentos_sem_due.csv'):
+        logger.info('Pulando atualiza_acesso_e_mongo - arquivo escaneamentos_sem_due não existe!!!')
+        return
     df_dues = pd.read_csv('dues.csv')
     df_escaneamentos_sem_due = pd.read_csv('escaneamentos_sem_due.csv')
     set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df_dues)

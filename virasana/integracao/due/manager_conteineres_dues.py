@@ -157,7 +157,9 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
     logger.info(f'set_conteineres_escaneados_sem_due: {len(conteineres_due)} contêineres a atualizar.')
     try:
         _ids_dues = dict()
-        acessos_veiculos_ids = df_escaneamentos_sem_due['AcessoVeiculo'].unique()
+        acessos_veiculos_ids = df_escaneamentos_sem_due[
+            df_escaneamentos_sem_due['numero_conteiner'].isin(conteineres_due.keys())]['AcessoVeiculo'].unique()
+        logger.info(f'set_conteineres_escaneados_sem_due: {len(acessos_veiculos_ids)} AcessosVeiculo para atualizar.')
         acessosveiculos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id.in_(acessos_veiculos_ids)).all()
         for acessoveiculo in acessosveiculos:
             due = conteineres_due.get(acessoveiculo.numeroConteiner)
