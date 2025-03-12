@@ -49,6 +49,10 @@
                     {% for ovr in ovrs %}
                     <b>Ficha n.: </b> <a href="/bhadrasana2/ovr?id={{ ovr.id }}" target="_blank">{{ ovr.id }}</a>
                     {% endfor %}
+                    {% if myfile['metadata']['due'] %}
+                    DUE: <a href="/bhadrasana2/consulta_due?numero={{ myfile['metadata']['due'] }}" target="_blank">
+                    {{myfile['metadata']['due']}}</a> <br>
+                    {% endif %}
                     <br> {{ summary|safe }}
                     <br> {{ summary_carga|safe }}
                 </div>
