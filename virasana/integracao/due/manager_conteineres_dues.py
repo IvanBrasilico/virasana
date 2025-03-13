@@ -10,6 +10,7 @@ import requests
 import urllib3
 from bson import ObjectId
 
+from bhadrasana.models.laudo import Empresa
 from virasana.integracao.due.due_alchemy import Due, DueItem, DueConteiner
 
 # Suppress only the InsecureRequestWarning
@@ -243,3 +244,48 @@ def integra_dues_itens(session, df_itens_dues):
         session.rollback()
         logger.error(err)
         return False
+
+
+def get_dados(session, grid_data):
+    try:
+        logger.info(f'get_dados: {grid_data["metadata"]["due"]}')
+        numero_due = grid_data['metadata']['due']
+        due = session.query(Due).filter(Due.numero_due == numero_due).one()
+        declarante = due.ni_declarante
+        empresa = session.query(Empresa).filter(Empresa.cnpj == declarante).one_or_none()
+        if empresa:
+            nome_declarante = declarante.get('Nome Declarante')
+        else:
+            nome_declarante = 'Não encontrado.'
+        destino = due.codigo_iso3_pais_importador
+        numero = due.numero_due
+        return '%s - EXPORTADOR %s / %s - PAÍS DESTINO %s' % \
+            (numero, declarante, nome_declarante, destino)
+    except Exception as err:
+        logger.error(f'get_dados: {err}')
+        return ''
+
+
+def due_summary(session, grid_out) -> dict:
+    result = {}
+    try:
+        grid_data = grid_out.metadata
+        logger.info(f'due_summary: {grid_data["due"]}')
+        numero_due = grid_data['due']
+        due = session.query(Due).filter(Due.numero_due == numero_due).one()
+        declarante = due.ni_declarante
+        empresa = session.query(Empresa).filter(Empresa.cnpj == declarante).one_or_none()
+        if empresa:
+            nome_declarante = declarante.get('Nome Declarante')
+        else:
+            nome_declarante = 'Não encontrado.'
+        numero = due.numero_due
+        destino = due.codigo_iso3_pais_importador
+        result = {'RESUMO PUCOMEX': '',
+                'DUE Nº': numero,
+                'EXPORTADOR': '%s / %s' % (declarante, nome_declarante),
+                'PAÍS DESTINO': destino}
+    except Exception as err:
+        result['ERRO AO BUSCAR DADOS DUE'] = f'due_summary: {err}'
+        logger.error(f'due_summary: {err}', exc_info=True)
+    return result

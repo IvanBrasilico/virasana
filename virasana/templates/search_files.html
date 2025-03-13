@@ -159,7 +159,11 @@
                     {{ myfile['infocarga'] }}<br>
                 </a>
             </div>
-            {{ myfile['infodue'] }}<br>
+            {% if myfile['metadata']['due'] %}
+            <a href="/bhadrasana2/consulta_due?numero={{ myfile['metadata']['due'] }}"
+                    target="_blank">
+            <b>DUE:</b> </a> {{ myfile['infodue'] }}<br>
+            {% endif %}
             {{ myfile['pesocarga'] }}<br>
             {{ myfile['peso'] }}<br>
             {{ myfile['ncms'] }}<br>
@@ -266,9 +270,6 @@
     function clearMsg(img) {
         img.title = "";
     }
-
-
-
 
 
 </script> {% endblock %}

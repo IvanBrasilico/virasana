@@ -37,6 +37,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
+
 from virasana.conf import APP_PATH
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
@@ -45,7 +46,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
                                  TIPOS_GRIDFS)
-from virasana.integracao.due import due_mongo
+from virasana.integracao.due import manager_conteineres_dues
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
 from virasana.integracao.risco.alertas_manager import get_alertas_filtro_agrupados
@@ -292,10 +293,12 @@ def summarytext(_id=None):
     Exibe os metadados associados a ele.
     """
     db = app.config['mongodb']
+    session = app.config['db_session']
     fs = GridFS(db)
     grid_data = fs.get(ObjectId(_id))
     result = dict_to_text(summary(grid_data=grid_data)) + '\n' + \
-             dict_to_text(carga.summary(grid_data=grid_data))
+             dict_to_text(carga.summary(grid_data=grid_data)) +'\n' + \
+             dict_to_text(manager_conteineres_dues.due_summary(session, grid_data))
     return result
 
 
@@ -642,7 +645,8 @@ def dues_update():
     """
     db = app.config['mongodb']
     if request.method == 'POST':
-        due_mongo.update_due(db, request.json)
+        return jsonify({'status': 'Método "deprecated"'}), 404
+        # due_mongo.update_due(db, request.json)
     return jsonify({'status': 'DUEs inseridas/atualizadas'}), 201
 
 
@@ -849,7 +853,7 @@ filtros = dict()
 
 def campos_chave():
     """Retorna campos chave para montagem de filtro."""
-    return CHAVES_GRIDFS + carga.CHAVES_CARGA + info_ade02.CHAVES_RECINTO + due_mongo.CHAVES_DUE
+    return CHAVES_GRIDFS + carga.CHAVES_CARGA + info_ade02.CHAVES_RECINTO
 
 
 def campos_chave_tipos():
@@ -979,6 +983,7 @@ def get_classes():
 def files():
     """Recebe parâmetros, aplica no GridFS, retorna a lista de arquivos."""
     db = app.config['mongodb']
+    session = app.config['db_session']
     PAGE_ROWS = 50
     PAGES = 100
     lista_arquivos = []
@@ -1027,7 +1032,8 @@ def files():
                       'metadata.pesagens': 1,
                       'metadata.dataescaneamento': 1,
                       'metadata.carga': 1,
-                      'metadata.xml': 1}
+                      'metadata.xml': 1,
+                      'metadata.due': 1}
         skip = (pagina_atual - 1) * PAGE_ROWS
         # logger.debug(filtro)
         # logger.debug(projection)
@@ -1047,6 +1053,7 @@ def files():
             linha = {}
             linha['_id'] = grid_data['_id']
             linha['filename'] = grid_data['filename']
+            linha['metadata'] = grid_data['metadata'] # Deixa todos os dados disponíveis para a view
             linha['dataescaneamento'] = datetime.strftime(grid_data['metadata'].get(
                 'dataescaneamento'), '%d/%m/%Y %H:%M:%S')
             xmldoc = grid_data['metadata'].get('xml')
@@ -1062,7 +1069,7 @@ def files():
             linha['ncms'] = carga.get_dados_ncm(grid_data)
             linha['infocarga'] = carga.get_dados_conteiner(grid_data)
             linha['pesocarga'] = carga.get_peso_conteiner(grid_data)
-            linha['infodue'] = due_mongo.get_dados(grid_data)
+            linha['infodue'] = manager_conteineres_dues.get_dados(session, grid_data)
             linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
