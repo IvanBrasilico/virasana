@@ -4,19 +4,20 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 import pandas as pd
-
-from ajna_commons.flask.log import logger
+from pymongo.database import Database
 
 sys.path.append('../bhadrasana2')
 sys.path.append('.')
 sys.path.append('virasana')
 
-from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, PesagemVeiculo, InspecaoNaoInvasiva
+from ajna_commons.flask.log import logger
+from bhadrasana.models.apirecintos import (AcessoVeiculo, EmbarqueDesembarque, PesagemVeiculo,
+                                           InspecaoNaoInvasiva)
 from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovr import Recinto
-from bhadrasana.models.virasana_manager import get_conhecimento
-from integracao.mercante.mercantealchemy import Conhecimento
-from pymongo.database import Database
+from bhadrasana.models.virasana_manager import get_conhecimento, get_due
+from virasana.integracao.due.due_alchemy import Due
+from virasana.integracao.mercante.mercantealchemy import Conhecimento
 
 
 def get_pesagem_entrada(session, entrada: AcessoVeiculo, datasaida) -> PesagemVeiculo:
@@ -71,7 +72,8 @@ def get_id_imagem(mongodb, numeroConteiner, dataentradaouescaneamento, datasaida
     # Se não tiver esta data, procura até X horas depois da entrada ou X horas antes da saída
     dataminima = dataentradaouescaneamento - timedelta(hours=3)
     datamaxima = datasaida
-    logger.debug(f'metadata.numeroinformado: {numeroConteiner}, metadata.dataescaneamento: $gte: {dataminima}, $lte: {datamaxima}')
+    logger.debug(
+        f'metadata.numeroinformado: {numeroConteiner}, metadata.dataescaneamento: $gte: {dataminima}, $lte: {datamaxima}')
     grid_data = mongodb['fs.files'].find_one(
         {'metadata.numeroinformado': numeroConteiner,
          'metadata.dataescaneamento': {'$gte': dataminima, '$lte': datamaxima}})
@@ -106,9 +108,15 @@ def aplica_filtros(q, placa, numeroConteiner, cpfMotorista, codigoRecinto):
     return q
 
 
-def search_conhecimento(session, entrada) -> Optional[Conhecimento]:
+def search_conhecimento(session, entrada: AcessoVeiculo) -> Optional[Conhecimento]:
     if entrada.numeroConhecimento:
         return get_conhecimento(session, entrada.numeroConhecimento)
+    return None
+
+
+def search_due(session, entrada: AcessoVeiculo) -> Optional[Due]:
+    if entrada.tipoDeclaracao == 'DUE' and entrada.numeroDeclaracao:
+        return get_due(session, entrada.numeroDeclaracao)
     return None
 
 
@@ -161,6 +169,8 @@ def get_eventos_entradas(session, mongodb, lista_entradas,
         # Missão
         conhecimento = search_conhecimento(session, entrada)
         dict_eventos['conhecimento'] = conhecimento
+        due = search_due(session, entrada)
+        dict_eventos['due'] = due
         missao = Missao().get_missao(session, entrada, conhecimento)
         if filtra_missao:  # Pular linha se não for da missão desejada
             if missao != filtra_missao:

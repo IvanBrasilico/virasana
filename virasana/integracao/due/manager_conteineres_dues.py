@@ -166,6 +166,7 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
             due = conteineres_due.get(acessoveiculo.numeroConteiner)
             if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
                 continue
+            acessoveiculo.tipoDeclaracao = 'DUE'
             acessoveiculo.numeroDeclaracao = due
             session.add(acessoveiculo)
             logger.debug(f'{acessoveiculo.numeroConteiner},{acessoveiculo.id},{due}')
@@ -282,9 +283,9 @@ def due_summary(session, grid_out) -> dict:
         numero = due.numero_due
         destino = due.codigo_iso3_pais_importador
         result = {'RESUMO PUCOMEX': '',
-                'DUE Nº': numero,
-                'EXPORTADOR': '%s / %s' % (declarante, nome_declarante),
-                'PAÍS DESTINO': destino}
+                  'DUE Nº': numero,
+                  'EXPORTADOR': '%s / %s' % (declarante, nome_declarante),
+                  'PAÍS DESTINO': destino}
     except Exception as err:
         result['ERRO AO BUSCAR DADOS DUE'] = f'due_summary: {err}'
         logger.error(f'due_summary: {err}', exc_info=True)
