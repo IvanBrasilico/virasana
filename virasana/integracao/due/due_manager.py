@@ -11,8 +11,8 @@ import urllib3
 from bson import ObjectId
 
 from bhadrasana.models.laudo import Empresa
-from bhadrasana.models.ovr import Recinto
 from bhadrasana.models.laudo import get_empresa
+from bhadrasana.models.ovr import Recinto
 from virasana.integracao.due.due_alchemy import Due, DueItem, DueConteiner
 
 # Suppress only the InsecureRequestWarning
@@ -316,6 +316,16 @@ class DueView():
         # Reflect all columns - copia campos da due
         for key in due.__mapper__.attrs.keys():
             setattr(self, key, getattr(due, key))
+        # Criação manual de campos, para documentação e reflection/autocomplete
+        self.numero_due = due.numero_due
+        self.data_criacao_due = due.data_criacao_due
+        self.data_registro_due = due.data_registro_due
+        self.ni_declarante = due.ni_declarante
+        self.cnpj_estabelecimento_exportador = due.cnpj_estabelecimento_exportador
+        self.codigo_iso3_pais_importador = due.codigo_iso3_pais_importador
+        self.nome_pais_importador = due.nome_pais_importador
+        self.codigo_recinto_despacho = due.codigo_recinto_despacho
+        self.codigo_recinto_embarque = due.codigo_recinto_embarque
         try:
             empresa = get_empresa(session, due.ni_declarante)
         except ValueError:
@@ -326,6 +336,8 @@ class DueView():
         recinto_despacho = get_recinto_siscomex(session, due.codigo_recinto_despacho)
         self.nome_recinto_despacho = '' if recinto_despacho is None else recinto_despacho.nome
         self.itens = session.query(DueItem).filter(DueItem.nr_due == due.numero_due).all()
+        self.conteineres = session.query(DueConteiner).filter(
+            DueConteiner.numero_due == due.numero_due).all()
 
 
 def get_due_view(session, numerodeclaracao: str) -> Optional[DueView]:
