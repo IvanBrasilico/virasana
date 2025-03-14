@@ -46,7 +46,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
                                  plot_pie_plotly, stats_resumo_imagens,
                                  summary,
                                  TIPOS_GRIDFS)
-from virasana.integracao.due import manager_conteineres_dues
+from virasana.integracao.due import due_manager
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
 from virasana.integracao.risco.alertas_manager import get_alertas_filtro_agrupados

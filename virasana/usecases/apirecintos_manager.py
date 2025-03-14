@@ -15,7 +15,8 @@ from bhadrasana.models.apirecintos import (AcessoVeiculo, EmbarqueDesembarque, P
                                            InspecaoNaoInvasiva)
 from bhadrasana.models.apirecintos_risco import Motorista
 from bhadrasana.models.ovr import Recinto
-from bhadrasana.models.virasana_manager import get_conhecimento, get_due
+from bhadrasana.models.virasana_manager import get_conhecimento
+from integracao.due.due_manager import get_due
 from virasana.integracao.due.due_alchemy import Due
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 

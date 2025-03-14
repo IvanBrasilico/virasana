@@ -4,13 +4,15 @@ Este módulo implementa a lógica necessária para puxar os dados de exportaçã
 import sys
 import warnings
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 import requests
 import urllib3
 from bson import ObjectId
 
 from bhadrasana.models.laudo import Empresa
+from bhadrasana.models.ovr import Recinto
+from bhadrasana.models.laudo import get_empresa
 from virasana.integracao.due.due_alchemy import Due, DueItem, DueConteiner
 
 # Suppress only the InsecureRequestWarning
@@ -290,3 +292,77 @@ def due_summary(session, grid_out) -> dict:
         result['ERRO AO BUSCAR DADOS DUE'] = f'due_summary: {err}'
         logger.error(f'due_summary: {err}', exc_info=True)
     return result
+
+
+def get_due(session, numerodeclaracao: str) -> Optional[Due]:
+    """
+    Retorna due se encontrada, ou None.
+    Args:
+        session: sessão SQL Alchemy
+        numerodeclaracao: número da DUE
+    """
+    return session.query(Due).filter(Due.numero_due == numerodeclaracao).one_or_none()
+
+
+def get_recinto_siscomex(session, codigo_siscomex) -> Optional[Recinto]:
+    return session.query(Recinto).filter(
+        Recinto.cod_siscomex == codigo_siscomex).one_or_none()
+
+
+class DueView():
+    """DueView é uma Due já com os campos adicionais para visualização."""
+
+    def __init__(self, session, due: Due):
+        # Reflect all columns - copia campos da due
+        for key in due.__mapper__.attrs.keys():
+            setattr(self, key, getattr(due, key))
+        try:
+            empresa = get_empresa(session, due.ni_declarante)
+        except ValueError:
+            empresa = None
+        self.nome_declarante = 'Não encontrado na base' if empresa is None else '*' + empresa.nome
+        recinto_embarque = get_recinto_siscomex(session, due.codigo_recinto_embarque)
+        self.nome_recinto_embarque = '' if recinto_embarque is None else recinto_embarque.nome
+        recinto_despacho = get_recinto_siscomex(session, due.codigo_recinto_despacho)
+        self.nome_recinto_despacho = '' if recinto_despacho is None else recinto_despacho.nome
+        self.itens = session.query(DueItem).filter(DueItem.nr_due == due.numero_due).all()
+
+
+def get_due_view(session, numerodeclaracao: str) -> Optional[DueView]:
+    """
+    Retorna due_view se due encontrada, ou None.
+
+    Args:
+        session: sessão SQL Alchemy
+        numerodeclaracao: número da DUE
+    """
+    due = session.query(Due).filter(Due.numero_due == numerodeclaracao).one_or_none()
+    if due is not None:
+        return DueView(session, due)
+    return None
+
+
+def get_itens_due(session, numerodeclaracao: str) -> List[DueItem]:
+    return session.query(DueItem).filter(DueItem.nr_due == numerodeclaracao).all()
+
+
+def get_dues_container(session, numero: str,
+                       datainicio: datetime,
+                       datafim: datetime,
+                       limit=40
+                       ) -> List[DueView]:
+    if numero is None or numero == '':
+        raise ValueError('get_dues_container: Informe o número do contêiner!')
+    q = session.query(Due).join(DueConteiner, Due.numero_due == DueConteiner.numero_due). \
+        filter(DueConteiner.numero_conteiner == numero,
+               Due.data_criacao_due.between(datainicio, datafim)).limit(limit)
+    logger.info(q.statement)
+    dues = q.all()
+    return [get_due_view(session, due.numero_due) for due in dues]
+
+
+def get_dues_empresa(session, cnpj: str, limit=40) -> List[Due]:
+    if cnpj is None or len(cnpj) < 8:
+        raise ValueError('get_dues: Informe o CNPJ da empresa com no mínimo 8 posições!')
+    return session.query(Due).filter(Due.cnpj_estabelecimento_exportador.like(cnpj + '%')). \
+        limit(limit).all()
