@@ -298,7 +298,7 @@ def summarytext(_id=None):
     grid_data = fs.get(ObjectId(_id))
     result = dict_to_text(summary(grid_data=grid_data)) + '\n' + \
              dict_to_text(carga.summary(grid_data=grid_data)) +'\n' + \
-             dict_to_text(manager_conteineres_dues.due_summary(session, grid_data))
+             dict_to_text(due_manager.due_summary(session, grid_data))
     return result
 
 
@@ -1069,7 +1069,7 @@ def files():
             linha['ncms'] = carga.get_dados_ncm(grid_data)
             linha['infocarga'] = carga.get_dados_conteiner(grid_data)
             linha['pesocarga'] = carga.get_peso_conteiner(grid_data)
-            linha['infodue'] = manager_conteineres_dues.get_dados(session, grid_data)
+            linha['infodue'] = due_manager.get_dados(session, grid_data)
             linha['peso'] = carga.get_pesos(grid_data)
             linha['numero'] = grid_data['metadata'].get('numeroinformado')
             linha['conhecimento'] = carga.get_conhecimento(grid_data)
