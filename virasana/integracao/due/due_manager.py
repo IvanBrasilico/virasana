@@ -335,9 +335,9 @@ class DueView():
         self.nome_recinto_embarque = '' if recinto_embarque is None else recinto_embarque.nome
         recinto_despacho = get_recinto_siscomex(session, due.codigo_recinto_despacho)
         self.nome_recinto_despacho = '' if recinto_despacho is None else recinto_despacho.nome
-        self.itens = session.query(DueItem).filter(DueItem.nr_due == due.numero_due).all()
-        self.conteineres = session.query(DueConteiner).filter(
-            DueConteiner.numero_due == due.numero_due).all()
+        self.itens = list(session.query(DueItem).filter(DueItem.nr_due == due.numero_due).all())
+        self.conteineres = list(session.query(DueConteiner).filter(
+            DueConteiner.numero_due == due.numero_due).all())
 
 
 def get_due_view(session, numerodeclaracao: str) -> Optional[DueView]:
