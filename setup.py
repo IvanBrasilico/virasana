@@ -29,7 +29,7 @@ setup(
         'opencv-python-headless',
         'openpyxl',
         'plotly',
-        'pandas',
+        'pandas==2.1.4',
         'pillow',
         'pymongo',
         'pymysql',
