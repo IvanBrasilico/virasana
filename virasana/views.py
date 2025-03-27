@@ -7,23 +7,11 @@ consulta e integração das imagens com outras bases.
 import io
 import json
 import os
-from base64 import b64encode
 from datetime import date, datetime, timedelta
 from json import JSONDecodeError
-from sys import platform
 
-import ajna_commons.flask.login as login_ajna
-import ajna_commons.flask.user as user_ajna
 import requests
 from PIL import Image
-from ajna_commons.flask.conf import (BSON_REDIS, DATABASE, logo, MONGODB_URI,
-                                     PADMA_URL, SECRET, redisdb)
-from ajna_commons.flask.log import logger
-from ajna_commons.utils import ImgEnhance
-from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
-from ajna_commons.utils.sanitiza import mongo_sanitizar
-from bhadrasana.models import Usuario
-from bhadrasana.models.ovr import OVR
 from bson import json_util
 from bson.objectid import ObjectId
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
@@ -37,7 +25,20 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from gridfs import GridFS
 from pymongo import MongoClient
+from wtforms import (BooleanField, DateField, FloatField, IntegerField,
+                     PasswordField, SelectField)
+from wtforms.validators import DataRequired, optional
 
+import ajna_commons.flask.login as login_ajna
+import ajna_commons.flask.user as user_ajna
+from ajna_commons.flask.conf import (DATABASE, logo, MONGODB_URI,
+                                     PADMA_URL, SECRET)
+from ajna_commons.flask.log import logger
+from ajna_commons.utils import ImgEnhance
+from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
+from ajna_commons.utils.sanitiza import mongo_sanitizar
+from bhadrasana.models import Usuario
+from bhadrasana.models.ovr import OVR
 from virasana.conf import APP_PATH
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
@@ -57,10 +58,7 @@ from virasana.models.image_search import ImageSearch
 from virasana.models.models import Ocorrencias, Tags
 from virasana.models.text_index import TextSearch
 from virasana.workers.dir_monitor import BSON_DIR
-from virasana.workers.tasks import raspa_dir, trata_bson
-from wtforms import (BooleanField, DateField, FloatField, IntegerField,
-                     PasswordField, SelectField)
-from wtforms.validators import DataRequired, optional
+from virasana.workers.tasks import trata_bson
 
 app = Flask(__name__, static_url_path='/static')
 # app.jinja_env.filters['zip'] = zip
@@ -125,7 +123,7 @@ stats_cache = {}
 def allowed_file(filename, extensions):
     """Checa extensões permitidas."""
     return '.' in filename and \
-           filename.rsplit('.', 1)[-1].lower() in extensions
+        filename.rsplit('.', 1)[-1].lower() in extensions
 
 
 @app.route('/')
@@ -173,19 +171,6 @@ def upload_bson():
         with MongoClient(host=MONGODB_URI) as conn:
             db = conn[DATABASE]
             trata_bson(content, db)
-    """
-        if platform == 'win32':
-       else:
-            # print('Escrevendo no REDIS')
-            d = {'bson': b64encode(content).decode('utf-8'),
-                 'filename': file.filename}
-            redisdb.rpush(BSON_REDIS + file.filename, json.dumps(d))
-            result = raspa_dir.delay(file.filename)
-            taskid = result.id
-            # print('taskid', taskid)
-    if taskid:
-        return redirect(url_for('list_files', taskid=taskid))
-    """
     return redirect(url_for('list_files'))
 
 
@@ -208,7 +193,6 @@ def api_upload():
         json['taskid']: ID da task do celery a ser monitorada
 
     """
-    sync = request.form.get('sync', 'True')
     todir = request.form.get('todir', 'False')
     data = {'success': False,
             'mensagem': 'Task iniciada',
@@ -230,35 +214,15 @@ def api_upload():
 
         # else
         content = file.read()
-        if sync == 'True' or platform == 'win32':
-            with MongoClient(host=MONGODB_URI) as conn:
-                db = conn[DATABASE]
-                trata_bson(content, db)
-            data['success'] = True
-        else:
-            d = {'bson': b64encode(content).decode('utf-8'),
-                 'filename': file.filename}
-            redisdb.rpush(BSON_REDIS + file.filename, json.dumps(d))
-            result = raspa_dir.delay(file.filename)
-            data['taskid'] = result.id
-            data['success'] = True
+        with MongoClient(host=MONGODB_URI) as conn:
+            db = conn[DATABASE]
+            trata_bson(content, db)
+        data['success'] = True
     except Exception as err:
         logger.error(err, exc_info=True)
         data['mensagem'] = 'Excecao ' + str(err)
 
     return jsonify(data)
-
-
-@app.route('/api/task/<taskid>')
-# @login_required
-def task_progress(taskid):
-    """Retorna um json do progresso da celery task."""
-    task = raspa_dir.AsyncResult(taskid)
-    response = {'state': task.state}
-    if task.info:
-        response['current'] = task.info.get('current', ''),
-        response['status'] = task.info.get('status', '')
-    return jsonify(response)
 
 
 @app.route('/list_files')
@@ -275,11 +239,6 @@ def list_files():
     lista_arquivos = []
     for grid_data in fs.find().sort('uploadDate', -1).limit(10):
         lista_arquivos.append(grid_data.filename)
-    taskid = request.args.get('taskid')
-    task_info = None
-    if taskid:
-        task = raspa_dir.AsyncResult(taskid)
-        task_info = task.info
     return render_template('importa_bson.html',
                            lista_arquivos=lista_arquivos,
                            task_info=task_info)
@@ -297,7 +256,7 @@ def summarytext(_id=None):
     fs = GridFS(db)
     grid_data = fs.get(ObjectId(_id))
     result = dict_to_text(summary(grid_data=grid_data)) + '\n' + \
-             dict_to_text(carga.summary(grid_data=grid_data)) +'\n' + \
+             dict_to_text(carga.summary(grid_data=grid_data)) + '\n' + \
              dict_to_text(due_manager.due_summary(session, grid_data))
     return result
 
@@ -1053,7 +1012,7 @@ def files():
             linha = {}
             linha['_id'] = grid_data['_id']
             linha['filename'] = grid_data['filename']
-            linha['metadata'] = grid_data['metadata'] # Deixa todos os dados disponíveis para a view
+            linha['metadata'] = grid_data['metadata']  # Deixa todos os dados disponíveis para a view
             linha['dataescaneamento'] = datetime.strftime(grid_data['metadata'].get(
                 'dataescaneamento'), '%d/%m/%Y %H:%M:%S')
             xmldoc = grid_data['metadata'].get('xml')

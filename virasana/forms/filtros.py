@@ -10,7 +10,7 @@ from virasana.models.auditoria import Auditoria
 from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
-from wtforms.fields.html5 import DateTimeLocalField
+from wtforms.fields import DateTimeLocalField
 from wtforms.validators import optional
 
 MAXROWS = 50

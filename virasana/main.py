@@ -23,6 +23,10 @@ db_session = scoped_session(sessionmaker(autocommit=False,
                                          autoflush=False,
                                          bind=mysql))
 
+def list_routes():
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint:30s} {rule.methods} {rule}")
+
 app = configure_app(mongodb, mongodb_risco, db_session)
 bagagens_app.configure(app)
 apirecintos_app.configure(app)
@@ -33,6 +37,7 @@ escaneamento_app.configure(app)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
+list_routes()
 log.logger.info('Servidor (re)iniciado!')
 
 
