@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return str(request.environ)
+    return f'ENVIRON: str(request.environ)</b>HEADERS: str(request.headers)'
 
 
 if __name__ == '__main__':
