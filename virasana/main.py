@@ -15,6 +15,7 @@ from virasana.routes import apirecintos_app
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import imagens_app
+from virasana.routes import exportacao_app
 from virasana.views import configure_app, csrf
 
 # from bhadrasana.models import db_session
@@ -34,6 +35,7 @@ conformidade_app.configure(app)
 pyxvis_app.configure(app)
 imagens_app.configure(app)
 escaneamento_app.configure(app)
+exportacao_app.configure(app)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
