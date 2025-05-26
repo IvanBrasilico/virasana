@@ -24,6 +24,38 @@
         </div>
     </form>
 
+    {% if arquivos %}
+    <div id="list" class="row col-xl-12">
+        {% for myfile in arquivos %}
+        <div class="row col-sm-12 bg-white text-primary" style="margin-bottom: 15px;">
+            <div class="col-sm-4">
+                {% if myfile.metadata.predictions.vazio %}
+                    <font color="red">
+                {% endif %}
+                Contêiner nº <b>{{ myfile.metadata.numeroinformado }}</b><br>
+                Escaneado em <b>{{ myfile.metadata.dataescaneamento.strftime('%d/%m/%Y %H:%M') }}</b><br>
+                {% if myfile.metadata.predictions.vazio %}
+                    </font>
+                {% endif %}
+            </div>
+            <div class="col-sm-8">
+                <a href="file?_id={{ myfile._id }}" target="_BLANK">
+                    <img src="imagens_cmap?_id={{ myfile._id }}&colormap=gray"
+                         alt="Sem imagem"
+                         class="img-responsive"
+                         style="max-height: 200px; max-width: 100%;" />
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        Nenhuma imagem encontrada para os filtros aplicados.
+    </div>
+    {% endif %}
+
+
     <div id="bottom" class="row">
         AJNA - Receita Federal do Brasil 2025
     </div>
