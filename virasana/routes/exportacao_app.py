@@ -1,4 +1,5 @@
 # exportacao_app.py
+'''
 from datetime import date, timedelta, datetime, time
 
 import pandas as pd
@@ -12,6 +13,7 @@ from flask import render_template, request, flash, url_for
 from flask_login import login_required
 from virasana.forms.filtros import FormFiltroData, FormFiltroEscaneamento
 from virasana.integracao.mercante.mercantealchemy import Item
+'''
 
 from flask import Blueprint, render_template
 
@@ -30,7 +32,7 @@ def index():
 
 
 
-
+'''
 def get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan, vazio=False) -> list:
     query = {
         'metadata.numeroinformado': numero,
@@ -72,3 +74,4 @@ def stats():
         arquivos=arquivos,
         csrf_token=generate_csrf()
     )
+'''
