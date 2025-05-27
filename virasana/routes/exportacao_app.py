@@ -3,7 +3,6 @@
 from datetime import date, timedelta, datetime, time
 
 import pandas as pd
-from flask_wtf.csrf import generate_csrf
 from werkzeug.utils import redirect
 
 from ajna_commons.flask.log import logger
@@ -16,6 +15,7 @@ from virasana.integracao.mercante.mercantealchemy import Item
 '''
 
 from flask import Blueprint, render_template
+from flask_wtf.csrf import generate_csrf
 
 exportacao_app = Blueprint(
     'exportacao_app',
@@ -28,7 +28,10 @@ def configure(app):
 
 @exportacao_app.route('/', methods=['GET'])
 def index():
-    return render_template('exportacao.html')
+    return render_template(
+        'exportacao.html',
+        csrf_token=generate_csrf
+    )
 
 
 
