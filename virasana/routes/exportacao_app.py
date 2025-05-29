@@ -38,10 +38,14 @@ def index():
 '''
 def get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan, vazio=False) -> list:
     query = {
-        'metadata.numeroinformado': numero,
         'metadata.contentType': 'image/jpeg',
         'metadata.dataescaneamento': {'$gte': inicio_scan, '$lte': fim_scan}
     }
+
+    # Adiciona o filtro por número apenas se fornecido
+    if numero:
+        query['metadata.numeroinformado'] = numero
+
     projection = {
         'metadata.numeroinformado': 1,
         'metadata.dataescaneamento': 1,
@@ -56,6 +60,7 @@ def get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan, vazio=Fal
     )
 
     return list(cursor)
+
 
 @exportacao_app.route('/stats', methods=['POST'])
 def stats():

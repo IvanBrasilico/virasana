@@ -1,9 +1,22 @@
-{% extends "layout.html" %} {% block content %}{{super()}}
+{% extends "layout.html" %}
+{% block content %}
+{{ super() }}
 <div id="main" class="container-fluid">
     <form method="POST" action="{{ url_for('exportacao_app.stats') }}">
         <div class="col-sm-12">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" / >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         </div>
+
+        <!-- Campo adicional: Número do Contêiner -->
+        <div class="row">
+            <div class="col-sm-12">
+                <label for="numero">Número do Contêiner</label>
+                <input class="form-control" type="text" name="numero" id="numero"
+                       value="{{ request.form.get('numero', '') }}" />
+            </div>
+        </div>
+        <br>
+
         <div class="row">
             <div class="col-sm-12">
                 <label for="start">Escolha o período a ser analisado</label>
@@ -23,7 +36,6 @@
             </div>
         </div>
     </form>
-
 
     {% if arquivos %}
     <div id="list" class="row col-xl-12">
@@ -56,12 +68,15 @@
     </div>
     {% endif %}
 
-
     <div id="bottom" class="row">
         AJNA - Receita Federal do Brasil 2025
     </div>
 </div>
-{% endblock %} {% block scripts %} {{super()}}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
 <script>
-        function teste() { }
-</script> {% endblock %}
+    function teste() { }
+</script>
+{% endblock %}
