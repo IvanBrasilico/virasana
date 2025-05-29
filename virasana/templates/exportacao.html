@@ -4,7 +4,7 @@
 <div id="main" class="container-fluid">
     <form method="POST" action="{{ url_for('exportacao_app.stats') }}">
         <div class="col-sm-12">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" >
         </div>
 
         <!-- Campo adicional: Número do Contêiner -->
@@ -52,8 +52,8 @@
                 {% endif %}
             </div>
             <div class="col-sm-8">
-                <a href="file?_id={{ myfile._id }}" target="_BLANK">
-                    <img src="imagens_cmap?_id={{ myfile._id }}&colormap=gray"
+                <a href="https://ajna1.rfoc.srf/virasana/file?_id={{ myfile._id }}" target="_BLANK">
+                    <img src="https://ajna1.rfoc.srf/virasana/imagens_cmap?_id={{ myfile._id }}&colormap=gray"
                          alt="Sem imagem"
                          class="img-responsive"
                          style="max-height: 200px; max-width: 100%;" />

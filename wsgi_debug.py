@@ -8,6 +8,7 @@ sys.path.insert(0, '.')
 sys.path.insert(0, '../ajna_docs/commons')
 sys.path.insert(0, '../commons')
 sys.path.append('../bhadrasana2')
+sys.path.append('../ajna_docs/commons')
 
 from ajna_commons.flask.conf import VIRASANA_URL
 
