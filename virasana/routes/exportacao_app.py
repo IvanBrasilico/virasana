@@ -7,15 +7,16 @@ from flask_wtf.csrf import generate_csrf
 
 
 def configure(app):
-    exportacao_app = Blueprint(
+    '''  exportacao_app = Blueprint(
         'exportacao_app',
         __name__,
         url_prefix='/exportacao'
     )
     app.register_blueprint(exportacao_app)
+    '''
 
-    @exportacao_app.route('/', methods=['GET'])
-    def index():
+    @app.route('/exportacao/', methods=['GET'])
+    def exportacao_app_index():
         return render_template(
             'exportacao.html',
             csrf_token=generate_csrf
@@ -70,8 +71,8 @@ def configure(app):
 
         return list(cursor)
 
-    @exportacao_app.route('/stats', methods=['POST'])
-    def stats():
+    @app.route('/exportacao/stats', methods=['POST'])
+    def exportacao_stats():
 
         mongodb = app.config['mongodb']
         session = app.config['db_session']

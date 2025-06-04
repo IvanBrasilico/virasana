@@ -1496,7 +1496,7 @@ def mynavbar():
                  View('Confere escaneamentos', 'confere_escaneamento'),
                  View('Bagagens', 'bagagens'),
                  View('API Recintos', 'eventos'),
-                 View('AJNA Exportações', 'exportacao_app.index'),
+                 View('AJNA Exportações', 'exportacao_app_index'),
                  Separator(),
                  View('Pesquisa imagem externa', 'similar_file'),
                  View('Pesquisa textual', 'text_search'),

@@ -2,7 +2,7 @@
 {% block content %}
 {{ super() }}
 <div id="main" class="container-fluid">
-    <form method="POST" action="{{ url_for('exportacao_app.stats') }}">
+    <form method="POST" action="{{ url_for('exportacao_stats') }}">
         <div class="col-sm-12">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" >
         </div>
