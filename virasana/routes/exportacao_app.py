@@ -5,13 +5,13 @@ from flask import render_template, request, flash, url_for
 from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
 
-#exportacao_app = Blueprint(
-#    'exportacao_app',
-#    __name__,
-#    url_prefix='/exportacao'
-#)
 
 def configure(app):
+    exportacao_app = Blueprint(
+        'exportacao_app',
+        __name__,
+        url_prefix='/exportacao'
+    )
     app.register_blueprint(exportacao_app)
 
     @exportacao_app.route('/', methods=['GET'])
