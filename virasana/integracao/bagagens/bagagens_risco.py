@@ -6,16 +6,16 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from ajna_commons.flask.log import logger
-
-sys.path.insert(0, '.')
-sys.path.insert(0, '../ajna_docs/commons')
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
+sys.path.insert(0, '.')
+
+from ajna_commons.flask.log import logger
 from ajna_commons.flask.conf import SQL_URI
 from bhadrasana.models.laudo import Empresa, get_empresa
 from virasana.integracao.bagagens.viajantesalchemy import Viagem, Pessoa, DSI
-
 
 def pessoa_bagagens_sem_info(con, opcao: str):
     adicoes_sql = {

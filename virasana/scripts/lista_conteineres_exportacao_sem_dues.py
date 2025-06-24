@@ -8,6 +8,9 @@ import pandas as pd
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 from ajna_commons.flask.log import logger
+sys.path.append('../bhadrasana2')
+sys.path.append('../ajna_docs/commons')
+
 from virasana.integracao.bagagens.bagagens_risco import importa_cnpjs
 from virasana.integracao.due.manager_conteineres_dues import (get_conteineres_escaneados_sem_due,
                                                               set_conteineres_escaneados_sem_due,
