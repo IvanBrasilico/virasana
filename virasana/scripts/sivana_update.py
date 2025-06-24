@@ -5,7 +5,6 @@ import time
 
 from dotenv import load_dotenv  # TODO: COLOCAR NO AJNA COMMONS
 from requests_pkcs12 import post
-from sqlalchemy.orm import sessionmaker, scoped_session
 
 load_dotenv()
 
@@ -14,11 +13,10 @@ sys.path.append('../ajna_docs/commons')
 sys.path.append('../commons')
 sys.path.append('../bhadrasana2')
 
-from virasana.integracao.sivana.api_recintos import le_novos_acesssos_veiculo, \
-    le_ultimo_id_transmitido, grava_ultimo_id_transmitido
 from ajna_commons.flask.conf import SQL_URI
 from ajna_commons.flask.log import logger
 from sqlalchemy import create_engine
+from virasana.integracao.sivana import integra_alprs
 
 
 def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload):
@@ -34,12 +32,12 @@ def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload
             logger.error(f'ERRO {r.status_code} no Upload para Sivana: {r.text}')
         except ValueError as err:
             logger.error(err)
-            #TODO: Gambiarra para atualizar ultima_atualizacao mesmo se retornar o erro
+            # TODO: Gambiarra para atualizar ultima_atualizacao mesmo se retornar o erro
             # abaixo. Aparentemente é um bug na biblioteca urllib3. Retirar essa
             # gambiarra assim que for possível atualizar a biblioteca no Servidor
             # Neste momento não dá para atualizar, pois Servidor roda python 3.6
-            if 'check_hostname' in str(err):
-                return True
+            # if 'check_hostname' in str(err):
+            #    return True
         except Exception as err:
             logger.error(type(err), err)
     else:
@@ -47,23 +45,20 @@ def upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload
     return False
 
 
-def update(connection):
-    session = scoped_session(sessionmaker(autocommit=False,
-                                          autoflush=False,
-                                          bind=connection))
+def call_update(connection, mensagem, update_function):
+    s0 = time.time()
     try:
-        ultimo_id = le_ultimo_id_transmitido(session)
-        payload, maior_id = le_novos_acesssos_veiculo(session, ultimo_id)
-        url_api_sivana = 'https://sivana.rfb.gov.br/prod/sivana/rest/upload'
-        pkcs12_filename = './apirecintos1.p12'
-        senha_pcks_sivana = os.environ.get('SENHA_PCKS_SIVANA')
-        if senha_pcks_sivana is None:
-            logger.info('Atenção!!! Senha do certificado SENHA_PCKS_SIVANA não definida no ambiente.')
-        if upload_to_sivana(url_api_sivana, pkcs12_filename, senha_pcks_sivana, payload):
-            # Atualiza o arquivo com o maior ID encontrado
-            grava_ultimo_id_transmitido(session, maior_id)
-    finally:
-        session.close()
+        logger.info(mensagem)
+        update_function(connection)
+        logger.info('%s demorou %s segundos.' % (mensagem, (time.time() - s0)))
+    except Exception as err:
+        logger.error(err, exc_info=True)
+
+
+def update(connection):
+    call_update(connection,
+                'Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...',
+                integra_alprs.update)
 
 
 if __name__ == '__main__':

@@ -10,7 +10,7 @@ from virasana.models.auditoria import Auditoria
 from virasana.models.models import Tags
 from wtforms import BooleanField, DateField, IntegerField, FloatField, \
     SelectField, StringField
-from wtforms.fields.html5 import DateTimeLocalField
+from wtforms.fields import DateTimeLocalField
 from wtforms.validators import optional
 
 MAXROWS = 50
@@ -264,8 +264,8 @@ class FormFiltroAPIRecintos(FlaskForm):
     search_files.html
 
     """
-    start = DateTimeLocalField('Start', default=date.today() - timedelta(days=3), format='%Y-%m-%dT%H:%M')
-    end = DateTimeLocalField('End', default=date.today(), format='%Y-%m-%dT%H:%M')
+    start = DateTimeLocalField('Start', format='%Y-%m-%dT%H:%M')
+    end = DateTimeLocalField('End', format='%Y-%m-%dT%H:%M')
     placa = StringField(u'Placa do Cavalo ou reboque',
                         validators=[optional()], default='')
     numeroConteiner = StringField(u'Número do contêiner',
@@ -280,6 +280,10 @@ class FormFiltroAPIRecintos(FlaskForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.start.data:
+            self.start.data = datetime.now() - timedelta(days=3)
+        if not self.end.data:
+            self.end.data = datetime.now()
         self.codigoRecinto.choices = [['', 'Selecione']]
         if kwargs.get('recintos'):
             self.codigoRecinto.choices.extend(kwargs.get('recintos'))

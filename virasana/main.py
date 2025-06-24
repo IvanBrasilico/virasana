@@ -15,6 +15,7 @@ from virasana.routes import apirecintos_app
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import imagens_app
+from virasana.routes import exportacao_app
 from virasana.views import configure_app, csrf
 
 # from bhadrasana.models import db_session
@@ -23,6 +24,10 @@ db_session = scoped_session(sessionmaker(autocommit=False,
                                          autoflush=False,
                                          bind=mysql))
 
+def list_routes():
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint:30s} {rule.methods} {rule}")
+
 app = configure_app(mongodb, mongodb_risco, db_session)
 bagagens_app.configure(app)
 apirecintos_app.configure(app)
@@ -30,9 +35,11 @@ conformidade_app.configure(app)
 pyxvis_app.configure(app)
 imagens_app.configure(app)
 escaneamento_app.configure(app)
+exportacao_app.configure(app)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
+list_routes()
 log.logger.info('Servidor (re)iniciado!')
 
 

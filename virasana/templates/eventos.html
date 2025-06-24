@@ -108,6 +108,17 @@
                 {% if conhecimento %}
                 {{ conhecimento.descricao }}
                 {% endif %}
+                {% set due = evento["due"] %}
+                {% if due %}
+                DUE: <a href="/bhadrasana2/consulta_due?numero={{ due.numero_due }}" target="_blank">
+                {{ due.numero_due }}</a> <br>
+                País Importador: {{ due.nome_pais_importador }} Canal: 'Não implementado' Data Registro:
+                {{ due.data_registro_due }}
+                <br>
+                Exportador: {{ due.ni_declarante }} - 'Implementar nome declarante'
+                <br>
+                Recinto despacho: {{ due.codigo_recinto_despacho }} 'Implementar recintoAduaneiroDespacho.nome'
+                {% endif %}
                 {% set entrada = evento["entrada"] %}
                 {% if entrada %}
                 <h4>Entrada {{entrada.dataHoraOcorrencia.strftime('%d/%m/%Y %H:%M')}}</h4>
@@ -158,14 +169,14 @@
                 {% endif %}
                 {% endif %}
                 {% if lista_embarquedesembarque %}
-                    Embarques e Desembarques em Navios:
-                    {% for embarquedesembarque in lista_embarquedesembarque %}
-                       {{ embarquedesembarque.dataHoraOcorrencia }} -
-                       {{ embarquedesembarque.embarqueDesembarque }} -
-                       {{ embarquedesembarque.codigoRecinto }} -
-                       {{ embarquedesembarque.escala }} -
-                       {{ embarquedesembarque.viagem }}
-                    {% endfor %}
+                Embarques e Desembarques em Navios:
+                {% for embarquedesembarque in lista_embarquedesembarque %}
+                {{ embarquedesembarque.dataHoraOcorrencia }} -
+                {{ embarquedesembarque.embarqueDesembarque }} -
+                {{ embarquedesembarque.codigoRecinto }} -
+                {{ embarquedesembarque.escala }} -
+                {{ embarquedesembarque.viagem }}
+                {% endfor %}
                 {% endif %}
                 <h5>Tempo de permanência no Recinto: {{ evento.permanencia }}</h5>
                 <form method="POST" id="form_nova_ficha" action="/bhadrasana2/ovr" target="_blank">
@@ -238,14 +249,6 @@
     function clearMsg(img) {
         img.title = "";
     }
-
-
-
-
-
-
-
-
 
 
 </script>

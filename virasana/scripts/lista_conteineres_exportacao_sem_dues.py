@@ -12,9 +12,9 @@ sys.path.append('../bhadrasana2')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.integracao.bagagens.bagagens_risco import importa_cnpjs
-from virasana.integracao.due.manager_conteineres_dues import (get_conteineres_escaneados_sem_due,
-                                                              set_conteineres_escaneados_sem_due,
-                                                              integra_dues, integra_dues_itens)
+from virasana.integracao.due.due_manager import (get_conteineres_escaneados_sem_due,
+                                                 set_conteineres_escaneados_sem_due,
+                                                 integra_dues, integra_dues_itens)
 from virasana.integracao.due.rd_baixa_dues_novas import dues_rd
 
 

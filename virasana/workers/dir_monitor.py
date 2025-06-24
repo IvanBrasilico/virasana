@@ -19,7 +19,6 @@ from threading import Thread
 import requests
 from ajna_commons.flask.conf import VIRASANA_URL
 from ajna_commons.flask.log import logger, root_path
-from celery import states
 
 # VIRASANA_URL = "http://localhost:5001"
 LOGIN_URL = VIRASANA_URL + '/login'
@@ -121,19 +120,11 @@ def despacha_dir(dir=BSON_DIR, url=VIRASANA_URL, sync=SYNC):
                 # TODO: save on database list of files to delete
                 #  (if light goes out or system fail, continue)
                 response_json = response.json()
-                if (platform == 'win32') or sync:
-                    if response_json.get('success', False) is True:
-                        os.remove(bsonfile)
-                        logger.info('Arquivo ' + bsonfile + ' removido.')
-                        cont += 1
-                        logger.info('********* %s arquivos processados' % cont)
-                else:
-                    taskid = response_json.get('taskid', '')
-                    logger.info('Task %s enviada para celery' % taskid)
-                    sucessos.append(taskid)
-                    Thread(target=espera_resposta,
-                           args=(TASK_URL + taskid, bsonfile)
-                           ).start()
+                if response_json.get('success', False) is True:
+                    os.remove(bsonfile)
+                    logger.info('Arquivo ' + bsonfile + ' removido.')
+                    cont += 1
+                    logger.info('********* %s arquivos processados' % cont)
             else:
                 erros.append(response)
                 logger.error(response.text)
@@ -143,55 +134,6 @@ def despacha_dir(dir=BSON_DIR, url=VIRASANA_URL, sync=SYNC):
     return dir, erros, exceptions
 
 
-def espera_resposta(api_url, bson_file, sleep_time=10, timeout=180):
-    """Espera resposta da task.
-
-    Espera resposta da task que efetivamente carregará o arquivo no
-    Banco de Dados do Servidor.
-    Recebendo uma resposta positiva, exclui arquivo enviado do disco.
-    Recebendo uma resposta negativa, grava no logger.
-
-    Args:
-        api_url: endereço para acesso aos dados da task
-
-        bson_file: caminho completo do arquivo original que foi enviado
-
-        sleep_time: tempo entre requisições ao Servidor em segundos
-
-        timeout: tempo total para aguardar resposta, em segundos
-
-    """
-    enter_time = time.time()
-    rv = None
-    try:
-        while True:
-            time.sleep(sleep_time)
-            if time.time() - enter_time >= timeout:
-                logger.error('Timeout ao esperar resultado de processamento ' +
-                             'Funcao: espera_resposta' +
-                             ' Arquivo: ' + bson_file)
-                return False
-            rv = requests.get(api_url)
-            if rv and rv.status_code == 200:
-                try:
-                    response_json = rv.json()
-                    state = response_json.get('state')
-                    if state and state in states.SUCCESS:
-                        os.remove(bson_file)
-                        logger.info('Arquivo ' + bson_file + ' removido.')
-                        return True
-                    if state and state in states.FAILURE:
-                        logger.error(rv.text)
-                        return False
-                except json.decoder.JSONDecodeError as err:
-                    logger.error(err, exc_info=True)
-                    logger.error(rv.text)
-                    return False
-
-    except Exception as err:
-        logger.error(err, exc_info=True)
-        print(err)
-    return False
 
 
 if __name__ == '__main__':

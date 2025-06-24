@@ -1,3 +1,12 @@
+"""
+DEPRECATED -- Implementa regras e modelo de dados da DUE no MongoDB.
+
+
+DEPRECATED: substituído por modelos SQLAlchemy em Fevereiro de 2025. Agora o MongoDB
+guardará somente a chave (metadata.due = numero_due).
+
+"""
+
 import json
 import pymongo
 from bson import ObjectId

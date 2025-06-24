@@ -36,7 +36,6 @@ from virasana.integracao import jupapi
 from virasana.integracao.mercante import mercante_fsfiles
 from virasana.integracao.mercante import processa_xml_mercante
 from virasana.integracao.mercante import resume_mercante
-from virasana.integracao.sivana import integra_alprs
 from virasana.models import anomalia_lote
 from virasana.scripts import conformidadeupdate
 
@@ -159,9 +158,6 @@ def periodic_updates(db, connection, lote=2000):
         conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
     except Exception as err:
         logger.error(err, exc_info=True)
-    call_update(connection,
-                'Rodando integração das fontes de ALPR e dos AcessoVeiculo para Sivana...',
-                integra_alprs.update)
     call_update(connection,
                 'Rodando acertos SQL',
                 acertos_sql.update)
