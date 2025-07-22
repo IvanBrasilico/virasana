@@ -1,0 +1,38 @@
+{% extends "layout.html" %} {% block content %}{{super()}}
+<div id="main" class="container-fluid" xmlns="http://www.w3.org/1999/html">
+    {% for field, errors in oform.errors.items() %}
+    <div class="alert alert-error row col-sm-12">
+        {{ oform[field].label }}: {{ ', '.join(errors) }}
+    </div>
+    {% endfor %}
+    <div id="top" class="row col-sm-12">
+        <form method="POST" enctype="multipart/form-data">
+            {{ oform.hidden_tag() }}
+
+            <p>
+                {{ oform.dataHoraOcorrencia.label }}<br>
+                {{ oform.dataHoraOcorrencia(size=40) }}
+            </p>
+
+            <p>
+                {{ oform.codigoRecinto.label }}<br>
+                {{ oform.codigoRecinto(size=40) }}
+            </p>
+
+            <p>
+                {{ oform.numeroConteiner.label }}<br>
+                {{ oform.numeroConteiner(size=40) }}
+            </p>
+
+            <p>
+                {{ oform.imagem.label }}<br>
+                {{ oform.imagem() }}
+            </p>
+
+            <p>
+                {{ oform.submit() }}
+            </p>
+        </form>
+    </div>
+</div>
+{% endblock %}

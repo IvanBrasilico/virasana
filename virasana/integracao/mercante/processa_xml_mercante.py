@@ -140,9 +140,9 @@ def xml_para_mercante(engine, lote=100):
     caminho_erros = os.path.join(mercante.MERCANTE_DIR, 'erros')
     caminho_processados = os.path.join(mercante.MERCANTE_DIR, 'processados')
     if not os.path.exists(caminho_erros):
-        os.makedir(caminho_erros)
+        os.makedirs(caminho_erros)
     if not os.path.exists(caminho_processados):
-        os.makedir(caminho_processados)
+        os.makedirs(caminho_processados)
     lista_arquivos = \
         [f for f in os.listdir(mercante.MERCANTE_DIR)
          if os.path.isfile(os.path.join(mercante.MERCANTE_DIR, f))]

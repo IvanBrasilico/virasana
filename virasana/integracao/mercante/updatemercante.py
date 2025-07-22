@@ -1,6 +1,10 @@
 import sys
 from sqlalchemy import create_engine
 
+sys.path.append('.')
+sys.path.append('../ajna_docs/commons')
+
+
 from ajna_commons.flask.conf import SQL_URI
 from virasana.integracao.mercante.processa_xml_mercante import get_arquivos_novos, \
     xml_para_mercante

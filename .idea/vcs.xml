@@ -3,7 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/../ajna_docs" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../bhadrasana2" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../bhadrasana2/ajna_api" vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
   </component>
 </project>

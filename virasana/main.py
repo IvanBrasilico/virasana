@@ -5,17 +5,19 @@ consulta e integração das imagens com outras bases.
 
 """
 
+from sqlalchemy.orm import sessionmaker, scoped_session
+
 import ajna_commons.flask.log as log
 from ajna_commons.flask import api_login
 from ajna_commons.flask.flask_log import configure_applog
-from virasana.routes import escaneamento_app
-from sqlalchemy.orm import sessionmaker, scoped_session
 from virasana.db import mongodb, mysql, mongodb_risco
 from virasana.routes import apirecintos_app
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
-from virasana.routes import imagens_app
+from virasana.routes import escaneamento_app
 from virasana.routes import exportacao_app
+from virasana.routes import imagens_app
+from virasana.routes import inspecaonaoinvasiva_app
 from virasana.views import configure_app, csrf
 
 # from bhadrasana.models import db_session
@@ -24,9 +26,11 @@ db_session = scoped_session(sessionmaker(autocommit=False,
                                          autoflush=False,
                                          bind=mysql))
 
+
 def list_routes():
     for rule in app.url_map.iter_rules():
         print(f"{rule.endpoint:30s} {rule.methods} {rule}")
+
 
 app = configure_app(mongodb, mongodb_risco, db_session)
 bagagens_app.configure(app)
@@ -39,6 +43,7 @@ exportacao_app.configure(app)
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
+inspecaonaoinvasiva_app.configure(app)
 list_routes()
 log.logger.info('Servidor (re)iniciado!')
 
