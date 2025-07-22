@@ -959,6 +959,7 @@ def files():
     form_files.filtro_auditoria.choices = auditoria_object.filtros_auditoria_desc
     form_files.classe.choices = get_classes()
     filtro, user_filtros = recupera_user_filtros()
+
     if request.method == 'POST':
         # print('****************************', request.form)
         form_files = FilesForm(**request.form)
@@ -978,6 +979,7 @@ def files():
     # print(filtro)
     if filtro:
         filtro['metadata.contentType'] = 'image/jpeg'
+        logger.debug(f'FILTRO FINAL {filtro}')
         # filtro['metadata.predictions.bbox'] = {'$exists': True}
 
         if order is None:

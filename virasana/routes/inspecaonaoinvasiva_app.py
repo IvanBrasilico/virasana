@@ -14,7 +14,7 @@ RECINTO_DICT = {
 
 def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     # 3) Montar metadata
-    metadata = {}
+    metadata = {'contentType': 'image/jpeg'}
     metadata['dataescaneamento'] = json_original.get('dataHoraOcorrencia')
     lista_conteineres = json_original.get('listaConteineresUld', [])
     numeroinformado = None
