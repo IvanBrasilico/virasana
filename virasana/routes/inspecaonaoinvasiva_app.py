@@ -1,6 +1,7 @@
 import json
 
 import gridfs
+from dateutil import parser
 from flask import request, jsonify, flash, redirect, url_for, render_template
 
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
@@ -15,7 +16,13 @@ RECINTO_DICT = {
 def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     # 3) Montar metadata
     metadata = {'contentType': 'image/jpeg'}
-    metadata['dataescaneamento'] = json_original.get('dataHoraOcorrencia')
+    filename = arquivo_imagem.filename
+    try:
+        data_escaneamento_str = json_original.get('dataHoraOcorrencia')
+        data_escaneamento = parser.parse(data_escaneamento_str)
+        metadata['dataescaneamento'] = data_escaneamento
+    except Exception as e:
+        raise (f'Não foi possível parsear data "{data_escaneamento_str}" do arquivo "{filename}": {e}')
     lista_conteineres = json_original.get('listaConteineresUld', [])
     numeroinformado = None
     if lista_conteineres and len(lista_conteineres) > 0:
@@ -29,12 +36,11 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     # 4) Salvar arquivo no GridFS com metadata
     # arquivo_imagem.stream já é um arquivo-like object (bytes)
     fs = gridfs.GridFS(mongodb)
-    file_id = fs.put(arquivo_imagem.stream, filename=arquivo_imagem.filename, metadata=metadata)
+    file_id = fs.put(arquivo_imagem.stream, filename=filename, metadata=metadata)
 
 
 def configure(app):
     """Configura rotas para evento."""
-
 
     @app.route('/inspecaonaoinvasiva', methods=['GET', 'POST'])
     def inspecaonaoinvasiva():
