@@ -16,13 +16,14 @@ RECINTO_DICT = {
 def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     # 3) Montar metadata
     metadata = {'contentType': 'image/jpeg'}
+    print(json_original)
     filename = arquivo_imagem.filename
     try:
         data_escaneamento_str = json_original.get('dataHoraOcorrencia')
-        data_escaneamento = parser.parse(data_escaneamento_str)
+        data_escaneamento = parser.parse(data_escaneamento_str).replace(microsecond=0)
         metadata['dataescaneamento'] = data_escaneamento
     except Exception as e:
-        raise (f'Não foi possível parsear data "{data_escaneamento_str}" do arquivo "{filename}": {e}')
+        raise Exception(f'Não foi possível parsear data "{data_escaneamento_str}" do arquivo "{filename}": {e}')
     lista_conteineres = json_original.get('listaConteineresUld', [])
     numeroinformado = None
     if lista_conteineres and len(lista_conteineres) > 0:
@@ -74,7 +75,7 @@ def configure(app):
             if 'json' not in request.form:
                 return jsonify({"error": "Campo form 'json' obrigatório"}), 400
             json_str = request.form['json']
-            json_original = json.loads(json_str)
+            json_original = json.loads(json_str).get('jsonOriginal')
 
             # 2) Receber arquivo jpeg
             if 'imagem' not in request.files:
