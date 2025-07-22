@@ -1,7 +1,7 @@
 import requests
 import json
 
-url = 'https://ajna1.rfoc.srf/virasana/api/inspecaonaoinvasiva'  # ajuste se necessário
+url = 'https://ajna1.rfoc.srf/virasana/api/inspecaonaoinvasiva'  #
 
 #
 json_data = {
