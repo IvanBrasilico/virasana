@@ -18,6 +18,7 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     metadata = {'contentType': 'image/jpeg'}
     print(json_original)
     filename = arquivo_imagem.filename
+    data_escaneamento_str = None
     try:
         data_escaneamento_str = json_original.get('dataHoraOcorrencia')
         data_escaneamento = parser.parse(data_escaneamento_str).replace(microsecond=0)
