@@ -55,14 +55,39 @@ def upload_zip(url, zip_filename):
             upload(url, files, data)
 
 
+def upload_zip_recinto(url, zip_filename, recinto='8931305'):
+    with zipfile.ZipFile(open(zip_filename, 'rb')) as zip_file:
+        for file_info in zip_file.infolist():
+            filename = file_info.filename
+            base_name = filename.rsplit('.', 1)[0]
+            parts = base_name.split('-')
+            if len(parts) < 3:
+                print(f'Arquivo {filename} não tem as informações esperadas no nome')
+                continue  # Não tem metadata no nome conforme esperado
+            numeroinformado, data_str, time_str = parts[0], parts[1], parts[2]
+            datetime_str = datetime.strptime(data_str + time_str, "%d%m%Y%H%M").strftime("%Y-%m-%dT%H:%M:%S-0300")
+            json_data = {'jsonOriginal': {
+                "dataHoraOcorrencia": datetime_str,
+                "codigoRecinto": recinto,
+                "listaConteineresUld": [
+                    {"numeroConteiner": numeroinformado}
+                ]
+            }}
+            data = {'json': json.dumps(json_data)}
+            with zip_file.open(file_info) as file:
+                file_bytes = io.BytesIO(file.read())
+            files = {'imagem': (filename, file_bytes, 'image/jpeg')}
+            upload(url, files, data)
+
+
 if __name__ == '__main__':
     # TODO: load from_zip, filename, url, image_path, json_path from args
-    url = 'http://localhost:5001/api/inspecaonaoinvasiva'
-    # url = 'https://ajna1.rfoc.srf/virasana/api/inspecaonaoinvasiva'
-    filename = "C:/Users/25052288840/Downloads/8931305-2025-07-23_imagens.zip"
+    # url = 'http://localhost:5001/api/inspecaonaoinvasiva'
+    url = 'https://ajna1.rfoc.srf/virasana/api/inspecaonaoinvasiva'
+    filename = "C:/Users/25052288840/Downloads/25-08-25.zip"
     from_zip = True
     # filename = 'C:/Users/25052288840/Downloads/MSMU2186544-17072025-2258.jpg'
     if from_zip:
-        upload_zip(url, filename)
+        upload_zip_recinto(url, filename)
     else:
         upload_file(url, filename, None)
