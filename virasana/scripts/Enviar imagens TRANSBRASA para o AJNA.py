@@ -82,7 +82,7 @@ if __name__ == '__main__':
     # TODO: load from_zip, filename, url, image_path, json_path from args
     # url = 'http://localhost:5001/api/inspecaonaoinvasiva'
     url = 'https://ajna1.rfoc.srf/virasana/api/inspecaonaoinvasiva'
-    filename = "C:/Users/37320464861/Downloads/api_recintos/imagens/25-08-25.zip"
+    filename = "C:/Users/37320464861/Downloads/api_recintos/imagens/10-06-25.zip"
     from_zip = True
     if from_zip:
         upload_zip_recinto(url, filename)
