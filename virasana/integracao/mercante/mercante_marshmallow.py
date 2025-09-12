@@ -1,10 +1,10 @@
 from ajna_commons.utils.sanitiza import sanitizar
-from marshmallow_sqlalchemy import ModelSchema
+from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from virasana.integracao.mercante.mercantealchemy import Manifesto, ConteinerVazio, \
     Conhecimento, Item, NCMItem, Enumerado
 
 
-class BaseSchema(ModelSchema):
+class BaseSchema(SQLAlchemyAutoSchema):
     excluded_keys = ['create_date', 'last_modified',
                      'dataInicioOperacaoDate']
 
