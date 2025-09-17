@@ -35,11 +35,10 @@
       </div>
 
       <div class="col-auto">
-        <label for="origem" class="form-label mb-0">Recinto de origem (S)</label>
-        <select class="form-control" id="origem" name="origem">
-          <option value="" {{ 'selected' if not origem else '' }}>Todos 89327*</option>
-          <option value="8931356" {{ 'selected' if origem == '8931356' else '' }}>8931356 - Santos Brasil</option>
-          <option value="8931359" {{ 'selected' if origem == '8931359' else '' }}>8931359 - BPT</option>
+        <label for="destino" class="form-label mb-0">Recinto de destino (E)</label>
+        <select class="form-control" id="destino" name="destino">
+          <option value="8931356" {{ 'selected' if destino == '8931356' else '' }}>8931356 - Santos Brasil</option>
+          <option value="8931359" {{ 'selected' if destino == '8931359' else '' }}>8931359 - BPT</option>
         </select>
       </div>
 
