@@ -106,13 +106,16 @@ def configure(app):
     def transit_time():
         """
         Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
-        no dia 15/09/2025 entre 00:00:00 e 23:59:59.
+        no dia de ontem entre 00:00:00 e 23:59:59.
         """
         session = app.config['db_session']
 
-        # Janela fixa conforme solicitado
-        inicio = datetime(2025, 9, 15, 0, 0, 0)
-        fim    = datetime(2025, 9, 15, 23, 59, 59)
+        # Calcula a janela do dia anterior ao dia atual do servidor
+        # início = 00:00:00 de ontem (inclusive)
+        # fim    = 00:00:00 de hoje (exclusivo) — janela meio-aberta
+        ontem  = datetime.now().date() - timedelta(days=1)
+        inicio = datetime.combine(ontem, time.min)
+        fim    = inicio + timedelta(days=1)
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
