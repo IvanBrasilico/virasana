@@ -9,7 +9,24 @@
 <body class="bg-light">
 <div class="container-fluid py-2 px-2">
     <h1 class="mb-1">Entradas no Recinto 8931356 — {{ data_label }}</h1>
-    <p class="text-muted mb-4">Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong> · Saída anterior: <em>outro recinto</em></p>
+
+    <!-- Filtro por data (GET) -->
+    <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
+      <div class="col-auto">
+        <label for="data" class="form-label mb-0">Data</label>
+        <input
+          type="date"
+          class="form-control"
+          id="data"
+          name="data"
+          value="{{ data_iso }}"
+          required
+        />
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+      </div>
+    </form>
 
     {% if resultados and resultados|length > 0 %}
 	<div class="table-responsive shadow-sm rounded">

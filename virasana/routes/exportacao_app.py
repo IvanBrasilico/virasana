@@ -106,16 +106,29 @@ def configure(app):
     def transit_time():
         """
         Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
-        no dia de ontem entre 00:00:00 e 23:59:59.
+        em uma data escolhida (via query string ?data=YYYY-MM-DD).
+        Padrão: ontem (janela 00:00:00 inclusivo até 00:00 do dia seguinte exclusivo).
         """
         session = app.config['db_session']
 
-        # Calcula a janela do dia anterior ao dia atual do servidor
-        # início = 00:00:00 de ontem (inclusive)
-        # fim    = 00:00:00 de hoje (exclusivo) — janela meio-aberta
-        ontem  = datetime.now().date() - timedelta(days=1)
-        inicio = datetime.combine(ontem, time.min)
+        # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
+        data_str = request.args.get('data')  # ex.: "2025-09-16"
+        if data_str:
+            try:
+                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+            except ValueError:
+                # Se formato inválido, volta para ontem
+                data_base = datetime.now().date() - timedelta(days=1)
+        else:
+            data_base = datetime.now().date() - timedelta(days=1)
+
+        # janela meio-aberta [00:00:00, +1 dia)
+        inicio = datetime.combine(data_base, time.min)
         fim    = inicio + timedelta(days=1)
+
+        # Rótulos para o template
+        data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
+        data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
 
         # Rótulo de data (ex.: 16/09/2025) para exibir no layout
         data_label = ontem.strftime("%d/%m/%Y")
@@ -195,8 +208,10 @@ def configure(app):
         } for r in rows]
 
         return render_template(
-            'exportacao_transit_time.html',
-            resultados=resultados,
-            data_label=data_label,
-            csrf_token=generate_csrf
-        )
+             'exportacao_transit_time.html',
+             resultados=resultados,
+             data_label=data_label,
+            # valor para manter o input <date> preenchido com a data escolhida
+            data_iso=data_iso,
+             csrf_token=generate_csrf
+         )
