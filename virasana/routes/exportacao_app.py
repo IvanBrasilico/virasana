@@ -197,4 +197,4 @@ def configure(app):
             resultados=resultados,
             data_label=data_label,
             csrf_token=generate_csrf
-        ))
+        )
