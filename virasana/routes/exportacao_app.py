@@ -4,6 +4,7 @@ from datetime import date, timedelta, datetime, time
 from flask import render_template, request, flash, url_for
 from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
+from sqlalchemy import text
 
 
 def configure(app):
@@ -99,3 +100,48 @@ def configure(app):
             arquivos=arquivos,
             csrf_token=generate_csrf
         )
+
+    # rota para listar entradas (E) em um recinto em uma data
+    @app.route('/transit_time', methods=['GET'])
+    def transit_time():
+        """
+        Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
+        no dia 15/09/2025 entre 00:00:00 e 23:59:59.
+        """
+        session = app.config['db_session']
+
+        # Janela fixa conforme solicitado
+        inicio = datetime(2025, 9, 15, 0, 0, 0)
+        fim    = datetime(2025, 9, 15, 23, 59, 59)
+
+        sql = text("""
+            SELECT
+                numeroConteiner,
+                placa,
+                codigoRecinto,
+                dataHoraOcorrencia
+            FROM apirecintos_acessosveiculo
+            WHERE
+                codigoRecinto = :recinto
+                AND direcao = 'E'
+                AND numeroConteiner IS NOT NULL
+                AND numeroConteiner <> ''
+                AND dataHoraOcorrencia BETWEEN :inicio AND :fim
+            ORDER BY dataHoraOcorrencia ASC
+        """)
+
+        rows = session.execute(sql, {
+            "recinto": "8931356",
+            "inicio":  inicio,
+            "fim":     fim
+        }).fetchall()
+
+        # rows é uma lista de Row objects; vamos padronizar para dicts simples
+        resultados = [{
+            "numeroConteiner": r.numeroConteiner,
+            "placa": r.placa,
+            "codigoRecinto": r.codigoRecinto,
+            "dataHoraOcorrencia": r.dataHoraOcorrencia
+        } for r in rows]
+
+        return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)
