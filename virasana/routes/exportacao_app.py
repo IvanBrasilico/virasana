@@ -18,7 +18,7 @@ def configure(app):
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
         return render_template(
-            'exportacao/exportacao.html',
+            'exportacao_index.html',
             csrf_token=generate_csrf
         )
 
