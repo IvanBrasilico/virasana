@@ -114,23 +114,47 @@ def configure(app):
         inicio = datetime(2025, 9, 15, 0, 0, 0)
         fim    = datetime(2025, 9, 15, 23, 59, 59)
 
+        # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
+        # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         sql = text("""
             SELECT
-                numeroConteiner,
-                dataHoraOcorrencia,
-                cnpjTransportador,
-                placa,
-                cpfMotorista,
-                nomeMotorista,
-                vazioConteiner
-            FROM apirecintos_acessosveiculo
+                -- Campos da ENTRADA (E) no recinto 8931356 (no dia)
+                e.numeroConteiner,
+                e.dataHoraOcorrencia,
+                e.cnpjTransportador,
+                e.placa,
+                e.cpfMotorista,
+                e.nomeMotorista,
+                e.vazioConteiner,
+
+                -- Campos da SAÍDA (S) imediatamente anterior (qualquer recinto)
+                s.codigoRecinto         AS s_codigoRecinto,
+                s.dataHoraOcorrencia    AS s_dataHoraOcorrencia,
+                s.cnpjTransportador     AS s_cnpjTransportador,
+                s.placa                 AS s_placa,
+                s.cpfMotorista          AS s_cpfMotorista,
+                s.nomeMotorista         AS s_nomeMotorista,
+                s.vazioConteiner        AS s_vazioConteiner
+
+            FROM apirecintos_acessosveiculo e
+            LEFT JOIN apirecintos_acessosveiculo s
+              ON s.id = (
+                 SELECT s2.id
+                 FROM apirecintos_acessosveiculo s2
+                 WHERE s2.numeroConteiner = e.numeroConteiner
+                   AND s2.direcao = 'S'
+                   AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
+                 ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
+                 LIMIT 1
+              )
             WHERE
-                codigoRecinto = :recinto
-                AND direcao = 'E'
-                AND numeroConteiner IS NOT NULL
-                AND numeroConteiner <> ''
-                AND dataHoraOcorrencia BETWEEN :inicio AND :fim
-            ORDER BY dataHoraOcorrencia ASC
+                e.codigoRecinto = :recinto
+                AND e.direcao = 'E'
+                AND e.numeroConteiner IS NOT NULL
+                AND e.numeroConteiner <> ''
+                AND e.dataHoraOcorrencia >= :inicio
+                AND e.dataHoraOcorrencia < :fim
+            ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
         """)
 
         rows = session.execute(sql, {
@@ -148,6 +172,14 @@ def configure(app):
             "cpfMotorista": r.cpfMotorista,
             "nomeMotorista": r.nomeMotorista,
             "vazioConteiner": r.vazioConteiner,
+            # campos da S anterior (podem ser None se não houver S anterior)
+            "s_codigoRecinto": r.s_codigoRecinto,
+            "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
+            "s_cnpjTransportador": r.s_cnpjTransportador,
+            "s_placa": r.s_placa,
+            "s_cpfMotorista": r.s_cpfMotorista,
+            "s_nomeMotorista": r.s_nomeMotorista,
+            "s_vazioConteiner": r.s_vazioConteiner,            
         } for r in rows]
 
         return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)
