@@ -102,7 +102,7 @@ def configure(app):
         )
 
     # rota para listar entradas (E) em um recinto em uma data
-    @app.route('/transit_time', methods=['GET'])
+    @app.route('/exportacao/transit_time', methods=['GET'])
     def transit_time():
         """
         Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
