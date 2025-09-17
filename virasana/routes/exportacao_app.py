@@ -130,9 +130,6 @@ def configure(app):
         data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
         data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
 
-        # Rótulo de data (ex.: 16/09/2025) para exibir no layout
-        data_label = ontem.strftime("%d/%m/%Y")
-
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         sql = text("""
