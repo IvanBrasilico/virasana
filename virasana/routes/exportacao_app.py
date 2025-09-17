@@ -117,6 +117,9 @@ def configure(app):
         inicio = datetime.combine(ontem, time.min)
         fim    = inicio + timedelta(days=1)
 
+        # Rótulo de data (ex.: 16/09/2025) para exibir no layout
+        data_label = ontem.strftime("%d/%m/%Y")
+
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         sql = text("""
@@ -189,4 +192,9 @@ def configure(app):
             "transit_time_horas": r.transit_time_horas,            
         } for r in rows]
 
-        return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)
+        return render_template(
+            'exportacao_transit_time.html',
+            resultados=resultados,
+            data_label=data_label,
+            csrf_token=generate_csrf
+        ))
