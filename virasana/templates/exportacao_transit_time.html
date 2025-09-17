@@ -34,14 +34,14 @@
             <tr>
               <!-- ENTRADA -->
               <td class="fw-semibold">{{ r.numeroConteiner }}</td>
-              <td>{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y") if r.dataHoraOcorrencia else '—' }}</td>
+              <td>{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</td>
               <td>{{ r.cnpjTransportador or '—' }}</td>
               <td>{{ r.placa or '—' }}</td>
               <td>{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</td>
               <td>{{ 'Sim' if r.vazioConteiner else 'Não' }}</td>
               <!-- SAÍDA ANTERIOR -->
               <td>{{ r.s_codigoRecinto or '—' }}</td>
-              <td>{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y") if r.s_dataHoraOcorrencia else '—' }}</td>
+              <td>{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</td>
               <td>
                 {% if r.transit_time_horas is not none %}
                   {{ "%.2f"|format(r.transit_time_horas) }}
