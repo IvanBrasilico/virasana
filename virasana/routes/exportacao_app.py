@@ -147,6 +147,8 @@ def configure(app):
                  WHERE s2.numeroConteiner = e.numeroConteiner
                    AND s2.direcao = 'S'
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
+                   -- garantir que a saída seja de recinto diferente da entrada
+                   AND s2.codigoRecinto <> e.codigoRecinto
                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
                  LIMIT 1
               )
