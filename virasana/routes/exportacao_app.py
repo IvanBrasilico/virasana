@@ -137,7 +137,8 @@ def configure(app):
                 s.placa                 AS s_placa,
                 s.cpfMotorista          AS s_cpfMotorista,
                 s.nomeMotorista         AS s_nomeMotorista,
-                s.vazioConteiner        AS s_vazioConteiner
+                s.vazioConteiner        AS s_vazioConteiner,
+                TIMESTAMPDIFF(HOUR, s.dataHoraOcorrencia, e.dataHoraOcorrencia) AS transit_time_horas
 
             FROM apirecintos_acessosveiculo e
             LEFT JOIN apirecintos_acessosveiculo s
@@ -184,7 +185,8 @@ def configure(app):
             "s_placa": r.s_placa,
             "s_cpfMotorista": r.s_cpfMotorista,
             "s_nomeMotorista": r.s_nomeMotorista,
-            "s_vazioConteiner": r.s_vazioConteiner,            
+            "s_vazioConteiner": r.s_vazioConteiner,
+            "transit_time_horas": r.transit_time_horas,            
         } for r in rows]
 
         return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)

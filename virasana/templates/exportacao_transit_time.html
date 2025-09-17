@@ -32,6 +32,7 @@
               <th scope="col">CPF (S)</th>
               <th scope="col">Nome (S)</th>
               <th scope="col">Vazio? (S)</th>
+			  <th scope="col">Transit Time (h)</th>
             </tr> 
  </thead>
           <tbody class="bg-white">
@@ -56,6 +57,9 @@
                 {% if r.s_vazioConteiner is not none %}
                   {{ 'Sim' if r.s_vazioConteiner else 'Não' }}
                 {% else %}—{% endif %}
+              </td>
+              <td>
+                {{ r.transit_time_horas if r.transit_time_horas is not none else '—' }}
               </td>
             </tr>
             {% endfor %}
