@@ -112,7 +112,8 @@ def configure(app):
         session = app.config['db_session']
 
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
-        data_str = request.args.get('data')  # ex.: "2025-09-16"
+        data_str = request.args.get('data')     # ex.: "2025-09-16"
+        destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
         if data_str:
             try:
                 data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
@@ -129,6 +130,11 @@ def configure(app):
         # Rótulos para o template
         data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
         data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
+
+        # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
+        # default = 8931356 se nada/ou inválido
+        if destino not in ("8931356", "8931359"):
+            destino = "8931356"
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
@@ -169,7 +175,7 @@ def configure(app):
                  LIMIT 1
               )
             WHERE
-                e.codigoRecinto = :recinto
+                e.codigoRecinto = :recinto_destino
                 AND e.direcao = 'E'
                 AND e.numeroConteiner IS NOT NULL
                 AND e.numeroConteiner <> ''
@@ -179,9 +185,9 @@ def configure(app):
         """)
 
         rows = session.execute(sql, {
-            "recinto": "8931356",
-            "inicio":  inicio,
-            "fim":     fim
+            "recinto_destino": destino,
+            "inicio": inicio,
+            "fim": fim
         }).fetchall()
 
         # rows é uma lista de Row objects; vamos padronizar para dicts simples
@@ -205,10 +211,11 @@ def configure(app):
         } for r in rows]
 
         return render_template(
-             'exportacao_transit_time.html',
-             resultados=resultados,
-             data_label=data_label,
+            'exportacao_transit_time.html',
+            resultados=resultados,
+            data_label=data_label,
             # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
-             csrf_token=generate_csrf
+            destino=destino,
+            csrf_token=generate_csrf
          )

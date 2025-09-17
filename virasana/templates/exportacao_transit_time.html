@@ -10,6 +10,16 @@
 <div class="container-fluid py-2 px-2">
     <h1 class="mb-1">Entradas no Recinto 8931356 — {{ data_label }}</h1>
 
+    {% set destino_label =
+         ('8931356 - Santos Brasil' if destino == '8931356'
+          else ('8931359 - BPT' if destino == '8931359' else destino)) %}
+    <p class="text-muted">
+      Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong>
+      · Saída anterior: <em>outro recinto</em>
+      · Destino: <em>{{ destino_label }}</em>
+    </p>
+ 
+
     <!-- Filtro por data (GET) -->
     <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
       <div class="col-auto">
@@ -23,6 +33,16 @@
           required
         />
       </div>
+
+      <div class="col-auto">
+        <label for="origem" class="form-label mb-0">Recinto de origem (S)</label>
+        <select class="form-control" id="origem" name="origem">
+          <option value="" {{ 'selected' if not origem else '' }}>Todos 89327*</option>
+          <option value="8931356" {{ 'selected' if origem == '8931356' else '' }}>8931356 - Santos Brasil</option>
+          <option value="8931359" {{ 'selected' if origem == '8931359' else '' }}>8931359 - BPT</option>
+        </select>
+      </div>
+
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Aplicar</button>
       </div>
@@ -41,8 +61,8 @@
               <th scope="col">Motorista</th>
               <th scope="col">Vazio?</th>
               <!-- SAÍDA ANTERIOR -->
-              <th scope="col">Recinto (S)</th>
-              <th scope="col">Data/Hora (S)</th>
+              <th scope="col">Recinto (origem)</th>
+              <th scope="col">Data/Hora (saída)</th>
 			  <th scope="col">Transit Time (h)</th>
             </tr> 
  </thead>
