@@ -27,11 +27,6 @@
               <!-- SAÍDA ANTERIOR -->
               <th scope="col">Recinto (S)</th>
               <th scope="col">Data/Hora (S)</th>
-              <th scope="col">CNPJ (S)</th>
-              <th scope="col">Placa (S)</th>
-              <th scope="col">CPF (S)</th>
-              <th scope="col">Nome (S)</th>
-              <th scope="col">Vazio? (S)</th>
 			  <th scope="col">Transit Time (h)</th>
             </tr> 
  </thead>
@@ -49,15 +44,6 @@
               <!-- SAÍDA ANTERIOR -->
               <td>{{ r.s_codigoRecinto or '—' }}</td>
               <td>{{ r.s_dataHoraOcorrencia or '—' }}</td>
-              <td>{{ r.s_cnpjTransportador or '—' }}</td>
-              <td>{{ r.s_placa or '—' }}</td>
-              <td>{{ r.s_cpfMotorista or '—' }}</td>
-              <td>{{ r.s_nomeMotorista or '—' }}</td>
-              <td>
-                {% if r.s_vazioConteiner is not none %}
-                  {{ 'Sim' if r.s_vazioConteiner else 'Não' }}
-                {% else %}—{% endif %}
-              </td>
               <td>
                 {% if r.transit_time_horas is not none %}
                   {{ "%.2f"|format(r.transit_time_horas) }}
