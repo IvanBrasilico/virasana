@@ -138,7 +138,7 @@ def configure(app):
                 s.cpfMotorista          AS s_cpfMotorista,
                 s.nomeMotorista         AS s_nomeMotorista,
                 s.vazioConteiner        AS s_vazioConteiner,
-                TIMESTAMPDIFF(HOUR, s.dataHoraOcorrencia, e.dataHoraOcorrencia) AS transit_time_horas
+                TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
 
             FROM apirecintos_acessosveiculo e
             LEFT JOIN apirecintos_acessosveiculo s

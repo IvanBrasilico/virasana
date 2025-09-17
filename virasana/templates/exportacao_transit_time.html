@@ -59,7 +59,11 @@
                 {% else %}—{% endif %}
               </td>
               <td>
-                {{ r.transit_time_horas if r.transit_time_horas is not none else '—' }}
+                {% if r.transit_time_horas is not none %}
+                  {{ "%.2f"|format(r.transit_time_horas) }}
+                {% else %}
+                  —
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
