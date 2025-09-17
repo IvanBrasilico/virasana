@@ -152,6 +152,8 @@ def configure(app):
                    AND s2.direcao = 'S'
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    -- garantir que a saída seja de recinto diferente da entrada
+                   -- restringir recintos de origem que comecem com 89327
+                   AND s2.codigoRecinto LIKE '89327%'
                    AND s2.codigoRecinto <> e.codigoRecinto
                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
                  LIMIT 1
