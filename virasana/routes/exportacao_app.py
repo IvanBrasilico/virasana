@@ -117,9 +117,12 @@ def configure(app):
         sql = text("""
             SELECT
                 numeroConteiner,
+                dataHoraOcorrencia,
+                cnpjTransportador,
                 placa,
-                codigoRecinto,
-                dataHoraOcorrencia
+                cpfMotorista,
+                nomeMotorista,
+                vazioConteiner
             FROM apirecintos_acessosveiculo
             WHERE
                 codigoRecinto = :recinto
@@ -139,9 +142,12 @@ def configure(app):
         # rows é uma lista de Row objects; vamos padronizar para dicts simples
         resultados = [{
             "numeroConteiner": r.numeroConteiner,
+            "dataHoraOcorrencia": r.dataHoraOcorrencia,
+            "cnpjTransportador": r.cnpjTransportador,
             "placa": r.placa,
-            "codigoRecinto": r.codigoRecinto,
-            "dataHoraOcorrencia": r.dataHoraOcorrencia
+            "cpfMotorista": r.cpfMotorista,
+            "nomeMotorista": r.nomeMotorista,
+            "vazioConteiner": r.vazioConteiner,
         } for r in rows]
 
         return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)

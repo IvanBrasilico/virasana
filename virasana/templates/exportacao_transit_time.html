@@ -16,17 +16,25 @@
         <table class="table table-sm align-middle mb-0">
           <thead class="table-secondary">
             <tr>
-			  <th scope="col">Número do Contêiner</th>
+              <th scope="col">Número do Contêiner</th>
               <th scope="col">Data/Hora Ocorrência</th>
+              <th scope="col">CNPJ Transportador</th>
               <th scope="col">Placa</th>
+              <th scope="col">CPF Motorista</th>
+              <th scope="col">Nome Motorista</th>
+              <th scope="col">Vazio?</th>
             </tr>
           </thead>
           <tbody class="bg-white">
             {% for r in resultados %}
             <tr>
-			  <td class="fw-semibold">{{ r.numeroConteiner }}</td>
+              <td class="fw-semibold">{{ r.numeroConteiner }}</td>
               <td>{{ r.dataHoraOcorrencia }}</td>
+              <td>{{ r.cnpjTransportador or '—' }}</td>
               <td>{{ r.placa or '—' }}</td>
+              <td>{{ r.cpfMotorista or '—' }}</td>
+              <td>{{ r.nomeMotorista or '—' }}</td>
+              <td>{{ 'Sim' if r.vazioConteiner else 'Não' }}</td>
             </tr>
             {% endfor %}
           </tbody>
