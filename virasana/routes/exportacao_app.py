@@ -157,6 +157,8 @@ def configure(app):
                 s.cpfMotorista          AS s_cpfMotorista,
                 s.nomeMotorista         AS s_nomeMotorista,
                 s.vazioConteiner        AS s_vazioConteiner,
+                
+                -- diferença de tempo
                 TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
 
             FROM apirecintos_acessosveiculo e
@@ -168,8 +170,12 @@ def configure(app):
                    AND s2.direcao = 'S'
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    -- garantir que a saída seja de recinto diferente da entrada
-                   -- restringir recintos de origem que comecem com 89327
-                   AND s2.codigoRecinto LIKE '89327%'
+                  -- restringir recintos de origem que comecem com 89327
+                  -- ou que estejam na lista adicional
+                  AND (
+                        s2.codigoRecinto LIKE '89327%' -- A maioria dos Redex de Santos possuem esse padrão de código
+                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404') -- Redex da Localfrio/Movecta, Redex da Santos Brasil Clia e Redex da DPW/EMBRAPORT
+                  )
                    AND s2.codigoRecinto <> e.codigoRecinto
                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
                  LIMIT 1
