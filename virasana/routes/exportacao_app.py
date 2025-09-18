@@ -105,23 +105,42 @@ def configure(app):
     @app.route('/exportacao/transit_time', methods=['GET'])
     def transit_time():
         """
-        Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
-        no dia de ontem entre 00:00:00 e 23:59:59.
+        Lista todos os containers que ENTRARAM (direcao = 'E') em um recinto específico
+        em uma data escolhida (via query string ?data=YYYY-MM-DD).
+        Padrão: ontem (janela 00:00:00 inclusivo até 00:00 do dia seguinte exclusivo).
         """
         session = app.config['db_session']
 
-        # Calcula a janela do dia anterior ao dia atual do servidor
-        # início = 00:00:00 de ontem (inclusive)
-        # fim    = 00:00:00 de hoje (exclusivo) — janela meio-aberta
-        ontem  = datetime.now().date() - timedelta(days=1)
-        inicio = datetime.combine(ontem, time.min)
+        # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
+        data_str = request.args.get('data')     # ex.: "2025-09-16"
+        destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        if data_str:
+            try:
+                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+            except ValueError:
+                # Se formato inválido, volta para ontem
+                data_base = datetime.now().date() - timedelta(days=1)
+        else:
+            data_base = datetime.now().date() - timedelta(days=1)
+
+        # janela meio-aberta [00:00:00, +1 dia)
+        inicio = datetime.combine(data_base, time.min)
         fim    = inicio + timedelta(days=1)
+
+        # Rótulos para o template
+        data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
+        data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
+
+        # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
+        # default = 8931356 se nada/ou inválido
+        if destino not in ("8931356", "8931359"):
+            destino = "8931356"
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         sql = text("""
             SELECT
-                -- Campos da ENTRADA (E) no recinto 8931356 (no dia)
+                -- Campos da ENTRADA (E) em um recinto (no dia)
                 e.numeroConteiner,
                 e.dataHoraOcorrencia,
                 e.cnpjTransportador,
@@ -138,7 +157,9 @@ def configure(app):
                 s.cpfMotorista          AS s_cpfMotorista,
                 s.nomeMotorista         AS s_nomeMotorista,
                 s.vazioConteiner        AS s_vazioConteiner,
-                TIMESTAMPDIFF(HOUR, s.dataHoraOcorrencia, e.dataHoraOcorrencia) AS transit_time_horas
+                
+                -- diferença de tempo
+                TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
 
             FROM apirecintos_acessosveiculo e
             LEFT JOIN apirecintos_acessosveiculo s
@@ -149,12 +170,18 @@ def configure(app):
                    AND s2.direcao = 'S'
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    -- garantir que a saída seja de recinto diferente da entrada
+                  -- restringir recintos de origem que comecem com 89327
+                  -- ou que estejam na lista adicional
+                  AND (
+                        s2.codigoRecinto LIKE '89327%' -- A maioria dos Redex de Santos possuem esse padrão de código
+                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404') -- Redex da Localfrio/Movecta, Redex da Santos Brasil Clia e Redex da DPW/EMBRAPORT
+                  )
                    AND s2.codigoRecinto <> e.codigoRecinto
                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
                  LIMIT 1
               )
             WHERE
-                e.codigoRecinto = :recinto
+                e.codigoRecinto = :recinto_destino
                 AND e.direcao = 'E'
                 AND e.numeroConteiner IS NOT NULL
                 AND e.numeroConteiner <> ''
@@ -164,9 +191,9 @@ def configure(app):
         """)
 
         rows = session.execute(sql, {
-            "recinto": "8931356",
-            "inicio":  inicio,
-            "fim":     fim
+            "recinto_destino": destino,
+            "inicio": inicio,
+            "fim": fim
         }).fetchall()
 
         # rows é uma lista de Row objects; vamos padronizar para dicts simples
@@ -189,4 +216,12 @@ def configure(app):
             "transit_time_horas": r.transit_time_horas,            
         } for r in rows]
 
-        return render_template('exportacao_transit_time.html', resultados=resultados, csrf_token=generate_csrf)
+        return render_template(
+            'exportacao_transit_time.html',
+            resultados=resultados,
+            data_label=data_label,
+            # valor para manter o input <date> preenchido com a data escolhida
+            data_iso=data_iso,
+            destino=destino,
+            csrf_token=generate_csrf
+         )
