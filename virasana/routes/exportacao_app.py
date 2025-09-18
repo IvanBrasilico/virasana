@@ -1,11 +1,12 @@
 # exportacao_app.py
 
 from datetime import date, timedelta, datetime, time
-from flask import render_template, request, flash, url_for
+from flask import render_template, request, flash, url_for, jsonify
 from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
-
+from decimal import Decimal
+from typing import Optional, Dict
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -100,6 +101,144 @@ def configure(app):
             arquivos=arquivos,
             csrf_token=generate_csrf
         )
+
+
+    # ---------------------------------------------------------
+    # Consulta de PESO: primeira pesagem válida (I/R) do contêiner
+    # no recinto de destino após dt_min (hora da entrada).
+    # Mantido neste arquivo por simplicidade de integração.
+    # ---------------------------------------------------------
+    def consulta_peso_container(session, numero_conteiner: str, codigo_recinto: str, dt_min: datetime) -> Optional[Dict]:
+        """
+        Retorna a primeira pesagem efetiva (I/R) do contêiner no recinto,
+        ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
+        """
+
+        # Versão COM janela (preferencial se disponível)
+        sql_window = text("""
+            WITH ranked AS (
+              SELECT
+                id,
+                codigoRecinto,
+                dataHoraTransmissao,
+                dataHoraOcorrencia,
+                tipoOperacao,
+                pesoBrutoBalanca,
+                numeroConteiner,
+                ROW_NUMBER() OVER (
+                  PARTITION BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
+                  ORDER BY dataHoraTransmissao DESC, id DESC
+                ) AS rn
+              FROM apirecintos_pesagensveiculo
+              WHERE numeroConteiner = :numeroConteiner
+                AND codigoRecinto   = :codigoRecinto
+                AND dataHoraOcorrencia >= :dtMin
+            )
+            SELECT
+              id,
+              codigoRecinto,
+              dataHoraOcorrencia,
+              dataHoraTransmissao,
+              tipoOperacao,
+              pesoBrutoBalanca
+            FROM ranked
+            WHERE rn = 1
+              AND tipoOperacao IN ('I','R')     -- ignora ocorrências cujo último evento foi 'E'
+            ORDER BY dataHoraOcorrencia ASC     -- primeira pesagem após a entrada
+            LIMIT 1
+        """)
+
+        # Versão SEM janela (compatível com MariaDB antigas)
+        # Estratégia:
+        # 1) Para cada (numeroConteiner, codigoRecinto, dataHoraOcorrencia) após dt_min,
+        #    pegar a última dataHoraTransmissao.
+        # 2) Juntar de volta para obter a linha final; filtrar tipoOperacao IN (I,R).
+        sql_no_window = text("""
+            SELECT
+              p.id,
+              p.codigoRecinto,
+              p.dataHoraOcorrencia,
+              p.dataHoraTransmissao,
+              p.tipoOperacao,
+              p.pesoBrutoBalanca
+            FROM apirecintos_pesagensveiculo p
+            JOIN (
+              SELECT
+                numeroConteiner,
+                codigoRecinto,
+                dataHoraOcorrencia,
+               MAX(dataHoraTransmissao) AS max_tx
+              FROM apirecintos_pesagensveiculo
+              WHERE numeroConteiner = :numeroConteiner
+                AND codigoRecinto   = :codigoRecinto
+                AND dataHoraOcorrencia >= :dtMin
+              GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
+            ) ult
+              ON  ult.numeroConteiner   = p.numeroConteiner
+              AND ult.codigoRecinto     = p.codigoRecinto
+              AND ult.dataHoraOcorrencia= p.dataHoraOcorrencia
+              AND ult.max_tx            = p.dataHoraTransmissao
+            WHERE p.tipoOperacao IN ('I','R')
+            ORDER BY p.dataHoraOcorrencia ASC
+            LIMIT 1
+        """)
+
+        # Se você souber que tem janela disponível, use direto sql_window.
+        # Aqui tentamos primeiro janela; se falhar (ex.: ER_PARSE_ERROR), caímos no plano B.
+        try:
+            row = session.execute(sql_window, {
+                "numeroConteiner": numero_conteiner,
+                "codigoRecinto": codigo_recinto,
+                "dtMin": dt_min
+            }).mappings().first()
+        except Exception:
+            row = session.execute(sql_no_window, {
+                "numeroConteiner": numero_conteiner,
+                "codigoRecinto": codigo_recinto,
+                "dtMin": dt_min
+            }).mappings().first()
+
+        if not row:
+            return None
+
+        peso = row["pesoBrutoBalanca"]
+        if isinstance(peso, Decimal):
+            peso = float(peso)
+
+        return {
+            "id": row["id"],
+            "codigoRecinto": row["codigoRecinto"],
+            "dataHoraOcorrencia": row["dataHoraOcorrencia"].strftime("%Y-%m-%d %H:%M:%S"),
+            "dataHoraTransmissao": row["dataHoraTransmissao"].strftime("%Y-%m-%d %H:%M:%S") if row["dataHoraTransmissao"] else None,
+            "tipoOperacao": row["tipoOperacao"],
+            "pesoBrutoBalanca": peso
+        }
+
+    @app.route('/exportacao/consulta_peso', methods=['GET'])
+    def exportacao_consulta_peso():
+        """
+        Endpoint para o fetch() do front-end.
+        Parâmetros:
+          - numeroConteiner: str
+          - codigoRecinto  : str
+          - dtMin          : 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
+        """
+        session = app.config['db_session']
+        numero  = request.args.get('numeroConteiner')
+        recinto = request.args.get('codigoRecinto')
+        dt_min  = request.args.get('dtMin')
+
+        if not (numero and recinto and dt_min):
+            return jsonify({"error": "Parâmetros obrigatórios: numeroConteiner, codigoRecinto, dtMin"}), 400
+        try:
+            dt_min_parsed = datetime.strptime(dt_min, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return jsonify({"error": "dtMin inválido. Formato esperado: YYYY-MM-DD HH:MM:SS"}), 400
+
+        result = consulta_peso_container(session, numero, recinto, dt_min_parsed)
+        if not result:
+            return jsonify({"found": False}), 404
+        return jsonify({"found": True, **result})
 
     # rota para listar entradas (E) em um recinto em uma data
     @app.route('/exportacao/transit_time', methods=['GET'])

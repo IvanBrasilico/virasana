@@ -62,6 +62,7 @@
               <th scope="col">Placa</th>
               <th scope="col">Motorista</th>
               <th scope="col">Vazio?</th>
+			  <th>Entrada no destino</th
               <!-- SAÍDA ANTERIOR -->
               <th scope="col">Recinto (origem)</th>
               <th scope="col">Data/Hora (saída)</th>
@@ -78,6 +79,17 @@
               <td>{{ r.placa or '—' }}</td>
               <td>{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</td>
               <td>{{ 'Sim' if r.vazioConteiner else 'Não' }}</td>
+			  <td>
+				<button
+				  type="button"
+				  class="btn btn-sm btn-outline-secondary consultar-peso"
+				  data-numero="{{ row.numeroConteiner }}"
+				  data-recinto="{{ destino }}"
+				  data-dtmin="{{ row.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}">
+				  Consultar peso
+				</button>
+				<span class="peso-resposta text-muted ms-2"></span>
+			  </td>			  
               <!-- SAÍDA ANTERIOR -->
               <td>{{ r.s_codigoRecinto or '—' }}</td>
               <td>{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</td>
@@ -98,4 +110,49 @@
     {% endif %}
   </div>
 </body>
+
+<script>
+  // Delegação de evento para os botões "Consultar peso"
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.consultar-peso');
+    if (!btn) return;
+    const cell = btn.parentElement;
+    const span = cell.querySelector('.peso-resposta');
+    span.textContent = 'Consultando...';
+
+    const numero  = btn.dataset.numero;
+    const recinto = btn.dataset.recinto;
+    const dtMin   = btn.dataset.dtmin; // 'YYYY-MM-DD HH:MM:SS'
+
+    try {
+      const qs = new URLSearchParams({
+        numeroConteiner: numero,
+        codigoRecinto: recinto,
+        dtMin: dtMin
+      });
+      const resp = await fetch(`/exportacao/consulta_peso?${qs.toString()}`, {
+        method: 'GET',
+        headers: {
+          // GET apenas leitura; não precisa CSRF. Se você exigir, inclua aqui.
+        }
+      });
+      if (resp.status === 404) {
+        span.textContent = 'Sem pesagem após a entrada.';
+        return;
+      }
+      if (!resp.ok) throw new Error('Falha na consulta');
+      const data = await resp.json();
+      if (data.found && data.pesoBrutoBalanca != null) {
+        // Ajuste a unidade caso precise (kg / toneladas)
+        span.textContent = `Peso: ${Number(data.pesoBrutoBalanca).toFixed(2)} kg (${data.dataHoraOcorrencia})`;
+      } else {
+        span.textContent = 'Sem pesagem válida.';
+      }
+    } catch (err) {
+      console.error(err);
+      span.textContent = 'Erro ao consultar.';
+    }
+  });
+</script>
+
 </html>
