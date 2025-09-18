@@ -105,7 +105,7 @@ def configure(app):
     @app.route('/exportacao/transit_time', methods=['GET'])
     def transit_time():
         """
-        Lista todos os containers que ENTRARAM (direcao = 'E') no codigoRecinto = '8931356'
+        Lista todos os containers que ENTRARAM (direcao = 'E') em um recinto específico
         em uma data escolhida (via query string ?data=YYYY-MM-DD).
         Padrão: ontem (janela 00:00:00 inclusivo até 00:00 do dia seguinte exclusivo).
         """
@@ -140,7 +140,7 @@ def configure(app):
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         sql = text("""
             SELECT
-                -- Campos da ENTRADA (E) no recinto 8931356 (no dia)
+                -- Campos da ENTRADA (E) em um recinto (no dia)
                 e.numeroConteiner,
                 e.dataHoraOcorrencia,
                 e.cnpjTransportador,
