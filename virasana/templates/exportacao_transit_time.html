@@ -132,6 +132,15 @@
 
 
 <script>
+
+function formatDateTime(isoString) {
+  const d = new Date(isoString.replace(" ", "T")); 
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+
   // Delegação de evento para os botões "Consultar peso"
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('.consultar-peso');
@@ -164,7 +173,8 @@
       const data = await resp.json();
       if (data.found && data.pesoBrutoBalanca != null) {
         // Ajuste a unidade caso precise (kg / toneladas)
-        span.textContent = `Peso: ${Number(data.pesoBrutoBalanca).toFixed(2)} kg (${data.dataHoraOcorrencia})`;
+		const dt = formatDateTime(data.dataHoraOcorrencia);
+        span.textContent = `Peso: ${Number(data.pesoBrutoBalanca).toFixed(2)} kg (${dt})`;
       } else {
         span.textContent = 'Sem pesagem válida.';
       }
