@@ -83,9 +83,12 @@
 				<button
 				  type="button"
 				  class="btn btn-sm btn-outline-secondary consultar-peso"
-				  data-numero="{{ row.numeroConteiner }}"
+				  data-numero="{{ r.numeroConteiner }}"
 				  data-recinto="{{ destino }}"
-				  data-dtmin="{{ row.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}">
+				  data-dtmin="{{
+                    r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+                    if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
+                  }}">
 				  Consultar peso
 				</button>
 				<span class="peso-resposta text-muted ms-2"></span>
