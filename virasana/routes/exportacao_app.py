@@ -117,40 +117,37 @@ def configure(app):
         Retorna a primeira pesagem efetiva (I/R) do contêiner no recinto,
         ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
         """
-        sql_window = text("""
-            WITH ranked AS (
+        sql = text("""
+            SELECT
+              p.id,
+              p.codigoRecinto,
+              p.dataHoraOcorrencia,
+              p.dataHoraTransmissao,
+              p.tipoOperacao,
+              p.pesoBrutoBalanca
+            FROM apirecintos_pesagensveiculo p
+            JOIN (
               SELECT
-                id,
-                codigoRecinto,
-                dataHoraTransmissao,
-                dataHoraOcorrencia,
-                tipoOperacao,
-                pesoBrutoBalanca,
                 numeroConteiner,
-                ROW_NUMBER() OVER (
-                  PARTITION BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
-                  ORDER BY dataHoraTransmissao DESC, id DESC
-                ) AS rn
+                codigoRecinto,
+                dataHoraOcorrencia,
+                MAX(dataHoraTransmissao) AS max_tx
               FROM apirecintos_pesagensveiculo
               WHERE numeroConteiner = :numeroConteiner
                 AND codigoRecinto   = :codigoRecinto
                 AND dataHoraOcorrencia >= :dtMin
-            )
-            SELECT
-              id,
-              codigoRecinto,
-              dataHoraOcorrencia,
-              dataHoraTransmissao,
-              tipoOperacao,
-              pesoBrutoBalanca
-            FROM ranked
-            WHERE rn = 1
-              AND tipoOperacao IN ('I','R')
-            ORDER BY dataHoraOcorrencia ASC
+              GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
+            ) ult
+              ON  ult.numeroConteiner    = p.numeroConteiner
+              AND ult.codigoRecinto      = p.codigoRecinto
+              AND ult.dataHoraOcorrencia = p.dataHoraOcorrencia
+              AND ult.max_tx             = p.dataHoraTransmissao
+            WHERE p.tipoOperacao IN ('I','R')
+            ORDER BY p.dataHoraOcorrencia ASC
             LIMIT 1
         """)
 
-        row = session.execute(sql_window, {
+        row = session.execute(sql, {
             "numeroConteiner": numero_conteiner,
             "codigoRecinto": codigo_recinto,
             "dtMin": dt_min
