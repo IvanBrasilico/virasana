@@ -118,6 +118,10 @@ def configure(app):
         ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
         """
 
+        logging.getLogger().debug(
+            f"[consulta_peso_container] in: numero={numero_conteiner}, recinto={codigo_recinto}, dt_min={dt_min}"
+        )
+
         # Versão COM janela (preferencial se disponível)
         sql_window = text("""
             WITH ranked AS (
@@ -203,6 +207,24 @@ def configure(app):
             }).mappings().first()
 
         if not row:
+            # LOGS DIAGNÓSTICOS: Ver o que existe após dt_min, passo-a-passo
+            logging.getLogger().debug("[consulta_peso_container] window/no_window sem resultado. Rodando checks…")
+            # 1) Existe algo para esse contêiner após dt_min neste recinto?
+            chk1 = session.execute(text("""
+                SELECT COUNT(*) AS n
+                FROM apirecintos_pesagensveiculo
+                WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
+            """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).scalar()
+            logging.getLogger().debug(f"[consulta_peso_container] chk1 count(contêiner+recinto+>=dt_min)={chk1}")
+            # 2) Quais são as top 3 ocorrências brutas (para inspecionar)?
+            rows_dbg = session.execute(text("""
+                SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
+                FROM apirecintos_pesagensveiculo
+                WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
+                ORDER BY dataHoraOcorrencia ASC, dataHoraTransmissao DESC, id DESC
+                LIMIT 3
+            """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).mappings().all()
+            logging.getLogger().debug(f"[consulta_peso_container] rows_dbg(top3)={rows_dbg}")
             return None
 
         peso = row["pesoBrutoBalanca"]
@@ -239,10 +261,13 @@ def configure(app):
             dt_min_parsed = datetime.strptime(dt_min, "%Y-%m-%d %H:%M:%S")
         except Exception:
             return jsonify({"error": "dtMin inválido. Formato esperado: YYYY-MM-DD HH:MM:SS"}), 400
+        app.logger.debug(f"[consulta_peso] Parsed: numero={numero}, recinto={recinto}, dt_min={dt_min_parsed} (type={type(dt_min_parsed)})")
 
         result = consulta_peso_container(session, numero, recinto, dt_min_parsed)
         if not result:
+            app.logger.debug(f"[consulta_peso] NOT FOUND para numero={numero}, recinto={recinto}, dt_min={dt_min_parsed}")
             return jsonify({"found": False}), 404
+        app.logger.debug(f"[consulta_peso] FOUND: {result}")
         return jsonify({"found": True, **result})
 
     # rota para listar entradas (E) em um recinto em uma data
