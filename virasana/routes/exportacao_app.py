@@ -157,6 +157,24 @@ def configure(app):
         }).mappings().first()
 
         if not row:
+            # LOGS DIAGNÓSTICOS
+            try:
+                n = session.execute(text("""
+                    SELECT COUNT(*) AS n
+                    FROM apirecintos_pesagensveiculo
+                    WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).scalar()
+                app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} >=dtMin={dt_min} -> count={n}")
+                dbg = session.execute(text("""
+                    SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
+                    FROM apirecintos_pesagensveiculo
+                    WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
+                    ORDER BY dataHoraOcorrencia ASC, dataHoraTransmissao DESC, id DESC
+                    LIMIT 3
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).mappings().all()
+                app.logger.debug(f"[consulta_peso][rows top3] {dbg}")
+            except Exception as e:
+                app.logger.exception("[consulta_peso] erro nos logs de diagnóstico")
             return None
 
         peso = row["pesoBrutoBalanca"]
@@ -243,6 +261,7 @@ def configure(app):
             SELECT
                 -- Campos da ENTRADA (E) em um recinto (no dia)
                 e.numeroConteiner,
+                e.codigoRecinto,
                 e.dataHoraOcorrencia,
                 e.cnpjTransportador,
                 e.placa,
@@ -300,6 +319,7 @@ def configure(app):
         # rows é uma lista de Row objects; vamos padronizar para dicts simples
         resultados = [{
             "numeroConteiner": r.numeroConteiner,
+            "codigoRecinto": r.codigoRecinto,
             "dataHoraOcorrencia": r.dataHoraOcorrencia,
             "cnpjTransportador": r.cnpjTransportador,
             "placa": r.placa,
