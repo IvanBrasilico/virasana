@@ -117,12 +117,6 @@ def configure(app):
         Retorna a primeira pesagem efetiva (I/R) do contêiner no recinto,
         ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
         """
-
-        logging.getLogger().debug(
-            f"[consulta_peso_container] in: numero={numero_conteiner}, recinto={codigo_recinto}, dt_min={dt_min}"
-        )
-
-        # Versão COM janela (preferencial se disponível)
         sql_window = text("""
             WITH ranked AS (
               SELECT
@@ -151,84 +145,22 @@ def configure(app):
               pesoBrutoBalanca
             FROM ranked
             WHERE rn = 1
-              AND tipoOperacao IN ('I','R')     -- ignora ocorrências cujo último evento foi 'E'
-            ORDER BY dataHoraOcorrencia ASC     -- primeira pesagem após a entrada
+              AND tipoOperacao IN ('I','R')
+            ORDER BY dataHoraOcorrencia ASC
             LIMIT 1
         """)
 
-        # Versão SEM janela (compatível com MariaDB antigas)
-        # Estratégia:
-        # 1) Para cada (numeroConteiner, codigoRecinto, dataHoraOcorrencia) após dt_min,
-        #    pegar a última dataHoraTransmissao.
-        # 2) Juntar de volta para obter a linha final; filtrar tipoOperacao IN (I,R).
-        sql_no_window = text("""
-            SELECT
-              p.id,
-              p.codigoRecinto,
-              p.dataHoraOcorrencia,
-              p.dataHoraTransmissao,
-              p.tipoOperacao,
-              p.pesoBrutoBalanca
-            FROM apirecintos_pesagensveiculo p
-            JOIN (
-              SELECT
-                numeroConteiner,
-                codigoRecinto,
-                dataHoraOcorrencia,
-               MAX(dataHoraTransmissao) AS max_tx
-              FROM apirecintos_pesagensveiculo
-              WHERE numeroConteiner = :numeroConteiner
-                AND codigoRecinto   = :codigoRecinto
-                AND dataHoraOcorrencia >= :dtMin
-              GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
-            ) ult
-              ON  ult.numeroConteiner   = p.numeroConteiner
-              AND ult.codigoRecinto     = p.codigoRecinto
-              AND ult.dataHoraOcorrencia= p.dataHoraOcorrencia
-              AND ult.max_tx            = p.dataHoraTransmissao
-            WHERE p.tipoOperacao IN ('I','R')
-            ORDER BY p.dataHoraOcorrencia ASC
-            LIMIT 1
-        """)
-
-        # Se você souber que tem janela disponível, use direto sql_window.
-        # Aqui tentamos primeiro janela; se falhar (ex.: ER_PARSE_ERROR), caímos no plano B.
-        try:
-            row = session.execute(sql_window, {
-                "numeroConteiner": numero_conteiner,
-                "codigoRecinto": codigo_recinto,
-                "dtMin": dt_min
-            }).mappings().first()
-        except Exception:
-            row = session.execute(sql_no_window, {
-                "numeroConteiner": numero_conteiner,
-                "codigoRecinto": codigo_recinto,
-                "dtMin": dt_min
-            }).mappings().first()
+        row = session.execute(sql_window, {
+            "numeroConteiner": numero_conteiner,
+            "codigoRecinto": codigo_recinto,
+            "dtMin": dt_min
+        }).mappings().first()
 
         if not row:
-            # LOGS DIAGNÓSTICOS: Ver o que existe após dt_min, passo-a-passo
-            logging.getLogger().debug("[consulta_peso_container] window/no_window sem resultado. Rodando checks…")
-            # 1) Existe algo para esse contêiner após dt_min neste recinto?
-            chk1 = session.execute(text("""
-                SELECT COUNT(*) AS n
-                FROM apirecintos_pesagensveiculo
-                WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
-            """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).scalar()
-            logging.getLogger().debug(f"[consulta_peso_container] chk1 count(contêiner+recinto+>=dt_min)={chk1}")
-            # 2) Quais são as top 3 ocorrências brutas (para inspecionar)?
-            rows_dbg = session.execute(text("""
-                SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
-                FROM apirecintos_pesagensveiculo
-                WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
-                ORDER BY dataHoraOcorrencia ASC, dataHoraTransmissao DESC, id DESC
-                LIMIT 3
-            """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).mappings().all()
-            logging.getLogger().debug(f"[consulta_peso_container] rows_dbg(top3)={rows_dbg}")
             return None
 
         peso = row["pesoBrutoBalanca"]
-        if isinstance(peso, Decimal):
+        if peso is not None and isinstance(peso, Decimal):
             peso = float(peso)
 
         return {
