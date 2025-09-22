@@ -135,7 +135,7 @@
         codigoRecinto: recinto,
         dtMin: dtMin
       });
-      const resp = await fetch(`/exportacao/consulta_peso?${qs.toString()}`, {
+      const resp = await fetch(`consulta_peso?${qs.toString()}`, {
         method: 'GET',
         headers: {
           // GET apenas leitura; não precisa CSRF. Se você exigir, inclua aqui.
