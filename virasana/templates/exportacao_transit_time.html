@@ -82,15 +82,15 @@
               <td>{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</td>
               <td>{{ 'Sim' if r.vazioConteiner else 'Não' }}</td>
 			  <td>
-				<button
-				  type="button"
-				  class="btn btn-sm btn-outline-secondary consultar-peso"
-				  data-numero="{{ r.numeroConteiner }}"
-				  data-recinto="{{ destino }}"
-				  data-dtmin="{{
-                    r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
-                    if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
-                  }}">
+			 <button
+			   type="button"
+			   class="btn btn-sm btn-outline-secondary consultar-peso"
+			   data-numero="{{ r.numeroConteiner }}"
+			   data-recinto="{{ r.codigoRecinto }}"
+			   data-dtmin="{{
+				 r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+				 if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
+			   }}">
 				  Consultar peso
 				</button>
 				<span class="peso-resposta text-muted ms-2"></span>
