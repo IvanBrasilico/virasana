@@ -7,6 +7,7 @@ from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
 from decimal import Decimal
 from typing import Optional, Dict
+import logging
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -16,6 +17,9 @@ def configure(app):
     )
     app.register_blueprint(exportacao_app)
     '''
+    
+    app.logger.setLevel(logging.DEBUG)
+
 
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
@@ -228,6 +232,7 @@ def configure(app):
         recinto = request.args.get('codigoRecinto')
         dt_min  = request.args.get('dtMin')
 
+        app.logger.debug(f"[consulta_peso] QS raw: numeroConteiner={numero!r}, codigoRecinto={recinto!r}, dtMin={dt_min!r}")
         if not (numero and recinto and dt_min):
             return jsonify({"error": "Parâmetros obrigatórios: numeroConteiner, codigoRecinto, dtMin"}), 400
         try:

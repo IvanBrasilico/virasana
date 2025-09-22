@@ -86,7 +86,7 @@
 			   type="button"
 			   class="btn btn-sm btn-outline-secondary consultar-peso"
 			   data-numero="{{ r.numeroConteiner }}"
-			   data-recinto="{{ r.codigoRecinto }}"
+			   data-recinto="{{ r.codigoRecinto or destino }}"
 			   data-dtmin="{{
 				 r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
 				 if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
