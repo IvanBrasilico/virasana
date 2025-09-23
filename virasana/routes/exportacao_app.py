@@ -334,6 +334,65 @@ def configure(app):
             "transit_time_horas": r.transit_time_horas,            
         } for r in rows]
 
+        # -------------------------------
+        # IQR (Q1, Q3) e marcação outliers
+        # -------------------------------
+        def _quartis(sorted_vals):
+            """
+            Calcula Q1 e Q3 usando mediana das metades (método de Tukey):
+            - Se n for ímpar, exclui o elemento central ao formar as metades.
+            - Se n for par, divide em metades iguais.
+            """
+            n = len(sorted_vals)
+            if n == 0:
+                return None, None
+
+            def _mediana(vals):
+                m = len(vals)
+                if m == 0: 
+                    return None
+                mid = m // 2
+                if m % 2 == 1:
+                    return float(vals[mid])
+                else:
+                    return (float(vals[mid - 1]) + float(vals[mid])) / 2.0
+
+            mid = n // 2
+            if n % 2 == 0:
+                lower = sorted_vals[:mid]
+                upper = sorted_vals[mid:]
+            else:
+                lower = sorted_vals[:mid]       # exclui o central
+                upper = sorted_vals[mid+1:]     # exclui o central
+
+            q1 = _mediana(lower)
+            q3 = _mediana(upper)
+            return q1, q3
+
+        # coleta valores válidos
+        vals = sorted([
+            float(x["transit_time_horas"]) for x in resultados
+            if x["transit_time_horas"] is not None
+        ])
+
+        q1, q3 = _quartis(vals)
+        if q1 is None or q3 is None:
+            iqr = 0.0
+            limite_outlier = None
+        else:
+            iqr = float(q3 - q1)
+            # se IQR for 0 (todos iguais), limite = Q3 (marca apenas estritamente maiores)
+            limite_outlier = float(q3 + 1.5 * iqr)
+
+        # marca cada registro com flag de outlier
+        for item in resultados:
+            v = item["transit_time_horas"]
+            if v is None or limite_outlier is None:
+                item["is_outlier"] = False
+            else:
+                item["is_outlier"] = (float(v) > limite_outlier)
+
+
         return render_template(
             'exportacao_transit_time.html',
             resultados=resultados,
@@ -341,5 +400,6 @@ def configure(app):
             # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
             destino=destino,
+            q1=q1, q3=q3, iqr=iqr, limite_outlier=limite_outlier,
             csrf_token=generate_csrf
          )

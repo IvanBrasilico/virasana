@@ -20,7 +20,21 @@
       · Saída anterior: <em>outro recinto</em>
       · Destino: <em>{{ destino_label }}</em>
     </p>
- 
+
+    {% if limite_outlier is not none %}
+      <div class="alert alert-secondary py-2">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+          <span class="fw-semibold">Estatísticas (IQR):</span>
+          <span>Q1 = {{ '%.2f'|format(q1) if q1 is not none else '—' }}</span>
+          <span>Q3 = {{ '%.2f'|format(q3) if q3 is not none else '—' }}</span>
+          <span>IQR = {{ '%.2f'|format(iqr) }}</span>
+          <span>Limite (Q3 + 1.5·IQR) = <strong>{{ '%.2f'|format(limite_outlier) }}</strong></span>
+          <span class="ms-auto">
+            <span class="badge text-bg-danger">Outlier</span> = valor &gt; limite
+          </span>
+        </div>
+      </div>
+    {% endif %} 
 
     <!-- Filtro por data (GET) -->
     <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
@@ -84,11 +98,14 @@
               <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
 
               <span class="fw-semibold">Transit Time (h):</span>
-              <span class="me-2">
+              <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}">
                 {% if r.transit_time_horas is not none %}
                   {{ "%.2f"|format(r.transit_time_horas) }}
                 {% else %}—{% endif %}
               </span>
+              {% if r.is_outlier %}
+                <span class="badge text-bg-danger">Outlier</span>
+              {% endif %}
 
               <button class="btn btn-sm btn-outline-primary ms-auto"
                       type="button"
