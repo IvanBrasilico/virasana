@@ -98,15 +98,6 @@
               {% if r.is_outlier %}
                 <span class="badge text-bg-danger">Outlier</span>
               {% endif %}
-
-              <button class="btn btn-sm btn-outline-primary"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#item-{{ idx }}"
-                      aria-expanded="false"
-                      aria-controls="item-{{ idx }}">
-                Exibir mais detalhes
-              </button>
             </div>
 
             <!-- Linha 2 -->
@@ -120,6 +111,18 @@
 			<span class="fw-semibold">Motorista:</span>
 			<span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
 		  </div>
+
+          <!-- Linha 3 -->
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-primary"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#item-{{ idx }}"
+                    aria-expanded="false"
+                    aria-controls="item-{{ idx }}">
+              Exibir mais detalhes
+            </button>
+          </div>
 
           </div>
           <div id="item-{{ idx }}" class="collapse" data-bs-parent="#resultadosAccordion">
