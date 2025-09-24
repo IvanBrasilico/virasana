@@ -220,6 +220,7 @@ function formatDateTime(isoString) {
       const origem  = data.origem;
       const entrada = data.entrada;
       const delta   = data.delta_kg;
+	  const placaChanged = data.placa_changed; // true/false/null
 
       const fmtKg = (x) => (x != null ? `${Number(x).toLocaleString('pt-BR')} kg` : '—');
       const fmtDt = (s) => (s ? formatDateTime(s) : '—');
@@ -231,10 +232,19 @@ function formatDateTime(isoString) {
         ? `Entrada (${entrada.codigoRecinto} @ ${fmtDt(entrada.dataHoraOcorrencia)}): ${fmtKg(entrada.pesoBrutoBalanca)}`
         : 'Entrada: —';
       const linhaDelta = (delta != null)
-        ? `Δ: ${Number(delta).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`
-        : 'Δ: —';
+        ? `Δ ${Number(delta).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`
+        : 'Δ —';
 
-      span.innerHTML = `${linhaOrigem}<br>${linhaEntrada}<br><strong>${linhaDelta}</strong>`;
+      // Placas (quando disponíveis)
+      const pOrig = origem?.placa || '—';
+      const pEntr = entrada?.placa || '—';
+      let linhaPlaca = `Placas: ${pOrig} → ${pEntr}`;
+      if (origem?.placa && entrada?.placa) {
+        linhaPlaca += placaChanged === true ? ' (alterou)' :
+                      placaChanged === false ? ' (mesma)' : '';
+      }
+
+      span.innerHTML = `${linhaOrigem}<br>${linhaEntrada}<br>${linhaPlaca}<br><strong>${linhaDelta}</strong>`;
     } catch (err) {
       console.error(err);
       span.textContent = 'Erro ao consultar.';

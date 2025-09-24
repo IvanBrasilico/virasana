@@ -124,7 +124,8 @@ def configure(app):
               p.dataHoraOcorrencia,
               p.dataHoraTransmissao,
               p.tipoOperacao,
-              p.pesoBrutoBalanca
+              p.pesoBrutoBalanca,
+              p.placa
             FROM apirecintos_pesagensveiculo p
             JOIN (
               SELECT
@@ -184,7 +185,8 @@ def configure(app):
             "dataHoraOcorrencia": row["dataHoraOcorrencia"].strftime("%Y-%m-%d %H:%M:%S"),
             "dataHoraTransmissao": row["dataHoraTransmissao"].strftime("%Y-%m-%d %H:%M:%S") if row["dataHoraTransmissao"] else None,
             "tipoOperacao": row["tipoOperacao"],
-            "pesoBrutoBalanca": peso
+            "pesoBrutoBalanca": peso,
+            "placa": row["placa"]
         }
 
     # ---------------------------------------------------------
@@ -204,7 +206,8 @@ def configure(app):
               p.dataHoraOcorrencia,
               p.dataHoraTransmissao,
               p.tipoOperacao,
-              p.pesoBrutoBalanca
+              p.pesoBrutoBalanca,
+              p.placa
             FROM apirecintos_pesagensveiculo p
             JOIN (
               SELECT
@@ -246,7 +249,8 @@ def configure(app):
             "dataHoraOcorrencia": row["dataHoraOcorrencia"].strftime("%Y-%m-%d %H:%M:%S"),
             "dataHoraTransmissao": row["dataHoraTransmissao"].strftime("%Y-%m-%d %H:%M:%S") if row["dataHoraTransmissao"] else None,
             "tipoOperacao": row["tipoOperacao"],
-            "pesoBrutoBalanca": peso
+            "pesoBrutoBalanca": peso,
+            "placa": row["placa"]
         }
 
     @app.route('/exportacao/consulta_peso', methods=['GET'])
@@ -294,6 +298,15 @@ def configure(app):
             if pe is not None and po is not None:
                 delta = float(pe) - float(po)
 
+        # Comparação de placas (quando ambas existem)
+        placa_changed = None
+        if entrada and origem:
+            pe_placa = (entrada.get("placa") or "").strip().upper()
+            po_placa = (origem.get("placa") or "").strip().upper()
+            if pe_placa or po_placa:
+                placa_changed = (pe_placa != "" and po_placa != "" and pe_placa != po_placa)
+
+
         if not entrada and not origem:
             app.logger.debug(f"[consulta_peso] NOT FOUND (entrada e origem) numero={numero}, destino={recinto}")
             return jsonify({"found": False}), 404
@@ -302,7 +315,8 @@ def configure(app):
             "found": True,
             "entrada": entrada,   # pode ser None
             "origem": origem,     # pode ser None
-            "delta_kg": delta     # pode ser None
+            "delta_kg": delta,    # pode ser None
+            "placa_changed": placa_changed  # True/False/None
         }
         app.logger.debug(f"[consulta_peso] payload: {payload}")
         return jsonify(payload)
