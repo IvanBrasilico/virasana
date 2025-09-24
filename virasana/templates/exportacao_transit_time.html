@@ -72,21 +72,13 @@
         {% set idx = loop.index %}
         <div class="card shadow-sm mb-2">
           <div class="card-header bg-white">
+            <!-- Linha 1 -->
             <div class="d-flex flex-wrap align-items-center gap-2">
               <span class="fw-semibold">Contêiner:</span>
               <span class="me-3">{{ r.numeroConteiner }}</span>
 
               <span class="fw-semibold">Entrada:</span>
               <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
-
-              <span class="fw-semibold">CNPJ Transp.:</span>
-              <span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
-
-              <span class="fw-semibold">Placa:</span>
-              <span class="me-3">{{ r.placa or '—' }}</span>
-
-              <span class="fw-semibold">Motorista:</span>
-              <span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
 
               <span class="fw-semibold">Vazio?</span>
               <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
@@ -116,6 +108,19 @@
                 Exibir mais detalhes
               </button>
             </div>
+
+            <!-- Linha 2 -->
+		  <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
+			<span class="fw-semibold">CNPJ Transp.:</span>
+			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
+
+			<span class="fw-semibold">Placa:</span>
+			<span class="me-3">{{ r.placa or '—' }}</span>
+
+			<span class="fw-semibold">Motorista:</span>
+			<span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
+		  </div>
+
           </div>
           <div id="item-{{ idx }}" class="collapse" data-bs-parent="#resultadosAccordion">
             <div class="card-body">
