@@ -238,7 +238,7 @@ function formatDateTime(isoString) {
       // Placas (quando disponíveis)
       const pOrig = origem?.placa || '—';
       const pEntr = entrada?.placa || '—';
-      let linhaPlaca = `Placas: ${pOrig} → ${pEntr}`;
+      let linhaPlaca = `Placa do caminhão: ${pOrig} → ${pEntr}`;
       if (origem?.placa && entrada?.placa) {
         linhaPlaca += placaChanged === true ? ' (alterou)' :
                       placaChanged === false ? ' (mesma)' : '';
