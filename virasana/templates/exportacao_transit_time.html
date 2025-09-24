@@ -9,6 +9,18 @@
 <body class="bg-light">
 <div class="container-fluid py-2 px-2">
 
+    {# Mapeamento código -> nome de recinto, só para exibir nos cards #}
+    {% set recintos = {
+      "8932793": "GTMINAS",
+      "8932761": "JBS",
+      "8932762": "SATEL",
+      "8932799": "DALASTRA",
+      "8931356": "Santos Brasil",
+      "8931359": "BTP",
+      "8931404": "DPW/EMBRAPORT",
+      "8931318": "Ecoporto"
+    } %}
+
     {% set destino_label =
          ('8931356 - Santos Brasil' if destino == '8931356'
           else ('8931359 - BTP' if destino == '8931359' else destino)) %}
@@ -84,7 +96,13 @@
               <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
               <span class="fw-semibold">Origem:</span>
-              <span class="me-3">{{ r.s_codigoRecinto or '—' }}</span>
+              <span class="me-3">
+                {% if r.s_codigoRecinto %}
+                  {{ r.s_codigoRecinto }} ({{ recintos.get(r.s_codigoRecinto, '—') }})
+                {% else %}
+                  —
+                {% endif %}
+              </span>
 
               <span class="fw-semibold">Saída (origem):</span>
               <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
