@@ -128,7 +128,14 @@
                   data-dtmin="{{
                     r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
                     if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
-                  }}">
+                  }}"
+                  {% if r.s_codigoRecinto and r.s_dataHoraOcorrencia %}
+                  data-s-codigo="{{ r.s_codigoRecinto }}"
+                  data-s-dh="{{
+                    r.s_dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+                    if r.s_dataHoraOcorrencia is not string else r.s_dataHoraOcorrencia
+                  }}"
+                  {% endif %}>
                   Consultar peso
                 </button>
                 <span class="peso-resposta text-muted ms-2"></span>
@@ -169,6 +176,8 @@ function formatDateTime(isoString) {
     const numero  = btn.dataset.numero;
     const recinto = btn.dataset.recinto;
     const dtMin   = btn.dataset.dtmin; // 'YYYY-MM-DD HH:MM:SS'
+    const sCodigo = btn.dataset.sCodigo; // recinto da SAÍDA anterior (opcional)
+    const sDh     = btn.dataset.sDh;     // 'YYYY-MM-DD HH:MM:SS' da SAÍDA anterior (opcional)
 
     try {
       const qs = new URLSearchParams({
@@ -176,6 +185,12 @@ function formatDateTime(isoString) {
         codigoRecinto: recinto,
         dtMin: dtMin
       });
+
+      if (sCodigo && sDh) {
+        qs.set('sCodigoRecinto', sCodigo);
+        qs.set('sDataHora', sDh);
+      }
+	  
       const resp = await fetch(`consulta_peso?${qs.toString()}`, {
         method: 'GET',
         headers: {
@@ -183,18 +198,35 @@ function formatDateTime(isoString) {
         }
       });
       if (resp.status === 404) {
-        span.textContent = 'Sem pesagem após a entrada.';
+        span.textContent = 'Sem pesagens encontradas.';
         return;
       }
       if (!resp.ok) throw new Error('Falha na consulta');
       const data = await resp.json();
-      if (data.found && data.pesoBrutoBalanca != null) {
-        // Ajuste a unidade caso precise (kg / toneladas)
-		const dt = formatDateTime(data.dataHoraOcorrencia);
-        span.textContent = `Peso: ${Number(data.pesoBrutoBalanca).toFixed(2)} kg (${dt})`;
-      } else {
-        span.textContent = 'Sem pesagem válida.';
+      if (!data.found) {
+        span.textContent = 'Sem pesagens encontradas.';
+        return;
       }
+
+      // Novo formato: { found, entrada, origem, delta_kg }
+      const origem  = data.origem;
+      const entrada = data.entrada;
+      const delta   = data.delta_kg;
+
+      const fmtKg = (x) => (x != null ? `${Number(x).toLocaleString('pt-BR')} kg` : '—');
+      const fmtDt = (s) => (s ? formatDateTime(s) : '—');
+
+      const linhaOrigem = origem
+        ? `Origem (${origem.codigoRecinto} @ ${fmtDt(origem.dataHoraOcorrencia)}): ${fmtKg(origem.pesoBrutoBalanca)}`
+        : 'Origem: —';
+      const linhaEntrada = entrada
+        ? `Entrada (${entrada.codigoRecinto} @ ${fmtDt(entrada.dataHoraOcorrencia)}): ${fmtKg(entrada.pesoBrutoBalanca)}`
+        : 'Entrada: —';
+      const linhaDelta = (delta != null)
+        ? `Δ: ${Number(delta).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`
+        : 'Δ: —';
+
+      span.innerHTML = `${linhaOrigem}<br>${linhaEntrada}<br><strong>${linhaDelta}</strong>`;
     } catch (err) {
       console.error(err);
       span.textContent = 'Erro ao consultar.';

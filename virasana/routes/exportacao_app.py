@@ -187,6 +187,68 @@ def configure(app):
             "pesoBrutoBalanca": peso
         }
 
+    # ---------------------------------------------------------
+    # Consulta de PESO: última pesagem válida (I/R) no recinto de ORIGEM
+    # ocorrida ATÉ dt_max (hora da SAÍDA S do recinto anterior).
+    # ---------------------------------------------------------
+    def consulta_peso_ate(session, numero_conteiner: str, codigo_recinto: str, dt_max: datetime) -> Optional[Dict]:
+        """
+        Retorna a última pesagem efetiva (I/R) do contêiner no recinto,
+        com dataHoraOcorrencia <= dt_max, consolidada por MAX(dataHoraTransmissao)
+        por dataHoraOcorrencia.
+        """
+        sql = text("""
+            SELECT
+              p.id,
+              p.codigoRecinto,
+              p.dataHoraOcorrencia,
+              p.dataHoraTransmissao,
+              p.tipoOperacao,
+              p.pesoBrutoBalanca
+            FROM apirecintos_pesagensveiculo p
+            JOIN (
+              SELECT
+                numeroConteiner,
+                codigoRecinto,
+                dataHoraOcorrencia,
+                MAX(dataHoraTransmissao) AS max_tx
+              FROM apirecintos_pesagensveiculo
+              WHERE numeroConteiner = :numeroConteiner
+                AND codigoRecinto   = :codigoRecinto
+                AND dataHoraOcorrencia <= :dtMax
+              GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
+            ) ult
+              ON  ult.numeroConteiner    = p.numeroConteiner
+              AND ult.codigoRecinto      = p.codigoRecinto
+              AND ult.dataHoraOcorrencia = p.dataHoraOcorrencia
+              AND ult.max_tx             = p.dataHoraTransmissao
+            WHERE p.tipoOperacao IN ('I','R')
+            ORDER BY p.dataHoraOcorrencia DESC
+            LIMIT 1
+        """)
+
+        row = session.execute(sql, {
+            "numeroConteiner": numero_conteiner,
+            "codigoRecinto": codigo_recinto,
+            "dtMax": dt_max
+        }).mappings().first()
+
+        if not row:
+            return None
+
+        peso = row["pesoBrutoBalanca"]
+        if peso is not None and isinstance(peso, Decimal):
+            peso = float(peso)
+
+        return {
+            "id": row["id"],
+            "codigoRecinto": row["codigoRecinto"],
+            "dataHoraOcorrencia": row["dataHoraOcorrencia"].strftime("%Y-%m-%d %H:%M:%S"),
+            "dataHoraTransmissao": row["dataHoraTransmissao"].strftime("%Y-%m-%d %H:%M:%S") if row["dataHoraTransmissao"] else None,
+            "tipoOperacao": row["tipoOperacao"],
+            "pesoBrutoBalanca": peso
+        }
+
     @app.route('/exportacao/consulta_peso', methods=['GET'])
     def exportacao_consulta_peso():
         """
@@ -195,11 +257,15 @@ def configure(app):
           - numeroConteiner: str
           - codigoRecinto  : str
           - dtMin          : 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
+          - sCodigoRecinto : str (opcional — recinto da SAÍDA anterior)
+          - sDataHora      : 'YYYY-MM-DD HH:MM:SS' (opcional — hora da SAÍDA anterior)
         """
         session = app.config['db_session']
         numero  = request.args.get('numeroConteiner')
         recinto = request.args.get('codigoRecinto')
         dt_min  = request.args.get('dtMin')
+        s_recinto = request.args.get('sCodigoRecinto')
+        s_dh      = request.args.get('sDataHora')
 
         app.logger.debug(f"[consulta_peso] QS raw: numeroConteiner={numero!r}, codigoRecinto={recinto!r}, dtMin={dt_min!r}")
         if not (numero and recinto and dt_min):
@@ -208,14 +274,38 @@ def configure(app):
             dt_min_parsed = datetime.strptime(dt_min, "%Y-%m-%d %H:%M:%S")
         except Exception:
             return jsonify({"error": "dtMin inválido. Formato esperado: YYYY-MM-DD HH:MM:SS"}), 400
-        app.logger.debug(f"[consulta_peso] Parsed: numero={numero}, recinto={recinto}, dt_min={dt_min_parsed} (type={type(dt_min_parsed)})")
+        app.logger.debug(f"[consulta_peso] Parsed: numero={numero}, destino={recinto}, dt_min={dt_min_parsed} (type={type(dt_min_parsed)})")
 
-        result = consulta_peso_container(session, numero, recinto, dt_min_parsed)
-        if not result:
-            app.logger.debug(f"[consulta_peso] NOT FOUND para numero={numero}, recinto={recinto}, dt_min={dt_min_parsed}")
+        entrada = consulta_peso_container(session, numero, recinto, dt_min_parsed)
+
+        origem = None
+        if s_recinto and s_dh:
+            try:
+                s_dt_parsed = datetime.strptime(s_dh, "%Y-%m-%d %H:%M:%S")
+                origem = consulta_peso_ate(session, numero, s_recinto, s_dt_parsed)
+            except Exception as e:
+                app.logger.exception(f"[consulta_peso] erro ao consultar origem: {e}")
+                origem = None
+
+        delta = None
+        if entrada and origem:
+            pe = entrada.get("pesoBrutoBalanca")
+            po = origem.get("pesoBrutoBalanca")
+            if pe is not None and po is not None:
+                delta = float(pe) - float(po)
+
+        if not entrada and not origem:
+            app.logger.debug(f"[consulta_peso] NOT FOUND (entrada e origem) numero={numero}, destino={recinto}")
             return jsonify({"found": False}), 404
-        app.logger.debug(f"[consulta_peso] FOUND: {result}")
-        return jsonify({"found": True, **result})
+
+        payload = {
+            "found": True,
+            "entrada": entrada,   # pode ser None
+            "origem": origem,     # pode ser None
+            "delta_kg": delta     # pode ser None
+        }
+        app.logger.debug(f"[consulta_peso] payload: {payload}")
+        return jsonify(payload)
 
     # rota para listar entradas (E) em um recinto em uma data
     @app.route('/exportacao/transit_time', methods=['GET'])
@@ -249,7 +339,8 @@ def configure(app):
 
         # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
         # default = 8931356 se nada/ou inválido
-        if destino not in ("8931356", "8931359"):
+        destinos_validos = ("8931356", "8931359", "8931404", "8931318")
+        if destino not in destinos_validos:
             destino = "8931356"
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
