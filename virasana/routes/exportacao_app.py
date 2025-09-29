@@ -1,13 +1,15 @@
 # exportacao_app.py
 
 from datetime import date, timedelta, datetime, time
-from flask import render_template, request, flash, url_for, jsonify
+from flask import render_template, request, flash, url_for, jsonify, Response
 from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
 from decimal import Decimal
 from typing import Optional, Dict
 import logging
+import csv
+from io import StringIO
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -20,6 +22,138 @@ def configure(app):
     
     app.logger.setLevel(logging.DEBUG)
 
+    # -----------------------------------------------
+    # Utilidades para Transit Time (consulta + IQR)
+    # -----------------------------------------------
+    def _normaliza_destino(valor: Optional[str]) -> str:
+        destinos_validos = ("8931356", "8931359", "8931404", "8931318")
+        return valor if valor in destinos_validos else "8931356"
+
+    def _quartis(sorted_vals):
+        """ Q1/Q3 pelo método de Tukey (exclui o elemento central se ímpar). """
+        n = len(sorted_vals)
+        if n == 0:
+            return None, None
+        def _mediana(vals):
+            m = len(vals)
+            if m == 0: 
+                return None
+            mid = m // 2
+            if m % 2 == 1:
+                return float(vals[mid])
+            else:
+                return (float(vals[mid - 1]) + float(vals[mid])) / 2.0
+        mid = n // 2
+        if n % 2 == 0:
+            lower = sorted_vals[:mid]
+            upper = sorted_vals[mid:]
+        else:
+            lower = sorted_vals[:mid]
+            upper = sorted_vals[mid+1:]
+        q1 = _mediana(lower)
+        q3 = _mediana(upper)
+        return q1, q3
+
+    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime):
+        """
+        Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
+        Retorna (resultados:list[dict], stats:dict).
+        """
+        recinto_destino = _normaliza_destino(recinto_destino)
+
+        sql = text("""
+            SELECT
+                e.numeroConteiner,
+                e.codigoRecinto,
+                e.dataHoraOcorrencia,
+                e.cnpjTransportador,
+                e.placa,
+                e.cpfMotorista,
+                e.nomeMotorista,
+                e.vazioConteiner,
+
+                s.codigoRecinto         AS s_codigoRecinto,
+                s.dataHoraOcorrencia    AS s_dataHoraOcorrencia,
+                s.cnpjTransportador     AS s_cnpjTransportador,
+                s.placa                 AS s_placa,
+                s.cpfMotorista          AS s_cpfMotorista,
+                s.nomeMotorista         AS s_nomeMotorista,
+                s.vazioConteiner        AS s_vazioConteiner,
+
+                TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
+            FROM apirecintos_acessosveiculo e
+            LEFT JOIN apirecintos_acessosveiculo s
+              ON s.id = (
+                 SELECT s2.id
+                 FROM apirecintos_acessosveiculo s2
+                 WHERE s2.numeroConteiner = e.numeroConteiner
+                   AND s2.direcao = 'S'
+                   AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
+                   AND (
+                        s2.codigoRecinto LIKE '89327%'
+                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404')
+                   )
+                   AND s2.codigoRecinto <> e.codigoRecinto
+                 ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
+                 LIMIT 1
+              )
+            WHERE
+                e.codigoRecinto = :recinto_destino
+                AND e.direcao = 'E'
+                AND e.numeroConteiner IS NOT NULL
+                AND e.numeroConteiner <> ''
+                AND e.dataHoraOcorrencia >= :inicio
+                AND e.dataHoraOcorrencia < :fim
+            ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
+        """)
+
+        rows = session.execute(sql, {
+            "recinto_destino": recinto_destino,
+            "inicio": inicio,
+            "fim": fim
+        }).fetchall()
+
+        resultados = [{
+            "numeroConteiner": r.numeroConteiner,
+            "codigoRecinto": r.codigoRecinto,
+            "dataHoraOcorrencia": r.dataHoraOcorrencia,
+            "cnpjTransportador": r.cnpjTransportador,
+            "placa": r.placa,
+            "cpfMotorista": r.cpfMotorista,
+            "nomeMotorista": r.nomeMotorista,
+            "vazioConteiner": r.vazioConteiner,
+            "s_codigoRecinto": r.s_codigoRecinto,
+            "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
+            "s_cnpjTransportador": r.s_cnpjTransportador,
+            "s_placa": r.s_placa,
+            "s_cpfMotorista": r.s_cpfMotorista,
+            "s_nomeMotorista": r.s_nomeMotorista,
+            "s_vazioConteiner": r.s_vazioConteiner,
+            "transit_time_horas": r.transit_time_horas,
+        } for r in rows]
+
+        # IQR / outliers
+        vals = sorted([
+            float(x["transit_time_horas"]) for x in resultados
+            if x["transit_time_horas"] is not None
+        ])
+        q1, q3 = _quartis(vals)
+        if q1 is None or q3 is None:
+            iqr = 0.0
+            limite_outlier = None
+        else:
+            iqr = float(q3 - q1)
+            limite_outlier = float(q3 + 1.5 * iqr)
+
+        for item in resultados:
+            v = item["transit_time_horas"]
+            if v is None or limite_outlier is None:
+                item["is_outlier"] = False
+            else:
+                item["is_outlier"] = (float(v) > limite_outlier)
+
+        stats = {"q1": q1, "q3": q3, "iqr": iqr, "limite_outlier": limite_outlier}
+        return resultados, stats
 
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
@@ -352,150 +486,11 @@ def configure(app):
         data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
 
         # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
-        # default = 8931356 se nada/ou inválido
-        destinos_validos = ("8931356", "8931359", "8931404", "8931318")
-        if destino not in destinos_validos:
-            destino = "8931356"
+        destino = _normaliza_destino(destino)
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
-        sql = text("""
-            SELECT
-                -- Campos da ENTRADA (E) em um recinto (no dia)
-                e.numeroConteiner,
-                e.codigoRecinto,
-                e.dataHoraOcorrencia,
-                e.cnpjTransportador,
-                e.placa,
-                e.cpfMotorista,
-                e.nomeMotorista,
-                e.vazioConteiner,
-
-                -- Campos da SAÍDA (S) imediatamente anterior (qualquer recinto)
-                s.codigoRecinto         AS s_codigoRecinto,
-                s.dataHoraOcorrencia    AS s_dataHoraOcorrencia,
-                s.cnpjTransportador     AS s_cnpjTransportador,
-                s.placa                 AS s_placa,
-                s.cpfMotorista          AS s_cpfMotorista,
-                s.nomeMotorista         AS s_nomeMotorista,
-                s.vazioConteiner        AS s_vazioConteiner,
-                
-                -- diferença de tempo
-                TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
-
-            FROM apirecintos_acessosveiculo e
-            LEFT JOIN apirecintos_acessosveiculo s
-              ON s.id = (
-                 SELECT s2.id
-                 FROM apirecintos_acessosveiculo s2
-                 WHERE s2.numeroConteiner = e.numeroConteiner
-                   AND s2.direcao = 'S'
-                   AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
-                   -- garantir que a saída seja de recinto diferente da entrada
-                  -- restringir recintos de origem que comecem com 89327
-                  -- ou que estejam na lista adicional
-                  AND (
-                        s2.codigoRecinto LIKE '89327%' -- A maioria dos Redex de Santos possuem esse padrão de código
-                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404') -- Redex da Localfrio/Movecta, Redex da Santos Brasil Clia e Redex da DPW/EMBRAPORT
-                  )
-                   AND s2.codigoRecinto <> e.codigoRecinto
-                 ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
-                 LIMIT 1
-              )
-            WHERE
-                e.codigoRecinto = :recinto_destino
-                AND e.direcao = 'E'
-                AND e.numeroConteiner IS NOT NULL
-                AND e.numeroConteiner <> ''
-                AND e.dataHoraOcorrencia >= :inicio
-                AND e.dataHoraOcorrencia < :fim
-            ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
-        """)
-
-        rows = session.execute(sql, {
-            "recinto_destino": destino,
-            "inicio": inicio,
-            "fim": fim
-        }).fetchall()
-
-        # rows é uma lista de Row objects; vamos padronizar para dicts simples
-        resultados = [{
-            "numeroConteiner": r.numeroConteiner,
-            "codigoRecinto": r.codigoRecinto,
-            "dataHoraOcorrencia": r.dataHoraOcorrencia,
-            "cnpjTransportador": r.cnpjTransportador,
-            "placa": r.placa,
-            "cpfMotorista": r.cpfMotorista,
-            "nomeMotorista": r.nomeMotorista,
-            "vazioConteiner": r.vazioConteiner,
-            # campos da S anterior (podem ser None se não houver S anterior)
-            "s_codigoRecinto": r.s_codigoRecinto,
-            "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
-            "s_cnpjTransportador": r.s_cnpjTransportador,
-            "s_placa": r.s_placa,
-            "s_cpfMotorista": r.s_cpfMotorista,
-            "s_nomeMotorista": r.s_nomeMotorista,
-            "s_vazioConteiner": r.s_vazioConteiner,
-            "transit_time_horas": r.transit_time_horas,            
-        } for r in rows]
-
-        # -------------------------------
-        # IQR (Q1, Q3) e marcação outliers
-        # -------------------------------
-        def _quartis(sorted_vals):
-            """
-            Calcula Q1 e Q3 usando mediana das metades (método de Tukey):
-            - Se n for ímpar, exclui o elemento central ao formar as metades.
-            - Se n for par, divide em metades iguais.
-            """
-            n = len(sorted_vals)
-            if n == 0:
-                return None, None
-
-            def _mediana(vals):
-                m = len(vals)
-                if m == 0: 
-                    return None
-                mid = m // 2
-                if m % 2 == 1:
-                    return float(vals[mid])
-                else:
-                    return (float(vals[mid - 1]) + float(vals[mid])) / 2.0
-
-            mid = n // 2
-            if n % 2 == 0:
-                lower = sorted_vals[:mid]
-                upper = sorted_vals[mid:]
-            else:
-                lower = sorted_vals[:mid]       # exclui o central
-                upper = sorted_vals[mid+1:]     # exclui o central
-
-            q1 = _mediana(lower)
-            q3 = _mediana(upper)
-            return q1, q3
-
-        # coleta valores válidos
-        vals = sorted([
-            float(x["transit_time_horas"]) for x in resultados
-            if x["transit_time_horas"] is not None
-        ])
-
-        q1, q3 = _quartis(vals)
-        if q1 is None or q3 is None:
-            iqr = 0.0
-            limite_outlier = None
-        else:
-            iqr = float(q3 - q1)
-            # se IQR for 0 (todos iguais), limite = Q3 (marca apenas estritamente maiores)
-            limite_outlier = float(q3 + 1.5 * iqr)
-
-        # marca cada registro com flag de outlier
-        for item in resultados:
-            v = item["transit_time_horas"]
-            if v is None or limite_outlier is None:
-                item["is_outlier"] = False
-            else:
-                item["is_outlier"] = (float(v) > limite_outlier)
+        resultados, stats = consultar_transit_time(session, destino, inicio, fim)
 
 
         return render_template(
@@ -505,6 +500,78 @@ def configure(app):
             # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
             destino=destino,
-            q1=q1, q3=q3, iqr=iqr, limite_outlier=limite_outlier,
+            q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"], limite_outlier=stats["limite_outlier"],
             csrf_token=generate_csrf
          )
+         
+    @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
+    def transit_time_export():
+        """
+        Exporta os resultados filtrados (mesma lógica da tela) em CSV compatível com Excel.
+        Query string: ?data=YYYY-MM-DD&destino=CODIGO
+        """
+        session = app.config['db_session']
+
+        data_str = request.args.get('data')
+        destino  = _normaliza_destino(request.args.get('destino'))
+
+        if data_str:
+            try:
+                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+            except ValueError:
+                data_base = datetime.now().date() - timedelta(days=1)
+        else:
+            data_base = datetime.now().date() - timedelta(days=1)
+
+        inicio = datetime.combine(data_base, time.min)
+        fim    = inicio + timedelta(days=1)
+
+        resultados, stats = consultar_transit_time(session, destino, inicio, fim)
+
+        # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
+        buf = StringIO()
+        buf.write('\ufeff')  # BOM para acentuação correta no Excel (Windows)
+        w = csv.writer(buf, delimiter=';', lineterminator='\r\n')
+
+        w.writerow([
+            "numeroConteiner",
+            "destino_codigoRecinto",
+            "entrada_dataHora",
+            "vazioConteiner",
+            "origem_codigoRecinto",
+            "origem_dataHora",
+            "transit_time_horas",
+            "outlier_IQR",
+            "cnpjTransportador",
+            "placa",
+            "nomeMotorista",
+            "cpfMotorista"
+        ])
+
+        def _fmt_dt(dt):
+            return dt.strftime("%d/%m/%Y %H:%M:%S") if dt else ""
+
+        for r in resultados:
+            w.writerow([
+                r["numeroConteiner"] or "",
+                r["codigoRecinto"] or "",
+                _fmt_dt(r["dataHoraOcorrencia"]),
+                ("Sim" if r["vazioConteiner"] else "Não") if r["vazioConteiner"] is not None else "",
+                r["s_codigoRecinto"] or "",
+                _fmt_dt(r["s_dataHoraOcorrencia"]),
+                (f"{float(r['transit_time_horas']):.2f}" if r["transit_time_horas"] is not None else ""),
+                ("1" if r.get("is_outlier") else "0"),
+                r["cnpjTransportador"] or "",
+                r["placa"] or "",
+                r["nomeMotorista"] or "",
+                r["cpfMotorista"] or ""
+            ])
+
+        filename = f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )

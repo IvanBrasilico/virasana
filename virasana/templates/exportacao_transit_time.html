@@ -100,6 +100,17 @@
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Aplicar</button>
       </div>
+
+      <div class="col-auto">
+        <a
+          class="btn btn-success"
+          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}"
+          role="button"
+        >
+          Exportar Excel
+        </a>
+      </div>
+
     </form>
 
     {% if resultados and resultados|length > 0 %}
