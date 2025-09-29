@@ -22,6 +22,9 @@ def configure(app):
     
     app.logger.setLevel(logging.DEBUG)
 
+    # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
+    TOL_MINUTOS_PESAGEM = 5
+
     # -----------------------------------------------
     # Utilidades para Transit Time (consulta + IQR)
     # -----------------------------------------------
@@ -250,7 +253,11 @@ def configure(app):
         """
         Retorna a primeira pesagem efetiva (I/R) do contêiner no recinto,
         ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
+        Aplica tolerância: considera pesagens desde (dt_min - TOL_MINUTOS_PESAGEM).
         """
+        
+        dt_min_lower = dt_min - timedelta(minutes=TOL_MINUTOS_PESAGEM)        
+        
         sql = text("""
             SELECT
               p.id,
@@ -270,7 +277,7 @@ def configure(app):
               FROM apirecintos_pesagensveiculo
               WHERE numeroConteiner = :numeroConteiner
                 AND codigoRecinto   = :codigoRecinto
-                AND dataHoraOcorrencia >= :dtMin
+                AND dataHoraOcorrencia >= :dtMinLower
               GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
             ) ult
               ON  ult.numeroConteiner    = p.numeroConteiner
@@ -285,7 +292,7 @@ def configure(app):
         row = session.execute(sql, {
             "numeroConteiner": numero_conteiner,
             "codigoRecinto": codigo_recinto,
-            "dtMin": dt_min
+            "dtMinLower": dt_min_lower
         }).mappings().first()
 
         if not row:
@@ -295,15 +302,16 @@ def configure(app):
                     SELECT COUNT(*) AS n
                     FROM apirecintos_pesagensveiculo
                     WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
-                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).scalar()
-                app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} >=dtMin={dt_min} -> count={n}")
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min_lower}).scalar()
+                app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} >=(dtMin-5m)={dt_min_lower} -> count={n}")
+
                 dbg = session.execute(text("""
                     SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
                     FROM apirecintos_pesagensveiculo
                     WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
                     ORDER BY dataHoraOcorrencia ASC, dataHoraTransmissao DESC, id DESC
                     LIMIT 3
-                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min}).mappings().all()
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min_lower}).mappings().all()
                 app.logger.debug(f"[consulta_peso][rows top3] {dbg}")
             except Exception as e:
                 app.logger.exception("[consulta_peso] erro nos logs de diagnóstico")
@@ -332,7 +340,11 @@ def configure(app):
         Retorna a última pesagem efetiva (I/R) do contêiner no recinto,
         com dataHoraOcorrencia <= dt_max, consolidada por MAX(dataHoraTransmissao)
         por dataHoraOcorrencia.
+        Aplica tolerância: considera pesagens até (dt_max + TOL_MINUTOS_PESAGEM).
         """
+        
+        dt_max_upper = dt_max + timedelta(minutes=TOL_MINUTOS_PESAGEM)        
+        
         sql = text("""
             SELECT
               p.id,
@@ -352,7 +364,7 @@ def configure(app):
               FROM apirecintos_pesagensveiculo
               WHERE numeroConteiner = :numeroConteiner
                 AND codigoRecinto   = :codigoRecinto
-                AND dataHoraOcorrencia <= :dtMax
+                AND dataHoraOcorrencia <= :dtMaxUpper
               GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
             ) ult
               ON  ult.numeroConteiner    = p.numeroConteiner
@@ -367,7 +379,7 @@ def configure(app):
         row = session.execute(sql, {
             "numeroConteiner": numero_conteiner,
             "codigoRecinto": codigo_recinto,
-            "dtMax": dt_max
+            "dtMaxUpper": dt_max_upper
         }).mappings().first()
 
         if not row:
