@@ -6,7 +6,7 @@ from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
 from decimal import Decimal
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import logging
 import csv
 from io import StringIO
@@ -103,7 +103,7 @@ def configure(app):
         q3 = _mediana(upper)
         return q1, q3
 
-    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: list[str] | None = None):
+    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: Optional[List[str]] = None):
         """
         Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
         Retorna (resultados:list[dict], stats:dict).
@@ -563,9 +563,7 @@ def configure(app):
 
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim)
         resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
-
 
         return render_template(
             'exportacao_transit_time.html',
