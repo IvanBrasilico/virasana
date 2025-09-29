@@ -25,6 +25,52 @@ def configure(app):
     # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
     TOL_MINUTOS_PESAGEM = 5
 
+    # -------------------------------------------------
+    # Opções de RECINTOS DE ORIGEM (para filtro checkboxes)
+    # (mantém alinhado com o template)
+    # -------------------------------------------------
+    ORIGENS_OPCOES = {
+      "8932793": "GTMINAS",
+      "8932761": "JBS",
+      "8932762": "SATEL",
+      "8932799": "DALASTRA MONITORAMENTO",
+      "8932724": "HIPERCON 1",
+      "8932739": "HIPERCON 2",
+      "8932706": "FASSINA 1",
+      "8932707": "FASSINA 2",
+      "8932711": "CORTÊS",
+      "8932774": "DINAMO 1",
+      "8932794": "DINAMO 2",
+      "8932714": "ALAMO 1",
+      "8932747": "ALAMO 2",
+      "8932759": "DEICMAR",
+      "8932754": "DELLA VOLPE",
+      "8932778": "PAULISTA TERMINAL RETROPORTUARIO (GELOG)",
+      "8932722": "ESTRELA",
+      "8932758": "BRADO",
+      "8932775": "SIGMA TRANSPORTES E LOGISTICA",
+      "8932797": "SERRA & MARQUES",
+      "8932709": "S MAGALHÃES 1",
+      "8932710": "S MAGALHÃES 2",
+      "8932796": "S MAGALHÃES 3",
+      "8932798": "S MAGALHÃES 4",
+      "8933204": "CLIA REDEX DA SANTOS BRASIL",
+      "8931309": "LOCALFRIO/MOVECTA",
+      "8932773": "ISIS 1",
+      "8932788": "ISIS 2",
+      "8931305": "TRANSBRASA",
+      "8931356": "Santos Brasil",
+      "8931359": "BTP",
+      "8931404": "DPW/EMBRAPORT",
+      "8931318": "Ecoporto"
+    }
+
+    def _sanitize_origens(lst):
+        """Mantém apenas códigos válidos declarados em ORIGENS_OPCOES."""
+        if not lst:
+            return []
+        return [c for c in lst if c in ORIGENS_OPCOES]
+
     # -----------------------------------------------
     # Utilidades para Transit Time (consulta + IQR)
     # -----------------------------------------------
@@ -57,14 +103,20 @@ def configure(app):
         q3 = _mediana(upper)
         return q1, q3
 
-    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime):
+    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: list[str] | None = None):
         """
         Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
         Retorna (resultados:list[dict], stats:dict).
         """
         recinto_destino = _normaliza_destino(recinto_destino)
+        origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        sql = text("""
+        # placeholders dinâmicos para IN (:o0, :o1, ...)
+        o_ph = ", ".join([f":o{i}" for i in range(len(origens_filtrar))]) if origens_filtrar else ""
+        sub_filtro_origem = (f" AND s2.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
+        where_filtro_origem = (f" AND s.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
+
+        sql_txt = f"""
             SELECT
                 e.numeroConteiner,
                 e.codigoRecinto,
@@ -97,6 +149,7 @@ def configure(app):
                      OR s2.codigoRecinto IN ('8931309', '8933204', '8931404')
                    )
                    AND s2.codigoRecinto <> e.codigoRecinto
+                   {sub_filtro_origem}
                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
                  LIMIT 1
               )
@@ -107,14 +160,20 @@ def configure(app):
                 AND e.numeroConteiner <> ''
                 AND e.dataHoraOcorrencia >= :inicio
                 AND e.dataHoraOcorrencia < :fim
+                {where_filtro_origem}
             ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
-        """)
+        """
 
-        rows = session.execute(sql, {
+        params = {
             "recinto_destino": recinto_destino,
             "inicio": inicio,
             "fim": fim
-        }).fetchall()
+        }
+        # adiciona valores dos IN (:o0, :o1, ...)
+        for i, code in enumerate(origens_filtrar):
+            params[f"o{i}"] = code
+
+        rows = session.execute(text(sql_txt), params).fetchall()
 
         resultados = [{
             "numeroConteiner": r.numeroConteiner,
@@ -480,6 +539,8 @@ def configure(app):
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
         data_str = request.args.get('data')     # ex.: "2025-09-16"
         destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        origens_sel = request.args.getlist('origem')  # múltiplos ?origem=...
+        
         if data_str:
             try:
                 data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
@@ -503,6 +564,7 @@ def configure(app):
         # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         resultados, stats = consultar_transit_time(session, destino, inicio, fim)
+        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
 
 
         return render_template(
@@ -512,6 +574,7 @@ def configure(app):
             # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
             destino=destino,
+            origens_sel=origens_sel,  # manter estado das checkboxes
             q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"], limite_outlier=stats["limite_outlier"],
             csrf_token=generate_csrf
          )
@@ -526,6 +589,7 @@ def configure(app):
 
         data_str = request.args.get('data')
         destino  = _normaliza_destino(request.args.get('destino'))
+        origens_sel = request.args.getlist('origem')
 
         if data_str:
             try:
@@ -538,7 +602,8 @@ def configure(app):
         inicio = datetime.combine(data_base, time.min)
         fim    = inicio + timedelta(days=1)
 
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim)
+        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+
 
         # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
         buf = StringIO()

@@ -72,7 +72,7 @@
       </div>
     {% endif %} 
 
-    <!-- Filtro por data (GET) -->
+    <!-- Filtro por data/destino/origem (GET) -->
     <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
       <div class="col-auto">
         <label for="data" class="form-label mb-0">Data</label>
@@ -97,6 +97,16 @@
         </select>
       </div>
 
+      <!-- Botão para abrir filtro de origem -->
+      <div class="col-auto">
+        <label class="form-label mb-0 d-block">&nbsp;</label>
+        <button class="btn btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#filtroOrigem"
+                aria-expanded="false" aria-controls="filtroOrigem">
+          Origem (opcional)
+        </button>
+      </div>
+
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Aplicar</button>
       </div>
@@ -104,11 +114,45 @@
       <div class="col-auto">
         <a
           class="btn btn-success"
-          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}"
+          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
           role="button"
         >
           Exportar Excel
         </a>
+      </div>
+
+      <!-- Bloco colapsável com as checkboxes de origem -->
+      <div class="col-12">
+        <div class="collapse mt-2" id="filtroOrigem">
+          <div class="card card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="fw-semibold">Filtrar por recinto de origem (S)</div>
+              <div class="small">
+                <a href="#" id="btnSelecionarTodos" class="me-2">Selecionar tudo</a>
+                <a href="#" id="btnLimpar">Limpar</a>
+              </div>
+            </div>
+
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-1">
+              {% for codigo, nome in recintos.items() %}
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input origem-checkbox"
+                           type="checkbox"
+                           id="origem-{{ codigo }}"
+                           name="origem"
+                           value="{{ codigo }}"
+                           {{ 'checked' if codigo in origens_sel else '' }}>
+                    <label class="form-check-label" for="origem-{{ codigo }}">
+                      {{ nome }} <span class="text-muted">({{ codigo }})</span>
+                    </label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="text-muted small mt-2">Se nada for selecionado, todos os recintos de origem serão considerados.</div>
+          </div>
+        </div>
       </div>
 
     </form>
@@ -303,6 +347,16 @@ function formatDateTime(isoString) {
       console.error(err);
       span.textContent = 'Erro ao consultar.';
     }
+  });
+
+  // "Selecionar tudo" / "Limpar" no filtro de origem
+  document.getElementById('btnSelecionarTodos')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.origem-checkbox').forEach((cb) => { cb.checked = true; });
+  });
+  document.getElementById('btnLimpar')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.origem-checkbox').forEach((cb) => { cb.checked = false; });
   });
 </script>
 
