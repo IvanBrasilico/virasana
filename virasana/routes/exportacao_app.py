@@ -215,21 +215,31 @@ def configure(app):
             if x["transit_time_horas"] is not None
         ])
         q1, q3 = _quartis(vals)
+
         if q1 is None or q3 is None:
             iqr = 0.0
-            limite_outlier = None
+            limite_outlier_mild = None
+            limite_outlier_strict = None
         else:
             iqr = float(q3 - q1)
-            limite_outlier = float(q3 + 1.5 * iqr)
+            limite_outlier_mild   = float(q3 + 1.5 * iqr)
+            limite_outlier_strict = float(q3 + 15.0 * iqr)
 
         for item in resultados:
             v = item["transit_time_horas"]
-            if v is None or limite_outlier is None:
+            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
                 item["is_outlier"] = False
             else:
-                item["is_outlier"] = (float(v) > limite_outlier)
+                vv = float(v)
+                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
 
-        stats = {"q1": q1, "q3": q3, "iqr": iqr, "limite_outlier": limite_outlier}
+        stats = {
+            "q1": q1,
+            "q3": q3,
+            "iqr": iqr,
+            "limite_outlier_mild": limite_outlier_mild,
+            "limite_outlier_strict": limite_outlier_strict
+        }
         return resultados, stats
 
     @app.route('/exportacao/', methods=['GET'])
@@ -588,7 +598,9 @@ def configure(app):
             data_iso=data_iso,
             destino=destino,
             origens_sel=origens_sel,  # manter estado das checkboxes
-            q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"], limite_outlier=stats["limite_outlier"],
+            q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"],
+            limite_outlier_mild=stats["limite_outlier_mild"],
+            limite_outlier_strict=stats["limite_outlier_strict"],
             csrf_token=generate_csrf
          )
          
