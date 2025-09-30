@@ -11,6 +11,17 @@ import logging
 import csv
 from io import StringIO
 
+import os
+import json
+from pathlib import Path
+from io import BytesIO
+from functools import lru_cache
+
+from pymongo import ASCENDING
+from bson import ObjectId
+from gridfs import GridFS
+from PIL import Image
+
 def configure(app):
     '''  exportacao_app = Blueprint(
         'exportacao_app',
@@ -650,3 +661,234 @@ def configure(app):
                 "Content-Disposition": f"attachment; filename={filename}"
             }
         )
+        
+    # ======================
+    #   IMAGENS (MongoDB)
+    # ======================
+
+    # Diretório local p/ cache de thumbnails
+    THUMB_CACHE_DIR = Path("/tmp/exportacao_thumbs")
+    THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Largura padrão das thumbs (pode ajustar no querystring ?w=)
+    DEFAULT_THUMB_WIDTH = 320
+
+    # Limites de segurança
+    MAX_CONTAINERS_PER_BULK = 100         # limite de lote por requisição do front
+    MAX_IN_NUMEROS_SIZE     = 500         # quebra o $in em sublotes p/ queries Mongo muito grandes
+
+    def _norm_numero(n: str) -> str:
+        """Normaliza o número do contêiner para maiúsculas e sem espaços."""
+        return (n or "").strip().upper()
+
+    def _parse_dt_str(s: str) -> datetime:
+        """Parse de 'YYYY-MM-DD HH:MM:SS' para datetime (naive)."""
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+
+    def _thumb_cache_path(file_id: str, w: int) -> Path:
+        return THUMB_CACHE_DIR / f"{file_id}_w{w}.jpg"
+
+    def _make_thumb_bytes(img_bytes: bytes, width: int) -> bytes:
+        """Gera JPEG thumbnail (lado máx = width), preservando proporção."""
+        img = Image.open(BytesIO(img_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        # garante lado máximo = width
+        img.thumbnail((width, width))
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=85, optimize=True, progressive=True)
+        return out.getvalue()
+
+    def _read_gridfs_file_bytes(gridfs_obj: GridFS, oid: ObjectId) -> bytes:
+        f = gridfs_obj.get(oid)
+        return f.read()
+
+    def _ensure_indexes(mongodb):
+        """
+        Cria índices importantes (idempotente). 
+        Chame 1x por ciclo ou deixe habilitado (barato se já existir).
+        """
+        try:
+            mongodb["fs.files"].create_index(
+                [("metadata.numeroinformado", ASCENDING), ("metadata.dataescaneamento", ASCENDING)]
+            )
+            # Se você padroniza contentType para image/jpeg, pode trocar por índice parcial.
+            app.logger.info("[imgs] Índices verificados/criados em fs.files.")
+        except Exception:
+            app.logger.exception("[imgs] Erro ao criar/verificar índices.")
+
+    _ensure_indexes(app.config["mongodb"])
+
+    def _query_images_bulk_for_containers(mongodb, entradas_por_numero: dict[str, datetime]) -> dict[str, list[dict]]:
+        """
+        Consulta o Mongo em (poucas) queries para um conjunto de contêineres e
+        retorna um mapa: numero -> [ {id, data(datetime)} ... ] contendo apenas
+        imagens com metadata.dataescaneamento ∈ (entrada, entrada+2h].
+        """
+        if not entradas_por_numero:
+            return {}
+
+        # Normaliza chaves e calcula janela global
+        entradas_por_numero = { _norm_numero(k): v for k, v in entradas_por_numero.items() if k }
+        numeros = list(entradas_por_numero.keys())
+        if not numeros:
+            return {}
+
+        T_min_global = min(entradas_por_numero.values())
+        T_max_global = max(entradas_por_numero.values()) + timedelta(hours=2)
+
+        # Monta filtro base para a janela global
+        base_filter = {
+            "metadata.numeroinformado": {"$in": []},  # preenchido por sublotes
+            "metadata.dataescaneamento": {"$gt": T_min_global, "$lte": T_max_global},
+            "metadata.contentType": {"$in": ["image/jpeg", "image/jpg"]},
+        }
+        projection = {
+            "_id": 1,
+            "metadata.numeroinformado": 1,
+            "metadata.dataescaneamento": 1,
+        }
+        sort_spec = [("metadata.numeroinformado", 1), ("metadata.dataescaneamento", 1)]
+
+        imgs_por_numero: dict[str, list[dict]] = {n: [] for n in numeros}
+
+        # Quebra o $in em sublotes p/ evitar documentos e redes muito grandes
+        for i in range(0, len(numeros), MAX_IN_NUMEROS_SIZE):
+            lote = numeros[i:i + MAX_IN_NUMEROS_SIZE]
+            if not lote:
+                continue
+
+            filtro = dict(base_filter)
+            filtro["metadata.numeroinformado"] = {"$in": lote}
+
+            cursor = (
+                mongodb["fs.files"]
+                .find(filtro, projection)
+                .sort(sort_spec)
+                .allow_disk_use(True)
+            )
+
+            for doc in cursor:
+                n = _norm_numero(doc.get("metadata", {}).get("numeroinformado", ""))
+                dsc = doc.get("metadata", {}).get("dataescaneamento", None)
+                if not (n and dsc and n in entradas_por_numero):
+                    continue
+
+                Te = entradas_por_numero[n]
+                if Te < dsc <= (Te + timedelta(hours=2)):
+                    imgs_por_numero[n].append({
+                        "id": str(doc["_id"]),
+                        "data": dsc,
+                    })
+
+        return imgs_por_numero
+
+    @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
+    def exportacao_transit_time_imgs_bulk():
+        """
+        Recebe um lote de contêineres visíveis no front e devolve,
+        para cada um, TODAS as imagens em (entrada, entrada+2h].
+        Corpo JSON:
+        {
+          "containers": [
+            {"numero": "MSCU1234567", "entrada": "YYYY-MM-DD HH:MM:SS"},
+            ...
+          ]
+        }
+        """
+        try:
+            payload = request.get_json(silent=True) or {}
+            items = payload.get("containers", [])
+            if not isinstance(items, list):
+                return jsonify({"error": "Formato inválido"}), 400
+
+            if len(items) > MAX_CONTAINERS_PER_BULK:
+                return jsonify({"error": f"Excede limite de {MAX_CONTAINERS_PER_BULK} contêineres por requisição"}), 400
+
+            entradas_por_numero: dict[str, datetime] = {}
+            for it in items:
+                numero = _norm_numero(it.get("numero", ""))
+                entrada_str = it.get("entrada", "")
+                if not (numero and entrada_str):
+                    continue
+                try:
+                    entradas_por_numero[numero] = _parse_dt_str(entrada_str)
+                except Exception:
+                    app.logger.debug(f"[imgs_bulk] Ignorando entrada inválida: numero={numero!r}, entrada={entrada_str!r}")
+
+            mongodb = app.config["mongodb"]
+            result_map = _query_images_bulk_for_containers(mongodb, entradas_por_numero)
+
+            # Serializa resposta (datas em ISO para eventual debug/uso futuro)
+            resp = {}
+            for n, lst in result_map.items():
+                resp[n] = [
+                    {"id": x["id"], "data": x["data"].isoformat()}
+                    for x in lst
+                ]
+            return jsonify(resp)
+
+        except Exception as e:
+            app.logger.exception("[imgs_bulk] Erro inesperado")
+            return jsonify({"error": "Erro interno"}), 500
+
+    @app.route("/exportacao/img/<file_id>", methods=["GET"])
+    def exportacao_img(file_id: str):
+        """
+        Serve thumbnail JPEG cacheável de uma imagem do GridFS por _id.
+        Querystring: ?w=320 (largura máx. da thumb, default 320)
+        Cache local em /tmp/exportacao_thumbs.
+        """
+        try:
+            w = request.args.get("w", str(DEFAULT_THUMB_WIDTH)).strip()
+            try:
+                width = max(64, min(4096, int(w)))
+            except Exception:
+                width = DEFAULT_THUMB_WIDTH
+
+            try:
+                oid = ObjectId(file_id)
+            except Exception:
+                return Response("Not found", status=404)
+
+            cache_path = _thumb_cache_path(file_id, width)
+            if cache_path.exists():
+                with open(cache_path, "rb") as f:
+                    data = f.read()
+                return Response(
+                    data,
+                    mimetype="image/jpeg",
+                    headers={
+                        "Cache-Control": "public, max-age=86400",
+                        "ETag": f"{file_id}-w{width}",
+                    }
+                )
+
+            mongodb = app.config["mongodb"]
+            fs = GridFS(mongodb, collection="fs")
+            try:
+                original = _read_gridfs_file_bytes(fs, oid)
+            except Exception:
+                return Response("Not found", status=404)
+
+            thumb_bytes = _make_thumb_bytes(original, width)
+
+            # Grava em cache local
+            try:
+                with open(cache_path, "wb") as f:
+                    f.write(thumb_bytes)
+            except Exception:
+                # se falhar cache, serve mesmo assim
+                pass
+
+            return Response(
+                thumb_bytes,
+                mimetype="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "ETag": f"{file_id}-w{width}",
+                }
+            )
+        except Exception:
+            app.logger.exception("[exportacao_img] erro ao servir imagem")
+            return Response("Internal error", status=500)

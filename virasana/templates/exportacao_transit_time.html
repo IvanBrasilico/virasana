@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Transit Time — Entradas no Recinto</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="bg-light">
 <div class="container-fluid py-2 px-2">
@@ -197,6 +198,19 @@
               {% endif %}
             </div>
 
+            <!-- Strip de imagens do contêiner (todas as imgs em (entrada, entrada+2h]) -->
+            <div
+              class="img-strip d-flex gap-2 overflow-auto py-1 mt-2"
+              data-numero="{{ r.numeroConteiner }}"
+              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+              <!-- Placeholder inicial -->
+              <div
+                class="placeholder border rounded d-flex align-items-center justify-content-center px-3 text-muted"
+                style="min-height: 64px;">
+                Carregando imagens...
+              </div>
+            </div>
+
             <!-- Linha 2 -->
 		  <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
 			<span class="fw-semibold">CNPJ Transp.:</span>
@@ -254,6 +268,25 @@
     {% else %}
       <div class="alert alert-info">Nenhum registro de entrada encontrado para o período solicitado.</div>
     {% endif %}
+  </div>
+
+<!-- Modal para visualizar imagens ampliadas -->
+<div class="modal fade" id="imgViewerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content bg-dark">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-white">Visualização</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body d-flex justify-content-center">
+        <img id="imgViewerEl" class="img-fluid" alt="Imagem ampliada do contêiner">
+      </div>
+      <div class="modal-footer border-0 d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-light btn-sm" id="imgPrevBtn">◀ Anterior</button>
+        <button type="button" class="btn btn-outline-light btn-sm" id="imgNextBtn">Próxima ▶</button>
+      </div>
+    </div>
+  </div>
   </div>
 
 <!-- Bootstrap JS -->
@@ -358,6 +391,138 @@ function formatDateTime(isoString) {
     e.preventDefault();
     document.querySelectorAll('.origem-checkbox').forEach((cb) => { cb.checked = false; });
   });
+</script>
+
+<!-- JS para carregar imagens em lotes (IntersectionObserver + /imgs_bulk) -->
+<script>
+(function() {
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const STRIPS = Array.from(document.querySelectorAll('.img-strip'));
+
+  // Estado por strip (para navegação no modal)
+  const stripState = new Map(); // stripEl -> { imgs: [url...], index: 0 }
+
+  function renderStrip(stripEl, items, numero) {
+    stripEl.innerHTML = ''; // remove placeholder
+    if (!items || items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'border rounded d-flex align-items-center justify-content-center px-3 text-muted';
+      empty.style.minHeight = '64px';
+      empty.textContent = 'Sem imagem';
+      stripEl.appendChild(empty);
+      stripState.set(stripEl, { imgs: [], index: 0 });
+      return;
+    }
+    const urls = [];
+    for (const it of items) {
+      const url = `/exportacao/img/${encodeURIComponent(it.id)}?w=320`;
+      urls.push(url);
+      const img = document.createElement('img');
+      img.className = 'img-thumbnail';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = url;
+      img.alt = `Imagem do contêiner ${numero}`;
+      img.style.maxHeight = '120px';
+      img.style.cursor = 'zoom-in';
+      img.addEventListener('click', () => openModal(stripEl, urls, urls.indexOf(url)));
+      stripEl.appendChild(img);
+    }
+    stripState.set(stripEl, { imgs: urls, index: 0 });
+  }
+
+  // Modal com navegação
+  const modalEl = document.getElementById('imgViewerModal');
+  const modalImg = document.getElementById('imgViewerEl');
+  const prevBtn  = document.getElementById('imgPrevBtn');
+  const nextBtn  = document.getElementById('imgNextBtn');
+  const bsModal  = new bootstrap.Modal(modalEl);
+
+  function openModal(stripEl, urls, atIndex) {
+    const getBig = (u) => u.includes('?') ? (u + '&w=1280') : (u + '?w=1280');
+    stripState.set(stripEl, { imgs: urls, index: atIndex });
+    modalImg.src = getBig(urls[atIndex]);
+    bsModal.show();
+
+    prevBtn.onclick = () => {
+      const st = stripState.get(stripEl);
+      if (!st || st.imgs.length === 0) return;
+      st.index = (st.index - 1 + st.imgs.length) % st.imgs.length;
+      modalImg.src = getBig(st.imgs[st.index]);
+    };
+    nextBtn.onclick = () => {
+      const st = stripState.get(stripEl);
+      if (!st || st.imgs.length === 0) return;
+      st.index = (st.index + 1) % st.imgs.length;
+      modalImg.src = getBig(st.imgs[st.index]);
+    };
+  }
+
+  // Lote pendente e controle de envio
+  const pending = new Set();   // strips aguardando envio
+  let inflight = false;
+
+  function scheduleFetch() {
+    if (inflight || pending.size === 0) return;
+    inflight = true;
+
+    // Lote de até 40 strips
+    const batch = Array.from(pending).slice(0, 40);
+    batch.forEach(el => pending.delete(el));
+
+    // Evita reconsulta de strips já carregadas
+    const filtered = batch.filter(el => !el.dataset.loaded);
+    if (filtered.length === 0) {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+      return;
+    }
+
+    const containers = filtered.map(el => ({
+      numero: el.getAttribute('data-numero'),
+      entrada: el.getAttribute('data-entrada')
+    }));
+
+    fetch('/exportacao/transit_time/imgs_bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      },
+      body: JSON.stringify({ containers })
+    })
+    .then(r => r.json())
+    .then(data => {
+      for (const el of filtered) {
+        const numero = el.getAttribute('data-numero');
+        const items = data[numero] || [];
+        renderStrip(el, items, numero);
+        // Marca como carregado para não refazer chamadas no futuro
+        el.dataset.loaded = '1';
+      }
+    })
+    .catch(err => {
+      console.error('imgs_bulk error', err);
+      for (const el of filtered) {
+        renderStrip(el, [], el.getAttribute('data-numero'));
+        el.dataset.loaded = '1';
+      }
+    })
+    .finally(() => {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+    });
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && !e.target.dataset.loaded) pending.add(e.target);
+    }
+    scheduleFetch();
+  }, { root: null, rootMargin: '200px 0px', threshold: 0 });
+
+  STRIPS.forEach(el => io.observe(el));
+})();
 </script>
 
 </body>
