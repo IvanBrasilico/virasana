@@ -415,18 +415,25 @@ function formatDateTime(isoString) {
     }
     const urls = [];
     for (const it of items) {
-      const url = `/exportacao/img/${encodeURIComponent(it.id)}?w=320`;
-      urls.push(url);
+      const id = it.id;
+      const href = `https://ajna1.rfoc.srf/virasana/file?_id=${encodeURIComponent(id)}`;
+      const imgUrl = `https://ajna1.rfoc.srf/virasana/imagens_cmap?_id=${encodeURIComponent(id)}&colormap=gray`;
+      urls.push(imgUrl);
+
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_BLANK';
+
       const img = document.createElement('img');
-      img.className = 'img-thumbnail';
+      img.className = 'img-responsive';
       img.loading = 'lazy';
       img.decoding = 'async';
-      img.src = url;
+      img.src = imgUrl;
       img.alt = `Imagem do contêiner ${numero}`;
-      img.style.maxHeight = '120px';
-      img.style.cursor = 'zoom-in';
-      img.addEventListener('click', () => openModal(stripEl, urls, urls.indexOf(url)));
-      stripEl.appendChild(img);
+      img.style.maxHeight = '200px';
+      img.style.maxWidth = '100%';
+      a.appendChild(img);
+      stripEl.appendChild(a);
     }
     stripState.set(stripEl, { imgs: urls, index: 0 });
   }
