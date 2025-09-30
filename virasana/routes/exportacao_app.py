@@ -1,6 +1,6 @@
 # exportacao_app.py
 
-from datetime import date, timedelta, datetime, time
+from datetime import date, timedelta, datetime, time, timezone
 from flask import render_template, request, flash, url_for, jsonify, Response
 from flask import Blueprint, render_template
 from flask_wtf.csrf import generate_csrf
@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from io import BytesIO
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from pymongo import ASCENDING
 from bson import ObjectId
@@ -32,6 +33,9 @@ def configure(app):
     '''
     
     app.logger.setLevel(logging.DEBUG)
+
+    # Timezone da aplicação (entradas exibidas/fornecidas no horário local)
+    APP_TZ = ZoneInfo("America/Sao_Paulo")
 
     # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
     TOL_MINUTOS_PESAGEM = 5
@@ -681,9 +685,15 @@ def configure(app):
         """Normaliza o número do contêiner para maiúsculas e sem espaços."""
         return (n or "").strip().upper()
 
-    def _parse_dt_str(s: str) -> datetime:
-        """Parse de 'YYYY-MM-DD HH:MM:SS' para datetime (naive)."""
-        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+    def _parse_local_to_utc_naive(s: str) -> datetime:
+        """
+        Interpreta 'YYYY-MM-DD HH:MM:SS' no horário local (APP_TZ),
+        converte para UTC e retorna datetime **naive em UTC**,
+        que é exatamente o que o PyMongo espera (naive ≡ UTC).
+        """
+        dt_local = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=APP_TZ)
+        dt_utc = dt_local.astimezone(timezone.utc)
+        return dt_utc.replace(tzinfo=None)
 
     def _thumb_cache_path(file_id: str, w: int) -> Path:
         return THUMB_CACHE_DIR / f"{file_id}_w{w}.jpg"
@@ -812,7 +822,8 @@ def configure(app):
                 if not (numero and entrada_str):
                     continue
                 try:
-                    entradas_por_numero[numero] = _parse_dt_str(entrada_str)
+                    # Converter ENTRADA (fornecida no horário local) para UTC naive
+                    entradas_por_numero[numero] = _parse_local_to_utc_naive(entrada_str)
                 except Exception:
                     app.logger.debug(f"[imgs_bulk] Ignorando entrada inválida: numero={numero!r}, entrada={entrada_str!r}")
 
