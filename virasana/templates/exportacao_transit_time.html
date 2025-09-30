@@ -164,55 +164,46 @@
         {% set idx = loop.index %}
         <div class="card shadow-sm mb-2">
           <div class="card-header bg-white">
-            <!-- Linha 1 -->
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="fw-semibold">Contêiner:</span>
-              <span class="me-3">{{ r.numeroConteiner }}</span>
+            <!-- Cabeçalho: texto à esquerda / imagens à direita -->
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <!-- Coluna ESQUERDA (texto) -->
+              <div class="flex-grow-1 pe-2">
+                <!-- Linha 1 -->
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <span class="fw-semibold">Contêiner:</span>
+                  <span class="me-3">{{ r.numeroConteiner }}</span>
 
-              <span class="fw-semibold">Entrada:</span>
-              <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
+                  <span class="fw-semibold">Entrada:</span>
+                  <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
 
-              <span class="fw-semibold">Vazio?</span>
-              <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
+                  <span class="fw-semibold">Vazio?</span>
+                  <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
-              <span class="fw-semibold">Origem:</span>
-              <span class="me-3">
-                {% if r.s_codigoRecinto %}
-                  {{ r.s_codigoRecinto }} ({{ recintos.get(r.s_codigoRecinto, '—') }})
-                {% else %}
-                  —
-                {% endif %}
-              </span>
+                  <span class="fw-semibold">Origem:</span>
+                  <span class="me-3">
+                    {% if r.s_codigoRecinto %}
+                      {{ r.s_codigoRecinto }} ({{ recintos.get(r.s_codigoRecinto, '—') }})
+                    {% else %}
+                      —
+                    {% endif %}
+                  </span>
 
-              <span class="fw-semibold">Saída (origem):</span>
-              <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
+                  <span class="fw-semibold">Saída (origem):</span>
+                  <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
 
-              <span class="fw-semibold">Transit Time (h):</span>
-              <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}">
-                {% if r.transit_time_horas is not none %}
-                  {{ "%.2f"|format(r.transit_time_horas) }}
-                {% else %}—{% endif %}
-              </span>
-              {% if r.is_outlier %}
-                <span class="badge text-bg-danger">Outlier</span>
-              {% endif %}
-            </div>
+                  <span class="fw-semibold">Transit Time (h):</span>
+                  <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}">
+                    {% if r.transit_time_horas is not none %}
+                      {{ "%.2f"|format(r.transit_time_horas) }}
+                    {% else %}—{% endif %}
+                  </span>
+                  {% if r.is_outlier %}
+                    <span class="badge text-bg-danger">Outlier</span>
+                  {% endif %}
+                </div>
 
-            <!-- Strip de imagens do contêiner (todas as imgs em (entrada, entrada+2h]) -->
-            <div
-              class="img-strip d-flex gap-2 overflow-auto py-1 mt-2"
-              data-numero="{{ r.numeroConteiner }}"
-              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
-              <!-- Placeholder inicial -->
-              <div
-                class="placeholder border rounded d-flex align-items-center justify-content-center px-3 text-muted"
-                style="min-height: 64px;">
-                Carregando imagens...
-              </div>
-            </div>
-
-            <!-- Linha 2 -->
-		  <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
+                <!-- Linha 2 -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
 			<span class="fw-semibold">CNPJ Transp.:</span>
 			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
 
@@ -221,19 +212,36 @@
 
 			<span class="fw-semibold">Motorista:</span>
 			<span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
-		  </div>
+				</div>
 
-          <!-- Linha 3 -->
-          <div class="mt-2">
-            <button class="btn btn-sm btn-outline-primary"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#item-{{ idx }}"
-                    aria-expanded="false"
-                    aria-controls="item-{{ idx }}">
-              Exibir mais detalhes
-            </button>
-          </div>
+                <!-- Linha 3 -->
+                <div class="mt-2">
+                  <button class="btn btn-sm btn-outline-primary"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#item-{{ idx }}"
+                          aria-expanded="false"
+                          aria-controls="item-{{ idx }}">
+                    Exibir mais detalhes
+                  </button>
+                </div>
+              </div><!-- /col esquerda -->
+
+              <!-- Coluna DIREITA (imagens) -->
+              <div class="col-auto" style="width: 360px; max-width: 40vw;">
+                <div
+                  class="img-strip d-flex gap-2 overflow-auto py-1"
+                  data-numero="{{ r.numeroConteiner }}"
+                  data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                  <!-- Placeholder inicial -->
+                  <div
+                    class="placeholder border rounded d-flex align-items-center justify-content-center px-3 text-muted"
+                    style="min-height: 64px;">
+                    Carregando imagens...
+                  </div>
+                </div>
+              </div><!-- /col direita -->
+            </div><!-- /linha header -->
 
           </div>
           <div id="item-{{ idx }}" class="collapse" data-bs-parent="#resultadosAccordion">
