@@ -483,7 +483,7 @@ function formatDateTime(isoString) {
       entrada: el.getAttribute('data-entrada')
     }));
 
-    fetch('/exportacao/transit_time/imgs_bulk', {
+    fetch('{{ url_for("exportacao_transit_time_imgs_bulk") }}', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
