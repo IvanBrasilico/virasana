@@ -775,7 +775,6 @@ def configure(app):
                 mongodb["fs.files"]
                 .find(filtro, projection)
                 .sort(sort_spec)
-                .allow_disk_use(True)
             )
 
             for doc in cursor:
