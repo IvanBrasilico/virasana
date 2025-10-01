@@ -3,15 +3,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Transit Time — Entradas no Recinto</title>
+  <title>AJNA Narcos</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+
+  <style>
+    /* limita a altura e preserva proporção nas thumbs */
+    .img-strip img {
+      max-height: 200px;
+      height: auto;
+      width: auto;
+      object-fit: contain;
+      display: block;
+    }
+  </style>
+
 </head>
 <body class="bg-light">
 <div class="container-fluid py-2 px-2">
 
+    {% set recintos = {
+      "8932793": "GTMINAS",
+      "8932761": "JBS",
+      "8932762": "SATEL",
+      "8932799": "DALASTRA MONITORAMENTO",
+      "8932724": "HIPERCON 1",
+      "8932739": "HIPERCON 2",
+      "8932706": "FASSINA 1",
+      "8932707": "FASSINA 2",
+      "8932711": "CORTÊS",
+      "8932774": "DINAMO 1",
+      "8932794": "DINAMO 2",
+      "8932714": "ALAMO 1",
+      "8932747": "ALAMO 2",
+      "8932759": "DEICMAR",
+      "8932754": "DELLA VOLPE",
+      "8932778": "PAULISTA TERMINAL RETROPORTUARIO (GELOG)",
+      "8932722": "ESTRELA",
+      "8932758": "BRADO",
+      "8932775": "SIGMA TRANSPORTES E LOGISTICA",
+      "8932797": "SERRA & MARQUES",
+      "8932709": "S MAGALHÃES 1",
+      "8932710": "S MAGALHÃES 2",
+      "8932796": "S MAGALHÃES 3",
+      "8932798": "S MAGALHÃES 4",
+      "8933204": "CLIA REDEX DA SANTOS BRASIL",
+      "8931309": "LOCALFRIO/MOVECTA",
+      "8932773": "ISIS 1",
+      "8932788": "ISIS 2",
+      "8931305": "TRANSBRASA",
+      "8931356": "Santos Brasil",
+      "8931359": "BTP",
+      "8931404": "DPW/EMBRAPORT",
+      "8931318": "Ecoporto"
+    } %}
+
     {% set destino_label =
          ('8931356 - Santos Brasil' if destino == '8931356'
-          else ('8931359 - BPT' if destino == '8931359' else destino)) %}
+          else ('8931359 - BTP' if destino == '8931359' else destino)) %}
 
     <h1 class="mb-1">Entradas no Recinto {{ destino_label }} — {{ data_label }}</h1>
 
@@ -20,9 +69,28 @@
       · Saída anterior: <em>outro recinto</em>
       · Destino: <em>{{ destino_label }}</em>
     </p>
- 
 
-    <!-- Filtro por data (GET) -->
+    {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
+      <div class="alert alert-secondary py-2">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+          <span class="fw-semibold">Estatísticas (IQR):</span>
+          <span>Q1 = {{ '%.2f'|format(q1) if q1 is not none else '—' }}</span>
+          <span>Q3 = {{ '%.2f'|format(q3) if q3 is not none else '—' }}</span>
+          <span>IQR = {{ '%.2f'|format(iqr) }}</span>
+          <span>Intervalo outlier:
+            <strong>{{ '%.2f'|format(limite_outlier_mild) }}</strong>
+            a
+            <strong>{{ '%.2f'|format(limite_outlier_strict) }}</strong>
+            (Q3 + 1.5·IQR → Q3 + 15·IQR)
+          </span>
+          <span class="ms-auto">
+            <span class="badge text-bg-danger">Outlier</span> = valor dentro do intervalo
+          </span>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Filtro por data/destino/origem (GET) -->
     <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
       <div class="col-auto">
         <label for="data" class="form-label mb-0">Data</label>
@@ -40,16 +108,71 @@
         <label for="destino" class="form-label mb-0">Recinto de destino (E)</label>
         <select class="form-control" id="destino" name="destino">
           <option value="8931356" {{ 'selected' if destino == '8931356' else '' }}>8931356 - Santos Brasil</option>
-          <option value="8931359" {{ 'selected' if destino == '8931359' else '' }}>8931359 - BPT</option>
+          <option value="8931359" {{ 'selected' if destino == '8931359' else '' }}>8931359 - BTP</option>
 		  
 		  <option value="8931404" {{ 'selected' if destino == '8931404' else '' }}>8931404 - DPW/EMBRAPORT</option>
 		  <option value="8931318" {{ 'selected' if destino == '8931318' else '' }}>8931318 - Ecoporto</option>
         </select>
       </div>
 
+      <!-- Botão para abrir filtro de origem -->
+      <div class="col-auto">
+        <label class="form-label mb-0 d-block">&nbsp;</label>
+        <button class="btn btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#filtroOrigem"
+                aria-expanded="false" aria-controls="filtroOrigem">
+          Origem (opcional)
+        </button>
+      </div>
+
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Aplicar</button>
       </div>
+
+      <div class="col-auto">
+        <a
+          class="btn btn-success"
+          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
+          role="button"
+        >
+          Exportar Excel
+        </a>
+      </div>
+
+      <!-- Bloco colapsável com as checkboxes de origem -->
+      <div class="col-12">
+        <div class="collapse mt-2" id="filtroOrigem">
+          <div class="card card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="fw-semibold">Filtrar por recinto de origem (S)</div>
+              <div class="small">
+                <a href="#" id="btnSelecionarTodos" class="me-2">Selecionar tudo</a>
+                <a href="#" id="btnLimpar">Limpar</a>
+              </div>
+            </div>
+
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-1">
+              {% for codigo, nome in recintos.items() %}
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input origem-checkbox"
+                           type="checkbox"
+                           id="origem-{{ codigo }}"
+                           name="origem"
+                           value="{{ codigo }}"
+                           {{ 'checked' if codigo in origens_sel else '' }}>
+                    <label class="form-check-label" for="origem-{{ codigo }}">
+                      {{ nome }} <span class="text-muted">({{ codigo }})</span>
+                    </label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="text-muted small mt-2">Se nada for selecionado, todos os recintos de origem serão considerados.</div>
+          </div>
+        </div>
+      </div>
+
     </form>
 
     {% if resultados and resultados|length > 0 %}
@@ -58,47 +181,88 @@
         {% set idx = loop.index %}
         <div class="card shadow-sm mb-2">
           <div class="card-header bg-white">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="fw-semibold">Contêiner:</span>
-              <span class="me-3">{{ r.numeroConteiner }}</span>
+            <!-- Cabeçalho: texto à esquerda / imagens à direita -->
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <!-- Coluna ESQUERDA (texto) -->
+              <div class="flex-grow-1 pe-2">
+                <!-- Linha 1 -->
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <span class="fw-semibold">Contêiner:</span>
+                  <span class="me-3">{{ r.numeroConteiner }}</span>
 
-              <span class="fw-semibold">Entrada:</span>
-              <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
+                  <span class="fw-semibold">Entrada:</span>
+                  <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
 
-              <span class="fw-semibold">CNPJ Transp.:</span>
-              <span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
+                  <span class="fw-semibold">Vazio?</span>
+                  <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
-              <span class="fw-semibold">Placa:</span>
-              <span class="me-3">{{ r.placa or '—' }}</span>
+                  <span class="fw-semibold">Origem:</span>
+                  <span class="me-3">
+                    {% if r.s_codigoRecinto %}
+                      {{ r.s_codigoRecinto }} ({{ recintos.get(r.s_codigoRecinto, '—') }})
+                    {% else %}
+                      —
+                    {% endif %}
+                  </span>
 
-              <span class="fw-semibold">Motorista:</span>
-              <span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
+                  <span class="fw-semibold">Saída (origem):</span>
+                  <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
 
-              <span class="fw-semibold">Vazio?</span>
-              <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
+                  <span class="fw-semibold">Transit Time (h):</span>
+                  <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}"
+                        {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
+                        title="Outlier se {{ '%.2f'|format(limite_outlier_mild) }} ≤ TT ≤ {{ '%.2f'|format(limite_outlier_strict) }}"
+                        {% endif %}>
+                    {% if r.transit_time_horas is not none %}
+                      {{ "%.2f"|format(r.transit_time_horas) }}
+                    {% else %}—{% endif %}
+                  </span>
+                  {% if r.is_outlier %}
+                    <span class="badge text-bg-danger">Outlier</span>
+                  {% endif %}
+                </div>
 
-              <span class="fw-semibold">Origem:</span>
-              <span class="me-3">{{ r.s_codigoRecinto or '—' }}</span>
+                <!-- Linha 2 -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
+			<span class="fw-semibold">CNPJ Transp.:</span>
+			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
 
-              <span class="fw-semibold">Saída (origem):</span>
-              <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
+			<span class="fw-semibold">Placa:</span>
+			<span class="me-3">{{ r.placa or '—' }}</span>
 
-              <span class="fw-semibold">Transit Time (h):</span>
-              <span class="me-2">
-                {% if r.transit_time_horas is not none %}
-                  {{ "%.2f"|format(r.transit_time_horas) }}
-                {% else %}—{% endif %}
-              </span>
+			<span class="fw-semibold">Motorista:</span>
+			<span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
+				</div>
 
-              <button class="btn btn-sm btn-outline-primary ms-auto"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#item-{{ idx }}"
-                      aria-expanded="false"
-                      aria-controls="item-{{ idx }}">
-                Exibir mais detalhes
-              </button>
-            </div>
+                <!-- Linha 3 -->
+                <div class="mt-2">
+                  <button class="btn btn-sm btn-outline-primary"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#item-{{ idx }}"
+                          aria-expanded="false"
+                          aria-controls="item-{{ idx }}">
+                    Exibir mais detalhes
+                  </button>
+                </div>
+              </div><!-- /col esquerda -->
+
+              <!-- Coluna DIREITA (imagens) -->
+              <div class="col-auto" style="width: 360px; max-width: 40vw;">
+                <div
+                  class="img-strip d-flex gap-2 overflow-auto py-1"
+                  data-numero="{{ r.numeroConteiner }}"
+                  data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                  <!-- Placeholder inicial -->
+                  <div
+                    class="placeholder border rounded d-flex align-items-center justify-content-center px-3 text-muted"
+                    style="min-height: 64px;">
+                    Carregando imagens...
+                  </div>
+                </div>
+              </div><!-- /col direita -->
+            </div><!-- /linha header -->
+
           </div>
           <div id="item-{{ idx }}" class="collapse" data-bs-parent="#resultadosAccordion">
             <div class="card-body">
@@ -111,7 +275,14 @@
                   data-dtmin="{{
                     r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
                     if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
-                  }}">
+                  }}"
+                  {% if r.s_codigoRecinto and r.s_dataHoraOcorrencia %}
+                  data-s-codigo="{{ r.s_codigoRecinto }}"
+                  data-s-dh="{{
+                    r.s_dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+                    if r.s_dataHoraOcorrencia is not string else r.s_dataHoraOcorrencia
+                  }}"
+                  {% endif %}>
                   Consultar peso
                 </button>
                 <span class="peso-resposta text-muted ms-2"></span>
@@ -125,6 +296,25 @@
     {% else %}
       <div class="alert alert-info">Nenhum registro de entrada encontrado para o período solicitado.</div>
     {% endif %}
+  </div>
+
+<!-- Modal para visualizar imagens ampliadas -->
+<div class="modal fade" id="imgViewerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content bg-dark">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-white">Visualização</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body d-flex justify-content-center">
+        <img id="imgViewerEl" class="img-fluid" alt="Imagem ampliada do contêiner">
+      </div>
+      <div class="modal-footer border-0 d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-light btn-sm" id="imgPrevBtn">◀ Anterior</button>
+        <button type="button" class="btn btn-outline-light btn-sm" id="imgNextBtn">Próxima ▶</button>
+      </div>
+    </div>
+  </div>
   </div>
 
 <!-- Bootstrap JS -->
@@ -152,6 +342,8 @@ function formatDateTime(isoString) {
     const numero  = btn.dataset.numero;
     const recinto = btn.dataset.recinto;
     const dtMin   = btn.dataset.dtmin; // 'YYYY-MM-DD HH:MM:SS'
+    const sCodigo = btn.dataset.sCodigo; // recinto da SAÍDA anterior (opcional)
+    const sDh     = btn.dataset.sDh;     // 'YYYY-MM-DD HH:MM:SS' da SAÍDA anterior (opcional)
 
     try {
       const qs = new URLSearchParams({
@@ -159,6 +351,12 @@ function formatDateTime(isoString) {
         codigoRecinto: recinto,
         dtMin: dtMin
       });
+
+      if (sCodigo && sDh) {
+        qs.set('sCodigoRecinto', sCodigo);
+        qs.set('sDataHora', sDh);
+      }
+	  
       const resp = await fetch(`consulta_peso?${qs.toString()}`, {
         method: 'GET',
         headers: {
@@ -166,23 +364,198 @@ function formatDateTime(isoString) {
         }
       });
       if (resp.status === 404) {
-        span.textContent = 'Sem pesagem após a entrada.';
+        span.textContent = 'Sem pesagens encontradas.';
         return;
       }
       if (!resp.ok) throw new Error('Falha na consulta');
       const data = await resp.json();
-      if (data.found && data.pesoBrutoBalanca != null) {
-        // Ajuste a unidade caso precise (kg / toneladas)
-		const dt = formatDateTime(data.dataHoraOcorrencia);
-        span.textContent = `Peso: ${Number(data.pesoBrutoBalanca).toFixed(2)} kg (${dt})`;
-      } else {
-        span.textContent = 'Sem pesagem válida.';
+      if (!data.found) {
+        span.textContent = 'Sem pesagens encontradas.';
+        return;
       }
+
+      // Novo formato: { found, entrada, origem, delta_kg }
+      const origem  = data.origem;
+      const entrada = data.entrada;
+      const delta   = data.delta_kg;
+	  const placaChanged = data.placa_changed; // true/false/null
+
+      const fmtKg = (x) => (x != null ? `${Number(x).toLocaleString('pt-BR')} kg` : '—');
+      const fmtDt = (s) => (s ? formatDateTime(s) : '—');
+
+      const linhaOrigem = origem
+        ? `Origem (${origem.codigoRecinto} @ ${fmtDt(origem.dataHoraOcorrencia)}): ${fmtKg(origem.pesoBrutoBalanca)}`
+        : 'Origem: —';
+      const linhaEntrada = entrada
+        ? `Entrada (${entrada.codigoRecinto} @ ${fmtDt(entrada.dataHoraOcorrencia)}): ${fmtKg(entrada.pesoBrutoBalanca)}`
+        : 'Entrada: —';
+      const linhaDelta = (delta != null)
+        ? `Δ ${Number(delta).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`
+        : 'Δ —';
+
+      // Placas (quando disponíveis)
+      const pOrig = origem?.placa || '—';
+      const pEntr = entrada?.placa || '—';
+      let linhaPlaca = `Placas: ${pOrig} → ${pEntr}`;
+      if (origem?.placa && entrada?.placa) {
+        if (placaChanged === true) {
+          linhaPlaca += ' <span class="text-danger">(alterou caminhão)</span>';
+        }
+      }
+
+      span.innerHTML = `${linhaOrigem}<br>${linhaEntrada}<br>${linhaPlaca}<br><strong>${linhaDelta}</strong>`;
     } catch (err) {
       console.error(err);
       span.textContent = 'Erro ao consultar.';
     }
   });
+
+  // "Selecionar tudo" / "Limpar" no filtro de origem
+  document.getElementById('btnSelecionarTodos')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.origem-checkbox').forEach((cb) => { cb.checked = true; });
+  });
+  document.getElementById('btnLimpar')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.origem-checkbox').forEach((cb) => { cb.checked = false; });
+  });
+</script>
+
+<!-- JS para carregar imagens em lotes (IntersectionObserver + /imgs_bulk) -->
+<script>
+(function() {
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const STRIPS = Array.from(document.querySelectorAll('.img-strip'));
+
+  // Estado por strip (para navegação no modal)
+  const stripState = new Map(); // stripEl -> { imgs: [url...], index: 0 }
+
+  function renderStrip(stripEl, items, numero) {
+    stripEl.innerHTML = ''; // remove placeholder
+    if (!items || items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'border rounded d-flex align-items-center justify-content-center px-3 text-muted';
+      empty.style.minHeight = '64px';
+      empty.textContent = 'Sem imagem';
+      stripEl.appendChild(empty);
+      stripState.set(stripEl, { imgs: [], index: 0 });
+      return;
+    }
+    const urls = [];
+    for (const it of items) {
+      const id = it.id;
+      const href = `https://ajna1.rfoc.srf/virasana/file?_id=${encodeURIComponent(id)}`;
+      const imgUrl = `https://ajna1.rfoc.srf/virasana/imagens_cmap?_id=${encodeURIComponent(id)}&colormap=gray`;
+      urls.push(imgUrl);
+
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_BLANK';
+
+      const img = document.createElement('img');
+      img.className = 'img-fluid';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = imgUrl;
+      img.alt = `Imagem do contêiner ${numero}`;
+      a.appendChild(img);
+      stripEl.appendChild(a);
+    }
+    stripState.set(stripEl, { imgs: urls, index: 0 });
+  }
+
+  // Modal com navegação
+  const modalEl = document.getElementById('imgViewerModal');
+  const modalImg = document.getElementById('imgViewerEl');
+  const prevBtn  = document.getElementById('imgPrevBtn');
+  const nextBtn  = document.getElementById('imgNextBtn');
+  const bsModal  = new bootstrap.Modal(modalEl);
+
+  function openModal(stripEl, urls, atIndex) {
+    const getBig = (u) => u.includes('?') ? (u + '&w=1280') : (u + '?w=1280');
+    stripState.set(stripEl, { imgs: urls, index: atIndex });
+    modalImg.src = getBig(urls[atIndex]);
+    bsModal.show();
+
+    prevBtn.onclick = () => {
+      const st = stripState.get(stripEl);
+      if (!st || st.imgs.length === 0) return;
+      st.index = (st.index - 1 + st.imgs.length) % st.imgs.length;
+      modalImg.src = getBig(st.imgs[st.index]);
+    };
+    nextBtn.onclick = () => {
+      const st = stripState.get(stripEl);
+      if (!st || st.imgs.length === 0) return;
+      st.index = (st.index + 1) % st.imgs.length;
+      modalImg.src = getBig(st.imgs[st.index]);
+    };
+  }
+
+  // Lote pendente e controle de envio
+  const pending = new Set();   // strips aguardando envio
+  let inflight = false;
+
+  function scheduleFetch() {
+    if (inflight || pending.size === 0) return;
+    inflight = true;
+
+    // Lote de até 40 strips
+    const batch = Array.from(pending).slice(0, 40);
+    batch.forEach(el => pending.delete(el));
+
+    // Evita reconsulta de strips já carregadas
+    const filtered = batch.filter(el => !el.dataset.loaded);
+    if (filtered.length === 0) {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+      return;
+    }
+
+    const containers = filtered.map(el => ({
+      numero: el.getAttribute('data-numero'),
+      entrada: el.getAttribute('data-entrada')
+    }));
+
+    fetch('{{ url_for("exportacao_transit_time_imgs_bulk") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      },
+      body: JSON.stringify({ containers })
+    })
+    .then(r => r.json())
+    .then(data => {
+      for (const el of filtered) {
+        const numero = el.getAttribute('data-numero');
+        const items = data[numero] || [];
+        renderStrip(el, items, numero);
+        // Marca como carregado para não refazer chamadas no futuro
+        el.dataset.loaded = '1';
+      }
+    })
+    .catch(err => {
+      console.error('imgs_bulk error', err);
+      for (const el of filtered) {
+        renderStrip(el, [], el.getAttribute('data-numero'));
+        el.dataset.loaded = '1';
+      }
+    })
+    .finally(() => {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+    });
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && !e.target.dataset.loaded) pending.add(e.target);
+    }
+    scheduleFetch();
+  }, { root: null, rootMargin: '200px 0px', threshold: 0 });
+
+  STRIPS.forEach(el => io.observe(el));
+})();
 </script>
 
 </body>
