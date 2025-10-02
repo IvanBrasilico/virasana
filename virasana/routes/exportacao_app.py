@@ -338,12 +338,14 @@ def configure(app):
     # ---------------------------------------------------------
     def consulta_peso_container(session, numero_conteiner: str, codigo_recinto: str, dt_min: datetime) -> Optional[Dict]:
         """
-        Retorna a primeira pesagem efetiva (I/R) do contêiner no recinto,
-        ocorrida após dt_min (entrada), já consolidada contra retificações/exclusões.
-        Aplica tolerância: considera pesagens desde (dt_min - TOL_MINUTOS_PESAGEM).
+        Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_min,
+        já consolidada contra retificações/exclusões.
+        Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
+        [dt_min - TOL_MINUTOS_PESAGEM, dt_min + TOL_MINUTOS_PESAGEM].
         """
         
-        dt_min_lower = dt_min - timedelta(minutes=TOL_MINUTOS_PESAGEM)        
+        dt_min_lower = dt_min - timedelta(minutes=TOL_MINUTOS_PESAGEM)
+        dt_max_upper = dt_min + timedelta(minutes=TOL_MINUTOS_PESAGEM)     
         
         sql = text("""
             SELECT
@@ -353,7 +355,9 @@ def configure(app):
               p.dataHoraTransmissao,
               p.tipoOperacao,
               p.pesoBrutoBalanca,
-              p.placa
+              p.placa,
+              /* distância em segundos até dt_min para escolher a mais próxima */
+              ABS(TIMESTAMPDIFF(SECOND, p.dataHoraOcorrencia, :dtRef)) AS dist_seg
             FROM apirecintos_pesagensveiculo p
             JOIN (
               SELECT
@@ -364,7 +368,7 @@ def configure(app):
               FROM apirecintos_pesagensveiculo
               WHERE numeroConteiner = :numeroConteiner
                 AND codigoRecinto   = :codigoRecinto
-                AND dataHoraOcorrencia >= :dtMinLower
+                AND dataHoraOcorrencia BETWEEN :dtMinLower AND :dtMaxUpper
               GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
             ) ult
               ON  ult.numeroConteiner    = p.numeroConteiner
@@ -372,14 +376,17 @@ def configure(app):
               AND ult.dataHoraOcorrencia = p.dataHoraOcorrencia
               AND ult.max_tx             = p.dataHoraTransmissao
             WHERE p.tipoOperacao IN ('I','R')
-            ORDER BY p.dataHoraOcorrencia ASC
+            /* 1) mais próxima de dt_min; 2) em caso de empate, preferir a mais cedo */
+            ORDER BY dist_seg ASC, p.dataHoraOcorrencia ASC
             LIMIT 1
         """)
 
         row = session.execute(sql, {
             "numeroConteiner": numero_conteiner,
             "codigoRecinto": codigo_recinto,
-            "dtMinLower": dt_min_lower
+            "dtMinLower": dt_min_lower,
+            "dtMaxUpper": dt_max_upper,
+            "dtRef":      dt_min
         }).mappings().first()
 
         if not row:
@@ -388,17 +395,22 @@ def configure(app):
                 n = session.execute(text("""
                     SELECT COUNT(*) AS n
                     FROM apirecintos_pesagensveiculo
-                    WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
-                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min_lower}).scalar()
-                app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} >=(dtMin-5m)={dt_min_lower} -> count={n}")
+                    WHERE numeroConteiner=:n AND codigoRecinto=:r
+                      AND dataHoraOcorrencia BETWEEN :d1 AND :d2
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d1": dt_min_lower, "d2": dt_max_upper}).scalar()
+                app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} BETWEEN({dt_min_lower},{dt_max_upper}) -> count={n}")
 
                 dbg = session.execute(text("""
                     SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
                     FROM apirecintos_pesagensveiculo
-                    WHERE numeroConteiner=:n AND codigoRecinto=:r AND dataHoraOcorrencia>=:d
-                    ORDER BY dataHoraOcorrencia ASC, dataHoraTransmissao DESC, id DESC
+                    WHERE numeroConteiner=:n AND codigoRecinto=:r
+                      AND dataHoraOcorrencia BETWEEN :d1 AND :d2
+                    ORDER BY
+                      ABS(TIMESTAMPDIFF(SECOND, dataHoraOcorrencia, :dtRef)) ASC,
+                      dataHoraOcorrencia ASC,
+                      dataHoraTransmissao DESC, id DESC
                     LIMIT 3
-                """), {"n": numero_conteiner, "r": codigo_recinto, "d": dt_min_lower}).mappings().all()
+                """), {"n": numero_conteiner, "r": codigo_recinto, "d1": dt_min_lower, "d2": dt_max_upper, "dtRef": dt_min}).mappings().all()
                 app.logger.debug(f"[consulta_peso][rows top3] {dbg}")
             except Exception as e:
                 app.logger.exception("[consulta_peso] erro nos logs de diagnóstico")
@@ -420,17 +432,19 @@ def configure(app):
 
     # ---------------------------------------------------------
     # Consulta de PESO: última pesagem válida (I/R) no recinto de ORIGEM
-    # ocorrida ATÉ dt_max (hora da SAÍDA S do recinto anterior).
+    # ocorrida PRÓXIMA de dt_max (hora da SAÍDA S do recinto anterior),
+    # com tolerância simétrica ±TOL_MINUTOS_PESAGEM.
     # ---------------------------------------------------------
     def consulta_peso_ate(session, numero_conteiner: str, codigo_recinto: str, dt_max: datetime) -> Optional[Dict]:
         """
-        Retorna a última pesagem efetiva (I/R) do contêiner no recinto,
-        com dataHoraOcorrencia <= dt_max, consolidada por MAX(dataHoraTransmissao)
-        por dataHoraOcorrencia.
-        Aplica tolerância: considera pesagens até (dt_max + TOL_MINUTOS_PESAGEM).
+        Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_max,
+        consolidada por MAX(dataHoraTransmissao) por dataHoraOcorrencia.
+        Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
+        [dt_max - TOL_MINUTOS_PESAGEM, dt_max + TOL_MINUTOS_PESAGEM].
         """
         
-        dt_max_upper = dt_max + timedelta(minutes=TOL_MINUTOS_PESAGEM)        
+        dt_max_upper = dt_max + timedelta(minutes=TOL_MINUTOS_PESAGEM)
+        dt_min_lower = dt_max - timedelta(minutes=TOL_MINUTOS_PESAGEM)     
         
         sql = text("""
             SELECT
@@ -440,7 +454,9 @@ def configure(app):
               p.dataHoraTransmissao,
               p.tipoOperacao,
               p.pesoBrutoBalanca,
-              p.placa
+              p.placa,
+              /* distância em segundos até dt_max para escolher a mais próxima */
+              ABS(TIMESTAMPDIFF(SECOND, p.dataHoraOcorrencia, :dtRef)) AS dist_seg
             FROM apirecintos_pesagensveiculo p
             JOIN (
               SELECT
@@ -451,7 +467,7 @@ def configure(app):
               FROM apirecintos_pesagensveiculo
               WHERE numeroConteiner = :numeroConteiner
                 AND codigoRecinto   = :codigoRecinto
-                AND dataHoraOcorrencia <= :dtMaxUpper
+                AND dataHoraOcorrencia BETWEEN :dtMinLower AND :dtMaxUpper
               GROUP BY numeroConteiner, codigoRecinto, dataHoraOcorrencia
             ) ult
               ON  ult.numeroConteiner    = p.numeroConteiner
@@ -459,14 +475,17 @@ def configure(app):
               AND ult.dataHoraOcorrencia = p.dataHoraOcorrencia
               AND ult.max_tx             = p.dataHoraTransmissao
             WHERE p.tipoOperacao IN ('I','R')
-            ORDER BY p.dataHoraOcorrencia DESC
+            /* 1) mais próxima de dt_max; 2) em caso de empate, a ocorrência mais recente */
+            ORDER BY dist_seg ASC, p.dataHoraOcorrencia DESC
             LIMIT 1
         """)
 
         row = session.execute(sql, {
             "numeroConteiner": numero_conteiner,
             "codigoRecinto": codigo_recinto,
-            "dtMaxUpper": dt_max_upper
+            "dtMinLower": dt_min_lower,
+            "dtMaxUpper": dt_max_upper,
+            "dtRef":      dt_max
         }).mappings().first()
 
         if not row:
