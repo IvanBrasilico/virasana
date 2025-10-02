@@ -38,7 +38,7 @@ def configure(app):
     APP_TZ = ZoneInfo("America/Sao_Paulo")
 
     # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
-    TOL_MINUTOS_PESAGEM = 5
+    TOL_MINUTOS_PESAGEM = 20
 
     # -------------------------------------------------
     # Opções de RECINTOS DE ORIGEM (para filtro checkboxes)
