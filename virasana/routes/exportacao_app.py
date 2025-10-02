@@ -221,6 +221,7 @@ def configure(app):
             item["numero_due"] = info["numero_due"] if info else None
             item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
             item["nfe_ncm"] = info["nfe_ncm"] if info else None
+            item["due_itens"] = info.get("due_itens") if info else []
 
         # IQR / outliers
         vals = sorted([
@@ -854,7 +855,20 @@ def configure(app):
                   SELECT
                     i.nr_due,
                     GROUP_CONCAT(DISTINCT NULLIF(TRIM(i.nfe_ncm), '')
-                                 ORDER BY i.nfe_ncm SEPARATOR ', ') AS nfe_ncm
+                                 ORDER BY i.nfe_ncm SEPARATOR ', ') AS nfe_ncm,
+                    /* Cada item em uma string: "descricao_item (nfe_ncm)" */
+                    GROUP_CONCAT(
+                      CONCAT_WS(
+                        ' ',
+                        NULLIF(TRIM(i.descricao_item), ''),
+                        CASE
+                          WHEN NULLIF(TRIM(i.nfe_ncm), '') IS NOT NULL
+                          THEN CONCAT('(', TRIM(i.nfe_ncm), ')')
+                        END
+                      )
+                      ORDER BY i.due_nr_item
+                      SEPARATOR '||'
+                    ) AS due_itens_concat
                   FROM pucomex_due_itens i
                   GROUP BY i.nr_due
                 ) AS ncm
@@ -863,10 +877,14 @@ def configure(app):
             params = { f"n{j}": val for j, val in enumerate(lote) }
             rows = session.execute(sql, params).mappings().all()
             for r in rows:
+                itens_list = []
+                if r.get("due_itens_concat"):
+                    itens_list = [s for s in r["due_itens_concat"].split("||") if s]
                 out[r["numero_conteiner"]] = {
                     "numero_due": r["numero_due"],
                     "cnpj_estabelecimento_exportador": r["cnpj_estabelecimento_exportador"],
                     "nfe_ncm": r["nfe_ncm"],
+                    "due_itens": itens_list,
                 }
         return out
 

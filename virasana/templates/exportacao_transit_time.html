@@ -235,7 +235,7 @@
 				</div>
 
                 <!-- Linha 2.1 — DUE / Exportador / NCM -->
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 small">
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
                   <span class="fw-semibold">DUE:</span>
                   <span class="me-3">
                     {% if r.numero_due %}
@@ -254,6 +254,20 @@
 
                   <span class="fw-semibold">NCM(s):</span>
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
+                </div>
+
+                <!-- Linha 2.2 — Itens da DUE (1 por linha) -->
+                <div class="mt-2 small">
+                  <div class="fw-semibold mb-1">Itens da DUE:</div>
+                  {% if r.due_itens and r.due_itens|length > 0 %}
+                    <div class="ms-2">
+                      {% for linha in r.due_itens %}
+                        <div>• {{ linha }}</div>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <div class="text-muted">—</div>
+                  {% endif %}
                 </div>
 
                 <!-- Linha 3 -->
