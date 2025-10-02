@@ -237,7 +237,17 @@
                 <!-- Linha 2.1 — DUE / Exportador / NCM -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1 small">
                   <span class="fw-semibold">DUE:</span>
-                  <span class="me-3">{{ r.numero_due or '—' }}</span>
+                  <span class="me-3">
+                    {% if r.numero_due %}
+                      <a
+                        href="https://ajna1.rfoc.srf/bhadrasana2/consulta_due?numero={{ r.numero_due|urlencode }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >{{ r.numero_due }}</a>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </span>
 
                   <span class="fw-semibold">Exportador (CNPJ):</span>
                   <span class="me-3">{{ r.cnpj_estabelecimento_exportador or '—' }}</span>
