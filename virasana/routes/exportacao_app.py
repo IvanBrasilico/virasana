@@ -832,7 +832,8 @@ def configure(app):
                   dpc.numero_conteiner,
                   dpc.numero_due,
                   d.cnpj_estabelecimento_exportador,
-                  ncm.nfe_ncm
+                  ncm.nfe_ncm,
+                  ncm.due_itens_concat
                 FROM (
                   SELECT
                     dc.numero_conteiner,
@@ -879,7 +880,7 @@ def configure(app):
             for r in rows:
                 itens_list = []
                 if r.get("due_itens_concat"):
-                    itens_list = [s for s in r["due_itens_concat"].split("||") if s]
+                    itens_list = [s for s in r["due_itens_concat"].split("||") if s and s.strip()]           
                 out[r["numero_conteiner"]] = {
                     "numero_due": r["numero_due"],
                     "cnpj_estabelecimento_exportador": r["cnpj_estabelecimento_exportador"],
