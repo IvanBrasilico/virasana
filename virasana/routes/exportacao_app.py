@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta, datetime, time, timezone
 from flask import render_template, request, flash, url_for, jsonify, Response
-from flask import Blueprint, render_template
+from flask import Blueprint
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
 from decimal import Decimal
@@ -211,6 +211,16 @@ def configure(app):
             "s_vazioConteiner": r.s_vazioConteiner,
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
+
+        # === 2º passo: enriquecer com DUE / Exportador / NCM ===
+        numeros_unicos = sorted({ (x.get("numeroConteiner") or "").strip().upper() for x in resultados if x.get("numeroConteiner") })
+        mapa_due = _enriquecer_due_por_container(session, numeros_unicos)
+        for item in resultados:
+            k = (item.get("numeroConteiner") or "").strip().upper()
+            info = mapa_due.get(k)
+            item["numero_due"] = info["numero_due"] if info else None
+            item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
+            item["nfe_ncm"] = info["nfe_ncm"] if info else None
 
         # IQR / outliers
         vals = sorted([
@@ -687,7 +697,10 @@ def configure(app):
             "cnpjTransportador",
             "placa",
             "nomeMotorista",
-            "cpfMotorista"
+            "cpfMotorista",
+            "numero_due",
+            "cnpj_estabelecimento_exportador",
+            "nfe_ncm"
         ])
 
         def _fmt_dt(dt):
@@ -706,7 +719,10 @@ def configure(app):
                 r["cnpjTransportador"] or "",
                 r["placa"] or "",
                 r["nomeMotorista"] or "",
-                r["cpfMotorista"] or ""
+                r["cpfMotorista"] or "",
+                r.get("numero_due") or "",
+                r.get("cnpj_estabelecimento_exportador") or "",
+                r.get("nfe_ncm") or ""
             ])
 
         filename = f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
@@ -780,6 +796,79 @@ def configure(app):
             app.logger.exception("[imgs] Erro ao criar/verificar índices.")
 
     _ensure_indexes(app.config["mongodb"])
+
+    # -------------------------------------------------
+    # Enriquecimento: DUE/Exportador/NCM
+    # -------------------------------------------------
+    def _enriquecer_due_por_container(session, numeros: List[str]) -> Dict[str, Dict[str, Optional[str]]]:
+        """
+        Para uma lista de números de contêiner, retorna:
+          numero_conteiner -> {
+            'numero_due': str|None,
+            'cnpj_estabelecimento_exportador': str|None,
+            'nfe_ncm': str|None
+          }
+        Regra: escolhe a DUE mais recente por contêiner e agrega NCMs distintos.
+        Compatível com MariaDB 5.5 (sem CTE).
+        """
+        if not numeros:
+            return {}
+        # Evita truncamento de listas grandes de NCM (executar em statement separado)
+        try:
+            session.execute(text("SET SESSION group_concat_max_len = 4096"))
+        except Exception:
+            pass
+
+        out: Dict[str, Dict[str, Optional[str]]] = {}
+        CHUNK = 500  # segurança para IN muito grande
+        for i in range(0, len(numeros), CHUNK):
+            lote = [ (n or "").strip().upper() for n in numeros[i:i+CHUNK] if n ]
+            if not lote:
+                continue
+            ph = ", ".join([f":n{j}" for j in range(len(lote))])
+            sql = text(f"""
+                SELECT
+                  dpc.numero_conteiner,
+                  dpc.numero_due,
+                  d.cnpj_estabelecimento_exportador,
+                  ncm.nfe_ncm
+                FROM (
+                  SELECT
+                    dc.numero_conteiner,
+                    SUBSTRING_INDEX(
+                      GROUP_CONCAT(
+                        d.numero_due
+                        ORDER BY COALESCE(d.data_registro_due, d.data_criacao_due) DESC
+                        SEPARATOR ','
+                      ), ',', 1
+                    ) AS numero_due
+                  FROM pucomex_due_conteiner dc
+                  JOIN pucomex_due d
+                    ON d.numero_due = dc.numero_due
+                  WHERE dc.numero_conteiner IN ({ph})
+                  GROUP BY dc.numero_conteiner
+                ) AS dpc
+                LEFT JOIN pucomex_due d
+                  ON d.numero_due = dpc.numero_due
+                LEFT JOIN (
+                  SELECT
+                    i.nr_due,
+                    GROUP_CONCAT(DISTINCT NULLIF(TRIM(i.nfe_ncm), '')
+                                 ORDER BY i.nfe_ncm SEPARATOR ', ') AS nfe_ncm
+                  FROM pucomex_due_itens i
+                  GROUP BY i.nr_due
+                ) AS ncm
+                  ON ncm.nr_due = dpc.numero_due
+            """)
+            params = { f"n{j}": val for j, val in enumerate(lote) }
+            rows = session.execute(sql, params).mappings().all()
+            for r in rows:
+                out[r["numero_conteiner"]] = {
+                    "numero_due": r["numero_due"],
+                    "cnpj_estabelecimento_exportador": r["cnpj_estabelecimento_exportador"],
+                    "nfe_ncm": r["nfe_ncm"],
+                }
+        return out
 
     def _query_images_bulk_for_containers(mongodb, entradas_por_numero: dict[str, datetime]) -> dict[str, list[dict]]:
         """

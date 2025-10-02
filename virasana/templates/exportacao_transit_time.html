@@ -234,6 +234,18 @@
 			<span class="me-3">{{ r.nomeMotorista or '—' }} ({{ r.cpfMotorista or '—' }})</span>
 				</div>
 
+                <!-- Linha 2.1 — DUE / Exportador / NCM -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 small">
+                  <span class="fw-semibold">DUE:</span>
+                  <span class="me-3">{{ r.numero_due or '—' }}</span>
+
+                  <span class="fw-semibold">Exportador (CNPJ):</span>
+                  <span class="me-3">{{ r.cnpj_estabelecimento_exportador or '—' }}</span>
+
+                  <span class="fw-semibold">NCM(s):</span>
+                  <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
+                </div>
+
                 <!-- Linha 3 -->
                 <div class="mt-2">
                   <button class="btn btn-sm btn-outline-primary"
