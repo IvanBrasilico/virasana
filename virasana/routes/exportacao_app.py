@@ -80,6 +80,9 @@ def configure(app):
       "8931318": "Ecoporto"
     }
 
+    # Tupla imutável com todas as origens possíveis (ordem preservada)
+    ORIGENS_TODAS = tuple(ORIGENS_OPCOES.keys())
+
     def _sanitize_origens(lst):
         """Mantém apenas códigos válidos declarados em ORIGENS_OPCOES."""
         if not lst:
@@ -564,7 +567,18 @@ def configure(app):
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
         data_str = request.args.get('data')     # ex.: "2025-09-16"
         destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
-        origens_sel = request.args.getlist('origem')  # múltiplos ?origem=...
+
+        # múltiplos ?origem=...
+        # Regra:
+        #  - Se NÃO houver chave 'origem' na query string (primeiro acesso), default = TODAS as origens.
+        #  - Se houver chave 'origem' (mesmo que lista vazia porque o usuário limpou), respeitamos o valor enviado:
+        #      * lista vazia -> sem filtro (comportamento atual)
+        #      * lista com itens -> filtra pelos itens.
+        if 'origem' in request.args:
+            origens_sel = _sanitize_origens(request.args.getlist('origem'))
+        else:
+            # primeiro acesso: marcar todas como selecionadas
+            origens_sel = list(ORIGENS_TODAS)
         
         if data_str:
             try:
@@ -614,7 +628,14 @@ def configure(app):
 
         data_str = request.args.get('data')
         destino  = _normaliza_destino(request.args.get('destino'))
-        origens_sel = request.args.getlist('origem')
+        # Mesma regra do endpoint da tela:
+        #  - Sem chave 'origem' => default = TODAS (mantém checkboxes “todas marcadas” no primeiro acesso
+        #    e exporta coerentemente).
+        #  - Com chave 'origem' => respeita o que veio (inclusive vazio = sem filtro).
+        if 'origem' in request.args:
+            origens_sel = _sanitize_origens(request.args.getlist('origem'))
+        else:
+            origens_sel = list(ORIGENS_TODAS)
 
         if data_str:
             try:
