@@ -880,7 +880,7 @@ def configure(app):
             'numero_due': str|None,
             'cnpj_estabelecimento_exportador': str|None,
             'nfe_ncm': str|None,
-            'exportador_nome': str|None
+            'nome': str|None
           }
         Regra: escolhe a DUE mais recente por contêiner e agrega NCMs distintos.
         Compatível com MariaDB 5.5 (sem CTE).
@@ -907,7 +907,7 @@ def configure(app):
                   d.cnpj_estabelecimento_exportador,
                   ncm.nfe_ncm,
                   ncm.due_itens_concat,
-                  le.nome_empresa AS exportador_nome
+                  le.nome AS exportador_nome
                 FROM (
                   SELECT
                     dc.numero_conteiner,
