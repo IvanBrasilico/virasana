@@ -202,7 +202,7 @@
 					 ({{ recintos.get(r.s_codigoRecinto, '—') }})
 					 {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
 					 {% if _email %}
-						<a href="mailto:{{ _email }}"
+						<a href="mailto:{{ _email }}?subject={{ ('Container ' ~ (r.numeroConteiner or '')) | urlencode }}"
 						   class="ms-1 align-middle text-decoration-none"
 						   aria-label="Enviar e-mail para {{ recintos.get(r.s_codigoRecinto, 'recinto') }}"
 						   title="Enviar e-mail">
