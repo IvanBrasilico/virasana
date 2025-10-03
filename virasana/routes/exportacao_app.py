@@ -279,6 +279,7 @@ def configure(app):
             item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
             item["nfe_ncm"] = info["nfe_ncm"] if info else None
             item["due_itens"] = info.get("due_itens") if info else []
+            item["exportador_nome"] = info.get("exportador_nome") if info else None
 
         # === 3º passo: marcar motoristas em risco pelo CPF (apenas ENTRADA) ===
         # Coletamos CPFs das entradas (e opcionalmente poderíamos marcar também o da origem)
@@ -772,6 +773,7 @@ def configure(app):
             "nomeMotorista",
             "cpfMotorista",
             "numero_due",
+            "exportador_nome",
             "cnpj_estabelecimento_exportador",
             "nfe_ncm"
         ])
@@ -794,6 +796,7 @@ def configure(app):
                 r["nomeMotorista"] or "",
                 r["cpfMotorista"] or "",
                 r.get("numero_due") or "",
+                r.get("exportador_nome") or "",
                 r.get("cnpj_estabelecimento_exportador") or "",
                 r.get("nfe_ncm") or ""
             ])
