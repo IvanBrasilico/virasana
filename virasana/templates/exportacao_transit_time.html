@@ -280,8 +280,15 @@
                     {% endif %}
                   </span>
 
-                  <span class="fw-semibold">Exportador (CNPJ):</span>
-                  <span class="me-3">{{ r.cnpj_estabelecimento_exportador or '—' }}</span>
+                  <span class="fw-semibold">Exportador:</span>
+                  <span class="me-3">
+                    {% if r.exportador_nome %}
+                      {{ r.exportador_nome }}
+                      {% if r.cnpj_estabelecimento_exportador %} (CNPJ: {{ r.cnpj_estabelecimento_exportador }}){% endif %}
+                    {% else %}
+                      {{ r.cnpj_estabelecimento_exportador or '—' }}
+                    {% endif %}
+                  </span>
 
                   <span class="fw-semibold">NCM(s):</span>
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>

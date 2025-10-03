@@ -879,7 +879,8 @@ def configure(app):
           numero_conteiner -> {
             'numero_due': str|None,
             'cnpj_estabelecimento_exportador': str|None,
-            'nfe_ncm': str|None
+            'nfe_ncm': str|None,
+            'exportador_nome': str|None
           }
         Regra: escolhe a DUE mais recente por contêiner e agrega NCMs distintos.
         Compatível com MariaDB 5.5 (sem CTE).
@@ -905,7 +906,8 @@ def configure(app):
                   dpc.numero_due,
                   d.cnpj_estabelecimento_exportador,
                   ncm.nfe_ncm,
-                  ncm.due_itens_concat
+                  ncm.due_itens_concat,
+                  le.nome_empresa AS exportador_nome
                 FROM (
                   SELECT
                     dc.numero_conteiner,
@@ -924,6 +926,12 @@ def configure(app):
                 ) AS dpc
                 LEFT JOIN pucomex_due d
                   ON d.numero_due = dpc.numero_due
+                /* JOIN no nome do exportador pelos 8 primeiros dígitos do CNPJ (somente dígitos) */
+                LEFT JOIN laudo_empresas le
+                  ON le.cnpj = LEFT(
+                       REPLACE(REPLACE(REPLACE(COALESCE(d.cnpj_estabelecimento_exportador,''), '.', ''), '/', ''), '-', ''),
+                       8
+                     )
                 LEFT JOIN (
                   SELECT
                     i.nr_due,
@@ -958,6 +966,7 @@ def configure(app):
                     "cnpj_estabelecimento_exportador": r["cnpj_estabelecimento_exportador"],
                     "nfe_ncm": r["nfe_ncm"],
                     "due_itens": itens_list,
+                    "exportador_nome": r.get("exportador_nome"),
                 }
         return out
 
