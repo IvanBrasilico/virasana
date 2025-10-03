@@ -197,9 +197,29 @@
                   <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
                   <span class="fw-semibold">Origem:</span>
-                  <span class="me-3">
+                  <span class="me-3 text-nowrap">
                     {% if r.s_codigoRecinto %}
-                      {{ r.s_codigoRecinto }} ({{ recintos.get(r.s_codigoRecinto, '—') }})
+					 ({{ recintos.get(r.s_codigoRecinto, '—') }})
+					 {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
+					 {% if _email %}
+						<a href="mailto:{{ _email }}"
+						   class="ms-1 align-middle text-decoration-none"
+						   aria-label="Enviar e-mail para {{ recintos.get(r.s_codigoRecinto, 'recinto') }}"
+						   title="Enviar e-mail">
+						 <!-- Ícone envelope (inline SVG — sem dependências extras) -->
+						 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+							  fill="currentColor" viewBox="0 0 16 16"
+							  style="vertical-align: text-bottom;">
+						   <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 
+									2 0 0 1-2 2H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v.217l7 
+									4.2 7-4.2V4a1 1 0 0 0-1-1zm13 
+									3.383l-4.708 2.825L15 12.118zm-.034 
+									5.876-5.64-3.388L8 10.917l-1.326-.805-5.64 3.388A1 
+									1 0 0 0 2 14h12a1 1 0 0 0 .966-.741M1 
+									12.118l4.708-2.91L1 6.383z"/>
+						 </svg>
+					   </a>
+					 {% endif %}
                     {% else %}
                       —
                     {% endif %}

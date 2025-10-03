@@ -83,6 +83,17 @@ def configure(app):
     # Tupla imutável com todas as origens possíveis (ordem preservada)
     ORIGENS_TODAS = tuple(ORIGENS_OPCOES.keys())
 
+    # -------------------------------------------
+    # Helper: Carrega mapa {codigo_recinto: email}
+    # -------------------------------------------
+    def load_emails_recintos(session) -> Dict[str, str]:
+        rows = session.execute(text("""
+            SELECT codigo_recinto, email_recinto
+            FROM emails_recintos
+        """)).all()
+        # Compatível com Row mappings do SQLAlchemy
+        return {str(r.codigo_recinto): str(r.email_recinto) for r in rows}
+
     def _sanitize_origens(lst):
         """Mantém apenas códigos válidos declarados em ORIGENS_OPCOES."""
         if not lst:
@@ -634,6 +645,9 @@ def configure(app):
         # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
         resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
 
+        # Carrega mapa {codigo_recinto: email} para exibir ícone de e-mail no template
+        emails_map = load_emails_recintos(session)
+
         return render_template(
             'exportacao_transit_time.html',
             resultados=resultados,
@@ -645,7 +659,8 @@ def configure(app):
             q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"],
             limite_outlier_mild=stats["limite_outlier_mild"],
             limite_outlier_strict=stats["limite_outlier_strict"],
-            csrf_token=generate_csrf
+            csrf_token=generate_csrf,
+            emails_recintos=emails_map
          )
          
     @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
