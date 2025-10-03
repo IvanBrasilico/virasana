@@ -132,6 +132,52 @@ def configure(app):
         q3 = _mediana(upper)
         return q1, q3
 
+    # -------------------------------------------
+    # Helpers: CPF (normalização) e risco
+    # -------------------------------------------
+    def _cpf_digits(s: Optional[str]) -> str:
+        """Mantém apenas dígitos do CPF (ou '' se None)."""
+        if not s:
+            return ""
+        return "".join(ch for ch in str(s) if ch.isdigit())
+
+    def _cpfs_em_risco(session, cpfs_iter):
+        """
+        Recebe um iterável de CPFs (possivelmente com pontuação, None, etc.),
+        normaliza para dígitos e retorna um set com os CPFs (dígitos) encontrados
+        na tabela risco_motoristas.
+
+        Observação: usamos REPLACE na coluna do banco p/ normalizar também do lado SQL,
+        garantindo match mesmo se estiverem com pontuação na tabela.
+        """
+        # Coleta únicos normalizados (só dígitos) e remove vazios
+        cpfs_norm = sorted({ _cpf_digits(c) for c in (cpfs_iter or []) if _cpf_digits(c) })
+        if not cpfs_norm:
+            return set()
+
+        encontrados = set()
+        CHUNK = 1000  # segurança para listas grandes
+        for i in range(0, len(cpfs_norm), CHUNK):
+            bloco = cpfs_norm[i:i+CHUNK]
+            # Monta placeholders :d0, :d1, ...
+            ph = ", ".join(f":d{j}" for j in range(len(bloco)))
+            sql = text(f"""
+                SELECT cpf
+                FROM risco_motoristas
+                WHERE
+                  REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN ({ph})
+            """)
+            params = { f"d{j}": v for j, v in enumerate(bloco) }
+            try:
+                rows = session.execute(sql, params).all()
+            except Exception:
+                # Se a tabela não existir ou houver erro, não quebrar a tela
+                rows = []
+            for r in rows:
+                # normaliza o que veio do banco e adiciona
+                encontrados.add(_cpf_digits(getattr(r, "cpf", None)))
+        return encontrados
+
     def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: Optional[List[str]] = None):
         """
         Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
@@ -233,6 +279,17 @@ def configure(app):
             item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
             item["nfe_ncm"] = info["nfe_ncm"] if info else None
             item["due_itens"] = info.get("due_itens") if info else []
+
+        # === 3º passo: marcar motoristas em risco pelo CPF (apenas ENTRADA) ===
+        # Coletamos CPFs das entradas (e opcionalmente poderíamos marcar também o da origem)
+        cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
+        try:
+            em_risco = _cpfs_em_risco(session, cpfs_entrada)  # set de CPFs normalizados (dígitos)
+        except Exception:
+            app.logger.exception("[risco_motoristas] falha ao consultar CPFs de risco")
+            em_risco = set()
+        for it in resultados:
+            it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
 
         # IQR / outliers
         vals = sorted([

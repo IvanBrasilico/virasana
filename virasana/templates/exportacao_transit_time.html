@@ -250,8 +250,19 @@
 			<span class="fw-semibold">Placa:</span>
 			<span class="me-3">{{ r.placa or '—' }}</span>
 
-			<span class="fw-semibold">Motorista:</span>
-			<span class="me-3">{{ r.nomeMotorista or '—' }} (CPF: {{ r.cpfMotorista or '—' }})</span>
+			  <span class="fw-semibold">Motorista:</span>
+			  <span class="me-3">
+				<span
+				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
+				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+				>
+				  {{ r.nomeMotorista or '—' }}
+				</span>
+				(CPF: {{ r.cpfMotorista or '—' }})
+				{% if r.motorista_risco %}
+				  <span class="badge text-bg-danger ms-1">RISCO</span>
+				{% endif %}
+			  </span>
 				</div>
 
                 <!-- Linha 2.1 — DUE / Exportador / NCM -->
