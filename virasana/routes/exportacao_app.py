@@ -69,15 +69,17 @@ def configure(app):
       "8932710": "S MAGALHÃES 2",
       "8932796": "S MAGALHÃES 3",
       "8932798": "S MAGALHÃES 4",
-      "8933204": "CLIA REDEX DA SANTOS BRASIL",
+      "8933204": "REDEX/CLIA DA SANTOS BRASIL - cidade de Santos",
+      "8933203": "REDEX/CLIA DA SANTOS BRASIL - cidade de Guarujá",
       "8931309": "LOCALFRIO/MOVECTA",
+      "8932792": "REDEX E DEPOT CE - TANK CONTEINER - CESARI",
       "8932773": "ISIS 1",
       "8932788": "ISIS 2",
       "8931305": "TRANSBRASA",
-      "8931356": "Santos Brasil",
+      "8931356": "SANTOS BRASIL",
       "8931359": "BTP",
       "8931404": "DPW/EMBRAPORT",
-      "8931318": "Ecoporto"
+      "8931318": "ECOPORTO"
     }
 
     # Tupla imutável com todas as origens possíveis (ordem preservada)
