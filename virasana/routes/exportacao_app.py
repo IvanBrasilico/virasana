@@ -45,7 +45,7 @@ def configure(app):
     # (mantém alinhado com o template)
     # -------------------------------------------------
     ORIGENS_OPCOES = {
-      "8932793": "GTMINAS",
+      "8932793": "GT MINAS",
       "8932761": "JBS",
       "8932762": "SATEL",
       "8932799": "DALASTRA MONITORAMENTO",
