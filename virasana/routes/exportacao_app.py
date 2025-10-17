@@ -271,11 +271,18 @@ def configure(app):
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
 
-        # === 2º passo: enriquecer com DUE / Exportador / NCM ===
-        numeros_unicos = sorted({ (x.get("numeroConteiner") or "").strip().upper() for x in resultados if x.get("numeroConteiner") })
-        mapa_due = _enriquecer_due_por_container(session, numeros_unicos)
+        # === 2º passo: enriquecer com DUE / Exportador / NCM (com janela temporal por linha) ===
+        # Para cada linha, a âncora temporal é a ENTRADA no destino (e.dataHoraOcorrencia).
+        anchors = []
+        for it in resultados:
+            num = (it.get("numeroConteiner") or "").strip().upper()
+            dt  = it.get("dataHoraOcorrencia")
+            if num and dt:
+                anchors.append((num, dt))
+        # Janela de 15 dias em relação a cada dt_anchor
+        mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
         for item in resultados:
-            k = (item.get("numeroConteiner") or "").strip().upper()
+            k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
             info = mapa_due.get(k)
             item["numero_due"] = info["numero_due"] if info else None
             item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
@@ -878,36 +885,69 @@ def configure(app):
     # -------------------------------------------------
     # Enriquecimento: DUE/Exportador/NCM
     # -------------------------------------------------
-    def _enriquecer_due_por_container(session, numeros: List[str]) -> Dict[str, Dict[str, Optional[str]]]:
+    def _enriquecer_due_por_container(session,
+                                      anchors: List[tuple],
+                                      janela_dias: int = 15) -> Dict[tuple, Dict[str, Optional[str]]]:
         """
-        Para uma lista de números de contêiner, retorna:
-          numero_conteiner -> {
+        Para uma lista de âncoras por LINHA, retorna:
+          (numero_conteiner, dt_anchor) -> {
             'numero_due': str|None,
             'cnpj_estabelecimento_exportador': str|None,
             'nfe_ncm': str|None,
-            'nome': str|None
+            'due_itens': list[str],
+            'exportador_nome': str|None
           }
-        Regra: escolhe a DUE mais recente por contêiner e agrega NCMs distintos.
-        Compatível com MariaDB 5.5 (sem CTE).
+        Regra temporal: considerar SOMENTE DUEs com d.data_criacao_due entre
+        [dt_anchor - janela_dias, dt_anchor], escolhendo a DUE "mais recente"
+        por COALESCE(d.data_registro_due, d.data_criacao_due) DESC.
+        Compatível com MariaDB 5.5 (sem window functions).
         """
-        if not numeros:
+        if not anchors:
             return {}
-        # Evita truncamento de listas grandes de NCM (executar em statement separado)
+
+        # Evita truncamento dos GROUP_CONCAT
         try:
             session.execute(text("SET SESSION group_concat_max_len = 4096"))
         except Exception:
             pass
 
-        out: Dict[str, Dict[str, Optional[str]]] = {}
-        CHUNK = 500  # segurança para IN muito grande
-        for i in range(0, len(numeros), CHUNK):
-            lote = [ (n or "").strip().upper() for n in numeros[i:i+CHUNK] if n ]
+        # Normaliza âncoras: [(NUM_UC, DT)]
+        norm_anchors: List[tuple] = []
+        for (n, dt) in anchors:
+            if not n or not dt:
+                continue
+            norm_anchors.append(((n or "").strip().upper(), dt))
+        if not norm_anchors:
+            return {}
+
+        out: Dict[tuple, Dict[str, Optional[str]]] = {}
+        # Chunk menor porque cada linha vira um SELECT no UNION ALL
+        CHUNK = 300
+        # Janela em dias como inteiro literal no SQL (MariaDB 5.5 não gosta de bind em INTERVAL)
+        jdias = int(janela_dias or 15)
+
+        for i in range(0, len(norm_anchors), CHUNK):
+            lote = norm_anchors[i:i+CHUNK]
             if not lote:
                 continue
-            ph = ", ".join([f":n{j}" for j in range(len(lote))])
-            sql = text(f"""
+
+            # Monta subquery de âncoras via UNION ALL parametrizado
+            # SELECT :n0 AS numero_conteiner, :t0 AS dt_anchor UNION ALL SELECT :n1, :t1 ...
+            parts = []
+            params = {}
+            for idx, (num, dt) in enumerate(lote):
+                parts.append(f"SELECT :n{idx} AS numero_conteiner, :t{idx} AS dt_anchor")
+                params[f"n{idx}"] = num
+                # Garantir string 'YYYY-MM-DD HH:MM:SS' para o bind
+                params[f"t{idx}"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+            anchors_sql = " \nUNION ALL\n ".join(parts)
+
+            # Subselect dpc escolhe a DUE mais recente por (numero_conteiner, dt_anchor),
+            # restrita à janela temporal baseada em data_criacao_due.
+            sql_txt = f"""
                 SELECT
                   dpc.numero_conteiner,
+                  dpc.dt_anchor,
                   dpc.numero_due,
                   d.cnpj_estabelecimento_exportador,
                   ncm.nfe_ncm,
@@ -915,7 +955,8 @@ def configure(app):
                   le.nome AS exportador_nome
                 FROM (
                   SELECT
-                    dc.numero_conteiner,
+                    a.numero_conteiner,
+                    a.dt_anchor,
                     SUBSTRING_INDEX(
                       GROUP_CONCAT(
                         d.numero_due
@@ -923,15 +964,19 @@ def configure(app):
                         SEPARATOR ','
                       ), ',', 1
                     ) AS numero_due
-                  FROM pucomex_due_conteiner dc
+                  FROM (
+                    {anchors_sql}
+                  ) AS a
+                  JOIN pucomex_due_conteiner dc
+                    ON dc.numero_conteiner = a.numero_conteiner
                   JOIN pucomex_due d
                     ON d.numero_due = dc.numero_due
-                  WHERE dc.numero_conteiner IN ({ph})
-                  GROUP BY dc.numero_conteiner
+                   AND d.data_criacao_due BETWEEN DATE_SUB(a.dt_anchor, INTERVAL {jdias} DAY) AND a.dt_anchor
+                  GROUP BY a.numero_conteiner, a.dt_anchor
                 ) AS dpc
                 LEFT JOIN pucomex_due d
                   ON d.numero_due = dpc.numero_due
-                /* JOIN no nome do exportador pelos 8 primeiros dígitos do CNPJ (somente dígitos) */
+                /* nome do exportador pelos 8 primeiros dígitos do CNPJ (somente dígitos) */
                 LEFT JOIN laudo_empresas le
                   ON le.cnpj = LEFT(
                        REPLACE(REPLACE(REPLACE(COALESCE(d.cnpj_estabelecimento_exportador,''), '.', ''), '/', ''), '-', ''),
@@ -942,7 +987,6 @@ def configure(app):
                     i.nr_due,
                     GROUP_CONCAT(DISTINCT NULLIF(TRIM(i.nfe_ncm), '')
                                  ORDER BY i.nfe_ncm SEPARATOR ', ') AS nfe_ncm,
-                    /* Cada item em uma string: "descricao_item (nfe_ncm)" */
                     GROUP_CONCAT(
                       CONCAT_WS(
                         ' ',
@@ -959,17 +1003,29 @@ def configure(app):
                   GROUP BY i.nr_due
                 ) AS ncm
                   ON ncm.nr_due = dpc.numero_due
-            """)
-            params = { f"n{j}": val for j, val in enumerate(lote) }
-            rows = session.execute(sql, params).mappings().all()
+            """
+            rows = session.execute(text(sql_txt), params).mappings().all()
             for r in rows:
+                # Reconstrói a chave (numero, dt_anchor) a partir da linha
+                num = (r.get("numero_conteiner") or "").strip().upper()
+                dt_anchor = r.get("dt_anchor")
+                # dt_anchor volta como string (bind), normalizar p/ datetime?
+                # Para chave consistente com o chamador, parseamos:
+                if isinstance(dt_anchor, str):
+                    try:
+                        dt_anchor = datetime.strptime(dt_anchor, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        # Em alguns drivers, pode já vir datetime; se falhar, deixa como veio
+                        pass
+
                 itens_list = []
                 if r.get("due_itens_concat"):
-                    itens_list = [s for s in r["due_itens_concat"].split("||") if s and s.strip()]           
-                out[r["numero_conteiner"]] = {
-                    "numero_due": r["numero_due"],
-                    "cnpj_estabelecimento_exportador": r["cnpj_estabelecimento_exportador"],
-                    "nfe_ncm": r["nfe_ncm"],
+                    itens_list = [s for s in r["due_itens_concat"].split("||") if s and s.strip()]
+
+                out[(num, dt_anchor)] = {
+                    "numero_due": r.get("numero_due"),
+                    "cnpj_estabelecimento_exportador": r.get("cnpj_estabelecimento_exportador"),
+                    "nfe_ncm": r.get("nfe_ncm"),
                     "due_itens": itens_list,
                     "exportador_nome": r.get("exportador_nome"),
                 }
