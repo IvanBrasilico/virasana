@@ -16,6 +16,16 @@
       object-fit: contain;
       display: block;
     }
+
+    /* Indicadores visuais de ordenação */
+    .sort-bar .btn[aria-pressed="true"] {
+      font-weight: 600;
+    }
+    .sort-indicator {
+      display: inline-block;
+      min-width: 1em;
+      margin-left: .25rem;
+    }
   </style>
 
 </head>
@@ -177,11 +187,37 @@
 
     </form>
 
+    <!-- Barra de "títulos de coluna" para ordenação (JS-only) -->
+    {% if resultados and resultados|length > 0 %}
+    <div class="sort-bar d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="text-muted me-1">Ordenar por:</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="entrada"><span>Entrada</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="tt"><span>Transit Time (h)</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="container"><span>Contêiner</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="origem"><span>Origem (cód.)</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="outlier"><span>Outlier</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="vazio"><span>Vazio</span><span class="sort-indicator"></span></button>
+    </div>
+    {% endif %}
+
     {% if resultados and resultados|length > 0 %}
       <div class="accordion" id="resultadosAccordion">
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-2">
+        <div class="card shadow-sm mb-2"
+             data-container="{{ r.numeroConteiner or '' }}"
+             data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
+             data-origem="{{ r.s_codigoRecinto or '' }}"
+             data-tt="{% if r.transit_time_horas is not none %}{{ '%.6f'|format(r.transit_time_horas) }}{% endif %}"
+             data-outlier="{{ 1 if r.is_outlier else 0 }}"
+             data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
+             data-stable="{{ loop.index }}">
           <div class="card-header bg-white">
             <!-- Cabeçalho: texto à esquerda / imagens à direita -->
             <div class="d-flex justify-content-between align-items-start gap-3">
@@ -648,6 +684,134 @@ function formatDateTime(isoString) {
   }, { root: null, rootMargin: '200px 0px', threshold: 0 });
 
   STRIPS.forEach(el => io.observe(el));
+})();
+</script>
+
+<!-- JS de ordenação dos cards (sem nova consulta SQL) -->
+<script>
+(function() {
+  const container = document.getElementById('resultadosAccordion');
+  if (!container) return;
+
+  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+  const keyTypes = {
+    // chave -> tipo de comparação
+    container: 'text',
+    entrada: 'date',    // string "YYYY-MM-DD HH:MM:SS"
+    origem: 'text',     // código do recinto (string)
+    tt: 'number',       // transit time (float)
+    outlier: 'number',  // 0/1
+    vazio: 'number'     // 0/1
+  };
+
+  function parseNumber(s) {
+    if (s == null || s === '') return null;
+    const n = parseFloat(String(s).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function parseDate(s) {
+    if (!s) return null;
+    // aceita "YYYY-MM-DD HH:MM:SS"
+    const t = Date.parse(s.replace(' ', 'T'));
+    return Number.isFinite(t) ? t : null;
+    // Obs.: se for timezone local/servidor, manter o mesmo padrão para todos.
+  }
+
+  function getVal(el, key) {
+    const raw = el.dataset[key];
+    switch (keyTypes[key]) {
+      case 'number': return parseNumber(raw);
+      case 'date':   return parseDate(raw);
+      case 'text':
+      default:       return (raw ?? '').toString();
+    }
+  }
+
+  // Ordenação estável: usamos data-stable como tie-breaker
+  function compareFactory(key, dir) {
+    const type = keyTypes[key] || 'text';
+    const asc = dir === 'asc';
+
+    return (a, b) => {
+      let va = getVal(a, key);
+      let vb = getVal(b, key);
+
+      // valores nulos/vazios sempre no fim
+      const aNull = (va === null || va === '');
+      const bNull = (vb === null || vb === '');
+      if (aNull && !bNull) return  1;
+      if (!aNull && bNull) return -1;
+      if (aNull && bNull) {
+        // desempate por estável
+        const sa = parseInt(a.dataset.stable || '0', 10);
+        const sb = parseInt(b.dataset.stable || '0', 10);
+        return sa - sb;
+      }
+
+      let cmp = 0;
+      if (type === 'number' || type === 'date') {
+        // números/datas: comparação direta
+        cmp = (va < vb) ? -1 : ((va > vb) ? 1 : 0);
+      } else {
+        // texto
+        cmp = collator.compare(String(va), String(vb));
+      }
+
+      if (cmp === 0) {
+        // estável
+        const sa = parseInt(a.dataset.stable || '0', 10);
+        const sb = parseInt(b.dataset.stable || '0', 10);
+        cmp = sa - sb;
+      }
+      return asc ? cmp : -cmp;
+    };
+  }
+
+  function applySort(key, dir) {
+    const cards = Array.from(container.querySelectorAll(':scope > .card'));
+    const cmp = compareFactory(key, dir);
+    cards.sort(cmp);
+    for (const c of cards) container.appendChild(c);
+  }
+
+  // UI dos botões
+  const buttons = Array.from(document.querySelectorAll('.sort-bar .sort-btn'));
+  let current = { key: null, dir: 'asc' };
+
+  function updateButtonsUI() {
+    buttons.forEach(btn => {
+      const key = btn.dataset.key;
+      const indicator = btn.querySelector('.sort-indicator');
+      if (key === current.key) {
+        btn.setAttribute('aria-pressed', 'true');
+        btn.setAttribute('aria-sort', current.dir === 'asc' ? 'ascending' : 'descending');
+        if (indicator) indicator.textContent = current.dir === 'asc' ? '▲' : '▼';
+      } else {
+        btn.setAttribute('aria-pressed', 'false');
+        btn.removeAttribute('aria-sort');
+        if (indicator) indicator.textContent = '';
+      }
+    });
+  }
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      if (current.key === key) {
+        current.dir = current.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        current.key = key;
+        current.dir = 'asc';
+      }
+      applySort(current.key, current.dir);
+      updateButtonsUI();
+    });
+  });
+
+  // Estado inicial opcional (ex.: ordenar por Entrada asc ao carregar)
+  // current = { key: 'entrada', dir: 'asc' };
+  // applySort(current.key, current.dir); updateButtonsUI();
 })();
 </script>
 
