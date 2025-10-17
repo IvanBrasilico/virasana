@@ -189,6 +189,11 @@
               <div class="flex-grow-1 pe-2">
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
+
+                  {# Limite de exibição: transit time > 360 horas #}
+                  {% set tt = r.transit_time_horas %}
+                  {% set tt_limit = (tt is not none and tt > 360) %}
+
                   <span class="fw-semibold">Contêiner:</span>
                   <span class="me-3">{{ r.numeroConteiner }}</span>
 
@@ -200,7 +205,9 @@
 
                   <span class="fw-semibold">Origem:</span>
                   <span class="me-3 text-nowrap">
-                    {% if r.s_codigoRecinto %}
+                    {% if tt_limit %}
+                      Recinto desconhecido
+                    {% elif r.s_codigoRecinto %}
 					 ({{ recintos.get(r.s_codigoRecinto, '—') }})
 					 {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
 					 {% if _email %}
@@ -228,7 +235,13 @@
                   </span>
 
                   <span class="fw-semibold">Saída (origem):</span>
-                  <span class="me-3">{{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}</span>
+                  <span class="me-3">
+                    {% if tt_limit %}
+                      horário desconhecido
+                    {% else %}
+                      {{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}
+                    {% endif %}
+                  </span>
 
                   <span class="fw-semibold">Transit Time (h):</span>
                   <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}"
@@ -236,7 +249,11 @@
                         title="Outlier se {{ '%.2f'|format(limite_outlier_mild) }} ≤ TT ≤ {{ '%.2f'|format(limite_outlier_strict) }}"
                         {% endif %}>
                     {% if r.transit_time_horas is not none %}
-                      {{ "%.2f"|format(r.transit_time_horas) }}
+                      {% if tt_limit %}
+                        tempo desconhecido
+                      {% else %}
+                        {{ "%.2f"|format(r.transit_time_horas) }}
+                      {% endif %}
                     {% else %}—{% endif %}
                   </span>
                   {% if r.is_outlier %}
