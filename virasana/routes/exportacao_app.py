@@ -71,7 +71,8 @@ def configure(app):
       "8932798": "S MAGALHÃES 4",
       "8933204": "REDEX/CLIA DA SANTOS BRASIL - cidade de Santos",
       "8933203": "REDEX/CLIA DA SANTOS BRASIL - cidade de Guarujá",
-      "8931309": "LOCALFRIO/MOVECTA",
+      "8931309": "LOCALFRIO/MOVECTA REDEX",
+      "8933001": "LOCALFRIO/MOVECTA CLIA/REDEX",
       "8932792": "REDEX E DEPOT CE - TANK CONTEINER - CESARI",
       "8932773": "ISIS 1",
       "8932788": "ISIS 2",
@@ -223,7 +224,7 @@ def configure(app):
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    AND (
                         s2.codigoRecinto LIKE '89327%'
-                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203')
+                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203', '8933001')
                    )
                    AND s2.codigoRecinto <> e.codigoRecinto
                    {sub_filtro_origem}
