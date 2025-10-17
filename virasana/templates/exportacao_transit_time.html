@@ -20,6 +20,8 @@
     /* Indicadores visuais de ordenação */
     .sort-bar .btn[aria-pressed="true"] {
       font-weight: 600;
+      border: 1px dashed #ced4da;
+      padding: .5rem .75rem;
     }
     .sort-indicator {
       display: inline-block;
@@ -189,7 +191,7 @@
 
     <!-- Barra de "títulos de coluna" para ordenação (JS-only) -->
     {% if resultados and resultados|length > 0 %}
-    <div class="sort-bar d-flex flex-wrap align-items-center gap-2 mb-2">
+    <div class="sort-bar d-flex flex-wrap align-items-center gap-2 mb-3">
       <span class="text-muted me-1">Ordenar por:</span>
       <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
               data-key="entrada"><span>Entrada</span><span class="sort-indicator"></span></button>
@@ -769,8 +771,10 @@ function formatDateTime(isoString) {
   }
 
   function applySort(key, dir) {
-    const cards = Array.from(container.querySelectorAll(':scope > .card'));
+    // Considera apenas filhos diretos com classe .card
+    const cards = Array.from(container.children).filter(el => el.classList?.contains('card'));
     const cmp = compareFactory(key, dir);
+	if (!cards.length) return;
     cards.sort(cmp);
     for (const c of cards) container.appendChild(c);
   }
@@ -809,9 +813,17 @@ function formatDateTime(isoString) {
     });
   });
 
-  // Estado inicial opcional (ex.: ordenar por Entrada asc ao carregar)
-  // current = { key: 'entrada', dir: 'asc' };
-  // applySort(current.key, current.dir); updateButtonsUI();
+  // Define um estado inicial para ficar claro visualmente
+  const hasButtons = buttons.length > 0;
+  if (hasButtons) {
+    // Ordena inicialmente por "Entrada" asc
+    current = { key: 'entrada', dir: 'asc' };
+    applySort(current.key, current.dir);
+    updateButtonsUI();
+  } else {
+    // Debug leve (apenas se quiser inspecionar no console)
+    // console.warn('Barra de ordenação não encontrada.');
+  }
 })();
 </script>
 
