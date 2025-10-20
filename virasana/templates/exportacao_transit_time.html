@@ -229,9 +229,9 @@
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
 
-                  {# Limite de exibição: transit time > 360 horas #}
+                  {# Limite de exibição: transit time > 240 horas #}
                   {% set tt = r.transit_time_horas %}
-                  {% set tt_limit = (tt is not none and tt > 360) %}
+                  {% set tt_limit = (tt is not none and tt > 240) %}
 
                   <span class="fw-semibold">Contêiner:</span>
                   <span class="me-3">{{ r.numeroConteiner }}</span>
@@ -245,7 +245,7 @@
                   <span class="fw-semibold">Origem:</span>
                   <span class="me-3 text-nowrap">
                     {% if tt_limit %}
-                      Recinto desconhecido
+                      Estufado em recinto desconhecido ou não cadastrado
                     {% elif r.s_codigoRecinto %}
 					 ({{ recintos.get(r.s_codigoRecinto, '—') }})
 					 {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
