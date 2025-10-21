@@ -1499,6 +1499,7 @@ def mynavbar():
                  View('Bagagens', 'bagagens'),
                  View('API Recintos', 'eventos'),
                  View('AJNA Exportações', 'exportacao_app_index'),
+                 View('AJNA Exportações c/ Transit Time', 'transit_time'),
                  Separator(),
                  View('Pesquisa imagem externa', 'similar_file'),
                  View('Pesquisa textual', 'text_search'),
