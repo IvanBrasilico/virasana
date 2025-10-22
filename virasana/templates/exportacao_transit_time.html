@@ -76,7 +76,11 @@
 
     {% set destino_label =
          ('8931356 - Santos Brasil' if destino == '8931356'
-          else ('8931359 - BTP' if destino == '8931359' else destino)) %}
+         else '8931359 - BTP' if destino == '8931359'
+         else '8931404 - DPW/EMBRAPORT' if destino == '8931404'
+         else '8931318 - ECOPORTO' if destino == '8931318'
+         else destino)
+     %}
 
     <h1 class="mb-1">Entradas no Recinto {{ destino_label }} — {{ data_label }}</h1>
 
