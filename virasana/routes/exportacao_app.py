@@ -13,6 +13,7 @@ import os
 from io import StringIO
 
 from pathlib import Path
+import tempfile
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
@@ -857,9 +858,28 @@ def configure(app):
     #   IMAGENS (MongoDB)
     # ======================
 
-    # Diretório local p/ cache de thumbnails
-    THUMB_CACHE_DIR = Path("/tmp/exportacao_thumbs")
-    THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # Diretório local p/ cache de thumbnails (sem hardcode de /tmp)
+    # Prioridade:
+    # 1) app.config["THUMB_CACHE_DIR"]
+    # 2) env VIRASANA_THUMB_CACHE_DIR
+    # 3) diretório temp da plataforma + subpasta da app
+    _thumb_cache_base = (
+        app.config.get("THUMB_CACHE_DIR")
+        or os.environ.get("VIRASANA_THUMB_CACHE_DIR")
+        or str(Path(tempfile.gettempdir()) / "virasana_exportacao_thumbs")
+    )
+    THUMB_CACHE_DIR = Path(_thumb_cache_base).resolve()
+    # Cria diretório com permissões restritivas em POSIX (best-effort)
+    # Em Windows o chmod é ignorado para bits POSIX.
+    if not THUMB_CACHE_DIR.exists():
+        THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(THUMB_CACHE_DIR, 0o700)
+        except Exception:
+            # Se não suportado (Windows) ou sem permissão, segue o fluxo
+            app.logger.debug("[thumbs] chmod 0700 não aplicado em %s", THUMB_CACHE_DIR)
+    elif not THUMB_CACHE_DIR.is_dir():
+        raise RuntimeError(f"THUMB_CACHE_DIR não é diretório: {THUMB_CACHE_DIR}")
 
     # Largura padrão das thumbs (pode ajustar no querystring ?w=)
     DEFAULT_THUMB_WIDTH = 320
@@ -883,6 +903,8 @@ def configure(app):
         return dt_utc.replace(tzinfo=None)
 
     def _thumb_cache_path(file_id: str, w: int) -> Path:
+        # file_id vem de ObjectId; w é inteiro sanetizado abaixo.
+        # Mantemos nomes determinísticos por ser cache; gravação é atômica via os.replace.
         return THUMB_CACHE_DIR / f"{file_id}_w{w}.jpg"
 
     def _make_thumb_bytes(img_bytes: bytes, width: int) -> bytes:
@@ -1226,7 +1248,7 @@ def configure(app):
 
             thumb_bytes = _make_thumb_bytes(original, width)
 
-            # Grava em cache local
+            # Grava em cache local usando arquivo temporário no MESMO diretório (evita TOCTOU)
             tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
             try:
                 # grava em arquivo temporário para evitar corrupção em concorrência
