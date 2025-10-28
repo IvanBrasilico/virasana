@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Optional, Dict, List
 import logging
 import csv
+import os
 from io import StringIO
 
 from pathlib import Path
@@ -1221,12 +1222,26 @@ def configure(app):
             thumb_bytes = _make_thumb_bytes(original, width)
 
             # Grava em cache local
+            tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
             try:
-                with open(cache_path, "wb") as f:
+                # grava em arquivo temporário para evitar corrupção em concorrência
+                with open(tmp_path, "wb") as f:
                     f.write(thumb_bytes)
-            except Exception:
-                # se falhar cache, serve mesmo assim
-                pass
+                # replace é atômico na maioria dos SOs (posix/nt modernos)
+                os.replace(tmp_path, cache_path)
+            except (OSError, IOError) as e:
+                # se falhar cache, serve mesmo assim, mas registre o motivo
+                app.logger.warning(
+                    "[exportacao_img][cache-write] falhou ao gravar cache %s (w=%s): %s",
+                    str(cache_path), width, str(e)
+                )
+                # melhor esforço: remove temporário, se existir
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                except (OSError, IOError):
+                    # não faz sentido propagar erro da limpeza
+                    pass
 
             return Response(
                 thumb_bytes,
