@@ -4,6 +4,7 @@ from datetime import timedelta, datetime, time, timezone
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
+from sqlalchemy.exc import SQLAlchemyError
 from decimal import Decimal
 from typing import Optional, Dict, List
 import logging
@@ -941,8 +942,9 @@ def configure(app):
         # Evita truncamento dos GROUP_CONCAT
         try:
             session.execute(text("SET SESSION group_concat_max_len = 4096"))
-        except Exception:
-            pass
+        except SQLAlchemyError as e:
+            # Sem permissão/compatibilidade? Mantém fluxo e registra para diagnóstico.
+            app.logger.debug("[due] SET group_concat_max_len ignorado: %s", e)
 
         # Normaliza âncoras: [(NUM_UC, DT)]
         norm_anchors: List[tuple] = []
@@ -1046,10 +1048,13 @@ def configure(app):
                 # Para chave consistente com o chamador, parseamos:
                 if isinstance(dt_anchor, str):
                     try:
-                        dt_anchor = datetime.strptime(dt_anchor, "%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        # Em alguns drivers, pode já vir datetime; se falhar, deixa como veio
-                        pass
+                        dt_anchor = datetime.strptime(
+                            dt_anchor, "%Y-%m-%d %H:%M:%S"
+                        )
+                    except (ValueError, TypeError) as e:
+                        # Se o formato divergir, mantemos o valor original (string),
+                        # mas registramos para diagnóstico sem interromper o fluxo.
+                        app.logger.debug("[due] dt_anchor parse falhou: %r (%s)", dt_anchor, e)
 
                 itens_list = []
                 if r.get("due_itens_concat"):
