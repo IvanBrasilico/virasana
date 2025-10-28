@@ -3,7 +3,7 @@
 from datetime import timedelta, datetime, time, timezone
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from decimal import Decimal
 from typing import Optional, Dict, List
 import logging
@@ -166,15 +166,13 @@ def configure(app):
         CHUNK = 1000  # segurança para listas grandes
         for i in range(0, len(cpfs_norm), CHUNK):
             bloco = cpfs_norm[i:i+CHUNK]
-            # Monta placeholders :d0, :d1, ...
-            ph = ", ".join(f":d{j}" for j in range(len(bloco)))
-            sql = text(f"""
+            # Expanding bind param evita construir IN (...) manualmente
+            sql = text("""
                 SELECT cpf
                 FROM risco_motoristas
-                WHERE
-                  REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN ({ph})
-            """)
-            params = {f"d{j}": v for j, v in enumerate(bloco)}
+                WHERE REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN :cpfs
+            """).bindparams(bindparam("cpfs", expanding=True))
+            params = {"cpfs": tuple(bloco)}
             try:
                 rows = session.execute(sql, params).all()
             except Exception:
@@ -200,10 +198,9 @@ def configure(app):
         recinto_destino = _normaliza_destino(recinto_destino)
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        # placeholders dinâmicos para IN (:o0, :o1, ...)
-        o_ph = ", ".join([f":o{i}" for i in range(len(origens_filtrar))]) if origens_filtrar else ""
-        sub_filtro_origem = (f" AND s2.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
-        where_filtro_origem = (f" AND s.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
+        # Usa expanding bind param para listas IN
+        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
+        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
 
         sql_txt = f"""
             SELECT
@@ -258,11 +255,14 @@ def configure(app):
             "inicio": inicio,
             "fim": fim
         }
-        # adiciona valores dos IN (:o0, :o1, ...)
-        for i, code in enumerate(origens_filtrar):
-            params[f"o{i}"] = code
-
-        rows = session.execute(text(sql_txt), params).fetchall()
+        if origens_filtrar:
+            params["origens"] = tuple(origens_filtrar)
+            rows = session.execute(
+                text(sql_txt).bindparams(bindparam("origens", expanding=True)),
+                params
+            ).fetchall()
+        else:
+            rows = session.execute(text(sql_txt), params).fetchall()
 
         resultados = [{
             "numeroConteiner": r.numeroConteiner,
