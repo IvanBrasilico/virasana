@@ -1,8 +1,7 @@
 # exportacao_app.py
 
-from datetime import date, timedelta, datetime, time, timezone
-from flask import render_template, request, flash, url_for, jsonify, Response
-from flask import Blueprint
+from datetime import timedelta, datetime, time, timezone
+from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text
 from decimal import Decimal
@@ -11,17 +10,15 @@ import logging
 import csv
 from io import StringIO
 
-import os
-import json
 from pathlib import Path
 from io import BytesIO
-from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from pymongo import ASCENDING
 from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
+
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -31,13 +28,13 @@ def configure(app):
     )
     app.register_blueprint(exportacao_app)
     '''
-    
+
     app.logger.setLevel(logging.DEBUG)
 
     # Timezone da aplicação (entradas exibidas/fornecidas no horário local)
     APP_TZ = ZoneInfo("America/Sao_Paulo")
 
-    # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
+    # Tolerância para cruzar timestamp de entrada/saída com pesagens
     TOL_MINUTOS_PESAGEM = 20
 
     # -------------------------------------------------
@@ -113,13 +110,15 @@ def configure(app):
         return valor if valor in destinos_validos else "8931356"
 
     def _quartis(sorted_vals):
-        """ Q1/Q3 pelo método de Tukey (exclui o elemento central se ímpar). """
+        """ Q1/Q3 pelo método de Tukey
+        (exclui o elemento central se ímpar). """
         n = len(sorted_vals)
         if n == 0:
             return None, None
+
         def _mediana(vals):
             m = len(vals)
-            if m == 0: 
+            if m == 0:
                 return None
             mid = m // 2
             if m % 2 == 1:
@@ -149,14 +148,17 @@ def configure(app):
     def _cpfs_em_risco(session, cpfs_iter):
         """
         Recebe um iterável de CPFs (possivelmente com pontuação, None, etc.),
-        normaliza para dígitos e retorna um set com os CPFs (dígitos) encontrados
+        normaliza para dígitos e retorna um set com os CPFs encontrados
         na tabela risco_motoristas.
 
-        Observação: usamos REPLACE na coluna do banco p/ normalizar também do lado SQL,
+        Observação: usamos REPLACE na coluna do banco
+        p/ normalizar também do lado SQL,
         garantindo match mesmo se estiverem com pontuação na tabela.
         """
         # Coleta únicos normalizados (só dígitos) e remove vazios
-        cpfs_norm = sorted({ _cpf_digits(c) for c in (cpfs_iter or []) if _cpf_digits(c) })
+        cpfs_norm = sorted({
+            _cpf_digits(c) for c in (cpfs_iter or []) if _cpf_digits(c)
+        })
         if not cpfs_norm:
             return set()
 
@@ -172,7 +174,7 @@ def configure(app):
                 WHERE
                   REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN ({ph})
             """)
-            params = { f"d{j}": v for j, v in enumerate(bloco) }
+            params = {f"d{j}": v for j, v in enumerate(bloco)}
             try:
                 rows = session.execute(sql, params).all()
             except Exception:
@@ -183,9 +185,16 @@ def configure(app):
                 encontrados.add(_cpf_digits(getattr(r, "cpf", None)))
         return encontrados
 
-    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: Optional[List[str]] = None):
+    def consultar_transit_time(
+        session,
+        recinto_destino: str,
+        inicio: datetime,
+        fim: datetime,
+        origens_filtrar: Optional[List[str]] = None
+    ):
         """
-        Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
+        Executa a mesma SQL da rota /exportacao/transit_time
+        e marca outliers (IQR).
         Retorna (resultados:list[dict], stats:dict).
         """
         recinto_destino = _normaliza_destino(recinto_destino)
@@ -274,12 +283,13 @@ def configure(app):
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
 
-        # === 2º passo: enriquecer com DUE / Exportador / NCM (com janela temporal por linha) ===
-        # Para cada linha, a âncora temporal é a ENTRADA no destino (e.dataHoraOcorrencia).
+        # === 2º passo:
+        # enriquecer com DUE / Exportador / NCM (com janela temporal por linha)
+        # Para cada linha, a âncora temporal é a ENTRADA no destino.
         anchors = []
         for it in resultados:
             num = (it.get("numeroConteiner") or "").strip().upper()
-            dt  = it.get("dataHoraOcorrencia")
+            dt = it.get("dataHoraOcorrencia")
             if num and dt:
                 anchors.append((num, dt))
         # Janela de 15 dias em relação a cada dt_anchor
@@ -294,7 +304,7 @@ def configure(app):
             item["exportador_nome"] = info.get("exportador_nome") if info else None
 
         # === 3º passo: marcar motoristas em risco pelo CPF (apenas ENTRADA) ===
-        # Coletamos CPFs das entradas (e opcionalmente poderíamos marcar também o da origem)
+        # Coletamos CPFs das entradas
         cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
         try:
             em_risco = _cpfs_em_risco(session, cpfs_entrada)  # set de CPFs normalizados (dígitos)
@@ -317,7 +327,7 @@ def configure(app):
             limite_outlier_strict = None
         else:
             iqr = float(q3 - q1)
-            limite_outlier_mild   = float(q3 + 1.5 * iqr)
+            limite_outlier_mild = float(q3 + 1.5 * iqr)
             limite_outlier_strict = float(q3 + 15.0 * iqr)
 
         for item in resultados:
@@ -344,7 +354,13 @@ def configure(app):
             csrf_token=generate_csrf
         )
 
-    def get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan, vazio=False) -> list:
+    def get_imagens_container_data(
+        mongodb,
+        numero,
+        inicio_scan,
+        fim_scan,
+        vazio=False
+    ) -> list:
         query = {
             'metadata.contentType': 'image/jpeg',
             'metadata.dataescaneamento': {'$gte': inicio_scan, '$lte': fim_scan}
@@ -414,7 +430,12 @@ def configure(app):
         inicio_scan = datetime.strptime(start, '%Y-%m-%d')
         fim_scan = datetime.strptime(end, '%Y-%m-%d')
 
-        arquivos = get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan)
+        arquivos = get_imagens_container_data(
+            mongodb,
+            numero,
+            inicio_scan,
+            fim_scan,
+        )
 
         return render_template(
             'exportacao.html',
@@ -422,23 +443,27 @@ def configure(app):
             csrf_token=generate_csrf
         )
 
-
     # ---------------------------------------------------------
     # Consulta de PESO: primeira pesagem válida (I/R) do contêiner
     # no recinto de destino após dt_min (hora da entrada).
     # Mantido neste arquivo por simplicidade de integração.
     # ---------------------------------------------------------
-    def consulta_peso_container(session, numero_conteiner: str, codigo_recinto: str, dt_min: datetime) -> Optional[Dict]:
+    def consulta_peso_container(
+        session,
+        numero_conteiner: str,
+        codigo_recinto: str,
+        dt_min: datetime
+    ) -> Optional[Dict]:
         """
         Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_min,
         já consolidada contra retificações/exclusões.
         Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
         [dt_min - TOL_MINUTOS_PESAGEM, dt_min + TOL_MINUTOS_PESAGEM].
         """
-        
+
         dt_min_lower = dt_min - timedelta(minutes=TOL_MINUTOS_PESAGEM)
-        dt_max_upper = dt_min + timedelta(minutes=TOL_MINUTOS_PESAGEM)     
-        
+        dt_max_upper = dt_min + timedelta(minutes=TOL_MINUTOS_PESAGEM)
+
         sql = text("""
             SELECT
               p.id,
@@ -493,7 +518,8 @@ def configure(app):
                 app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} BETWEEN({dt_min_lower},{dt_max_upper}) -> count={n}")
 
                 dbg = session.execute(text("""
-                    SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
+                    SELECT id,codigoRecinto,dataHoraOcorrencia,
+                    dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
                     FROM apirecintos_pesagensveiculo
                     WHERE numeroConteiner=:n AND codigoRecinto=:r
                       AND dataHoraOcorrencia BETWEEN :d1 AND :d2
@@ -527,17 +553,22 @@ def configure(app):
     # ocorrida PRÓXIMA de dt_max (hora da SAÍDA S do recinto anterior),
     # com tolerância simétrica ±TOL_MINUTOS_PESAGEM.
     # ---------------------------------------------------------
-    def consulta_peso_ate(session, numero_conteiner: str, codigo_recinto: str, dt_max: datetime) -> Optional[Dict]:
+    def consulta_peso_ate(
+        session,
+        numero_conteiner: str,
+        codigo_recinto: str,
+        dt_max: datetime
+    ) -> Optional[Dict]:
         """
         Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_max,
         consolidada por MAX(dataHoraTransmissao) por dataHoraOcorrencia.
         Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
         [dt_max - TOL_MINUTOS_PESAGEM, dt_max + TOL_MINUTOS_PESAGEM].
         """
-        
+
         dt_max_upper = dt_max + timedelta(minutes=TOL_MINUTOS_PESAGEM)
-        dt_min_lower = dt_max - timedelta(minutes=TOL_MINUTOS_PESAGEM)     
-        
+        dt_min_lower = dt_max - timedelta(minutes=TOL_MINUTOS_PESAGEM)
+
         sql = text("""
             SELECT
               p.id,
@@ -603,17 +634,17 @@ def configure(app):
         Endpoint para o fetch() do front-end.
         Parâmetros:
           - numeroConteiner: str
-          - codigoRecinto  : str
-          - dtMin          : 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
-          - sCodigoRecinto : str (opcional — recinto da SAÍDA anterior)
-          - sDataHora      : 'YYYY-MM-DD HH:MM:SS' (opcional — hora da SAÍDA anterior)
+          - codigoRecinto: str
+          - dtMin: 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
+          - sCodigoRecinto: str (opcional — recinto da SAÍDA anterior)
+          - sDataHora: 'YYYY-MM-DD HH:MM:SS' (opcional — hora da SAÍDA anterior)
         """
         session = app.config['db_session']
-        numero  = request.args.get('numeroConteiner')
+        numero = request.args.get('numeroConteiner')
         recinto = request.args.get('codigoRecinto')
-        dt_min  = request.args.get('dtMin')
+        dt_min = request.args.get('dtMin')
         s_recinto = request.args.get('sCodigoRecinto')
-        s_dh      = request.args.get('sDataHora')
+        s_dh = request.args.get('sDataHora')
 
         app.logger.debug(f"[consulta_peso] QS raw: numeroConteiner={numero!r}, codigoRecinto={recinto!r}, dtMin={dt_min!r}")
         if not (numero and recinto and dt_min):
@@ -650,7 +681,6 @@ def configure(app):
             if pe_placa or po_placa:
                 placa_changed = (pe_placa != "" and po_placa != "" and pe_placa != po_placa)
 
-
         if not entrada and not origem:
             app.logger.debug(f"[consulta_peso] NOT FOUND (entrada e origem) numero={numero}, destino={recinto}")
             return jsonify({"found": False}), 404
@@ -677,7 +707,7 @@ def configure(app):
 
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
         data_str = request.args.get('data')     # ex.: "2025-09-16"
-        destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        destino = request.args.get('destino')     # ex.: "8931356" | "8931359"
 
         # múltiplos ?origem=...
         # Regra:
@@ -690,7 +720,7 @@ def configure(app):
         else:
             # primeiro acesso: marcar todas como selecionadas
             origens_sel = list(ORIGENS_TODAS)
-        
+
         if data_str:
             try:
                 data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
@@ -702,11 +732,11 @@ def configure(app):
 
         # janela meio-aberta [00:00:00, +1 dia)
         inicio = datetime.combine(data_base, time.min)
-        fim    = inicio + timedelta(days=1)
+        fim = inicio + timedelta(days=1)
 
         # Rótulos para o template
         data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
-        data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
+        data_iso = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
 
         # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
         destino = _normaliza_destino(destino)
@@ -732,17 +762,17 @@ def configure(app):
             csrf_token=generate_csrf,
             emails_recintos=emails_map
          )
-         
+
     @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
     def transit_time_export():
         """
-        Exporta os resultados filtrados (mesma lógica da tela) em CSV compatível com Excel.
+        Exporta os resultados filtrados em CSV compatível com Excel.
         Query string: ?data=YYYY-MM-DD&destino=CODIGO
         """
         session = app.config['db_session']
 
         data_str = request.args.get('data')
-        destino  = _normaliza_destino(request.args.get('destino'))
+        destino = _normaliza_destino(request.args.get('destino'))
         # Mesma regra do endpoint da tela:
         #  - Sem chave 'origem' => default = TODAS (mantém checkboxes “todas marcadas” no primeiro acesso
         #    e exporta coerentemente).
@@ -761,10 +791,9 @@ def configure(app):
             data_base = datetime.now().date() - timedelta(days=1)
 
         inicio = datetime.combine(data_base, time.min)
-        fim    = inicio + timedelta(days=1)
+        fim = inicio + timedelta(days=1)
 
         resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
-
 
         # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
         buf = StringIO()
@@ -821,7 +850,7 @@ def configure(app):
                 "Content-Disposition": f"attachment; filename={filename}"
             }
         )
-        
+
     # ======================
     #   IMAGENS (MongoDB)
     # ======================
@@ -835,7 +864,7 @@ def configure(app):
 
     # Limites de segurança
     MAX_CONTAINERS_PER_BULK = 100         # limite de lote por requisição do front
-    MAX_IN_NUMEROS_SIZE     = 500         # quebra o $in em sublotes p/ queries Mongo muito grandes
+    MAX_IN_NUMEROS_SIZE = 500         # quebra o $in em sublotes p/ queries Mongo muito grandes
 
     def _norm_numero(n: str) -> str:
         """Normaliza o número do contêiner para maiúsculas e sem espaços."""
@@ -871,7 +900,7 @@ def configure(app):
 
     def _ensure_indexes(mongodb):
         """
-        Cria índices importantes (idempotente). 
+        Cria índices importantes (idempotente).
         Chame 1x por ciclo ou deixe habilitado (barato se já existir).
         """
         try:
@@ -1034,7 +1063,10 @@ def configure(app):
                 }
         return out
 
-    def _query_images_bulk_for_containers(mongodb, entradas_por_numero: dict[str, datetime]) -> dict[str, list[dict]]:
+    def _query_images_bulk_for_containers(
+        mongodb,
+        entradas_por_numero: dict[str, datetime]
+    ) -> dict[str, list[dict]]:
         """
         Consulta o Mongo em (poucas) queries para um conjunto de contêineres e
         retorna um mapa: numero -> [ {id, data(datetime)} ... ] contendo apenas
@@ -1044,7 +1076,7 @@ def configure(app):
             return {}
 
         # Normaliza chaves e calcula janela global
-        entradas_por_numero = { _norm_numero(k): v for k, v in entradas_por_numero.items() if k }
+        entradas_por_numero = {_norm_numero(k): v for k, v in entradas_por_numero.items() if k}
         numeros = list(entradas_por_numero.keys())
         if not numeros:
             return {}
