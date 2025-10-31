@@ -235,7 +235,7 @@ def configure(app):
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    AND (
                         s2.codigoRecinto LIKE '89327%'
-                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203', '8933001', '8931339', '8931304')
+                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
                    )
                    AND s2.codigoRecinto <> e.codigoRecinto
                    {sub_filtro_origem}
