@@ -235,9 +235,9 @@
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
 
-                  {# Limite de exibição: transit time > 240 horas #}
+                  {# Limite de exibição: transit time > 120 horas #}
                   {% set tt = r.transit_time_horas %}
-                  {% set tt_limit = (tt is not none and tt > 240) %}
+                  {% set tt_limit = (tt is not none and tt > 120) %}
 
                   <span class="fw-semibold">Contêiner:</span>
                   <span class="me-3">{{ r.numeroConteiner }}</span>
@@ -248,7 +248,7 @@
                   <span class="fw-semibold">Vazio?</span>
                   <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
-                  <span class="fw-semibold">Origem:</span>
+                  <span class="fw-semibold">Redex de origem:</span>
                   <span class="me-3 text-nowrap">
                     {% if tt_limit %}
                       Estufado em recinto desconhecido ou não cadastrado
@@ -311,10 +311,10 @@
 			<span class="fw-semibold">CNPJ Transp.:</span>
 			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
 
-			<span class="fw-semibold">Placa:</span>
+			<span class="fw-semibold">Placa (entrada no Terminal):</span>
 			<span class="me-3">{{ r.placa or '—' }}</span>
 
-			  <span class="fw-semibold">Motorista:</span>
+			  <span class="fw-semibold">Motorista (entrada no Terminal):</span>
 			  <span class="me-3">
 				<span
 				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
@@ -329,7 +329,27 @@
 			  </span>
 				</div>
 
-                <!-- Linha 2.1 — DUE / Exportador / NCM -->
+                <!-- Linha 2.2 -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
+			<span class="fw-semibold">Placa (saída do redex):</span>
+			<span class="me-3">{{ r.placa or '—' }}</span>
+
+			  <span class="fw-semibold">Motorista (saída do redex):</span>
+			  <span class="me-3">
+				<span
+				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
+				  {% if r.s_motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+				>
+				  {{ r.s_nomeMotorista or '—' }}
+				</span>
+				(CPF: {{ r.s_cpfMotorista or '—' }})
+				{% if r.s_motorista_risco %}
+				  <span class="badge text-bg-danger ms-1">RISCO</span>
+				{% endif %}
+			  </span>
+				</div>
+
+                <!-- Linha 2.3 — DUE / Exportador / NCM -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
                   <span class="fw-semibold">DUE:</span>
                   <span class="me-3">
@@ -358,7 +378,7 @@
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
                 </div>
 
-                <!-- Linha 2.2 — Itens da DUE (1 por linha) -->
+                <!-- Linha 2.4 — Itens da DUE (1 por linha) -->
                 <div class="mt-2 small">
                   <div class="fw-semibold mb-1">Itens da DUE:</div>
                   {% if r.due_itens and r.due_itens|length > 0 %}
