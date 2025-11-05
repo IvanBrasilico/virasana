@@ -250,6 +250,9 @@ def configure(app):
                 AND e.direcao = 'E'
                 AND e.numeroConteiner IS NOT NULL
                 AND e.numeroConteiner <> ''
+                AND (
+                  e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA','DAT')
+                )
                 AND e.dataHoraOcorrencia >= :inicio
                 AND e.dataHoraOcorrencia < :fim
 --                 AND NOT EXISTS (
@@ -414,6 +417,9 @@ def configure(app):
                  e.direcao = 'E'
                  AND e.numeroConteiner = :numero
                  AND e.codigoRecinto IN :destinos
+                 AND (
+                   e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA','DAT')
+                 )
                  AND e.dataHoraOcorrencia >= :inicio
                  AND e.dataHoraOcorrencia < :fim
 --                AND NOT EXISTS (
