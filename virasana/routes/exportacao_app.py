@@ -252,14 +252,14 @@ def configure(app):
                 AND e.numeroConteiner <> ''
                 AND e.dataHoraOcorrencia >= :inicio
                 AND e.dataHoraOcorrencia < :fim
-                 AND NOT EXISTS (
-                   SELECT 1
-                   FROM apirecintos_acessosveiculo s3
-                   WHERE s3.numeroConteiner    = e.numeroConteiner
-                     AND s3.codigoRecinto      = e.codigoRecinto
-                     AND s3.direcao            = 'S'
-                     AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
-                 )
+--                 AND NOT EXISTS (
+--                   SELECT 1
+--                   FROM apirecintos_acessosveiculo s3
+--                   WHERE s3.numeroConteiner    = e.numeroConteiner
+--                     AND s3.codigoRecinto      = e.codigoRecinto
+--                     AND s3.direcao            = 'S'
+--                     AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
+--                 )
                 {where_filtro_origem}
             ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
         """
@@ -416,14 +416,14 @@ def configure(app):
                  AND e.codigoRecinto IN :destinos
                  AND e.dataHoraOcorrencia >= :inicio
                  AND e.dataHoraOcorrencia < :fim
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM apirecintos_acessosveiculo s3
-                  WHERE s3.numeroConteiner    = e.numeroConteiner
-                    AND s3.codigoRecinto      = e.codigoRecinto
-                    AND s3.direcao            = 'S'
-                    AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
-                )
+--                AND NOT EXISTS (
+--                  SELECT 1
+--                  FROM apirecintos_acessosveiculo s3
+--                  WHERE s3.numeroConteiner    = e.numeroConteiner
+--                    AND s3.codigoRecinto      = e.codigoRecinto
+--                    AND s3.direcao            = 'S'
+--                    AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
+--                )
                  {where_filtro_origem}
              ORDER BY e.dataHoraOcorrencia ASC
          """
