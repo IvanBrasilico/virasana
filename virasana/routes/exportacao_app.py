@@ -13,6 +13,8 @@ import csv
 import os
 from io import StringIO
 
+DEFAULT_LOOKBACK_DAYS = 30  # usado quando numero= e não há de/ate/data
+
 from pathlib import Path
 import tempfile
 from io import BytesIO
@@ -799,8 +801,10 @@ def configure(app):
         session = app.config['db_session']
 
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
-        data_str = request.args.get('data')     # ex.: "2025-09-16"
-        destino = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        data_str = request.args.get('data')            # ex.: "2025-09-16" (modo antigo por dia)
+        de_str   = request.args.get('de')              # ex.: "2025-10-01"
+        ate_str  = request.args.get('ate')             # ex.: "2025-10-31"
+        destino  = request.args.get('destino')         # ex.: "8931356" | "8931359"
         numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
 
         # múltiplos ?origem=...
@@ -815,31 +819,85 @@ def configure(app):
             # primeiro acesso: marcar todas como selecionadas
             origens_sel = list(ORIGENS_TODAS)
 
-        if data_str:
-            try:
-                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
-            except ValueError:
-                # Se formato inválido, volta para ontem
-                data_base = datetime.now().date() - timedelta(days=1)
-        else:
-            data_base = datetime.now().date() - timedelta(days=1)
-
-        # janela meio-aberta [00:00:00, +1 dia)
-        inicio = datetime.combine(data_base, time.min)
-        fim = inicio + timedelta(days=1)
-
-        # Rótulos para o template (modo DATA ou modo CONTAINER)
-        data_label = data_base.strftime("%d/%m/%Y")
-        data_iso = data_base.strftime("%Y-%m-%d")
-
         if numero_param:
-            # Busca por contêiner: consulta todas as ENTRADAS do número, nos 4 destinos
+            # ---------------------------
+            # MODO CONTÊINER COM INTERVALO
+            # ---------------------------
+            # Priorização de intervalo:
+            # 1) se "de" ou "ate" vierem -> usa intervalo [de, ate+1d)
+            # 2) senão, se "data" vier -> usa janela do dia [data, data+1d)
+            # 3) senão -> usa últimos DEFAULT_LOOKBACK_DAYS até agora
+            parse = lambda s: datetime.strptime(s, "%Y-%m-%d").date()
+            today = datetime.now().date()
+
+            if de_str or ate_str:
+                try:
+                    if de_str:
+                        de_date = parse(de_str)
+                    else:
+                        # sem "de": usa ate - DEFAULT_LOOKBACK_DAYS
+                        ate_date_tmp = parse(ate_str)
+                        de_date = ate_date_tmp - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    if ate_str:
+                        ate_date = parse(ate_str)
+                    else:
+                        # sem "ate": usa hoje
+                        ate_date = today
+                except ValueError:
+                    # se qualquer inválido, cai no fallback 3
+                    de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    ate_date = today
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                data_label = f"De {de_date.strftime('%d/%m/%Y')} até {ate_date.strftime('%d/%m/%Y')}"
+                data_iso = None
+                de_iso = de_date.strftime("%Y-%m-%d")
+                ate_iso = ate_date.strftime("%Y-%m-%d")
+            elif data_str:
+                # comportamento antigo por dia, se o usuário quiser
+                try:
+                    data_base = parse(data_str)
+                except ValueError:
+                    data_base = today - timedelta(days=1)
+                inicio = datetime.combine(data_base, time.min)
+                fim = inicio + timedelta(days=1)
+                data_label = data_base.strftime("%d/%m/%Y")
+                data_iso = data_base.strftime("%Y-%m-%d")
+                de_iso = None
+                ate_iso = None
+            else:
+                # fallback: últimos N dias
+                ate_date = today
+                de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                data_label = f"Últimos {DEFAULT_LOOKBACK_DAYS} dias (até {ate_date.strftime('%d/%m/%Y')})"
+                data_iso = None
+                de_iso = de_date.strftime("%Y-%m-%d")
+                ate_iso = ate_date.strftime("%Y-%m-%d")
+
             destino = "multi"  # rótulo especial no template
             resultados, stats = consultar_transit_time_por_container(
                 session, numero_param, inicio, fim, origens_filtrar=origens_sel
             )
         else:
-            # Modo original (por data + destino)
+            # ---------------------------
+            # MODO ANTIGO POR DIA + DESTINO
+            # ---------------------------
+            if data_str:
+                try:
+                    data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+                except ValueError:
+                    data_base = datetime.now().date() - timedelta(days=1)
+            else:
+                data_base = datetime.now().date() - timedelta(days=1)
+            inicio = datetime.combine(data_base, time.min)
+            fim = inicio + timedelta(days=1)
+            data_label = data_base.strftime("%d/%m/%Y")
+            data_iso = data_base.strftime("%Y-%m-%d")
+            de_iso = None
+            ate_iso = None
+
             destino = _normaliza_destino(destino)
             resultados, stats = consultar_transit_time(
                 session, destino, inicio, fim, origens_filtrar=origens_sel
@@ -852,8 +910,9 @@ def configure(app):
             'exportacao_transit_time.html',
             resultados=resultados,
             data_label=data_label,
-            # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
+            de_iso=de_iso,
+            ate_iso=ate_iso,
             destino=destino,
             numero=numero_param,
             origens_sel=origens_sel,  # manter estado das checkboxes
@@ -873,6 +932,8 @@ def configure(app):
         session = app.config['db_session']
 
         data_str = request.args.get('data')
+        de_str   = request.args.get('de')
+        ate_str  = request.args.get('ate')
         numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
         destino_arg = request.args.get('destino')
         destino = _normaliza_destino(destino_arg) if destino_arg else None
@@ -886,24 +947,58 @@ def configure(app):
         else:
             origens_sel = list(ORIGENS_TODAS)
 
-        if data_str:
-            try:
-                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
-            except ValueError:
-                data_base = datetime.now().date() - timedelta(days=1)
-        else:
-            data_base = datetime.now().date() - timedelta(days=1)
-
-        inicio = datetime.combine(data_base, time.min)
-        fim = inicio + timedelta(days=1)
-
         if numero_param:
+            parse = lambda s: datetime.strptime(s, "%Y-%m-%d").date()
+            today = datetime.now().date()
+            if de_str or ate_str:
+                try:
+                    if de_str:
+                        de_date = parse(de_str)
+                    else:
+                        ate_date_tmp = parse(ate_str)
+                        de_date = ate_date_tmp - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    if ate_str:
+                        ate_date = parse(ate_str)
+                    else:
+                        ate_date = today
+                except ValueError:
+                    de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    ate_date = today
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                filename_suffix = f"{de_date.strftime('%Y-%m-%d')}_a_{ate_date.strftime('%Y-%m-%d')}"
+            elif data_str:
+                try:
+                    data_base = parse(data_str)
+                except ValueError:
+                    data_base = today - timedelta(days=1)
+                inicio = datetime.combine(data_base, time.min)
+                fim = inicio + timedelta(days=1)
+                filename_suffix = data_base.strftime('%Y-%m-%d')
+            else:
+                ate_date = today
+                de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                filename_suffix = f"ult{DEFAULT_LOOKBACK_DAYS}d_ate_{ate_date.strftime('%Y-%m-%d')}"
+
             resultados, stats = consultar_transit_time_por_container(
                 session, numero_param, inicio, fim, origens_filtrar=origens_sel
             )
         else:
+            # modo antigo export por dia+destino
+            if data_str:
+                try:
+                    data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+                except ValueError:
+                    data_base = datetime.now().date() - timedelta(days=1)
+            else:
+                data_base = datetime.now().date() - timedelta(days=1)
+            inicio = datetime.combine(data_base, time.min)
+            fim = inicio + timedelta(days=1)
             destino = _normaliza_destino(destino or "8931356")
             resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+            filename_suffix = data_base.strftime('%Y-%m-%d')
 
         # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
         buf = StringIO()
@@ -953,9 +1048,9 @@ def configure(app):
             ])
 
         filename = (
-            f"transit_time_{numero_param}_{data_base.strftime('%Y-%m-%d')}.csv"
+            f"transit_time_{numero_param}_{filename_suffix}.csv"
             if numero_param else
-            f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
+            f"transit_time_{destino}_{filename_suffix}.csv"
         )
 
         return Response(

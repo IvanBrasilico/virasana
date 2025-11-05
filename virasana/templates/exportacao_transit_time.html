@@ -95,13 +95,20 @@
      </h1>
 
     <p class="text-muted">
-     Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong>
-     · Saída anterior: <em>outro recinto</em>
-     {% if not is_container_mode %}
-       · Destino: <em>{{ destino_label }}</em>
-     {% else %}
-       · Destinos: <em>4 terminais (Santos Brasil, BTP, DPW, Ecoporto)</em>
-     {% endif %}
+      {% if is_container_mode and (de_iso or ate_iso) %}
+        Janela: <strong>{{ data_label }}</strong>
+      {% elif is_container_mode and (not data_iso) %}
+        Janela: <strong>{{ data_label }}</strong>
+      {% else %}
+        Janela: 00:00:00 a 23:59:59
+      {% endif %}
+      · Direção: <strong>E</strong>
+      · Saída anterior: <em>outro recinto</em>
+      {% if not is_container_mode %}
+        · Destino: <em>{{ destino_label }}</em>
+      {% else %}
+        · Destinos: <em>4 terminais (Santos Brasil, BTP, DPW, Ecoporto)</em>
+      {% endif %}
     </p>
 
     {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
@@ -134,7 +141,28 @@
           id="data"
           name="data"
           value="{{ data_iso }}"
-          required
+          {% if not is_container_mode %}required{% endif %}
+        />
+      </div>
+
+      <div class="col-auto">
+        <label for="de" class="form-label mb-0">De (opcional)</label>
+        <input
+          type="date"
+          class="form-control"
+          id="de"
+          name="de"
+          value="{{ de_iso or '' }}"
+        />
+      </div>
+      <div class="col-auto">
+        <label for="ate" class="form-label mb-0">Até (opcional)</label>
+        <input
+          type="date"
+          class="form-control"
+          id="ate"
+          name="ate"
+          value="{{ ate_iso or '' }}"
         />
       </div>
 
@@ -180,11 +208,8 @@
       </div>
 
       <div class="col-auto">
-        <a
-          class="btn btn-success"
-          href="{{ url_for('transit_time_export', data=data_iso, destino=(destino if not is_container_mode else None), numero=(numero if is_container_mode else None)) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
-          role="button"
-        >
+  <a class="btn btn-success"
+     href="{{ url_for('transit_time_export', data=data_iso, de=de_iso, ate=ate_iso, numero=numero) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}">
           Exportar Excel
         </a>
       </div>
