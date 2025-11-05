@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
+   {# indica se estamos no modo "busca por contêiner" #}
+   {% set is_container_mode = (numero is defined and numero) %}
+
   <style>
     /* limita a altura e preserva proporção nas thumbs */
     .img-strip img {
@@ -75,20 +78,30 @@
       "8931318": "ECOPORTO"
     } %}
 
-    {% set destino_label =
-         ('8931356 - Santos Brasil' if destino == '8931356'
-         else '8931359 - BTP' if destino == '8931359'
-         else '8931404 - DPW/EMBRAPORT' if destino == '8931404'
-         else '8931318 - ECOPORTO' if destino == '8931318'
-         else destino)
-     %}
+     {% set destino_label =
+          ('8931356 - Santos Brasil' if destino == '8931356'
+          else '8931359 - BTP' if destino == '8931359'
+          else '8931404 - DPW/EMBRAPORT' if destino == '8931404'
+          else '8931318 - ECOPORTO' if destino == '8931318'
+          else ('Todos os terminais' if destino == 'multi' else destino))
+      %}
 
-    <h1 class="mb-1">Entradas no Recinto {{ destino_label }} — {{ data_label }}</h1>
+     <h1 class="mb-1">
+       {% if is_container_mode %}
+         Contêiner {{ numero }} — {{ data_label }}
+       {% else %}
+         Entradas no Recinto {{ destino_label }} — {{ data_label }}
+       {% endif %}
+     </h1>
 
     <p class="text-muted">
-      Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong>
-      · Saída anterior: <em>outro recinto</em>
-      · Destino: <em>{{ destino_label }}</em>
+     Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong>
+     · Saída anterior: <em>outro recinto</em>
+     {% if not is_container_mode %}
+       · Destino: <em>{{ destino_label }}</em>
+     {% else %}
+       · Destinos: <em>4 terminais (Santos Brasil, BTP, DPW, Ecoporto)</em>
+     {% endif %}
     </p>
 
     {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
@@ -111,7 +124,7 @@
       </div>
     {% endif %}
 
-    <!-- Filtro por data/destino/origem (GET) -->
+    <!-- Filtro por data/destino/origem/contêiner (GET) -->
     <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
       <div class="col-auto">
         <label for="data" class="form-label mb-0">Data</label>
@@ -125,6 +138,23 @@
         />
       </div>
 
+     <div class="col-auto">
+       <label for="numero" class="form-label mb-0">Contêiner (opcional)</label>
+       <input
+         type="text"
+         class="form-control"
+         id="numero"
+         name="numero"
+         value="{{ numero or '' }}"
+         placeholder="Ex.: MSCU1234567"
+         pattern="[A-Za-z]{4}\s?\d{7}"
+         title="4 letras + 7 dígitos (padrão BIC)"
+       />
+       <div class="form-text">
+         Se preencher o contêiner, a busca considera ENTRADAS do número nos 4 terminais.
+       </div>
+     </div>
+
       <div class="col-auto">
         <label for="destino" class="form-label mb-0">Recinto de destino (E)</label>
         <select class="form-control" id="destino" name="destino">
@@ -133,7 +163,10 @@
 		  
 		  <option value="8931404" {{ 'selected' if destino == '8931404' else '' }}>8931404 - DPW/EMBRAPORT</option>
 		  <option value="8931318" {{ 'selected' if destino == '8931318' else '' }}>8931318 - Ecoporto</option>
-        </select>
+       </select>
+       {% if is_container_mode %}
+         <div class="form-text">Ignorado quando há um contêiner informado.</div>
+       {% endif %}
       </div>
 
       <!-- Botão para abrir filtro de origem -->
@@ -153,7 +186,7 @@
       <div class="col-auto">
         <a
           class="btn btn-success"
-          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
+          href="{{ url_for('transit_time_export', data=data_iso, destino=(destino if not is_container_mode else None), numero=(numero if is_container_mode else None)) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
           role="button"
         >
           Exportar Excel
@@ -338,12 +371,12 @@
 			  <span class="me-3">
 				<span
 				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
-				  {% if r.s_motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
 				>
 				  {{ r.s_nomeMotorista or '—' }}
 				</span>
 				(CPF: {{ r.s_cpfMotorista or '—' }})
-				{% if r.s_motorista_risco %}
+				{% if r.motorista_risco %}
 				  <span class="badge text-bg-danger ms-1">RISCO</span>
 				{% endif %}
 			  </span>

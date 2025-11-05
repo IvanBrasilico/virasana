@@ -6,6 +6,7 @@ from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
 from decimal import Decimal
+from copy import deepcopy
 from typing import Optional, Dict, List
 import logging
 import csv
@@ -268,6 +269,158 @@ def configure(app):
             rows = session.execute(text(sql_txt), params).fetchall()
 
         resultados = [{
+             "numeroConteiner": r.numeroConteiner,
+             "codigoRecinto": r.codigoRecinto,
+             "dataHoraOcorrencia": r.dataHoraOcorrencia,
+             "cnpjTransportador": r.cnpjTransportador,
+             "placa": r.placa,
+             "cpfMotorista": r.cpfMotorista,
+             "nomeMotorista": r.nomeMotorista,
+             "vazioConteiner": r.vazioConteiner,
+             "s_codigoRecinto": r.s_codigoRecinto,
+             "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
+             "s_cnpjTransportador": r.s_cnpjTransportador,
+             "s_placa": r.s_placa,
+             "s_cpfMotorista": r.s_cpfMotorista,
+             "s_nomeMotorista": r.s_nomeMotorista,
+             "s_vazioConteiner": r.s_vazioConteiner,
+             "transit_time_horas": r.transit_time_horas,
+         } for r in rows]
+
+        # Pós-processamento comum (DUE, risco, IQR)
+        return _posprocessar_transit_rows(session, resultados)
+
+    def _posprocessar_transit_rows(session, resultados: List[Dict]):
+        """Enriquece linhas de trânsito (DUE, risco CPF) e calcula IQR/outliers.
+        Retorna (resultados_enriquecidos, stats)."""
+        resultados = deepcopy(resultados)  # não mutar quem chamou
+        # 1) DUE/Exportador/NCM — âncora = ENTRADA
+        anchors = []
+        for it in resultados:
+            num = (it.get("numeroConteiner") or "").strip().upper()
+            dt = it.get("dataHoraOcorrencia")
+            if num and dt:
+                anchors.append((num, dt))
+        mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
+        for item in resultados:
+            k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
+            info = mapa_due.get(k)
+            item["numero_due"] = info["numero_due"] if info else None
+            item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
+            item["nfe_ncm"] = info["nfe_ncm"] if info else None
+            item["due_itens"] = info.get("due_itens") if info else []
+            item["exportador_nome"] = info.get("exportador_nome") if info else None
+        # 2) Risco por CPF (apenas ENTRADA)
+        cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
+        try:
+            em_risco = _cpfs_em_risco(session, cpfs_entrada)
+        except Exception:
+            app.logger.exception("[risco_motoristas] falha ao consultar CPFs de risco")
+            em_risco = set()
+        for it in resultados:
+            it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
+        # 3) IQR/outliers
+        vals = sorted([
+            float(x["transit_time_horas"]) for x in resultados
+            if x["transit_time_horas"] is not None
+        ])
+        q1, q3 = _quartis(vals)
+        if q1 is None or q3 is None:
+            iqr = 0.0
+            limite_outlier_mild = None
+            limite_outlier_strict = None
+        else:
+            iqr = float(q3 - q1)
+            limite_outlier_mild = float(q3 + 1.5 * iqr)
+            limite_outlier_strict = float(q3 + 15.0 * iqr)
+        for item in resultados:
+            v = item["transit_time_horas"]
+            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
+                item["is_outlier"] = False
+            else:
+                vv = float(v)
+                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
+        stats = {
+            "q1": q1, "q3": q3, "iqr": iqr,
+            "limite_outlier_mild": limite_outlier_mild,
+            "limite_outlier_strict": limite_outlier_strict
+        }
+        return resultados, stats
+
+    def consultar_transit_time_por_container(
+         session,
+         numero_conteiner: str,
+         inicio: datetime,
+         fim: datetime,
+         origens_filtrar: Optional[List[str]] = None,
+         destinos_validos: Optional[List[str]] = None
+     ):
+        """
+        Lista TODAS as ENTRADAS (E) do contêiner nos terminais de destino (default 4)
+        no intervalo [inicio, fim), emparelhando com a última SAÍDA (S) anterior,
+        e aplicando o mesmo pós-processamento da tela de transit time.
+        """
+        destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
+        origens_filtrar = _sanitize_origens(origens_filtrar or [])
+        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
+        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+
+        sql_txt = f"""
+             SELECT
+                 e.numeroConteiner,
+                 e.codigoRecinto,
+                 e.dataHoraOcorrencia,
+                 e.cnpjTransportador,
+                 e.placa,
+                 e.cpfMotorista,
+                 e.nomeMotorista,
+                 e.vazioConteiner,
+                 s.codigoRecinto       AS s_codigoRecinto,
+                 s.dataHoraOcorrencia  AS s_dataHoraOcorrencia,
+                 s.cnpjTransportador   AS s_cnpjTransportador,
+                 s.placa               AS s_placa,
+                 s.cpfMotorista        AS s_cpfMotorista,
+                 s.nomeMotorista       AS s_nomeMotorista,
+                 s.vazioConteiner      AS s_vazioConteiner,
+                 TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
+             FROM apirecintos_acessosveiculo e
+             LEFT JOIN apirecintos_acessosveiculo s
+               ON s.id = (
+                  SELECT s2.id
+                  FROM apirecintos_acessosveiculo s2
+                  WHERE s2.numeroConteiner = e.numeroConteiner
+                    AND s2.direcao = 'S'
+                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
+                    AND (
+                         s2.codigoRecinto LIKE '89327%'
+                      OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
+                    )
+                    AND s2.codigoRecinto <> e.codigoRecinto
+                    {sub_filtro_origem}
+                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
+                  LIMIT 1
+               )
+             WHERE
+                 e.direcao = 'E'
+                 AND e.numeroConteiner = :numero
+                 AND e.codigoRecinto IN :destinos
+                 AND e.dataHoraOcorrencia >= :inicio
+                 AND e.dataHoraOcorrencia < :fim
+                 {where_filtro_origem}
+             ORDER BY e.dataHoraOcorrencia ASC
+         """
+        params = {
+             "numero": (numero_conteiner or "").strip().upper(),
+             "destinos": tuple(destinos_validos),
+             "inicio": inicio,
+             "fim": fim
+        }
+        bind = text(sql_txt).bindparams(bindparam("destinos", expanding=True))
+        if origens_filtrar:
+            bind = bind.bindparams(bindparam("origens", expanding=True))
+            params["origens"] = tuple(origens_filtrar)
+        rows = session.execute(bind, params).fetchall()
+        resultados = [{
             "numeroConteiner": r.numeroConteiner,
             "codigoRecinto": r.codigoRecinto,
             "dataHoraOcorrencia": r.dataHoraOcorrencia,
@@ -285,70 +438,7 @@ def configure(app):
             "s_vazioConteiner": r.s_vazioConteiner,
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
-
-        # === 2º passo:
-        # enriquecer com DUE / Exportador / NCM (com janela temporal por linha)
-        # Para cada linha, a âncora temporal é a ENTRADA no destino.
-        anchors = []
-        for it in resultados:
-            num = (it.get("numeroConteiner") or "").strip().upper()
-            dt = it.get("dataHoraOcorrencia")
-            if num and dt:
-                anchors.append((num, dt))
-        # Janela de 15 dias em relação a cada dt_anchor
-        mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
-        for item in resultados:
-            k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
-            info = mapa_due.get(k)
-            item["numero_due"] = info["numero_due"] if info else None
-            item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
-            item["nfe_ncm"] = info["nfe_ncm"] if info else None
-            item["due_itens"] = info.get("due_itens") if info else []
-            item["exportador_nome"] = info.get("exportador_nome") if info else None
-
-        # === 3º passo: marcar motoristas em risco pelo CPF (apenas ENTRADA) ===
-        # Coletamos CPFs das entradas
-        cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
-        try:
-            em_risco = _cpfs_em_risco(session, cpfs_entrada)  # set de CPFs normalizados (dígitos)
-        except Exception:
-            app.logger.exception("[risco_motoristas] falha ao consultar CPFs de risco")
-            em_risco = set()
-        for it in resultados:
-            it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
-
-        # IQR / outliers
-        vals = sorted([
-            float(x["transit_time_horas"]) for x in resultados
-            if x["transit_time_horas"] is not None
-        ])
-        q1, q3 = _quartis(vals)
-
-        if q1 is None or q3 is None:
-            iqr = 0.0
-            limite_outlier_mild = None
-            limite_outlier_strict = None
-        else:
-            iqr = float(q3 - q1)
-            limite_outlier_mild = float(q3 + 1.5 * iqr)
-            limite_outlier_strict = float(q3 + 15.0 * iqr)
-
-        for item in resultados:
-            v = item["transit_time_horas"]
-            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
-                item["is_outlier"] = False
-            else:
-                vv = float(v)
-                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
-
-        stats = {
-            "q1": q1,
-            "q3": q3,
-            "iqr": iqr,
-            "limite_outlier_mild": limite_outlier_mild,
-            "limite_outlier_strict": limite_outlier_strict
-        }
-        return resultados, stats
+        return _posprocessar_transit_rows(session, resultados)
 
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
@@ -711,6 +801,7 @@ def configure(app):
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
         data_str = request.args.get('data')     # ex.: "2025-09-16"
         destino = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
 
         # múltiplos ?origem=...
         # Regra:
@@ -737,16 +828,22 @@ def configure(app):
         inicio = datetime.combine(data_base, time.min)
         fim = inicio + timedelta(days=1)
 
-        # Rótulos para o template
-        data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
-        data_iso = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
+        # Rótulos para o template (modo DATA ou modo CONTAINER)
+        data_label = data_base.strftime("%d/%m/%Y")
+        data_iso = data_base.strftime("%Y-%m-%d")
 
-        # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
-        destino = _normaliza_destino(destino)
-
-        # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
-        # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+        if numero_param:
+            # Busca por contêiner: consulta todas as ENTRADAS do número, nos 4 destinos
+            destino = "multi"  # rótulo especial no template
+            resultados, stats = consultar_transit_time_por_container(
+                session, numero_param, inicio, fim, origens_filtrar=origens_sel
+            )
+        else:
+            # Modo original (por data + destino)
+            destino = _normaliza_destino(destino)
+            resultados, stats = consultar_transit_time(
+                session, destino, inicio, fim, origens_filtrar=origens_sel
+            )
 
         # Carrega mapa {codigo_recinto: email} para exibir ícone de e-mail no template
         emails_map = load_emails_recintos(session)
@@ -758,6 +855,7 @@ def configure(app):
             # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
             destino=destino,
+            numero=numero_param,
             origens_sel=origens_sel,  # manter estado das checkboxes
             q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"],
             limite_outlier_mild=stats["limite_outlier_mild"],
@@ -770,12 +868,15 @@ def configure(app):
     def transit_time_export():
         """
         Exporta os resultados filtrados em CSV compatível com Excel.
-        Query string: ?data=YYYY-MM-DD&destino=CODIGO
+        Query string: ?data=YYYY-MM-DD&destino=CODIGO  OU  ?data=YYYY-MM-DD&numero=CONT
         """
         session = app.config['db_session']
 
         data_str = request.args.get('data')
-        destino = _normaliza_destino(request.args.get('destino'))
+        numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
+        destino_arg = request.args.get('destino')
+        destino = _normaliza_destino(destino_arg) if destino_arg else None
+
         # Mesma regra do endpoint da tela:
         #  - Sem chave 'origem' => default = TODAS (mantém checkboxes “todas marcadas” no primeiro acesso
         #    e exporta coerentemente).
@@ -796,7 +897,13 @@ def configure(app):
         inicio = datetime.combine(data_base, time.min)
         fim = inicio + timedelta(days=1)
 
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+        if numero_param:
+            resultados, stats = consultar_transit_time_por_container(
+                session, numero_param, inicio, fim, origens_filtrar=origens_sel
+            )
+        else:
+            destino = _normaliza_destino(destino or "8931356")
+            resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
 
         # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
         buf = StringIO()
@@ -845,7 +952,12 @@ def configure(app):
                 r.get("nfe_ncm") or ""
             ])
 
-        filename = f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
+        filename = (
+            f"transit_time_{numero_param}_{data_base.strftime('%Y-%m-%d')}.csv"
+            if numero_param else
+            f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
+        )
+
         return Response(
             buf.getvalue(),
             mimetype="text/csv; charset=utf-8",
