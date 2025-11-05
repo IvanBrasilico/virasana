@@ -133,9 +133,8 @@
 
 <!-- Filtro por data/destino/origem/contêiner (GET) -->
 <form class="container-fluid mt-3 mb-4" method="get" action="">
+  <!-- Linha 1: Data + Destino + Origem -->
   <div class="row g-3 align-items-end">
-
-    <!-- Linha 1: Período -->
     <div class="col-md-3 col-sm-6">
       <label for="data" class="form-label">Data</label>
       <input type="date" class="form-control" id="data" name="data"
@@ -143,30 +142,7 @@
              {% if not is_container_mode %}required{% endif %}>
     </div>
 
-    <div class="col-md-3 col-sm-6">
-      <label for="de" class="form-label">De (opcional)</label>
-      <input type="date" class="form-control" id="de" name="de"
-             value="{{ de_iso or '' }}">
-    </div>
-
-    <div class="col-md-3 col-sm-6">
-      <label for="ate" class="form-label">Até (opcional)</label>
-      <input type="date" class="form-control" id="ate" name="ate"
-             value="{{ ate_iso or '' }}">
-    </div>
-
-    <div class="col-md-3 col-sm-6">
-      <label for="numero" class="form-label">Contêiner (opcional)</label>
-      <input type="text" class="form-control" id="numero" name="numero"
-             value="{{ numero or '' }}"
-             pattern="[A-Za-z]{4}\s?\d{7}"
-             title="4 letras + 7 dígitos (padrão BIC)">
-    </div>
-  </div>
-
-  <!-- Linha 2: Destino, Origem e Ações -->
-  <div class="row g-3 align-items-end mt-1">
-    <div class="col-md-4 col-sm-6">
+    <div class="col-md-6 col-sm-6">
       <label for="destino" class="form-label">Recinto de destino (E)</label>
       <select class="form-control" id="destino" name="destino">
         <option value="8931356" {{ 'selected' if destino == '8931356' else '' }}>8931356 - Santos Brasil</option>
@@ -179,28 +155,48 @@
       {% endif %}
     </div>
 
-    <div class="col-md-3 col-sm-6">
-      <label class="form-label d-block">Origem (opcional)</label>
+    <div class="col-md-3 col-sm-12">
+      <label class="form-label d-block">Origem</label>
       <button class="btn btn-outline-secondary w-100" type="button"
               data-bs-toggle="collapse" data-bs-target="#filtroOrigem"
               aria-expanded="false" aria-controls="filtroOrigem">
-        Selecionar origens
+        Selecionar origens (opcional)
       </button>
-    </div>
-
-    <div class="col-md-2 col-sm-6">
-      <button type="submit" class="btn btn-primary w-100">Aplicar</button>
-    </div>
-
-    <div class="col-md-3 col-sm-6">
-      <a class="btn btn-success w-100"
-         href="{{ url_for('transit_time_export', data=data_iso, de=de_iso, ate=ate_iso, numero=numero) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}">
-        Exportar Excel
-      </a>
     </div>
   </div>
 
-  <!-- Filtro colapsável -->
+  <!-- Linha 2: De + Até + Contêiner + Ações -->
+  <div class="row g-3 align-items-end mt-1">
+    <div class="col-md-3 col-sm-6">
+      <label for="de" class="form-label">De (opcional)</label>
+      <input type="date" class="form-control" id="de" name="de" value="{{ de_iso or '' }}">
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+      <label for="ate" class="form-label">Até (opcional)</label>
+      <input type="date" class="form-control" id="ate" name="ate" value="{{ ate_iso or '' }}">
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+      <label for="numero" class="form-label">Contêiner (opcional)</label>
+      <input type="text" class="form-control" id="numero" name="numero"
+             value="{{ numero or '' }}"
+             pattern="[A-Za-z]{4}\s?\d{7}"
+             title="4 letras + 7 dígitos (padrão BIC)">
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+      <div class="d-flex gap-2 justify-content-md-end">
+        <button type="submit" class="btn btn-primary w-100 w-md-auto">Aplicar</button>
+        <a class="btn btn-success w-100 w-md-auto"
+           href="{{ url_for('transit_time_export', data=data_iso, de=de_iso, ate=ate_iso, numero=numero) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}">
+          Exportar Excel
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtro colapsável: Origens -->
   <div class="row">
     <div class="col-12">
       <div class="collapse mt-3" id="filtroOrigem">
@@ -216,11 +212,8 @@
             {% for codigo, nome in recintos.items() %}
               <div class="col">
                 <div class="form-check">
-                  <input class="form-check-input origem-checkbox"
-                         type="checkbox"
-                         id="origem-{{ codigo }}"
-                         name="origem"
-                         value="{{ codigo }}"
+                  <input class="form-check-input origem-checkbox" type="checkbox"
+                         id="origem-{{ codigo }}" name="origem" value="{{ codigo }}"
                          {{ 'checked' if codigo in origens_sel else '' }}>
                   <label class="form-check-label" for="origem-{{ codigo }}">
                     {{ nome }} <span class="text-muted">({{ codigo }})</span>
