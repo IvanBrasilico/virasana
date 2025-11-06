@@ -471,6 +471,8 @@ def configure(app):
             csrf_token=generate_csrf
         )
 
+
+# TRECHO COMENTADO A SEGUIR NÃO É MAIS UTILIZADO NO PROJETO
 #    def get_imagens_container_data(
 #        mongodb,
 #        numero,
@@ -559,6 +561,7 @@ def configure(app):
 #            arquivos=arquivos,
 #            csrf_token=generate_csrf
 #        )
+
 
     # ---------------------------------------------------------
     # Consulta de PESO: primeira pesagem válida (I/R) do contêiner
