@@ -1,5 +1,10 @@
 # exportacao_app.py
 
+import logging
+import csv
+import os
+import tempfile
+
 from datetime import timedelta, datetime, time, timezone
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
@@ -8,22 +13,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from decimal import Decimal
 from copy import deepcopy
 from typing import Optional, Dict, List
-import logging
-import csv
-import os
 from io import StringIO
-
 from pathlib import Path
-import tempfile
 from io import BytesIO
 from zoneinfo import ZoneInfo
-
 from pymongo import ASCENDING
 from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
-
-DEFAULT_LOOKBACK_DAYS = 30  # usado quando numero= e não há de/ate/data
 
 
 def configure(app):
@@ -42,6 +39,9 @@ def configure(app):
 
     # Tolerância para cruzar timestamp de entrada/saída com pesagens
     TOL_MINUTOS_PESAGEM = 20
+    
+    # usado quando numero= e não há de/ate/data
+    DEFAULT_LOOKBACK_DAYS = 30
 
     # -------------------------------------------------
     # Opções de RECINTOS DE ORIGEM (para filtro checkboxes)
