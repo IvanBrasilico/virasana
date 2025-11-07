@@ -1037,7 +1037,7 @@ function formatDateTime(isoString) {
       const ref = document.createElement('div');
       ref.className = 'text-muted small mt-1';
       const ts = data.snapshot_ref.dataescaneamento || '';
-      ref.textContent = `Fonte: Mongo (snapshot ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
+      ref.textContent = `(informação coletada ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
       el.appendChild(ref);
     }
   }
