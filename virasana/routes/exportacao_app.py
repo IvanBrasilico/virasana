@@ -1389,6 +1389,238 @@ def configure(app):
 
         return imgs_por_numero
 
+    def _query_carga_bulk_for_containers(
+        mongodb,
+        entradas_por_numero: dict[str, datetime]
+    ) -> dict[str, dict]:
+        """Busca um *snapshot* de carga por contêiner, próximo da ENTRADA.
+
+        Estratégia:
+          1) Janela global = [min(entradas)-7d, max(entradas)+2h+7d]
+          2) Filtra apenas docs com metadata.carga presente
+          3) Itera 1x e escolhe o melhor doc por contêiner com a prioridade:
+             (a) Te < d <= Te+2h   (preferido)
+             (b) d <= Te           (mais recente antes)
+             (c) d > Te            (o mais próximo depois, até +7d)
+        Retorna um mapa numero -> payload resumido.
+        """
+        if not entradas_por_numero:
+            return {}
+
+        entradas_por_numero = {_norm_numero(k): v for k, v in entradas_por_numero.items() if k}
+        numeros = list(entradas_por_numero.keys())
+        if not numeros:
+            return {}
+
+        t_min = min(entradas_por_numero.values())
+        t_max = max(entradas_por_numero.values())
+        janela_ini = t_min - timedelta(days=7)
+        janela_fim = t_max + timedelta(hours=2, days=7)
+
+        base_filter = {
+            "metadata.carga": {"$exists": True},
+            "metadata.dataescaneamento": {"$gte": janela_ini, "$lte": janela_fim},
+        }
+        projection = {
+            "_id": 1,
+            "metadata.numeroinformado": 1,
+            "metadata.dataescaneamento": 1,
+            "metadata.carga": 1,
+        }
+        sort_spec = [("metadata.numeroinformado", 1), ("metadata.dataescaneamento", 1)]
+
+        # Seleções parciais por número
+        best_pref: dict[str, dict] = {}
+        best_before: dict[str, dict] = {}
+        best_after: dict[str, dict] = {}
+
+        MAX_IN = MAX_IN_NUMEROS_SIZE
+        for i in range(0, len(numeros), MAX_IN):
+            lote = numeros[i:i+MAX_IN]
+            if not lote:
+                continue
+
+            filtro = dict(base_filter)
+            filtro["metadata.numeroinformado"] = {"$in": lote}
+
+            cursor = (
+                mongodb["fs.files"]
+                .find(filtro, projection)
+                .sort(sort_spec)
+                
+            )
+
+            for doc in cursor:
+                n = _norm_numero(doc.get("metadata", {}).get("numeroinformado", ""))
+                if not n or n not in entradas_por_numero:
+                    continue
+                dsc = doc.get("metadata", {}).get("dataescaneamento", None)
+                if not dsc:
+                    continue
+                Te = entradas_por_numero[n]
+
+                if Te < dsc <= (Te + timedelta(hours=2)):
+                    # mantém o primeiro da janela preferida (ordem crescente de dataescaneamento)
+                    if n not in best_pref:
+                        best_pref[n] = doc
+                    continue
+
+                if dsc <= Te:
+                    # queremos o mais próximo *antes* => manter o MAIOR dsc
+                    cur = best_before.get(n)
+                    if (cur is None) or (cur["metadata"]["dataescaneamento"] < dsc):
+                        best_before[n] = doc
+                else:
+                    # após Te => manter o MENOR dsc
+                    cur = best_after.get(n)
+                    if (cur is None) or (cur["metadata"]["dataescaneamento"] > dsc):
+                        best_after[n] = doc
+
+        # Escolhe por prioridade e formata
+        out: dict[str, dict] = {}
+
+        def _trunc(s: str, maxlen: int = 500) -> str:
+            s = (s or "")
+            return (s[:maxlen] + "…") if len(s) > maxlen else s
+
+        def _to_upper(s: str) -> str:
+            return (s or "").upper()
+
+        def _num_from_str(x):
+            # tenta converter '003890.000' -> 3890 (int) quando possível
+            try:
+                val = float(str(x).replace(",", "."))
+                if abs(val - round(val)) < 1e-6:
+                    return int(round(val))
+                return val
+            except Exception:
+                return None
+
+        def _build_payload(doc: dict) -> dict:
+            meta = doc.get("metadata", {})
+            carga = (meta.get("carga") or {}) if isinstance(meta.get("carga"), dict) else {}
+            dsc = meta.get("dataescaneamento")
+
+            # Manifestos / Portos
+            manifestos = []
+            portos_origem = set()
+            portos_destino = set()
+
+            for m in carga.get("manifesto", []) or []:
+                man = m.get("manifesto")
+                if man:
+                    manifestos.append(str(man))
+                po = m.get("codigoportocarregamento")
+                pd = m.get("codigoportodescarregamento")
+                if po: portos_origem.add(_to_upper(po))
+                if pd: portos_destino.add(_to_upper(pd))
+
+            # Conhecimentos
+            conhecimentos = []
+            for c in carga.get("conhecimento", []) or []:
+                conhecimentos.append({
+                    "tipo": c.get("tipo"),
+                    "numero": c.get("conhecimento"),
+                    "descricaomercadoria": _trunc(c.get("descricaomercadoria") or ""),
+                    "agente": c.get("codigoagentenavegacao"),
+                    "consignatario": c.get("cpfcnpjconsignatario"),
+                    "porto_origem": _to_upper(c.get("codigoportoorigem")),
+                    "porto_destino": _to_upper(c.get("codigoportodestino")),
+                })
+                if c.get("codigoportoorigem"): portos_origem.add(_to_upper(c.get("codigoportoorigem")))
+                if c.get("codigoportodestino"): portos_destino.add(_to_upper(c.get("codigoportodestino")))
+
+            # NCMs
+            ncms = []
+            for ncm in carga.get("ncm", []) or []:
+                code = (ncm.get("ncm") or "").strip()
+                if code:
+                    ncms.append(code)
+
+            # Container info (pega o primeiro item)
+            cont_info = {}
+            cont_list = carga.get("container", []) or []
+            if cont_list:
+                ci = cont_list[0]
+                cont_info = {
+                    "lacre": ci.get("lacre"),
+                    "tara_kg": _num_from_str(ci.get("taracontainer")),
+                    "peso_bruto_item_kg": _num_from_str(ci.get("pesobrutoitem")),
+                    "volume_item_m3": _num_from_str(ci.get("volumeitem")),
+                    "uso_parcial": ci.get("indicadorusoparcial") in (True, "true", "True", "1", 1),
+                }
+
+            payload = {
+                "carga_present": True,
+                "pesototal": carga.get("pesototal"),
+                "manifestos": sorted(set(manifestos)),
+                "portos": {
+                    "origens": sorted(portos_origem),
+                    "destinos": sorted(portos_destino),
+                },
+                "conhecimentos": conhecimentos,
+                "ncm": sorted(set(ncms)),
+                "container_info": cont_info,
+                "snapshot_ref": {
+                    "file_id": str(doc.get("_id")),
+                    "dataescaneamento": dsc.isoformat() if isinstance(dsc, datetime) else None,
+                }
+            }
+            return payload
+
+        for n in numeros:
+            chosen = best_pref.get(n) or best_before.get(n) or best_after.get(n)
+            if chosen:
+                out[n] = _build_payload(chosen)
+            else:
+                out[n] = {"carga_present": False}
+
+        return out
+
+
+    @app.route("/exportacao/transit_time/carga_bulk", methods=["POST"])
+    def exportacao_transit_time_carga_bulk():
+        """Endpoint bulk que retorna um *resumo* da carga por contêiner.
+
+        Body JSON:
+        {
+          "containers": [
+            {"numero": "MSCU1234567", "entrada": "YYYY-MM-DD HH:MM:SS"},
+            ...
+          ]
+        }
+        Restrições:
+          - Máx. {MAX_CONTAINERS_PER_BULK} contêineres por chamada
+          - Datas são interpretadas no fuso da aplicação e convertidas p/ UTC-naive
+        """
+        try:
+            payload = request.get_json(silent=True) or {}
+            items = payload.get("containers", [])
+            if not isinstance(items, list):
+                return jsonify({"error": "Formato inválido"}), 400
+
+            if len(items) > MAX_CONTAINERS_PER_BULK:
+                return jsonify({"error": f"Excede limite de {MAX_CONTAINERS_PER_BULK} contêineres por requisição"}), 400
+
+            entradas_por_numero: dict[str, datetime] = {}
+            for it in items:
+                numero = _norm_numero(it.get("numero", ""))
+                entrada_str = it.get("entrada", "")
+                if not (numero and entrada_str):
+                    continue
+                try:
+                    entradas_por_numero[numero] = _parse_local_to_utc_naive(entrada_str)
+                except Exception:
+                    app.logger.debug(f"[carga_bulk] Ignorando entrada inválida: numero={numero!r}, entrada={entrada_str!r}")
+
+            mongodb = app.config["mongodb"]
+            result_map = _query_carga_bulk_for_containers(mongodb, entradas_por_numero)
+            return jsonify(result_map)
+
+        except Exception:
+            app.logger.exception("[carga_bulk] Erro inesperado")
+            return jsonify({"error": "Erro interno"}), 500
+
     @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
     def exportacao_transit_time_imgs_bulk():
         """

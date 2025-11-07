@@ -427,6 +427,13 @@
                   {% endif %}
                 </div>
 
+                <!-- Linha 2.5 — Resumo da Carga (via Mongo) -->
+                <div class="mt-2 small carga-summary"
+                     data-numero="{{ r.numeroConteiner }}"
+                     data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                  <span class="text-muted">Carregando dados de carga…</span>
+                </div>
+
                 <!-- Linha 3 -->
                 <div class="mt-2">
                   <button class="btn btn-sm btn-outline-primary"
@@ -886,6 +893,220 @@ function formatDateTime(isoString) {
     // Debug leve (apenas se quiser inspecionar no console)
     // console.warn('Barra de ordenação não encontrada.');
   }
+})();
+</script>
+
+<script>
+(function() {
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const NODES = Array.from(document.querySelectorAll('.carga-summary'));
+  if (!NODES.length) return;
+
+  // Renderização segura (constrói DOM, evita innerHTML com dados longos/desconhecidos)
+  function renderCarga(el, data) {
+    el.textContent = ''; // limpa placeholder
+
+    if (!data || !data.carga_present) {
+      const m = document.createElement('span');
+      m.className = 'text-muted';
+      m.textContent = 'Sem dados de carga';
+      el.appendChild(m);
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'd-flex flex-wrap align-items-center gap-2';
+
+    // helper: cria "rótulo: valor"
+    function row(label, valueEl) {
+      const frag = document.createElement('div');
+      frag.className = 'd-flex align-items-center gap-1 me-3';
+      const b = document.createElement('span');
+      b.className = 'fw-semibold';
+      b.textContent = label;
+      frag.appendChild(b);
+      frag.appendChild(valueEl);
+      return frag;
+    }
+
+    // helper: badges
+    function badges(arr) {
+      const span = document.createElement('span');
+      if (!arr || !arr.length) { span.textContent = '—'; return span; }
+      for (const v of arr) {
+        const b = document.createElement('span');
+        b.className = 'badge text-bg-secondary me-1';
+        b.textContent = String(v);
+        span.appendChild(b);
+      }
+      return span;
+    }
+
+    // Manifestos
+    wrap.appendChild(row('Manifesto(s):', badges(data.manifestos)));
+
+    // Portos (origens/destinos)
+    const portos = document.createElement('span');
+    const po = (data.portos && data.portos.origens) || [];
+    const pd = (data.portos && data.portos.destinos) || [];
+    portos.appendChild(document.createTextNode('O: '));
+    portos.appendChild(badges(po));
+    portos.appendChild(document.createTextNode('  D: '));
+    portos.appendChild(badges(pd));
+    wrap.appendChild(row('Portos', portos));
+
+    // NCM(s)
+    wrap.appendChild(row('NCM(s):', badges(data.ncm)));
+
+    // Peso total (quando houver)
+    if (data.pesototal != null) {
+      const p = document.createElement('span');
+      p.textContent = Number(data.pesototal).toLocaleString('pt-BR');
+      wrap.appendChild(row('Peso total (kg):', p));
+    }
+
+    // Container info (lacre / tara / peso item / volume)
+    if (data.container_info) {
+      const ci = data.container_info;
+      const info = document.createElement('span');
+      const pedacos = [];
+      if (ci.lacre) pedacos.push(`Lacre: ${ci.lacre}`);
+      if (ci.tara_kg != null) pedacos.push(`Tara: ${ci.tara_kg} kg`);
+      if (ci.peso_bruto_item_kg != null) pedacos.push(`Peso item: ${ci.peso_bruto_item_kg} kg`);
+      if (ci.volume_item_m3 != null) pedacos.push(`Volume: ${ci.volume_item_m3} m³`);
+      info.textContent = pedacos.length ? pedacos.join(' · ') : '—';
+      wrap.appendChild(row('Container:', info));
+    }
+
+    // Botão de detalhes (conhecimentos)
+    const hasConhec = Array.isArray(data.conhecimentos) && data.conhecimentos.length > 0;
+    if (hasConhec) {
+      const detailsBtn = document.createElement('button');
+      detailsBtn.type = 'button';
+      detailsBtn.className = 'btn btn-sm btn-outline-secondary';
+      detailsBtn.textContent = 'Detalhes da carga';
+      detailsBtn.setAttribute('aria-expanded', 'false');
+
+      const detailsBox = document.createElement('div');
+      detailsBox.className = 'mt-2 d-none';
+
+      // monta lista
+      const list = document.createElement('div');
+      list.className = 'ms-2';
+      for (const c of data.conhecimentos) {
+        const linha = document.createElement('div');
+        linha.className = 'mb-1';
+        const cab = document.createElement('div');
+        cab.className = 'fw-semibold';
+        const tipo = (c.tipo || '').toUpperCase();
+        const num = c.numero || '';
+        cab.textContent = `${tipo || '—'} ${num || ''}`.trim();
+        const desc = document.createElement('div');
+        desc.className = 'text-muted';
+        desc.textContent = c.descricaomercadoria || '';
+        const meta = document.createElement('div');
+        meta.className = 'small';
+        const pedacos = [];
+        if (c.agente) pedacos.push(`Agente: ${c.agente}`);
+        if (c.consignatario) pedacos.push(`Consignatário: ${c.consignatario}`);
+        if (c.porto_origem) pedacos.push(`Origem: ${c.porto_origem}`);
+        if (c.porto_destino) pedacos.push(`Destino: ${c.porto_destino}`);
+        meta.textContent = pedacos.join(' · ') || '—';
+        linha.appendChild(cab);
+        linha.appendChild(desc);
+        linha.appendChild(meta);
+        list.appendChild(linha);
+      }
+      detailsBox.appendChild(list);
+
+      detailsBtn.addEventListener('click', () => {
+        const open = detailsBox.classList.toggle('d-none') === false;
+        detailsBtn.setAttribute('aria-expanded', String(open));
+        detailsBtn.textContent = open ? 'Ocultar detalhes' : 'Detalhes da carga';
+      });
+
+      el.appendChild(wrap);
+      el.appendChild(detailsBtn);
+      el.appendChild(detailsBox);
+    } else {
+      el.appendChild(wrap);
+    }
+
+    // Rodapé: referência do snapshot
+    if (data.snapshot_ref && (data.snapshot_ref.file_id || data.snapshot_ref.dataescaneamento)) {
+      const ref = document.createElement('div');
+      ref.className = 'text-muted small mt-1';
+      const ts = data.snapshot_ref.dataescaneamento || '';
+      ref.textContent = `Fonte: Mongo (snapshot ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
+      el.appendChild(ref);
+    }
+  }
+
+  // Lotes pendentes e controle (mantém a mesma ideia de /imgs_bulk)
+  const pending = new Set();
+  let inflight = false;
+
+  function scheduleFetch() {
+    if (inflight || pending.size === 0) return;
+    inflight = true;
+
+    // Tamanho de lote: mantenha moderado (ex.: 60)
+    const batch = Array.from(pending).slice(0, 60);
+    batch.forEach(el => pending.delete(el));
+
+    const filtered = batch.filter(el => !el.dataset.loaded);
+    if (filtered.length === 0) {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+      return;
+    }
+
+    const containers = filtered.map(el => ({
+      numero:  el.getAttribute('data-numero'),
+      entrada: el.getAttribute('data-entrada')
+    }));
+
+    fetch('{{ url_for("exportacao_transit_time_carga_bulk") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      },
+      body: JSON.stringify({ containers })
+    })
+    .then(r => r.json())
+    .then(map => {
+      for (const el of filtered) {
+        const numero = el.getAttribute('data-numero');
+        renderCarga(el, map[numero]);
+        el.dataset.loaded = '1';
+      }
+    })
+    .catch(err => {
+      console.error('carga_bulk error', err);
+      for (const el of filtered) {
+        el.textContent = '';
+        const m = document.createElement('span');
+        m.className = 'text-muted';
+        m.textContent = 'Erro ao carregar carga';
+        el.appendChild(m);
+        el.dataset.loaded = '1';
+      }
+    })
+    .finally(() => {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+    });
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && !e.target.dataset.loaded) pending.add(e.target);
+    }
+    scheduleFetch();
+  }, { root: null, rootMargin: '200px 0px', threshold: 0 });
+
+  NODES.forEach(el => io.observe(el));
 })();
 </script>
 
