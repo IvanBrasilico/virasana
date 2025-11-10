@@ -1414,8 +1414,8 @@ def configure(app):
 
         t_min = min(entradas_por_numero.values())
         t_max = max(entradas_por_numero.values())
-        janela_ini = t_min - timedelta(days=7)
-        janela_fim = t_max + timedelta(hours=2, days=7)
+        janela_ini = t_min - timedelta(days=4)
+        janela_fim = t_max + timedelta(hours=2, days=4)
 
         base_filter = {
             "metadata.carga": {"$exists": True},
