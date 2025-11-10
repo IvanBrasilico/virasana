@@ -917,6 +917,14 @@ function formatDateTime(isoString) {
     const wrap = document.createElement('div');
     wrap.className = 'd-flex flex-wrap align-items-center gap-2';
 
+    // Badge de alerta do terminal (quando sinalizado no XML)
+    if (data && data.alerta_terminal === true) {
+      const alertBadge = document.createElement('span');
+      alertBadge.className = 'badge text-bg-danger';
+      alertBadge.textContent = 'alerta do terminal';
+      wrap.appendChild(alertBadge);
+    }
+
     // helper: cria "rótulo: valor"
     function row(label, valueEl) {
       const frag = document.createElement('div');

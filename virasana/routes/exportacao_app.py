@@ -1426,6 +1426,7 @@ def configure(app):
             "metadata.numeroinformado": 1,
             "metadata.dataescaneamento": 1,
             "metadata.carga": 1,
+            "metadata.xml.alerta": 1,
         }
         sort_spec = [("metadata.numeroinformado", 1), ("metadata.dataescaneamento", 1)]
 
@@ -1500,6 +1501,8 @@ def configure(app):
             meta = doc.get("metadata", {})
             carga = (meta.get("carga") or {}) if isinstance(meta.get("carga"), dict) else {}
             dsc = meta.get("dataescaneamento")
+            xml = meta.get("xml") or {}
+            alerta_terminal = bool(xml.get("alerta") in (True, "true", "True", "1", 1))
 
             # Manifestos / Portos
             manifestos = []
@@ -1561,6 +1564,7 @@ def configure(app):
                 "conhecimentos": conhecimentos,
                 "ncm": sorted(set(ncms)),
                 "container_info": cont_info,
+                "alerta_terminal": alerta_terminal,
                 "snapshot_ref": {
                     "file_id": str(doc.get("_id")),
                     "dataescaneamento": dsc.isoformat() if isinstance(dsc, datetime) else None,
@@ -1573,7 +1577,9 @@ def configure(app):
             if chosen:
                 out[n] = _build_payload(chosen)
             else:
-                out[n] = {"carga_present": False}
+                # Sem snapshot de carga — ainda não vasculhamos XML-only.
+                # Por ora, mantém alerta como False (pode-se evoluir com um segundo passe se necessário).
+                out[n] = {"carga_present": False, "alerta_terminal": False}
 
         return out
 
