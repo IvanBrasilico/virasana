@@ -251,7 +251,7 @@ def configure(app):
                 AND e.numeroConteiner IS NOT NULL
                 AND e.numeroConteiner <> ''
                 AND (
-                  e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA','DAT')
+                  e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
                 )
                 AND e.dataHoraOcorrencia >= :inicio
                 AND e.dataHoraOcorrencia < :fim
@@ -418,7 +418,7 @@ def configure(app):
                  AND e.numeroConteiner = :numero
                  AND e.codigoRecinto IN :destinos
                  AND (
-                   e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA','DAT')
+                   e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
                  )
                  AND e.dataHoraOcorrencia >= :inicio
                  AND e.dataHoraOcorrencia < :fim
