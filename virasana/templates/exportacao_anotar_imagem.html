@@ -289,14 +289,14 @@
         });
       }
 
-      // Envia anotação para o backend
-      btnSalvar.addEventListener('click', function () {
+      // Função comum para enviar a anotação ao backend
+      function enviarAnotacao(texto) {
         if (!lastSelection) {
           alert('Nenhuma área selecionada.');
           return;
         }
-        const texto = (textarea.value || '').trim();
-        if (!texto) {
+        const textoTrim = (texto || '').trim();
+        if (!textoTrim) {
           alert('Digite o texto da anotação.');
           return;
         }
@@ -312,7 +312,7 @@
             y1: lastSelection.y1,
             x2: lastSelection.x2,
             y2: lastSelection.y2,
-            anotacao: texto
+            anotacao: textoTrim
           })
         })
           .then(function (resp) { return resp.json(); })
@@ -331,7 +331,14 @@
           .catch(function () {
             alert('Erro de comunicação com o servidor.');
           });
-      });
+      }
+
+      // Clique no botão "Salvar" do modal (quando Bootstrap estiver disponível)
+      if (btnSalvar) {
+        btnSalvar.addEventListener('click', function () {
+          enviarAnotacao(textarea.value);
+        });
+      }
     });
   </script>
 
