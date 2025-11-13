@@ -91,6 +91,111 @@ def configure(app):
     # Tupla imutável com todas as origens possíveis (ordem preservada)
     ORIGENS_TODAS = tuple(ORIGENS_OPCOES.keys())
 
+    # ---------------------------------------------------------
+    # Anotações em imagens (helpers)
+    # ---------------------------------------------------------
+
+    def _get_numero_conteiner_from_file(mongodb, file_id: str) -> Optional[str]:
+        """
+        Busca em fs.files o metadata.numeroinformado para exibir/gravar junto da anotação.
+        Se não encontrar ou der erro, retorna None.
+        """
+        try:
+            oid = ObjectId(file_id)
+        except Exception:
+            return None
+
+        doc = mongodb["fs.files"].find_one(
+            {"_id": oid},
+            {"metadata.numeroinformado": 1}
+        )
+        if not doc:
+            return None
+
+        meta = doc.get("metadata") or {}
+        numero = meta.get("numeroinformado")
+        if not numero:
+            return None
+        # Normaliza (string, maiúsculo, sem espaços)
+        return str(numero).strip().upper()
+
+    def _listar_anotacoes_imagem(session, imagem_id: str) -> List[dict]:
+        """
+        Retorna as anotações ativas (excluida = 0) para uma determinada imagem.
+        """
+        rows = session.execute(text("""
+            SELECT
+              anotacao_imagem_id,
+              imagem_id,
+              numero_conteiner,
+              usuario_id,
+              data_criacao,
+              data_atualizacao,
+              x1_rel,
+              y1_rel,
+              x2_rel,
+              y2_rel,
+              anotacao
+            FROM ovr_anotacoes_imagens
+            WHERE imagem_id = :imagem_id
+              AND excluida = 0
+            ORDER BY data_criacao ASC
+        """), {"imagem_id": imagem_id}).mappings().all()
+
+        return [dict(r) for r in rows]
+
+    def _criar_anotacao_imagem(
+        session,
+        imagem_id: str,
+        numero_conteiner: Optional[str],
+        usuario_id: int,
+        x1_rel: float,
+        y1_rel: float,
+        x2_rel: float,
+        y2_rel: float,
+        anotacao: str,
+    ) -> None:
+        """
+        Insere uma nova anotação na tabela ovr_anotacoes_imagens.
+        Commit é feito aqui; em caso de erro, faz rollback.
+        """
+        try:
+            session.execute(text("""
+                INSERT INTO ovr_anotacoes_imagens (
+                    imagem_id,
+                    numero_conteiner,
+                    usuario_id,
+                    x1_rel,
+                    y1_rel,
+                    x2_rel,
+                    y2_rel,
+                    anotacao
+                ) VALUES (
+                    :imagem_id,
+                    :numero_conteiner,
+                    :usuario_id,
+                    :x1_rel,
+                    :y1_rel,
+                    :x2_rel,
+                    :y2_rel,
+                    :anotacao
+                )
+            """), {
+                "imagem_id": imagem_id,
+                "numero_conteiner": numero_conteiner,
+                "usuario_id": usuario_id,
+                "x1_rel": x1_rel,
+                "y1_rel": y1_rel,
+                "x2_rel": x2_rel,
+                "y2_rel": y2_rel,
+                "anotacao": anotacao,
+            })
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            app.logger.exception("[anotacoes_imagens] Erro ao inserir anotação")
+            raise
+
     # -------------------------------------------
     # Helper: Carrega mapa {codigo_recinto: email}
     # -------------------------------------------
@@ -1751,3 +1856,93 @@ def configure(app):
         except Exception:
             app.logger.exception("[exportacao_img] erro ao servir imagem")
             return Response("Internal error", status=500)
+
+    @app.route("/exportacao/img/<file_id>/anotar", methods=["GET"])
+    def exportacao_img_anotar(file_id: str):
+        """
+        Tela para visualizar uma imagem e suas anotações.
+        """
+        session = app.config['db_session']
+        mongodb = app.config["mongodb"]
+
+        # Número do contêiner (se existir no metadata)
+        numero_conteiner = _get_numero_conteiner_from_file(mongodb, file_id)
+
+        # Lista anotações já cadastradas
+        anotacoes = _listar_anotacoes_imagem(session, file_id)
+
+        return render_template(
+            "exportacao_anotar_imagem.html",
+            file_id=file_id,
+            numero_conteiner=numero_conteiner,
+            anotacoes=anotacoes,
+            csrf_token=generate_csrf,  # se quiser usar CSRF depois no JS
+        )
+
+    @app.route("/exportacao/img/<file_id>/anotacoes", methods=["POST"])
+    def exportacao_img_anotacoes_criar(file_id: str):
+        """
+        Recebe coordenadas relativas (0.0 a 1.0) e o texto da anotação,
+        valida e grava na tabela ovr_anotacoes_imagens.
+        """
+        session = app.config['db_session']
+        mongodb = app.config["mongodb"]
+
+        payload = request.get_json(silent=True) or {}
+
+        # Coordenadas
+        try:
+            x1 = float(payload.get("x1", 0.0))
+            y1 = float(payload.get("y1", 0.0))
+            x2 = float(payload.get("x2", 0.0))
+            y2 = float(payload.get("y2", 0.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Coordenadas inválidas"}), 400
+
+        # Normaliza (garante x1 <= x2, y1 <= y2)
+        if x2 < x1:
+            x1, x2 = x2, x1
+        if y2 < y1:
+            y1, y2 = y2, y1
+
+        # Clampa entre 0 e 1
+        def clamp(v: float) -> float:
+            return max(0.0, min(1.0, v))
+
+        x1 = clamp(x1)
+        y1 = clamp(y1)
+        x2 = clamp(x2)
+        y2 = clamp(y2)
+
+        # Evita retângulos minúsculos (cliques acidentais)
+        if (x2 - x1) < 0.005 or (y2 - y1) < 0.005:
+            return jsonify({"error": "Área de seleção muito pequena"}), 400
+
+        # Texto da anotação
+        anotacao_txt = (payload.get("anotacao") or "").strip()
+        if not anotacao_txt:
+            return jsonify({"error": "Texto da anotação é obrigatório"}), 400
+
+        # TODO: integrar com seu sistema real de usuário
+        # Por enquanto, deixo um placeholder.
+        usuario_id = 0  # substitua por algo como g.user.id, current_user.id, etc.
+
+        numero_conteiner = _get_numero_conteiner_from_file(mongodb, file_id)
+
+        try:
+            _criar_anotacao_imagem(
+                session=session,
+                imagem_id=file_id,
+                numero_conteiner=numero_conteiner,
+                usuario_id=usuario_id,
+                x1_rel=x1,
+                y1_rel=y1,
+                x2_rel=x2,
+                y2_rel=y2,
+                anotacao=anotacao_txt,
+            )
+        except SQLAlchemyError:
+            # Já foi logado e rollback feito dentro do helper
+            return jsonify({"error": "Erro ao salvar anotação"}), 500
+
+        return jsonify({"ok": True})

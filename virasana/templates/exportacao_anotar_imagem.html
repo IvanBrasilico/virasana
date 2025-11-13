@@ -1,0 +1,66 @@
+{# templates/exportacao_anotar_imagem.html #}
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container my-4">
+  <h2>Anotações na imagem</h2>
+
+  {% if numero_conteiner %}
+    <p class="text-muted">
+      Contêiner: <strong>{{ numero_conteiner }}</strong>
+    </p>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-lg-8">
+      <div id="image-annotator" class="position-relative d-inline-block">
+        <img
+          id="imagem-principal"
+          src="/exportacao/img/{{ file_id }}?w=1024"
+          class="img-fluid border"
+          alt="Imagem para anotação"
+        >
+        <div
+          id="overlay-anotacoes"
+          class="position-absolute top-0 start-0 w-100 h-100"
+          style="pointer-events: none;"
+        ></div>
+      </div>
+    </div>
+
+    <div class="col-lg-4 mt-4 mt-lg-0">
+      <h5>Anotações existentes</h5>
+      <ul class="list-group small" id="lista-anotacoes">
+        {% if anotacoes %}
+          {% for a in anotacoes %}
+            <li class="list-group-item">
+              <div class="fw-semibold">
+                #{{ a.anotacao_imagem_id }}
+                <span class="text-muted">({{ a.data_criacao }})</span>
+              </div>
+              <div>{{ a.anotacao | e }}</div>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li class="list-group-item text-muted">
+            Nenhuma anotação ainda.
+          </li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // Dados iniciais fornecidos pelo backend (para JS desenhar caixas etc.)
+    const IMG_FILE_ID = {{ file_id|tojson }};
+    const ANOTACOES_INICIAIS = {{ anotacoes|tojson }};
+    const CRIAR_ANOTACAO_URL = {{ url_for('exportacao_img_anotacoes_criar', file_id=file_id)|tojson }};
+    const CSRF_TOKEN = {{ csrf_token()|tojson }};
+
+    // TODO:
+    // - Implementar mousedown/mousemove/mouseup na imagem para criar área de seleção.
+    // - Desenhar retângulos em #overlay-anotacoes com base em ANOTACOES_INICIAIS.
+    // - Enviar POST para CRIAR_ANOTACAO_URL com {x1, y1, x2, y2, anotacao}.
+  </script>
+</div>
+{% endblock %}
