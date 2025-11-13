@@ -261,12 +261,25 @@
           y2: y2_rel
         };
 
-        if (modal) {
-          textarea.value = '';
-          modal.show();
+      if (modal) {
+        // Abre o modal Bootstrap para digitar a anotação
+        textarea.value = '';
+        modal.show();
+      } else {
+        // Fallback simples: usa prompt() se o Bootstrap JS não estiver carregado
+        const textoPrompt = window.prompt('Digite o texto da anotação:');
+        if (textoPrompt !== null) {
+          enviarAnotacao(textoPrompt);
         } else {
-          alert('Seleção registrada, mas o modal do Bootstrap não está disponível.');
+          // Cancelou → limpa seleção visual
+          if (currentRect) {
+            currentRect.style.display = 'none';
+            currentRect.style.width = '0px';
+            currentRect.style.height = '0px';
+          }
+          lastSelection = null;
         }
+      }
       }
 
       img.addEventListener('mouseup', finalizarSelecao);
