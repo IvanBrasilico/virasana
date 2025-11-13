@@ -49,6 +49,49 @@
     </div>
   </div>
 
+  <!-- Modal para digitar a anotação -->
+  <div class="modal fade" id="modalAnotacao" tabindex="-1" aria-labelledby="modalAnotacaoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalAnotacaoLabel">Nova anotação</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="texto-anotacao" class="form-label">Texto da anotação</label>
+            <textarea class="form-control" id="texto-anotacao" rows="4" maxlength="1000"
+                      placeholder="Descreva o que você observou nesta área da imagem..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btn-salvar-anotacao">Salvar anotação</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Caixa de anotação já salva */
+    #overlay-anotacoes .annotation-box {
+      position: absolute;
+      border: 2px solid rgba(255, 193, 7, 0.9); /* amarelo suave */
+      background-color: rgba(255, 193, 7, 0.2);
+      box-sizing: border-box;
+      pointer-events: none; /* não bloquear cliques na imagem */
+    }
+
+    /* Retângulo durante a seleção */
+    #image-annotator .selection-rect {
+      position: absolute;
+      border: 2px dashed rgba(13, 110, 253, 0.9); /* azul */
+      background-color: rgba(13, 110, 253, 0.15);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+  </style>
+
   <script>
     // Dados iniciais fornecidos pelo backend (para JS desenhar caixas etc.)
     const IMG_FILE_ID = {{ file_id|tojson }};
@@ -56,10 +99,222 @@
     const CRIAR_ANOTACAO_URL = {{ url_for('exportacao_img_anotacoes_criar', file_id=file_id)|tojson }};
     const CSRF_TOKEN = {{ csrf_token()|tojson }};
 
-    // TODO:
-    // - Implementar mousedown/mousemove/mouseup na imagem para criar área de seleção.
-    // - Desenhar retângulos em #overlay-anotacoes com base em ANOTACOES_INICIAIS.
-    // - Enviar POST para CRIAR_ANOTACAO_URL com {x1, y1, x2, y2, anotacao}.
+    document.addEventListener('DOMContentLoaded', function () {
+      const img = document.getElementById('imagem-principal');
+      const annotator = document.getElementById('image-annotator');
+      const overlay = document.getElementById('overlay-anotacoes');
+
+      const modalEl = document.getElementById('modalAnotacao');
+      const modal = typeof bootstrap !== 'undefined'
+        ? new bootstrap.Modal(modalEl)
+        : null;
+      const textarea = document.getElementById('texto-anotacao');
+      const btnSalvar = document.getElementById('btn-salvar-anotacao');
+
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let currentRect = null;      // div do retângulo de seleção
+      let lastSelection = null;    // coordenadas relativas da última seleção
+
+      function getRelativeCoords(evt) {
+        const rect = img.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        return { x, y, rect };
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      // Desenhar anotações já salvas
+      function desenharAnotacoesExistentes() {
+        if (!Array.isArray(ANOTACOES_INICIAIS)) {
+          return;
+        }
+        const imgWidth = img.clientWidth;
+        const imgHeight = img.clientHeight;
+        if (imgWidth === 0 || imgHeight === 0) {
+          return;
+        }
+        overlay.innerHTML = ''; // limpa antes de redesenhar
+        ANOTACOES_INICIAIS.forEach(function (a) {
+          const box = document.createElement('div');
+          box.className = 'annotation-box';
+
+          const x1 = parseFloat(a.x1_rel || a.x1 || 0);
+          const y1 = parseFloat(a.y1_rel || a.y1 || 0);
+          const x2 = parseFloat(a.x2_rel || a.x2 || 0);
+          const y2 = parseFloat(a.y2_rel || a.y2 || 0);
+
+          const left = x1 * imgWidth;
+          const top = y1 * imgHeight;
+          const width = (x2 - x1) * imgWidth;
+          const height = (y2 - y1) * imgHeight;
+
+          box.style.left = left + 'px';
+          box.style.top = top + 'px';
+          box.style.width = width + 'px';
+          box.style.height = height + 'px';
+
+          overlay.appendChild(box);
+        });
+      }
+
+      // Garante que redesenhe ao carregar a imagem (importante por causa do tamanho real)
+      if (img.complete) {
+        desenharAnotacoesExistentes();
+      } else {
+        img.addEventListener('load', desenharAnotacoesExistentes);
+      }
+
+      // Recalcula ao redimensionar
+      window.addEventListener('resize', desenharAnotacoesExistentes);
+
+      // Início da seleção
+      img.addEventListener('mousedown', function (evt) {
+        if (evt.button !== 0) {
+          return; // só botão esquerdo
+        }
+        const pos = getRelativeCoords(evt);
+        isDragging = true;
+        startX = clamp(pos.x, 0, pos.rect.width);
+        startY = clamp(pos.y, 0, pos.rect.height);
+
+        if (!currentRect) {
+          currentRect = document.createElement('div');
+          currentRect.className = 'selection-rect';
+          annotator.appendChild(currentRect);
+        }
+        currentRect.style.left = startX + 'px';
+        currentRect.style.top = startY + 'px';
+        currentRect.style.width = '0px';
+        currentRect.style.height = '0px';
+      });
+
+      img.addEventListener('mousemove', function (evt) {
+        if (!isDragging || !currentRect) {
+          return;
+        }
+        const pos = getRelativeCoords(evt);
+        const curX = clamp(pos.x, 0, pos.rect.width);
+        const curY = clamp(pos.y, 0, pos.rect.height);
+
+        const left = Math.min(startX, curX);
+        const top = Math.min(startY, curY);
+        const width = Math.abs(curX - startX);
+        const height = Math.abs(curY - startY);
+
+        currentRect.style.left = left + 'px';
+        currentRect.style.top = top + 'px';
+        currentRect.style.width = width + 'px';
+        currentRect.style.height = height + 'px';
+      });
+
+      function finalizarSelecao(evt) {
+        if (!isDragging) {
+          return;
+        }
+        isDragging = false;
+
+        if (!currentRect) {
+          return;
+        }
+
+        const rect = img.getBoundingClientRect();
+        const imgWidth = rect.width;
+        const imgHeight = rect.height;
+
+        const leftPx = parseFloat(currentRect.style.left || '0');
+        const topPx = parseFloat(currentRect.style.top || '0');
+        const widthPx = parseFloat(currentRect.style.width || '0');
+        const heightPx = parseFloat(currentRect.style.height || '0');
+
+        // Zera seleção visual (mas mantém o elemento para reutilizar)
+        if (widthPx < 5 || heightPx < 5) {
+          // muito pequeno: ignora
+          currentRect.style.width = '0px';
+          currentRect.style.height = '0px';
+          return;
+        }
+
+        const x1_rel = leftPx / imgWidth;
+        const y1_rel = topPx / imgHeight;
+        const x2_rel = (leftPx + widthPx) / imgWidth;
+        const y2_rel = (topPx + heightPx) / imgHeight;
+
+        lastSelection = {
+          x1: x1_rel,
+          y1: y1_rel,
+          x2: x2_rel,
+          y2: y2_rel
+        };
+
+        // Limpa o retângulo visual (será redesenhado depois com as anotações reais)
+        currentRect.style.width = '0px';
+        currentRect.style.height = '0px';
+
+        if (modal) {
+          textarea.value = '';
+          modal.show();
+        } else {
+          alert('Seleção registrada, mas o modal do Bootstrap não está disponível.');
+        }
+      }
+
+      img.addEventListener('mouseup', finalizarSelecao);
+      img.addEventListener('mouseleave', function (evt) {
+        if (isDragging) {
+          finalizarSelecao(evt);
+        }
+      });
+
+      // Envia anotação para o backend
+      btnSalvar.addEventListener('click', function () {
+        if (!lastSelection) {
+          alert('Nenhuma área selecionada.');
+          return;
+        }
+        const texto = (textarea.value || '').trim();
+        if (!texto) {
+          alert('Digite o texto da anotação.');
+          return;
+        }
+
+        fetch(CRIAR_ANOTACAO_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+          },
+          body: JSON.stringify({
+            x1: lastSelection.x1,
+            y1: lastSelection.y1,
+            x2: lastSelection.x2,
+            y2: lastSelection.y2,
+            anotacao: texto
+          })
+        })
+          .then(function (resp) { return resp.json(); })
+          .then(function (data) {
+            if (data && data.ok) {
+              if (modal) {
+                modal.hide();
+              }
+              // MVP: recarrega a página para redesenhar lista + retângulos
+              window.location.reload();
+            } else {
+              const msg = (data && data.error) ? data.error : 'Erro ao salvar anotação.';
+              alert(msg);
+            }
+          })
+          .catch(function () {
+            alert('Erro de comunicação com o servidor.');
+          });
+      });
+    });
   </script>
+
 </div>
 {% endblock %}
