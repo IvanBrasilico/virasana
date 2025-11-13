@@ -104,8 +104,14 @@
       const annotator = document.getElementById('image-annotator');
       const overlay = document.getElementById('overlay-anotacoes');
 
+      // Evita o comportamento padrão de arrastar a imagem no navegador
+      img.setAttribute('draggable', 'false');
+      img.addEventListener('dragstart', function (evt) {
+        evt.preventDefault();
+      });
+
       const modalEl = document.getElementById('modalAnotacao');
-      const modal = typeof bootstrap !== 'undefined'
+      const modal = (typeof bootstrap !== 'undefined' && modalEl)
         ? new bootstrap.Modal(modalEl)
         : null;
       const textarea = document.getElementById('texto-anotacao');
@@ -114,11 +120,12 @@
       let isDragging = false;
       let startX = 0;
       let startY = 0;
-      let currentRect = null;      // div do retângulo de seleção
-      let lastSelection = null;    // coordenadas relativas da última seleção
+      let currentRect = null;   // div do retângulo de seleção
+      let lastSelection = null; // coordenadas relativas da última seleção
 
       function getRelativeCoords(evt) {
-        const rect = img.getBoundingClientRect();
+        // Coordenadas relativas ao container "image-annotator"
+        const rect = annotator.getBoundingClientRect();
         const x = evt.clientX - rect.left;
         const y = evt.clientY - rect.top;
         return { x, y, rect };
@@ -128,14 +135,14 @@
         return Math.max(min, Math.min(max, v));
       }
 
-      // Desenhar anotações já salvas
+      // Desenhar anotações já salvas (retângulos amarelos)
       function desenharAnotacoesExistentes() {
         if (!Array.isArray(ANOTACOES_INICIAIS)) {
           return;
         }
-        const imgWidth = img.clientWidth;
-        const imgHeight = img.clientHeight;
-        if (imgWidth === 0 || imgHeight === 0) {
+        const containerWidth = annotator.clientWidth;
+        const containerHeight = annotator.clientHeight;
+        if (containerWidth === 0 || containerHeight === 0) {
           return;
         }
         overlay.innerHTML = ''; // limpa antes de redesenhar
@@ -148,10 +155,10 @@
           const x2 = parseFloat(a.x2_rel || a.x2 || 0);
           const y2 = parseFloat(a.y2_rel || a.y2 || 0);
 
-          const left = x1 * imgWidth;
-          const top = y1 * imgHeight;
-          const width = (x2 - x1) * imgWidth;
-          const height = (y2 - y1) * imgHeight;
+          const left = x1 * containerWidth;
+          const top = y1 * containerHeight;
+          const width = (x2 - x1) * containerWidth;
+          const height = (y2 - y1) * containerHeight;
 
           box.style.left = left + 'px';
           box.style.top = top + 'px';
@@ -177,6 +184,8 @@
         if (evt.button !== 0) {
           return; // só botão esquerdo
         }
+        evt.preventDefault(); // não deixar o navegador tentar arrastar a imagem
+
         const pos = getRelativeCoords(evt);
         isDragging = true;
         startX = clamp(pos.x, 0, pos.rect.width);
@@ -187,6 +196,7 @@
           currentRect.className = 'selection-rect';
           annotator.appendChild(currentRect);
         }
+        currentRect.style.display = 'block';
         currentRect.style.left = startX + 'px';
         currentRect.style.top = startY + 'px';
         currentRect.style.width = '0px';
@@ -197,6 +207,7 @@
         if (!isDragging || !currentRect) {
           return;
         }
+        evt.preventDefault();
         const pos = getRelativeCoords(evt);
         const curX = clamp(pos.x, 0, pos.rect.width);
         const curY = clamp(pos.y, 0, pos.rect.height);
@@ -222,27 +233,26 @@
           return;
         }
 
-        const rect = img.getBoundingClientRect();
-        const imgWidth = rect.width;
-        const imgHeight = rect.height;
+        const rect = annotator.getBoundingClientRect();
+        const containerWidth = rect.width;
+        const containerHeight = rect.height;
 
         const leftPx = parseFloat(currentRect.style.left || '0');
         const topPx = parseFloat(currentRect.style.top || '0');
         const widthPx = parseFloat(currentRect.style.width || '0');
         const heightPx = parseFloat(currentRect.style.height || '0');
 
-        // Zera seleção visual (mas mantém o elemento para reutilizar)
+        // Seleção muito pequena → ignora e esconde o retângulo
         if (widthPx < 5 || heightPx < 5) {
-          // muito pequeno: ignora
-          currentRect.style.width = '0px';
-          currentRect.style.height = '0px';
+          currentRect.style.display = 'none';
+          lastSelection = null;
           return;
         }
 
-        const x1_rel = leftPx / imgWidth;
-        const y1_rel = topPx / imgHeight;
-        const x2_rel = (leftPx + widthPx) / imgWidth;
-        const y2_rel = (topPx + heightPx) / imgHeight;
+        const x1_rel = leftPx / containerWidth;
+        const y1_rel = topPx / containerHeight;
+        const x2_rel = (leftPx + widthPx) / containerWidth;
+        const y2_rel = (topPx + heightPx) / containerHeight;
 
         lastSelection = {
           x1: x1_rel,
@@ -250,10 +260,6 @@
           x2: x2_rel,
           y2: y2_rel
         };
-
-        // Limpa o retângulo visual (será redesenhado depois com as anotações reais)
-        currentRect.style.width = '0px';
-        currentRect.style.height = '0px';
 
         if (modal) {
           textarea.value = '';
@@ -269,6 +275,19 @@
           finalizarSelecao(evt);
         }
       });
+
+      // Quando o modal fechar (cancelado ou após salvar e recarregar),
+      // limpamos a seleção visual atual
+      if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', function () {
+          if (currentRect) {
+            currentRect.style.display = 'none';
+            currentRect.style.width = '0px';
+            currentRect.style.height = '0px';
+          }
+          lastSelection = null;
+        });
+      }
 
       // Envia anotação para o backend
       btnSalvar.addEventListener('click', function () {
