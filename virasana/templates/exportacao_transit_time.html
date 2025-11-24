@@ -247,6 +247,8 @@
               data-key="outlier"><span>Outlier</span><span class="sort-indicator"></span></button>
       <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
               data-key="vazio"><span>Vazio</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="cnpjTransportador"><span>cnpjTransportador</span><span class="sort-indicator"></span></button>
     </div>
     {% endif %}
 
@@ -261,6 +263,7 @@
              data-tt="{% if r.transit_time_horas is not none %}{{ '%.6f'|format(r.transit_time_horas) }}{% endif %}"
              data-outlier="{{ 1 if r.is_outlier else 0 }}"
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
+             data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
              data-stable="{{ loop.index }}">
           <div class="card-header bg-white">
             <!-- Cabeçalho: texto à esquerda / imagens à direita -->
