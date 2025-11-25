@@ -276,8 +276,11 @@ def configure(app):
             try:
                 csvf = get_planilha_valida(request, 'csv')
                 if csvf:
-                    df = pd.read_csv(io.StringIO(csvf.stream.read().decode('utf-8')))
+                    texto_csv = csvf.stream.read().decode('utf-8')
+                    texto_csv = texto_csv.strip().replace('"', '')
+                    df = pd.read_csv(io.StringIO(texto_csv), sep=",")
                     logger.info(df.columns)
+                    print(df.head())
                     df = df[df[' Código Natureza da Operação'].isin([9, 10])]
                     df['data'] = pd.to_datetime(df[' Data de Registro'], format=' %d/%m/%Y %H:%M')
                     df_maior_2022 = df[df['data'] >= datetime(2022, 1, 1)]
