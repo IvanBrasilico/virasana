@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AJNA Narcos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
+  <style>
+    /* Caixa de anotação já salva */
+    #overlay-anotacoes .annotation-box {
+      position: absolute;
+      border: 2px solid rgba(255, 193, 7, 0.9); /* amarelo suave */
+      background-color: rgba(255, 193, 7, 0.2);
+      box-sizing: border-box;
+      pointer-events: none; /* não bloquear cliques na imagem */
+    }
+
+    /* Retângulo durante a seleção */
+    #image-annotator .selection-rect {
+      position: absolute;
+      border: 2px dashed rgba(13, 110, 253, 0.9); /* azul */
+      background-color: rgba(13, 110, 253, 0.15);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+  </style>
+
+</head>
+<body class="bg-light">
+
+{% block content %}
+<div class="container my-4">
+  <h2>Anotações na imagem</h2>
+
+  {% if numero_conteiner %}
+    <p class="text-muted">
+      Contêiner: <strong>{{ numero_conteiner }}</strong>
+    </p>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-lg-8">
+      <div id="image-annotator" class="position-relative d-inline-block">
+        <img
+          id="imagem-principal"
+          src="/virasana/imagens_cmap?_id={{ file_id }}"
+          class="img-fluid border"
+          alt="Imagem para anotação"
+        >
+        <div
+          id="overlay-anotacoes"
+          class="position-absolute top-0 start-0 w-100 h-100"
+          style="pointer-events: none;"
+        ></div>
+      </div>
+    </div>
+
+    <div class="col-lg-4 mt-4 mt-lg-0">
+      <h5>Anotações existentes</h5>
+      <ul class="list-group small" id="lista-anotacoes">
+        {% if anotacoes %}
+          {% for a in anotacoes %}
+            <li class="list-group-item">
+              <div class="fw-semibold">
+                #{{ a.anotacao_imagem_id }}
+                <span class="text-muted">({{ a.data_criacao }})</span>
+              </div>
+              <div>{{ a.anotacao | e }}</div>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li class="list-group-item text-muted">
+            Nenhuma anotação ainda.
+          </li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- Modal para digitar a anotação -->
+  <div class="modal fade" id="modalAnotacao" tabindex="-1" aria-labelledby="modalAnotacaoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalAnotacaoLabel">Nova anotação</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="texto-anotacao" class="form-label">Texto da anotação</label>
+            <textarea class="form-control" id="texto-anotacao" rows="4" maxlength="1000"
+                      placeholder="Descreva o que você observou nesta área da imagem..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btn-salvar-anotacao">Salvar anotação</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS (bundle inclui Popper) para o modal funcionar -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Dados iniciais fornecidos pelo backend (para JS desenhar caixas etc.)
+    const IMG_FILE_ID = {{ file_id|tojson }};
+    const ANOTACOES_INICIAIS = {{ anotacoes|tojson }};
+    const CRIAR_ANOTACAO_URL = {{ url_for('exportacao_img_anotacoes_criar', file_id=file_id)|tojson }};
+    const CSRF_TOKEN = {{ csrf_token()|tojson }};
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const img = document.getElementById('imagem-principal');
+      const annotator = document.getElementById('image-annotator');
+      const overlay = document.getElementById('overlay-anotacoes');
+
+      // Evita o comportamento padrão de arrastar a imagem no navegador
+      img.setAttribute('draggable', 'false');
+      img.addEventListener('dragstart', function (evt) {
+        evt.preventDefault();
+      });
+
+      const modalEl = document.getElementById('modalAnotacao');
+      const modal = (typeof bootstrap !== 'undefined' && modalEl)
+        ? new bootstrap.Modal(modalEl)
+        : null;
+      const textarea = document.getElementById('texto-anotacao');
+      const btnSalvar = document.getElementById('btn-salvar-anotacao');
+
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let currentRect = null;   // div do retângulo de seleção
+      let lastSelection = null; // coordenadas relativas da última seleção
+
+      function getRelativeCoords(evt) {
+        // Coordenadas relativas ao container "image-annotator"
+        const rect = annotator.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        return { x, y, rect };
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      // Desenhar anotações já salvas (retângulos amarelos)
+      function desenharAnotacoesExistentes() {
+        if (!Array.isArray(ANOTACOES_INICIAIS)) {
+          return;
+        }
+        const containerWidth = annotator.clientWidth;
+        const containerHeight = annotator.clientHeight;
+        if (containerWidth === 0 || containerHeight === 0) {
+          return;
+        }
+        overlay.innerHTML = ''; // limpa antes de redesenhar
+        ANOTACOES_INICIAIS.forEach(function (a) {
+          const box = document.createElement('div');
+          box.className = 'annotation-box';
+
+          const x1 = parseFloat(a.x1_rel || a.x1 || 0);
+          const y1 = parseFloat(a.y1_rel || a.y1 || 0);
+          const x2 = parseFloat(a.x2_rel || a.x2 || 0);
+          const y2 = parseFloat(a.y2_rel || a.y2 || 0);
+
+          const left = x1 * containerWidth;
+          const top = y1 * containerHeight;
+          const width = (x2 - x1) * containerWidth;
+          const height = (y2 - y1) * containerHeight;
+
+          box.style.left = left + 'px';
+          box.style.top = top + 'px';
+          box.style.width = width + 'px';
+          box.style.height = height + 'px';
+
+          overlay.appendChild(box);
+        });
+      }
+
+      // Garante que redesenhe ao carregar a imagem (importante por causa do tamanho real)
+      if (img.complete) {
+        desenharAnotacoesExistentes();
+      } else {
+        img.addEventListener('load', desenharAnotacoesExistentes);
+      }
+
+      // Recalcula ao redimensionar
+      window.addEventListener('resize', desenharAnotacoesExistentes);
+
+      // Início da seleção
+      img.addEventListener('mousedown', function (evt) {
+        if (evt.button !== 0) {
+          return; // só botão esquerdo
+        }
+        evt.preventDefault(); // não deixar o navegador tentar arrastar a imagem
+
+        const pos = getRelativeCoords(evt);
+        isDragging = true;
+        startX = clamp(pos.x, 0, pos.rect.width);
+        startY = clamp(pos.y, 0, pos.rect.height);
+
+        if (!currentRect) {
+          currentRect = document.createElement('div');
+          currentRect.className = 'selection-rect';
+          annotator.appendChild(currentRect);
+        }
+        currentRect.style.display = 'block';
+        currentRect.style.left = startX + 'px';
+        currentRect.style.top = startY + 'px';
+        currentRect.style.width = '0px';
+        currentRect.style.height = '0px';
+      });
+
+      img.addEventListener('mousemove', function (evt) {
+        if (!isDragging || !currentRect) {
+          return;
+        }
+        evt.preventDefault();
+        const pos = getRelativeCoords(evt);
+        const curX = clamp(pos.x, 0, pos.rect.width);
+        const curY = clamp(pos.y, 0, pos.rect.height);
+
+        const left = Math.min(startX, curX);
+        const top = Math.min(startY, curY);
+        const width = Math.abs(curX - startX);
+        const height = Math.abs(curY - startY);
+
+        currentRect.style.left = left + 'px';
+        currentRect.style.top = top + 'px';
+        currentRect.style.width = width + 'px';
+        currentRect.style.height = height + 'px';
+      });
+
+      function finalizarSelecao(evt) {
+        if (!isDragging) {
+          return;
+        }
+        isDragging = false;
+
+        if (!currentRect) {
+          return;
+        }
+
+        const rect = annotator.getBoundingClientRect();
+        const containerWidth = rect.width;
+        const containerHeight = rect.height;
+
+        const leftPx = parseFloat(currentRect.style.left || '0');
+        const topPx = parseFloat(currentRect.style.top || '0');
+        const widthPx = parseFloat(currentRect.style.width || '0');
+        const heightPx = parseFloat(currentRect.style.height || '0');
+
+        // Seleção muito pequena → ignora e esconde o retângulo
+        if (widthPx < 5 || heightPx < 5) {
+          currentRect.style.display = 'none';
+          lastSelection = null;
+          return;
+        }
+
+        const x1_rel = leftPx / containerWidth;
+        const y1_rel = topPx / containerHeight;
+        const x2_rel = (leftPx + widthPx) / containerWidth;
+        const y2_rel = (topPx + heightPx) / containerHeight;
+
+        lastSelection = {
+          x1: x1_rel,
+          y1: y1_rel,
+          x2: x2_rel,
+          y2: y2_rel
+        };
+
+      if (modal) {
+        // Abre o modal Bootstrap para digitar a anotação
+        textarea.value = '';
+        modal.show();
+      } else {
+        // Fallback simples: usa prompt() se o Bootstrap JS não estiver carregado
+        const textoPrompt = window.prompt('Digite o texto da anotação:');
+        if (textoPrompt !== null) {
+          enviarAnotacao(textoPrompt);
+        } else {
+          // Cancelou → limpa seleção visual
+          if (currentRect) {
+            currentRect.style.display = 'none';
+            currentRect.style.width = '0px';
+            currentRect.style.height = '0px';
+          }
+          lastSelection = null;
+        }
+      }
+      }
+
+      img.addEventListener('mouseup', finalizarSelecao);
+      img.addEventListener('mouseleave', function (evt) {
+        if (isDragging) {
+          finalizarSelecao(evt);
+        }
+      });
+
+      // Quando o modal fechar (cancelado ou após salvar e recarregar),
+      // limpamos a seleção visual atual
+      if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', function () {
+          if (currentRect) {
+            currentRect.style.display = 'none';
+            currentRect.style.width = '0px';
+            currentRect.style.height = '0px';
+          }
+          lastSelection = null;
+        });
+      }
+
+      // Função comum para enviar a anotação ao backend
+      function enviarAnotacao(texto) {
+        if (!lastSelection) {
+          alert('Nenhuma área selecionada.');
+          return;
+        }
+        const textoTrim = (texto || '').trim();
+        if (!textoTrim) {
+          alert('Digite o texto da anotação.');
+          return;
+        }
+
+        fetch(CRIAR_ANOTACAO_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+          },
+          body: JSON.stringify({
+            x1: lastSelection.x1,
+            y1: lastSelection.y1,
+            x2: lastSelection.x2,
+            y2: lastSelection.y2,
+            anotacao: textoTrim
+          })
+        })
+          .then(function (resp) { return resp.json(); })
+          .then(function (data) {
+            if (data && data.ok) {
+              if (modal) {
+                modal.hide();
+              }
+              // MVP: recarrega a página para redesenhar lista + retângulos
+              window.location.reload();
+            } else {
+              const msg = (data && data.error) ? data.error : 'Erro ao salvar anotação.';
+              alert(msg);
+            }
+          })
+          .catch(function () {
+            alert('Erro de comunicação com o servidor.');
+          });
+      }
+
+      // Clique no botão "Salvar" do modal (quando Bootstrap estiver disponível)
+      if (btnSalvar) {
+        btnSalvar.addEventListener('click', function () {
+          enviarAnotacao(textarea.value);
+        });
+      }
+    });
+  </script>
+
+</div>
+{% endblock %}

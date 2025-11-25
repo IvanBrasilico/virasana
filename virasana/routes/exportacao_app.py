@@ -1,27 +1,27 @@
 # exportacao_app.py
 
-from datetime import date, timedelta, datetime, time, timezone
-from flask import render_template, request, flash, url_for, jsonify, Response
-from flask import Blueprint
-from flask_wtf.csrf import generate_csrf
-from sqlalchemy import text
-from decimal import Decimal
-from typing import Optional, Dict, List
 import logging
 import csv
-from io import StringIO
-
 import os
-import json
+import tempfile
+
+from datetime import timedelta, datetime, time, timezone
+from flask import render_template, request, jsonify, Response
+from flask_wtf.csrf import generate_csrf
+from sqlalchemy import text, bindparam
+from sqlalchemy.exc import SQLAlchemyError
+from decimal import Decimal
+from copy import deepcopy
+from typing import Optional, Dict, List
+from io import StringIO
 from pathlib import Path
 from io import BytesIO
-from functools import lru_cache
 from zoneinfo import ZoneInfo
-
 from pymongo import ASCENDING
 from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
+
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -31,14 +31,17 @@ def configure(app):
     )
     app.register_blueprint(exportacao_app)
     '''
-    
+
     app.logger.setLevel(logging.DEBUG)
 
     # Timezone da aplicação (entradas exibidas/fornecidas no horário local)
     APP_TZ = ZoneInfo("America/Sao_Paulo")
 
-    # Tolerância (em minutos) para cruzar timestamp de entrada/saída com pesagens
+    # Tolerância para cruzar timestamp de entrada/saída com pesagens
     TOL_MINUTOS_PESAGEM = 20
+    
+    # usado quando numero= e não há de/ate/data
+    DEFAULT_LOOKBACK_DAYS = 30
 
     # -------------------------------------------------
     # Opções de RECINTOS DE ORIGEM (para filtro checkboxes)
@@ -80,12 +83,118 @@ def configure(app):
       "8931356": "SANTOS BRASIL",
       "8931359": "BTP",
       "8931304": "REDEX/IPA ECOPORTO TERMARES",
+      "8931339": "ECOPORTO PATIO 2",
       "8931404": "DPW/EMBRAPORT",
       "8931318": "ECOPORTO"
     }
 
     # Tupla imutável com todas as origens possíveis (ordem preservada)
     ORIGENS_TODAS = tuple(ORIGENS_OPCOES.keys())
+
+    # ---------------------------------------------------------
+    # Anotações em imagens (helpers)
+    # ---------------------------------------------------------
+
+    def _get_numero_conteiner_from_file(mongodb, file_id: str) -> Optional[str]:
+        """
+        Busca em fs.files o metadata.numeroinformado para exibir/gravar junto da anotação.
+        Se não encontrar ou der erro, retorna None.
+        """
+        try:
+            oid = ObjectId(file_id)
+        except Exception:
+            return None
+
+        doc = mongodb["fs.files"].find_one(
+            {"_id": oid},
+            {"metadata.numeroinformado": 1}
+        )
+        if not doc:
+            return None
+
+        meta = doc.get("metadata") or {}
+        numero = meta.get("numeroinformado")
+        if not numero:
+            return None
+        # Normaliza (string, maiúsculo, sem espaços)
+        return str(numero).strip().upper()
+
+    def _listar_anotacoes_imagem(session, imagem_id: str) -> List[dict]:
+        """
+        Retorna as anotações ativas (excluida = 0) para uma determinada imagem.
+        """
+        rows = session.execute(text("""
+            SELECT
+              anotacao_imagem_id,
+              imagem_id,
+              numero_conteiner,
+              usuario_id,
+              data_criacao,
+              data_atualizacao,
+              x1_rel,
+              y1_rel,
+              x2_rel,
+              y2_rel,
+              anotacao
+            FROM ovr_anotacoes_imagens
+            WHERE imagem_id = :imagem_id
+              AND excluida = 0
+            ORDER BY data_criacao ASC
+        """), {"imagem_id": imagem_id}).mappings().all()
+
+        return [dict(r) for r in rows]
+
+    def _criar_anotacao_imagem(
+        session,
+        imagem_id: str,
+        numero_conteiner: Optional[str],
+        usuario_id: int,
+        x1_rel: float,
+        y1_rel: float,
+        x2_rel: float,
+        y2_rel: float,
+        anotacao: str,
+    ) -> None:
+        """
+        Insere uma nova anotação na tabela ovr_anotacoes_imagens.
+        Commit é feito aqui; em caso de erro, faz rollback.
+        """
+        try:
+            session.execute(text("""
+                INSERT INTO ovr_anotacoes_imagens (
+                    imagem_id,
+                    numero_conteiner,
+                    usuario_id,
+                    x1_rel,
+                    y1_rel,
+                    x2_rel,
+                    y2_rel,
+                    anotacao
+                ) VALUES (
+                    :imagem_id,
+                    :numero_conteiner,
+                    :usuario_id,
+                    :x1_rel,
+                    :y1_rel,
+                    :x2_rel,
+                    :y2_rel,
+                    :anotacao
+                )
+            """), {
+                "imagem_id": imagem_id,
+                "numero_conteiner": numero_conteiner,
+                "usuario_id": usuario_id,
+                "x1_rel": x1_rel,
+                "y1_rel": y1_rel,
+                "x2_rel": x2_rel,
+                "y2_rel": y2_rel,
+                "anotacao": anotacao,
+            })
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            app.logger.exception("[anotacoes_imagens] Erro ao inserir anotação")
+            raise
 
     # -------------------------------------------
     # Helper: Carrega mapa {codigo_recinto: email}
@@ -112,13 +221,15 @@ def configure(app):
         return valor if valor in destinos_validos else "8931356"
 
     def _quartis(sorted_vals):
-        """ Q1/Q3 pelo método de Tukey (exclui o elemento central se ímpar). """
+        """ Q1/Q3 pelo método de Tukey
+        (exclui o elemento central se ímpar). """
         n = len(sorted_vals)
         if n == 0:
             return None, None
+
         def _mediana(vals):
             m = len(vals)
-            if m == 0: 
+            if m == 0:
                 return None
             mid = m // 2
             if m % 2 == 1:
@@ -148,14 +259,17 @@ def configure(app):
     def _cpfs_em_risco(session, cpfs_iter):
         """
         Recebe um iterável de CPFs (possivelmente com pontuação, None, etc.),
-        normaliza para dígitos e retorna um set com os CPFs (dígitos) encontrados
+        normaliza para dígitos e retorna um set com os CPFs encontrados
         na tabela risco_motoristas.
 
-        Observação: usamos REPLACE na coluna do banco p/ normalizar também do lado SQL,
+        Observação: usamos REPLACE na coluna do banco
+        p/ normalizar também do lado SQL,
         garantindo match mesmo se estiverem com pontuação na tabela.
         """
         # Coleta únicos normalizados (só dígitos) e remove vazios
-        cpfs_norm = sorted({ _cpf_digits(c) for c in (cpfs_iter or []) if _cpf_digits(c) })
+        cpfs_norm = sorted({
+            _cpf_digits(c) for c in (cpfs_iter or []) if _cpf_digits(c)
+        })
         if not cpfs_norm:
             return set()
 
@@ -163,15 +277,13 @@ def configure(app):
         CHUNK = 1000  # segurança para listas grandes
         for i in range(0, len(cpfs_norm), CHUNK):
             bloco = cpfs_norm[i:i+CHUNK]
-            # Monta placeholders :d0, :d1, ...
-            ph = ", ".join(f":d{j}" for j in range(len(bloco)))
-            sql = text(f"""
+            # Expanding bind param evita construir IN (...) manualmente
+            sql = text("""
                 SELECT cpf
                 FROM risco_motoristas
-                WHERE
-                  REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN ({ph})
-            """)
-            params = { f"d{j}": v for j, v in enumerate(bloco) }
+                WHERE REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') IN :cpfs
+            """).bindparams(bindparam("cpfs", expanding=True))
+            params = {"cpfs": tuple(bloco)}
             try:
                 rows = session.execute(sql, params).all()
             except Exception:
@@ -182,18 +294,24 @@ def configure(app):
                 encontrados.add(_cpf_digits(getattr(r, "cpf", None)))
         return encontrados
 
-    def consultar_transit_time(session, recinto_destino: str, inicio: datetime, fim: datetime, origens_filtrar: Optional[List[str]] = None):
+    def consultar_transit_time(
+        session,
+        recinto_destino: str,
+        inicio: datetime,
+        fim: datetime,
+        origens_filtrar: Optional[List[str]] = None
+    ):
         """
-        Executa a mesma SQL da rota /exportacao/transit_time e marca outliers (IQR).
+        Executa a mesma SQL da rota /exportacao/transit_time
+        e marca outliers (IQR).
         Retorna (resultados:list[dict], stats:dict).
         """
         recinto_destino = _normaliza_destino(recinto_destino)
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        # placeholders dinâmicos para IN (:o0, :o1, ...)
-        o_ph = ", ".join([f":o{i}" for i in range(len(origens_filtrar))]) if origens_filtrar else ""
-        sub_filtro_origem = (f" AND s2.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
-        where_filtro_origem = (f" AND s.codigoRecinto IN ({o_ph})" if origens_filtrar else "")
+        # Usa expanding bind param para listas IN
+        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
+        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
 
         sql_txt = f"""
             SELECT
@@ -225,7 +343,7 @@ def configure(app):
                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                    AND (
                         s2.codigoRecinto LIKE '89327%'
-                     OR s2.codigoRecinto IN ('8931309', '8933204', '8931404', '8933203', '8933001', '8931304')
+                     OR s2.codigoRecinto IN ('8931309', '8931356', '8931359', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
                    )
                    AND s2.codigoRecinto <> e.codigoRecinto
                    {sub_filtro_origem}
@@ -237,8 +355,19 @@ def configure(app):
                 AND e.direcao = 'E'
                 AND e.numeroConteiner IS NOT NULL
                 AND e.numeroConteiner <> ''
+                AND (
+                  e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
+                )
                 AND e.dataHoraOcorrencia >= :inicio
                 AND e.dataHoraOcorrencia < :fim
+--                 AND NOT EXISTS (
+--                   SELECT 1
+--                   FROM apirecintos_acessosveiculo s3
+--                   WHERE s3.numeroConteiner    = e.numeroConteiner
+--                     AND s3.codigoRecinto      = e.codigoRecinto
+--                     AND s3.direcao            = 'S'
+--                     AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
+--                 )
                 {where_filtro_origem}
             ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
         """
@@ -248,12 +377,178 @@ def configure(app):
             "inicio": inicio,
             "fim": fim
         }
-        # adiciona valores dos IN (:o0, :o1, ...)
-        for i, code in enumerate(origens_filtrar):
-            params[f"o{i}"] = code
+        if origens_filtrar:
+            params["origens"] = tuple(origens_filtrar)
+            rows = session.execute(
+                text(sql_txt).bindparams(bindparam("origens", expanding=True)),
+                params
+            ).fetchall()
+        else:
+            rows = session.execute(text(sql_txt), params).fetchall()
 
-        rows = session.execute(text(sql_txt), params).fetchall()
+        resultados = [{
+             "numeroConteiner": r.numeroConteiner,
+             "codigoRecinto": r.codigoRecinto,
+             "dataHoraOcorrencia": r.dataHoraOcorrencia,
+             "cnpjTransportador": r.cnpjTransportador,
+             "placa": r.placa,
+             "cpfMotorista": r.cpfMotorista,
+             "nomeMotorista": r.nomeMotorista,
+             "vazioConteiner": r.vazioConteiner,
+             "s_codigoRecinto": r.s_codigoRecinto,
+             "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
+             "s_cnpjTransportador": r.s_cnpjTransportador,
+             "s_placa": r.s_placa,
+             "s_cpfMotorista": r.s_cpfMotorista,
+             "s_nomeMotorista": r.s_nomeMotorista,
+             "s_vazioConteiner": r.s_vazioConteiner,
+             "transit_time_horas": r.transit_time_horas,
+         } for r in rows]
 
+        # Pós-processamento comum (DUE, risco, IQR)
+        return _posprocessar_transit_rows(session, resultados)
+
+    def _posprocessar_transit_rows(session, resultados: List[Dict]):
+        """Enriquece linhas de trânsito (DUE, risco CPF) e calcula IQR/outliers.
+        Retorna (resultados_enriquecidos, stats)."""
+        resultados = deepcopy(resultados)  # não mutar quem chamou
+        # 1) DUE/Exportador/NCM — âncora = ENTRADA
+        anchors = []
+        for it in resultados:
+            num = (it.get("numeroConteiner") or "").strip().upper()
+            dt = it.get("dataHoraOcorrencia")
+            if num and dt:
+                anchors.append((num, dt))
+        mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
+        for item in resultados:
+            k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
+            info = mapa_due.get(k)
+            item["numero_due"] = info["numero_due"] if info else None
+            item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
+            item["nfe_ncm"] = info["nfe_ncm"] if info else None
+            item["due_itens"] = info.get("due_itens") if info else []
+            item["exportador_nome"] = info.get("exportador_nome") if info else None
+        # 2) Risco por CPF (apenas ENTRADA)
+        cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
+        try:
+            em_risco = _cpfs_em_risco(session, cpfs_entrada)
+        except Exception:
+            app.logger.exception("[risco_motoristas] falha ao consultar CPFs de risco")
+            em_risco = set()
+        for it in resultados:
+            it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
+        # 3) IQR/outliers
+        vals = sorted([
+            float(x["transit_time_horas"]) for x in resultados
+            if x["transit_time_horas"] is not None
+        ])
+        q1, q3 = _quartis(vals)
+        if q1 is None or q3 is None:
+            iqr = 0.0
+            limite_outlier_mild = None
+            limite_outlier_strict = None
+        else:
+            iqr = float(q3 - q1)
+            limite_outlier_mild = float(q3 + 1.5 * iqr)
+            limite_outlier_strict = float(q3 + 15.0 * iqr)
+        for item in resultados:
+            v = item["transit_time_horas"]
+            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
+                item["is_outlier"] = False
+            else:
+                vv = float(v)
+                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
+        stats = {
+            "q1": q1, "q3": q3, "iqr": iqr,
+            "limite_outlier_mild": limite_outlier_mild,
+            "limite_outlier_strict": limite_outlier_strict
+        }
+        return resultados, stats
+
+    def consultar_transit_time_por_container(
+         session,
+         numero_conteiner: str,
+         inicio: datetime,
+         fim: datetime,
+         origens_filtrar: Optional[List[str]] = None,
+         destinos_validos: Optional[List[str]] = None
+     ):
+        """
+        Lista TODAS as ENTRADAS (E) do contêiner nos terminais de destino (default 4)
+        no intervalo [inicio, fim), emparelhando com a última SAÍDA (S) anterior,
+        e aplicando o mesmo pós-processamento da tela de transit time.
+        """
+        destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
+        origens_filtrar = _sanitize_origens(origens_filtrar or [])
+        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
+        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+
+        sql_txt = f"""
+             SELECT
+                 e.numeroConteiner,
+                 e.codigoRecinto,
+                 e.dataHoraOcorrencia,
+                 e.cnpjTransportador,
+                 e.placa,
+                 e.cpfMotorista,
+                 e.nomeMotorista,
+                 e.vazioConteiner,
+                 s.codigoRecinto       AS s_codigoRecinto,
+                 s.dataHoraOcorrencia  AS s_dataHoraOcorrencia,
+                 s.cnpjTransportador   AS s_cnpjTransportador,
+                 s.placa               AS s_placa,
+                 s.cpfMotorista        AS s_cpfMotorista,
+                 s.nomeMotorista       AS s_nomeMotorista,
+                 s.vazioConteiner      AS s_vazioConteiner,
+                 TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
+             FROM apirecintos_acessosveiculo e
+             LEFT JOIN apirecintos_acessosveiculo s
+               ON s.id = (
+                  SELECT s2.id
+                  FROM apirecintos_acessosveiculo s2
+                  WHERE s2.numeroConteiner = e.numeroConteiner
+                    AND s2.direcao = 'S'
+                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
+                    AND (
+                         s2.codigoRecinto LIKE '89327%'
+                      OR s2.codigoRecinto IN ('8931309', '8931356', '8931359', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
+                    )
+                    AND s2.codigoRecinto <> e.codigoRecinto
+                    {sub_filtro_origem}
+                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
+                  LIMIT 1
+               )
+             WHERE
+                 e.direcao = 'E'
+                 AND e.numeroConteiner = :numero
+                 AND e.codigoRecinto IN :destinos
+                 AND (
+                   e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
+                 )
+                 AND e.dataHoraOcorrencia >= :inicio
+                 AND e.dataHoraOcorrencia < :fim
+--                AND NOT EXISTS (
+--                  SELECT 1
+--                  FROM apirecintos_acessosveiculo s3
+--                  WHERE s3.numeroConteiner    = e.numeroConteiner
+--                    AND s3.codigoRecinto      = e.codigoRecinto
+--                    AND s3.direcao            = 'S'
+--                    AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
+--                )
+                 {where_filtro_origem}
+             ORDER BY e.dataHoraOcorrencia ASC
+         """
+        params = {
+             "numero": (numero_conteiner or "").strip().upper(),
+             "destinos": tuple(destinos_validos),
+             "inicio": inicio,
+             "fim": fim
+        }
+        bind = text(sql_txt).bindparams(bindparam("destinos", expanding=True))
+        if origens_filtrar:
+            bind = bind.bindparams(bindparam("origens", expanding=True))
+            params["origens"] = tuple(origens_filtrar)
+        rows = session.execute(bind, params).fetchall()
         resultados = [{
             "numeroConteiner": r.numeroConteiner,
             "codigoRecinto": r.codigoRecinto,
@@ -272,69 +567,7 @@ def configure(app):
             "s_vazioConteiner": r.s_vazioConteiner,
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
-
-        # === 2º passo: enriquecer com DUE / Exportador / NCM (com janela temporal por linha) ===
-        # Para cada linha, a âncora temporal é a ENTRADA no destino (e.dataHoraOcorrencia).
-        anchors = []
-        for it in resultados:
-            num = (it.get("numeroConteiner") or "").strip().upper()
-            dt  = it.get("dataHoraOcorrencia")
-            if num and dt:
-                anchors.append((num, dt))
-        # Janela de 15 dias em relação a cada dt_anchor
-        mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
-        for item in resultados:
-            k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
-            info = mapa_due.get(k)
-            item["numero_due"] = info["numero_due"] if info else None
-            item["cnpj_estabelecimento_exportador"] = info["cnpj_estabelecimento_exportador"] if info else None
-            item["nfe_ncm"] = info["nfe_ncm"] if info else None
-            item["due_itens"] = info.get("due_itens") if info else []
-            item["exportador_nome"] = info.get("exportador_nome") if info else None
-
-        # === 3º passo: marcar motoristas em risco pelo CPF (apenas ENTRADA) ===
-        # Coletamos CPFs das entradas (e opcionalmente poderíamos marcar também o da origem)
-        cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
-        try:
-            em_risco = _cpfs_em_risco(session, cpfs_entrada)  # set de CPFs normalizados (dígitos)
-        except Exception:
-            app.logger.exception("[risco_motoristas] falha ao consultar CPFs de risco")
-            em_risco = set()
-        for it in resultados:
-            it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
-
-        # IQR / outliers
-        vals = sorted([
-            float(x["transit_time_horas"]) for x in resultados
-            if x["transit_time_horas"] is not None
-        ])
-        q1, q3 = _quartis(vals)
-
-        if q1 is None or q3 is None:
-            iqr = 0.0
-            limite_outlier_mild = None
-            limite_outlier_strict = None
-        else:
-            iqr = float(q3 - q1)
-            limite_outlier_mild   = float(q3 + 1.5 * iqr)
-            limite_outlier_strict = float(q3 + 15.0 * iqr)
-
-        for item in resultados:
-            v = item["transit_time_horas"]
-            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
-                item["is_outlier"] = False
-            else:
-                vv = float(v)
-                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
-
-        stats = {
-            "q1": q1,
-            "q3": q3,
-            "iqr": iqr,
-            "limite_outlier_mild": limite_outlier_mild,
-            "limite_outlier_strict": limite_outlier_strict
-        }
-        return resultados, stats
+        return _posprocessar_transit_rows(session, resultados)
 
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
@@ -343,83 +576,96 @@ def configure(app):
             csrf_token=generate_csrf
         )
 
-    def get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan, vazio=False) -> list:
-        query = {
-            'metadata.contentType': 'image/jpeg',
-            'metadata.dataescaneamento': {'$gte': inicio_scan, '$lte': fim_scan}
-        }
 
-        # Adiciona o filtro por número apenas se fornecido
-        if numero:
-            query['metadata.numeroinformado'] = numero
-
-        projection = {
-            'metadata.numeroinformado': 1,
-            'metadata.dataescaneamento': 1,
-            'metadata.predictions.vazio': 1
-        }
-
-        cursor = (
-            mongodb['fs.files']
-            .find(query, projection)
-            .sort('metadata.dataescaneamento', -1)
-            .limit(10)
-        )
-
-        return list(cursor)
-
-    def get_imagens_container_sem_data(mongodb, numero, vazio=False) -> list:
-        query = {
-            'metadata.contentType': 'image/jpeg',
-        }
-
-        # Adiciona o filtro por número apenas se fornecido
-        if numero:
-            query['metadata.numeroinformado'] = numero
-
-        projection = {
-            'metadata.numeroinformado': 1,
-            'metadata.dataescaneamento': 1,
-            'metadata.predictions.vazio': 1
-        }
-
-        cursor = (
-            mongodb['fs.files']
-            .find(query, projection)
-            .sort('metadata.dataescaneamento', -1)
-            .limit(10)
-        )
-
-        return list(cursor)
-
-    @app.route('/exportacao/stats', methods=['POST'])
-    def exportacao_stats():
-
-        mongodb = app.config['mongodb']
-        session = app.config['db_session']
-
-        numero = request.form.get('numero')
-        start = request.form.get('start')
-        end = request.form.get('end')
-
-        if not start and not end and numero:
-            arquivos = get_imagens_container_sem_data(mongodb, numero)
-            return render_template(
-                'exportacao.html',
-                arquivos=arquivos,
-                csrf_token=generate_csrf
-            )
-
-        inicio_scan = datetime.strptime(start, '%Y-%m-%d')
-        fim_scan = datetime.strptime(end, '%Y-%m-%d')
-
-        arquivos = get_imagens_container_data(mongodb, numero, inicio_scan, fim_scan)
-
-        return render_template(
-            'exportacao.html',
-            arquivos=arquivos,
-            csrf_token=generate_csrf
-        )
+# TRECHO COMENTADO A SEGUIR NÃO É MAIS UTILIZADO NO PROJETO
+#    def get_imagens_container_data(
+#        mongodb,
+#        numero,
+#        inicio_scan,
+#        fim_scan,
+#        vazio=False
+#    ) -> list:
+#        query = {
+#            'metadata.contentType': 'image/jpeg',
+#            'metadata.dataescaneamento': {'$gte': inicio_scan, '$lte': fim_scan}
+#        }
+#
+#        # Adiciona o filtro por número apenas se fornecido
+#        if numero:
+#            query['metadata.numeroinformado'] = numero
+#
+#        projection = {
+#            'metadata.numeroinformado': 1,
+#            'metadata.dataescaneamento': 1,
+#            'metadata.predictions.vazio': 1
+#        }
+#
+#        cursor = (
+#            mongodb['fs.files']
+#            .find(query, projection)
+#            .sort('metadata.dataescaneamento', -1)
+#            .limit(10)
+#        )
+#
+#        return list(cursor)
+#
+#    def get_imagens_container_sem_data(mongodb, numero, vazio=False) -> list:
+#        query = {
+#            'metadata.contentType': 'image/jpeg',
+#        }
+#
+#        # Adiciona o filtro por número apenas se fornecido
+#        if numero:
+#            query['metadata.numeroinformado'] = numero
+#
+#        projection = {
+#            'metadata.numeroinformado': 1,
+#            'metadata.dataescaneamento': 1,
+#            'metadata.predictions.vazio': 1
+#        }
+#
+#        cursor = (
+#            mongodb['fs.files']
+#            .find(query, projection)
+#            .sort('metadata.dataescaneamento', -1)
+#            .limit(10)
+#        )
+#
+#        return list(cursor)
+#
+#    @app.route('/exportacao/stats', methods=['POST'])
+#    def exportacao_stats():
+#
+#        mongodb = app.config['mongodb']
+#        session = app.config['db_session']
+#
+#        numero = request.form.get('numero')
+#        start = request.form.get('start')
+#        end = request.form.get('end')
+#
+#        if not start and not end and numero:
+#            arquivos = get_imagens_container_sem_data(mongodb, numero)
+#            return render_template(
+#                'exportacao.html',
+#                arquivos=arquivos,
+#                csrf_token=generate_csrf
+#            )
+#
+#        inicio_scan = datetime.strptime(start, '%Y-%m-%d')
+#        fim_scan = datetime.strptime(end, '%Y-%m-%d')
+#
+#        arquivos = get_imagens_container_data(
+#            mongodb,
+#            numero,
+#            inicio_scan,
+#            fim_scan,
+#        )
+#
+#        return render_template(
+#            'exportacao.html',
+#            arquivos=arquivos,
+#            csrf_token=generate_csrf
+#        )
 
 
     # ---------------------------------------------------------
@@ -427,17 +673,22 @@ def configure(app):
     # no recinto de destino após dt_min (hora da entrada).
     # Mantido neste arquivo por simplicidade de integração.
     # ---------------------------------------------------------
-    def consulta_peso_container(session, numero_conteiner: str, codigo_recinto: str, dt_min: datetime) -> Optional[Dict]:
+    def consulta_peso_container(
+        session,
+        numero_conteiner: str,
+        codigo_recinto: str,
+        dt_min: datetime
+    ) -> Optional[Dict]:
         """
         Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_min,
         já consolidada contra retificações/exclusões.
         Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
         [dt_min - TOL_MINUTOS_PESAGEM, dt_min + TOL_MINUTOS_PESAGEM].
         """
-        
+
         dt_min_lower = dt_min - timedelta(minutes=TOL_MINUTOS_PESAGEM)
-        dt_max_upper = dt_min + timedelta(minutes=TOL_MINUTOS_PESAGEM)     
-        
+        dt_max_upper = dt_min + timedelta(minutes=TOL_MINUTOS_PESAGEM)
+
         sql = text("""
             SELECT
               p.id,
@@ -492,7 +743,8 @@ def configure(app):
                 app.logger.debug(f"[consulta_peso][chk-count] numero={numero_conteiner} recinto={codigo_recinto} BETWEEN({dt_min_lower},{dt_max_upper}) -> count={n}")
 
                 dbg = session.execute(text("""
-                    SELECT id,codigoRecinto,dataHoraOcorrencia,dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
+                    SELECT id,codigoRecinto,dataHoraOcorrencia,
+                    dataHoraTransmissao,tipoOperacao,pesoBrutoBalanca
                     FROM apirecintos_pesagensveiculo
                     WHERE numeroConteiner=:n AND codigoRecinto=:r
                       AND dataHoraOcorrencia BETWEEN :d1 AND :d2
@@ -526,17 +778,22 @@ def configure(app):
     # ocorrida PRÓXIMA de dt_max (hora da SAÍDA S do recinto anterior),
     # com tolerância simétrica ±TOL_MINUTOS_PESAGEM.
     # ---------------------------------------------------------
-    def consulta_peso_ate(session, numero_conteiner: str, codigo_recinto: str, dt_max: datetime) -> Optional[Dict]:
+    def consulta_peso_ate(
+        session,
+        numero_conteiner: str,
+        codigo_recinto: str,
+        dt_max: datetime
+    ) -> Optional[Dict]:
         """
         Retorna a pesagem efetiva (I/R) do contêiner no recinto mais próxima de dt_max,
         consolidada por MAX(dataHoraTransmissao) por dataHoraOcorrencia.
         Aplica tolerância SIMÉTRICA: considera pesagens no intervalo
         [dt_max - TOL_MINUTOS_PESAGEM, dt_max + TOL_MINUTOS_PESAGEM].
         """
-        
+
         dt_max_upper = dt_max + timedelta(minutes=TOL_MINUTOS_PESAGEM)
-        dt_min_lower = dt_max - timedelta(minutes=TOL_MINUTOS_PESAGEM)     
-        
+        dt_min_lower = dt_max - timedelta(minutes=TOL_MINUTOS_PESAGEM)
+
         sql = text("""
             SELECT
               p.id,
@@ -602,17 +859,17 @@ def configure(app):
         Endpoint para o fetch() do front-end.
         Parâmetros:
           - numeroConteiner: str
-          - codigoRecinto  : str
-          - dtMin          : 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
-          - sCodigoRecinto : str (opcional — recinto da SAÍDA anterior)
-          - sDataHora      : 'YYYY-MM-DD HH:MM:SS' (opcional — hora da SAÍDA anterior)
+          - codigoRecinto: str
+          - dtMin: 'YYYY-MM-DD HH:MM:SS' (hora da ENTRADA no destino)
+          - sCodigoRecinto: str (opcional — recinto da SAÍDA anterior)
+          - sDataHora: 'YYYY-MM-DD HH:MM:SS' (opcional — hora da SAÍDA anterior)
         """
         session = app.config['db_session']
-        numero  = request.args.get('numeroConteiner')
+        numero = request.args.get('numeroConteiner')
         recinto = request.args.get('codigoRecinto')
-        dt_min  = request.args.get('dtMin')
+        dt_min = request.args.get('dtMin')
         s_recinto = request.args.get('sCodigoRecinto')
-        s_dh      = request.args.get('sDataHora')
+        s_dh = request.args.get('sDataHora')
 
         app.logger.debug(f"[consulta_peso] QS raw: numeroConteiner={numero!r}, codigoRecinto={recinto!r}, dtMin={dt_min!r}")
         if not (numero and recinto and dt_min):
@@ -649,7 +906,6 @@ def configure(app):
             if pe_placa or po_placa:
                 placa_changed = (pe_placa != "" and po_placa != "" and pe_placa != po_placa)
 
-
         if not entrada and not origem:
             app.logger.debug(f"[consulta_peso] NOT FOUND (entrada e origem) numero={numero}, destino={recinto}")
             return jsonify({"found": False}), 404
@@ -675,8 +931,11 @@ def configure(app):
         session = app.config['db_session']
 
         # Data selecionada via query string (?data=YYYY-MM-DD); fallback = ontem
-        data_str = request.args.get('data')     # ex.: "2025-09-16"
-        destino  = request.args.get('destino')     # ex.: "8931356" | "8931359"
+        data_str = request.args.get('data')            # ex.: "2025-09-16" (modo antigo por dia)
+        de_str   = request.args.get('de')              # ex.: "2025-10-01"
+        ate_str  = request.args.get('ate')             # ex.: "2025-10-31"
+        destino  = request.args.get('destino')         # ex.: "8931356" | "8931359"
+        numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
 
         # múltiplos ?origem=...
         # Regra:
@@ -689,30 +948,90 @@ def configure(app):
         else:
             # primeiro acesso: marcar todas como selecionadas
             origens_sel = list(ORIGENS_TODAS)
-        
-        if data_str:
-            try:
-                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
-            except ValueError:
-                # Se formato inválido, volta para ontem
-                data_base = datetime.now().date() - timedelta(days=1)
+
+        if numero_param:
+            # ---------------------------
+            # MODO CONTÊINER COM INTERVALO
+            # ---------------------------
+            # Priorização de intervalo:
+            # 1) se "de" ou "ate" vierem -> usa intervalo [de, ate+1d)
+            # 2) senão, se "data" vier -> usa janela do dia [data, data+1d)
+            # 3) senão -> usa últimos DEFAULT_LOOKBACK_DAYS até agora
+            parse = lambda s: datetime.strptime(s, "%Y-%m-%d").date()
+            today = datetime.now().date()
+
+            if de_str or ate_str:
+                try:
+                    if de_str:
+                        de_date = parse(de_str)
+                    else:
+                        # sem "de": usa ate - DEFAULT_LOOKBACK_DAYS
+                        ate_date_tmp = parse(ate_str)
+                        de_date = ate_date_tmp - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    if ate_str:
+                        ate_date = parse(ate_str)
+                    else:
+                        # sem "ate": usa hoje
+                        ate_date = today
+                except ValueError:
+                    # se qualquer inválido, cai no fallback 3
+                    de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    ate_date = today
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                data_label = f"De {de_date.strftime('%d/%m/%Y')} até {ate_date.strftime('%d/%m/%Y')}"
+                data_iso = None
+                de_iso = de_date.strftime("%Y-%m-%d")
+                ate_iso = ate_date.strftime("%Y-%m-%d")
+            elif data_str:
+                # comportamento antigo por dia, se o usuário quiser
+                try:
+                    data_base = parse(data_str)
+                except ValueError:
+                    data_base = today - timedelta(days=1)
+                inicio = datetime.combine(data_base, time.min)
+                fim = inicio + timedelta(days=1)
+                data_label = data_base.strftime("%d/%m/%Y")
+                data_iso = data_base.strftime("%Y-%m-%d")
+                de_iso = None
+                ate_iso = None
+            else:
+                # fallback: últimos N dias
+                ate_date = today
+                de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                data_label = f"Últimos {DEFAULT_LOOKBACK_DAYS} dias (até {ate_date.strftime('%d/%m/%Y')})"
+                data_iso = None
+                de_iso = de_date.strftime("%Y-%m-%d")
+                ate_iso = ate_date.strftime("%Y-%m-%d")
+
+            destino = "multi"  # rótulo especial no template
+            resultados, stats = consultar_transit_time_por_container(
+                session, numero_param, inicio, fim, origens_filtrar=origens_sel
+            )
         else:
-            data_base = datetime.now().date() - timedelta(days=1)
+            # ---------------------------
+            # MODO ANTIGO POR DIA + DESTINO
+            # ---------------------------
+            if data_str:
+                try:
+                    data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+                except ValueError:
+                    data_base = datetime.now().date() - timedelta(days=1)
+            else:
+                data_base = datetime.now().date() - timedelta(days=1)
+            inicio = datetime.combine(data_base, time.min)
+            fim = inicio + timedelta(days=1)
+            data_label = data_base.strftime("%d/%m/%Y")
+            data_iso = data_base.strftime("%Y-%m-%d")
+            de_iso = None
+            ate_iso = None
 
-        # janela meio-aberta [00:00:00, +1 dia)
-        inicio = datetime.combine(data_base, time.min)
-        fim    = inicio + timedelta(days=1)
-
-        # Rótulos para o template
-        data_label = data_base.strftime("%d/%m/%Y")      # exibir no título
-        data_iso   = data_base.strftime("%Y-%m-%d")      # preencher o <input type="date">
-
-        # Filtro de RECINTO DE DESTINO (para a ENTRADA E)
-        destino = _normaliza_destino(destino)
-
-        # Para cada ENTRADA (E), encontrar a última SAÍDA (S) anterior
-        # em QUALQUER recinto (sem filtrar por codigoRecinto na subconsulta).
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+            destino = _normaliza_destino(destino)
+            resultados, stats = consultar_transit_time(
+                session, destino, inicio, fim, origens_filtrar=origens_sel
+            )
 
         # Carrega mapa {codigo_recinto: email} para exibir ícone de e-mail no template
         emails_map = load_emails_recintos(session)
@@ -721,9 +1040,11 @@ def configure(app):
             'exportacao_transit_time.html',
             resultados=resultados,
             data_label=data_label,
-            # valor para manter o input <date> preenchido com a data escolhida
             data_iso=data_iso,
+            de_iso=de_iso,
+            ate_iso=ate_iso,
             destino=destino,
+            numero=numero_param,
             origens_sel=origens_sel,  # manter estado das checkboxes
             q1=stats["q1"], q3=stats["q3"], iqr=stats["iqr"],
             limite_outlier_mild=stats["limite_outlier_mild"],
@@ -731,17 +1052,22 @@ def configure(app):
             csrf_token=generate_csrf,
             emails_recintos=emails_map
          )
-         
+
     @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
     def transit_time_export():
         """
-        Exporta os resultados filtrados (mesma lógica da tela) em CSV compatível com Excel.
-        Query string: ?data=YYYY-MM-DD&destino=CODIGO
+        Exporta os resultados filtrados em CSV compatível com Excel.
+        Query string: ?data=YYYY-MM-DD&destino=CODIGO  OU  ?data=YYYY-MM-DD&numero=CONT
         """
         session = app.config['db_session']
 
         data_str = request.args.get('data')
-        destino  = _normaliza_destino(request.args.get('destino'))
+        de_str   = request.args.get('de')
+        ate_str  = request.args.get('ate')
+        numero_param = (request.args.get('numero') or request.args.get('numeroConteiner') or "").strip().upper()
+        destino_arg = request.args.get('destino')
+        destino = _normaliza_destino(destino_arg) if destino_arg else None
+
         # Mesma regra do endpoint da tela:
         #  - Sem chave 'origem' => default = TODAS (mantém checkboxes “todas marcadas” no primeiro acesso
         #    e exporta coerentemente).
@@ -751,19 +1077,58 @@ def configure(app):
         else:
             origens_sel = list(ORIGENS_TODAS)
 
-        if data_str:
-            try:
-                data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
-            except ValueError:
-                data_base = datetime.now().date() - timedelta(days=1)
+        if numero_param:
+            parse = lambda s: datetime.strptime(s, "%Y-%m-%d").date()
+            today = datetime.now().date()
+            if de_str or ate_str:
+                try:
+                    if de_str:
+                        de_date = parse(de_str)
+                    else:
+                        ate_date_tmp = parse(ate_str)
+                        de_date = ate_date_tmp - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    if ate_str:
+                        ate_date = parse(ate_str)
+                    else:
+                        ate_date = today
+                except ValueError:
+                    de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                    ate_date = today
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                filename_suffix = f"{de_date.strftime('%Y-%m-%d')}_a_{ate_date.strftime('%Y-%m-%d')}"
+            elif data_str:
+                try:
+                    data_base = parse(data_str)
+                except ValueError:
+                    data_base = today - timedelta(days=1)
+                inicio = datetime.combine(data_base, time.min)
+                fim = inicio + timedelta(days=1)
+                filename_suffix = data_base.strftime('%Y-%m-%d')
+            else:
+                ate_date = today
+                de_date = today - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+                inicio = datetime.combine(de_date, time.min)
+                fim = datetime.combine(ate_date, time.min) + timedelta(days=1)
+                filename_suffix = f"ult{DEFAULT_LOOKBACK_DAYS}d_ate_{ate_date.strftime('%Y-%m-%d')}"
+
+            resultados, stats = consultar_transit_time_por_container(
+                session, numero_param, inicio, fim, origens_filtrar=origens_sel
+            )
         else:
-            data_base = datetime.now().date() - timedelta(days=1)
-
-        inicio = datetime.combine(data_base, time.min)
-        fim    = inicio + timedelta(days=1)
-
-        resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
-
+            # modo antigo export por dia+destino
+            if data_str:
+                try:
+                    data_base = datetime.strptime(data_str, "%Y-%m-%d").date()
+                except ValueError:
+                    data_base = datetime.now().date() - timedelta(days=1)
+            else:
+                data_base = datetime.now().date() - timedelta(days=1)
+            inicio = datetime.combine(data_base, time.min)
+            fim = inicio + timedelta(days=1)
+            destino = _normaliza_destino(destino or "8931356")
+            resultados, stats = consultar_transit_time(session, destino, inicio, fim, origens_filtrar=origens_sel)
+            filename_suffix = data_base.strftime('%Y-%m-%d')
 
         # Monta CSV (delimitador ';' funciona bem no Excel pt-BR)
         buf = StringIO()
@@ -812,7 +1177,12 @@ def configure(app):
                 r.get("nfe_ncm") or ""
             ])
 
-        filename = f"transit_time_{destino}_{data_base.strftime('%Y-%m-%d')}.csv"
+        filename = (
+            f"transit_time_{numero_param}_{filename_suffix}.csv"
+            if numero_param else
+            f"transit_time_{destino}_{filename_suffix}.csv"
+        )
+
         return Response(
             buf.getvalue(),
             mimetype="text/csv; charset=utf-8",
@@ -820,21 +1190,40 @@ def configure(app):
                 "Content-Disposition": f"attachment; filename={filename}"
             }
         )
-        
+
     # ======================
     #   IMAGENS (MongoDB)
     # ======================
 
-    # Diretório local p/ cache de thumbnails
-    THUMB_CACHE_DIR = Path("/tmp/exportacao_thumbs")
-    THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # Diretório local p/ cache de thumbnails (sem hardcode de /tmp)
+    # Prioridade:
+    # 1) app.config["THUMB_CACHE_DIR"]
+    # 2) env VIRASANA_THUMB_CACHE_DIR
+    # 3) diretório temp da plataforma + subpasta da app
+    _thumb_cache_base = (
+        app.config.get("THUMB_CACHE_DIR")
+        or os.environ.get("VIRASANA_THUMB_CACHE_DIR")
+        or str(Path(tempfile.gettempdir()) / "virasana_exportacao_thumbs")
+    )
+    THUMB_CACHE_DIR = Path(_thumb_cache_base).resolve()
+    # Cria diretório com permissões restritivas em POSIX (best-effort)
+    # Em Windows o chmod é ignorado para bits POSIX.
+    if not THUMB_CACHE_DIR.exists():
+        THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(THUMB_CACHE_DIR, 0o700)
+        except Exception:
+            # Se não suportado (Windows) ou sem permissão, segue o fluxo
+            app.logger.debug("[thumbs] chmod 0700 não aplicado em %s", THUMB_CACHE_DIR)
+    elif not THUMB_CACHE_DIR.is_dir():
+        raise RuntimeError(f"THUMB_CACHE_DIR não é diretório: {THUMB_CACHE_DIR}")
 
     # Largura padrão das thumbs (pode ajustar no querystring ?w=)
     DEFAULT_THUMB_WIDTH = 320
 
     # Limites de segurança
     MAX_CONTAINERS_PER_BULK = 100         # limite de lote por requisição do front
-    MAX_IN_NUMEROS_SIZE     = 500         # quebra o $in em sublotes p/ queries Mongo muito grandes
+    MAX_IN_NUMEROS_SIZE = 500         # quebra o $in em sublotes p/ queries Mongo muito grandes
 
     def _norm_numero(n: str) -> str:
         """Normaliza o número do contêiner para maiúsculas e sem espaços."""
@@ -851,6 +1240,8 @@ def configure(app):
         return dt_utc.replace(tzinfo=None)
 
     def _thumb_cache_path(file_id: str, w: int) -> Path:
+        # file_id vem de ObjectId; w é inteiro sanetizado abaixo.
+        # Mantemos nomes determinísticos por ser cache; gravação é atômica via os.replace.
         return THUMB_CACHE_DIR / f"{file_id}_w{w}.jpg"
 
     def _make_thumb_bytes(img_bytes: bytes, width: int) -> bytes:
@@ -870,7 +1261,7 @@ def configure(app):
 
     def _ensure_indexes(mongodb):
         """
-        Cria índices importantes (idempotente). 
+        Cria índices importantes (idempotente).
         Chame 1x por ciclo ou deixe habilitado (barato se já existir).
         """
         try:
@@ -910,8 +1301,9 @@ def configure(app):
         # Evita truncamento dos GROUP_CONCAT
         try:
             session.execute(text("SET SESSION group_concat_max_len = 4096"))
-        except Exception:
-            pass
+        except SQLAlchemyError as e:
+            # Sem permissão/compatibilidade? Mantém fluxo e registra para diagnóstico.
+            app.logger.debug("[due] SET group_concat_max_len ignorado: %s", e)
 
         # Normaliza âncoras: [(NUM_UC, DT)]
         norm_anchors: List[tuple] = []
@@ -1015,10 +1407,13 @@ def configure(app):
                 # Para chave consistente com o chamador, parseamos:
                 if isinstance(dt_anchor, str):
                     try:
-                        dt_anchor = datetime.strptime(dt_anchor, "%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        # Em alguns drivers, pode já vir datetime; se falhar, deixa como veio
-                        pass
+                        dt_anchor = datetime.strptime(
+                            dt_anchor, "%Y-%m-%d %H:%M:%S"
+                        )
+                    except (ValueError, TypeError) as e:
+                        # Se o formato divergir, mantemos o valor original (string),
+                        # mas registramos para diagnóstico sem interromper o fluxo.
+                        app.logger.debug("[due] dt_anchor parse falhou: %r (%s)", dt_anchor, e)
 
                 itens_list = []
                 if r.get("due_itens_concat"):
@@ -1033,7 +1428,10 @@ def configure(app):
                 }
         return out
 
-    def _query_images_bulk_for_containers(mongodb, entradas_por_numero: dict[str, datetime]) -> dict[str, list[dict]]:
+    def _query_images_bulk_for_containers(
+        mongodb,
+        entradas_por_numero: dict[str, datetime]
+    ) -> dict[str, list[dict]]:
         """
         Consulta o Mongo em (poucas) queries para um conjunto de contêineres e
         retorna um mapa: numero -> [ {id, data(datetime)} ... ] contendo apenas
@@ -1043,7 +1441,7 @@ def configure(app):
             return {}
 
         # Normaliza chaves e calcula janela global
-        entradas_por_numero = { _norm_numero(k): v for k, v in entradas_por_numero.items() if k }
+        entradas_por_numero = {_norm_numero(k): v for k, v in entradas_por_numero.items() if k}
         numeros = list(entradas_por_numero.keys())
         if not numeros:
             return {}
@@ -1095,6 +1493,244 @@ def configure(app):
                     })
 
         return imgs_por_numero
+
+    def _query_carga_bulk_for_containers(
+        mongodb,
+        entradas_por_numero: dict[str, datetime]
+    ) -> dict[str, dict]:
+        """Busca um *snapshot* de carga por contêiner, próximo da ENTRADA.
+
+        Estratégia:
+          1) Janela global = [min(entradas)-7d, max(entradas)+2h+7d]
+          2) Filtra apenas docs com metadata.carga presente
+          3) Itera 1x e escolhe o melhor doc por contêiner com a prioridade:
+             (a) Te < d <= Te+2h   (preferido)
+             (b) d <= Te           (mais recente antes)
+             (c) d > Te            (o mais próximo depois, até +7d)
+        Retorna um mapa numero -> payload resumido.
+        """
+        if not entradas_por_numero:
+            return {}
+
+        entradas_por_numero = {_norm_numero(k): v for k, v in entradas_por_numero.items() if k}
+        numeros = list(entradas_por_numero.keys())
+        if not numeros:
+            return {}
+
+        t_min = min(entradas_por_numero.values())
+        t_max = max(entradas_por_numero.values())
+        janela_ini = t_min - timedelta(days=4)
+        janela_fim = t_max + timedelta(hours=2, days=4)
+
+        base_filter = {
+            "metadata.carga": {"$exists": True},
+            "metadata.dataescaneamento": {"$gte": janela_ini, "$lte": janela_fim},
+        }
+        projection = {
+            "_id": 1,
+            "metadata.numeroinformado": 1,
+            "metadata.dataescaneamento": 1,
+            "metadata.carga": 1,
+            "metadata.xml.alerta": 1,
+        }
+        sort_spec = [("metadata.numeroinformado", 1), ("metadata.dataescaneamento", 1)]
+
+        # Seleções parciais por número
+        best_pref: dict[str, dict] = {}
+        best_before: dict[str, dict] = {}
+        best_after: dict[str, dict] = {}
+
+        MAX_IN = MAX_IN_NUMEROS_SIZE
+        for i in range(0, len(numeros), MAX_IN):
+            lote = numeros[i:i+MAX_IN]
+            if not lote:
+                continue
+
+            filtro = dict(base_filter)
+            filtro["metadata.numeroinformado"] = {"$in": lote}
+
+            cursor = (
+                mongodb["fs.files"]
+                .find(filtro, projection)
+                .sort(sort_spec)
+                
+            )
+
+            for doc in cursor:
+                n = _norm_numero(doc.get("metadata", {}).get("numeroinformado", ""))
+                if not n or n not in entradas_por_numero:
+                    continue
+                dsc = doc.get("metadata", {}).get("dataescaneamento", None)
+                if not dsc:
+                    continue
+                Te = entradas_por_numero[n]
+
+                if Te < dsc <= (Te + timedelta(hours=2)):
+                    # mantém o primeiro da janela preferida (ordem crescente de dataescaneamento)
+                    if n not in best_pref:
+                        best_pref[n] = doc
+                    continue
+
+                if dsc <= Te:
+                    # queremos o mais próximo *antes* => manter o MAIOR dsc
+                    cur = best_before.get(n)
+                    if (cur is None) or (cur["metadata"]["dataescaneamento"] < dsc):
+                        best_before[n] = doc
+                else:
+                    # após Te => manter o MENOR dsc
+                    cur = best_after.get(n)
+                    if (cur is None) or (cur["metadata"]["dataescaneamento"] > dsc):
+                        best_after[n] = doc
+
+        # Escolhe por prioridade e formata
+        out: dict[str, dict] = {}
+
+        def _trunc(s: str, maxlen: int = 500) -> str:
+            s = (s or "")
+            return (s[:maxlen] + "…") if len(s) > maxlen else s
+
+        def _to_upper(s: str) -> str:
+            return (s or "").upper()
+
+        def _num_from_str(x):
+            # tenta converter '003890.000' -> 3890 (int) quando possível
+            try:
+                val = float(str(x).replace(",", "."))
+                if abs(val - round(val)) < 1e-6:
+                    return int(round(val))
+                return val
+            except Exception:
+                return None
+
+        def _build_payload(doc: dict) -> dict:
+            meta = doc.get("metadata", {})
+            carga = (meta.get("carga") or {}) if isinstance(meta.get("carga"), dict) else {}
+            dsc = meta.get("dataescaneamento")
+            xml = meta.get("xml") or {}
+            alerta_terminal = bool(xml.get("alerta") in (True, "true", "True", "1", 1))
+
+            # Manifestos / Portos
+            manifestos = []
+            portos_origem = set()
+            portos_destino = set()
+
+            for m in carga.get("manifesto", []) or []:
+                man = m.get("manifesto")
+                if man:
+                    manifestos.append(str(man))
+                po = m.get("codigoportocarregamento")
+                pd = m.get("codigoportodescarregamento")
+                if po: portos_origem.add(_to_upper(po))
+                if pd: portos_destino.add(_to_upper(pd))
+
+            # Conhecimentos
+            conhecimentos = []
+            for c in carga.get("conhecimento", []) or []:
+                conhecimentos.append({
+                    "tipo": c.get("tipo"),
+                    "numero": c.get("conhecimento"),
+                    "descricaomercadoria": _trunc(c.get("descricaomercadoria") or ""),
+                    "agente": c.get("codigoagentenavegacao"),
+                    "consignatario": c.get("cpfcnpjconsignatario"),
+                    "porto_origem": _to_upper(c.get("codigoportoorigem")),
+                    "porto_destino": _to_upper(c.get("codigoportodestino")),
+                })
+                if c.get("codigoportoorigem"): portos_origem.add(_to_upper(c.get("codigoportoorigem")))
+                if c.get("codigoportodestino"): portos_destino.add(_to_upper(c.get("codigoportodestino")))
+
+            # NCMs
+            ncms = []
+            for ncm in carga.get("ncm", []) or []:
+                code = (ncm.get("ncm") or "").strip()
+                if code:
+                    ncms.append(code)
+
+            # Container info (pega o primeiro item)
+            cont_info = {}
+            cont_list = carga.get("container", []) or []
+            if cont_list:
+                ci = cont_list[0]
+                cont_info = {
+                    "lacre": ci.get("lacre"),
+                    "tara_kg": _num_from_str(ci.get("taracontainer")),
+                    "peso_bruto_item_kg": _num_from_str(ci.get("pesobrutoitem")),
+                    "volume_item_m3": _num_from_str(ci.get("volumeitem")),
+                    "uso_parcial": ci.get("indicadorusoparcial") in (True, "true", "True", "1", 1),
+                }
+
+            payload = {
+                "carga_present": True,
+                "pesototal": carga.get("pesototal"),
+                "manifestos": sorted(set(manifestos)),
+                "portos": {
+                    "origens": sorted(portos_origem),
+                    "destinos": sorted(portos_destino),
+                },
+                "conhecimentos": conhecimentos,
+                "ncm": sorted(set(ncms)),
+                "container_info": cont_info,
+                "alerta_terminal": alerta_terminal,
+                "snapshot_ref": {
+                    "file_id": str(doc.get("_id")),
+                    "dataescaneamento": dsc.isoformat() if isinstance(dsc, datetime) else None,
+                }
+            }
+            return payload
+
+        for n in numeros:
+            chosen = best_pref.get(n) or best_before.get(n) or best_after.get(n)
+            if chosen:
+                out[n] = _build_payload(chosen)
+            else:
+                # Sem snapshot de carga — ainda não vasculhamos XML-only.
+                # Por ora, mantém alerta como False (pode-se evoluir com um segundo passe se necessário).
+                out[n] = {"carga_present": False, "alerta_terminal": False}
+
+        return out
+
+
+    @app.route("/exportacao/transit_time/carga_bulk", methods=["POST"])
+    def exportacao_transit_time_carga_bulk():
+        """Endpoint bulk que retorna um *resumo* da carga por contêiner.
+
+        Body JSON:
+        {
+          "containers": [
+            {"numero": "MSCU1234567", "entrada": "YYYY-MM-DD HH:MM:SS"},
+            ...
+          ]
+        }
+        Restrições:
+          - Máx. {MAX_CONTAINERS_PER_BULK} contêineres por chamada
+          - Datas são interpretadas no fuso da aplicação e convertidas p/ UTC-naive
+        """
+        try:
+            payload = request.get_json(silent=True) or {}
+            items = payload.get("containers", [])
+            if not isinstance(items, list):
+                return jsonify({"error": "Formato inválido"}), 400
+
+            if len(items) > MAX_CONTAINERS_PER_BULK:
+                return jsonify({"error": f"Excede limite de {MAX_CONTAINERS_PER_BULK} contêineres por requisição"}), 400
+
+            entradas_por_numero: dict[str, datetime] = {}
+            for it in items:
+                numero = _norm_numero(it.get("numero", ""))
+                entrada_str = it.get("entrada", "")
+                if not (numero and entrada_str):
+                    continue
+                try:
+                    entradas_por_numero[numero] = _parse_local_to_utc_naive(entrada_str)
+                except Exception:
+                    app.logger.debug(f"[carga_bulk] Ignorando entrada inválida: numero={numero!r}, entrada={entrada_str!r}")
+
+            mongodb = app.config["mongodb"]
+            result_map = _query_carga_bulk_for_containers(mongodb, entradas_por_numero)
+            return jsonify(result_map)
+
+        except Exception:
+            app.logger.exception("[carga_bulk] Erro inesperado")
+            return jsonify({"error": "Erro interno"}), 500
 
     @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
     def exportacao_transit_time_imgs_bulk():
@@ -1187,13 +1823,27 @@ def configure(app):
 
             thumb_bytes = _make_thumb_bytes(original, width)
 
-            # Grava em cache local
+            # Grava em cache local usando arquivo temporário no MESMO diretório (evita TOCTOU)
+            tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
             try:
-                with open(cache_path, "wb") as f:
+                # grava em arquivo temporário para evitar corrupção em concorrência
+                with open(tmp_path, "wb") as f:
                     f.write(thumb_bytes)
-            except Exception:
-                # se falhar cache, serve mesmo assim
-                pass
+                # replace é atômico na maioria dos SOs (posix/nt modernos)
+                os.replace(tmp_path, cache_path)
+            except (OSError, IOError) as e:
+                # se falhar cache, serve mesmo assim, mas registre o motivo
+                app.logger.warning(
+                    "[exportacao_img][cache-write] falhou ao gravar cache %s (w=%s): %s",
+                    str(cache_path), width, str(e)
+                )
+                # melhor esforço: remove temporário, se existir
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                except (OSError, IOError):
+                    # não faz sentido propagar erro da limpeza
+                    pass
 
             return Response(
                 thumb_bytes,
@@ -1206,3 +1856,93 @@ def configure(app):
         except Exception:
             app.logger.exception("[exportacao_img] erro ao servir imagem")
             return Response("Internal error", status=500)
+
+    @app.route("/exportacao/img/<file_id>/anotar", methods=["GET"])
+    def exportacao_img_anotar(file_id: str):
+        """
+        Tela para visualizar uma imagem e suas anotações.
+        """
+        session = app.config['db_session']
+        mongodb = app.config["mongodb"]
+
+        # Número do contêiner (se existir no metadata)
+        numero_conteiner = _get_numero_conteiner_from_file(mongodb, file_id)
+
+        # Lista anotações já cadastradas
+        anotacoes = _listar_anotacoes_imagem(session, file_id)
+
+        return render_template(
+            "exportacao_anotar_imagem.html",
+            file_id=file_id,
+            numero_conteiner=numero_conteiner,
+            anotacoes=anotacoes,
+            csrf_token=generate_csrf,  # se quiser usar CSRF depois no JS
+        )
+
+    @app.route("/exportacao/img/<file_id>/anotacoes", methods=["POST"])
+    def exportacao_img_anotacoes_criar(file_id: str):
+        """
+        Recebe coordenadas relativas (0.0 a 1.0) e o texto da anotação,
+        valida e grava na tabela ovr_anotacoes_imagens.
+        """
+        session = app.config['db_session']
+        mongodb = app.config["mongodb"]
+
+        payload = request.get_json(silent=True) or {}
+
+        # Coordenadas
+        try:
+            x1 = float(payload.get("x1", 0.0))
+            y1 = float(payload.get("y1", 0.0))
+            x2 = float(payload.get("x2", 0.0))
+            y2 = float(payload.get("y2", 0.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Coordenadas inválidas"}), 400
+
+        # Normaliza (garante x1 <= x2, y1 <= y2)
+        if x2 < x1:
+            x1, x2 = x2, x1
+        if y2 < y1:
+            y1, y2 = y2, y1
+
+        # Clampa entre 0 e 1
+        def clamp(v: float) -> float:
+            return max(0.0, min(1.0, v))
+
+        x1 = clamp(x1)
+        y1 = clamp(y1)
+        x2 = clamp(x2)
+        y2 = clamp(y2)
+
+        # Evita retângulos minúsculos (cliques acidentais)
+        if (x2 - x1) < 0.005 or (y2 - y1) < 0.005:
+            return jsonify({"error": "Área de seleção muito pequena"}), 400
+
+        # Texto da anotação
+        anotacao_txt = (payload.get("anotacao") or "").strip()
+        if not anotacao_txt:
+            return jsonify({"error": "Texto da anotação é obrigatório"}), 400
+
+        # TODO: integrar com seu sistema real de usuário
+        # Por enquanto, deixo um placeholder.
+        usuario_id = 0  # substitua por algo como g.user.id, current_user.id, etc.
+
+        numero_conteiner = _get_numero_conteiner_from_file(mongodb, file_id)
+
+        try:
+            _criar_anotacao_imagem(
+                session=session,
+                imagem_id=file_id,
+                numero_conteiner=numero_conteiner,
+                usuario_id=usuario_id,
+                x1_rel=x1,
+                y1_rel=y1,
+                x2_rel=x2,
+                y2_rel=y2,
+                anotacao=anotacao_txt,
+            )
+        except SQLAlchemyError:
+            # Já foi logado e rollback feito dentro do helper
+            return jsonify({"error": "Erro ao salvar anotação"}), 500
+
+        return jsonify({"ok": True})

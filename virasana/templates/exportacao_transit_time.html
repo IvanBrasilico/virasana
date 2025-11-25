@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
+   {# indica se estamos no modo "busca por contêiner" #}
+   {% set is_container_mode = (numero is defined and numero) %}
+
   <style>
     /* limita a altura e preserva proporção nas thumbs */
     .img-strip img {
@@ -68,26 +71,44 @@
       "8932788": "ISIS 2",
       "8931305": "TRANSBRASA",
       "8931304": "REDEX/IPA ECOPORTO TERMARES",
+      "8931339": "ECOPORTO PÁTIO 2",
       "8931356": "SANTOS BRASIL",
       "8931359": "BTP",
       "8931404": "DPW/EMBRAPORT",
       "8931318": "ECOPORTO"
     } %}
 
-    {% set destino_label =
-         ('8931356 - Santos Brasil' if destino == '8931356'
-         else '8931359 - BTP' if destino == '8931359'
-         else '8931404 - DPW/EMBRAPORT' if destino == '8931404'
-         else '8931318 - ECOPORTO' if destino == '8931318'
-         else destino)
-     %}
+     {% set destino_label =
+          ('8931356 - Santos Brasil' if destino == '8931356'
+          else '8931359 - BTP' if destino == '8931359'
+          else '8931404 - DPW/EMBRAPORT' if destino == '8931404'
+          else '8931318 - ECOPORTO' if destino == '8931318'
+          else ('Todos os terminais' if destino == 'multi' else destino))
+      %}
 
-    <h1 class="mb-1">Entradas no Recinto {{ destino_label }} — {{ data_label }}</h1>
+     <h1 class="mb-1">
+       {% if is_container_mode %}
+         Contêiner {{ numero }} — {{ data_label }}
+       {% else %}
+         Entradas no Recinto {{ destino_label }} — {{ data_label }}
+       {% endif %}
+     </h1>
 
     <p class="text-muted">
-      Janela: 00:00:00 a 23:59:59 · Direção: <strong>E</strong>
+      {% if is_container_mode and (de_iso or ate_iso) %}
+        Janela: <strong>{{ data_label }}</strong>
+      {% elif is_container_mode and (not data_iso) %}
+        Janela: <strong>{{ data_label }}</strong>
+      {% else %}
+        Janela: 00:00:00 a 23:59:59
+      {% endif %}
+      · Direção: <strong>E</strong>
       · Saída anterior: <em>outro recinto</em>
-      · Destino: <em>{{ destino_label }}</em>
+      {% if not is_container_mode %}
+        · Destino: <em>{{ destino_label }}</em>
+      {% else %}
+        · Destinos: <em>4 terminais (Santos Brasil, BTP, DPW, Ecoporto)</em>
+      {% endif %}
     </p>
 
     {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
@@ -110,90 +131,105 @@
       </div>
     {% endif %}
 
-    <!-- Filtro por data/destino/origem (GET) -->
-    <form class="row g-2 align-items-end mt-2 mb-4" method="get" action="">
-      <div class="col-auto">
-        <label for="data" class="form-label mb-0">Data</label>
-        <input
-          type="date"
-          class="form-control"
-          id="data"
-          name="data"
-          value="{{ data_iso }}"
-          required
-        />
-      </div>
+<!-- Filtro por data/destino/origem/contêiner (GET) -->
+<form class="container-fluid mt-3 mb-4" method="get" action="">
+  <!-- Linha 1: Data + Destino + Origem -->
+  <div class="row g-3 align-items-end">
+    <div class="col-md-3 col-sm-6">
+      <label for="data" class="form-label">Data</label>
+      <input type="date" class="form-control" id="data" name="data"
+             value="{{ data_iso }}"
+             {% if not is_container_mode %}required{% endif %}>
+    </div>
 
-      <div class="col-auto">
-        <label for="destino" class="form-label mb-0">Recinto de destino (E)</label>
-        <select class="form-control" id="destino" name="destino">
-          <option value="8931356" {{ 'selected' if destino == '8931356' else '' }}>8931356 - Santos Brasil</option>
-          <option value="8931359" {{ 'selected' if destino == '8931359' else '' }}>8931359 - BTP</option>
-		  
-		  <option value="8931404" {{ 'selected' if destino == '8931404' else '' }}>8931404 - DPW/EMBRAPORT</option>
-		  <option value="8931318" {{ 'selected' if destino == '8931318' else '' }}>8931318 - Ecoporto</option>
-        </select>
-      </div>
+    <div class="col-md-6 col-sm-6">
+      <label for="destino" class="form-label">Recinto de destino (E)</label>
+      <select class="form-control" id="destino" name="destino">
+        <option value="8931356" {{ 'selected' if destino == '8931356' else '' }}>8931356 - Santos Brasil</option>
+        <option value="8931359" {{ 'selected' if destino == '8931359' else '' }}>8931359 - BTP</option>
+        <option value="8931404" {{ 'selected' if destino == '8931404' else '' }}>8931404 - DPW/EMBRAPORT</option>
+        <option value="8931318" {{ 'selected' if destino == '8931318' else '' }}>8931318 - Ecoporto</option>
+      </select>
+      {% if is_container_mode %}
+        <div class="form-text">Ignorado quando há um contêiner informado.</div>
+      {% endif %}
+    </div>
 
-      <!-- Botão para abrir filtro de origem -->
-      <div class="col-auto">
-        <label class="form-label mb-0 d-block">&nbsp;</label>
-        <button class="btn btn-outline-secondary" type="button"
-                data-bs-toggle="collapse" data-bs-target="#filtroOrigem"
-                aria-expanded="false" aria-controls="filtroOrigem">
-          Origem (opcional)
-        </button>
-      </div>
+    <div class="col-md-3 col-sm-12">
+      <label class="form-label d-block">Origem</label>
+      <button class="btn btn-outline-secondary w-100" type="button"
+              data-bs-toggle="collapse" data-bs-target="#filtroOrigem"
+              aria-expanded="false" aria-controls="filtroOrigem">
+        Selecionar origens (opcional)
+      </button>
+    </div>
+  </div>
 
-      <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Aplicar</button>
-      </div>
+  <!-- Linha 2: De + Até + Contêiner + Ações -->
+  <div class="row g-3 align-items-end mt-1">
+    <div class="col-md-3 col-sm-6">
+      <label for="de" class="form-label">De (opcional)</label>
+      <input type="date" class="form-control" id="de" name="de" value="{{ de_iso or '' }}">
+    </div>
 
-      <div class="col-auto">
-        <a
-          class="btn btn-success"
-          href="{{ url_for('transit_time_export', data=data_iso, destino=destino) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}"
-          role="button"
-        >
+    <div class="col-md-3 col-sm-6">
+      <label for="ate" class="form-label">Até (opcional)</label>
+      <input type="date" class="form-control" id="ate" name="ate" value="{{ ate_iso or '' }}">
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+      <label for="numero" class="form-label">Busca contêiner (opcional)</label>
+      <input type="text" class="form-control" id="numero" name="numero"
+             value="{{ numero or '' }}"
+             pattern="[A-Za-z]{4}\s?\d{7}"
+             title="4 letras + 7 dígitos (padrão BIC)">
+    </div>
+
+    <div class="col-md-3 col-sm-6">
+      <div class="d-flex gap-2 justify-content-md-end">
+        <button type="submit" class="btn btn-primary w-100 w-md-auto">Aplicar</button>
+        <a class="btn btn-success w-100 w-md-auto"
+           href="{{ url_for('transit_time_export', data=data_iso, de=de_iso, ate=ate_iso, numero=numero) }}{% for o in origens_sel %}&origem={{ o }}{% endfor %}">
           Exportar Excel
         </a>
       </div>
+    </div>
+  </div>
 
-      <!-- Bloco colapsável com as checkboxes de origem -->
-      <div class="col-12">
-        <div class="collapse mt-2" id="filtroOrigem">
-          <div class="card card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <div class="fw-semibold">Filtrar por recinto de origem (S)</div>
-              <div class="small">
-                <a href="#" id="btnSelecionarTodos" class="me-2">Selecionar tudo</a>
-                <a href="#" id="btnLimpar">Limpar</a>
-              </div>
+  <!-- Filtro colapsável: Origens -->
+  <div class="row">
+    <div class="col-12">
+      <div class="collapse mt-3" id="filtroOrigem">
+        <div class="card card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Filtrar por recinto de origem (S)</div>
+            <div class="small">
+              <a href="#" id="btnSelecionarTodos" class="me-2">Selecionar tudo</a>
+              <a href="#" id="btnLimpar">Limpar</a>
             </div>
-
-            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-1">
-              {% for codigo, nome in recintos.items() %}
-                <div class="col">
-                  <div class="form-check">
-                    <input class="form-check-input origem-checkbox"
-                           type="checkbox"
-                           id="origem-{{ codigo }}"
-                           name="origem"
-                           value="{{ codigo }}"
-                           {{ 'checked' if codigo in origens_sel else '' }}>
-                    <label class="form-check-label" for="origem-{{ codigo }}">
-                      {{ nome }} <span class="text-muted">({{ codigo }})</span>
-                    </label>
-                  </div>
+          </div>
+          <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-1">
+            {% for codigo, nome in recintos.items() %}
+              <div class="col">
+                <div class="form-check">
+                  <input class="form-check-input origem-checkbox" type="checkbox"
+                         id="origem-{{ codigo }}" name="origem" value="{{ codigo }}"
+                         {{ 'checked' if codigo in origens_sel else '' }}>
+                  <label class="form-check-label" for="origem-{{ codigo }}">
+                    {{ nome }} <span class="text-muted">({{ codigo }})</span>
+                  </label>
                 </div>
-              {% endfor %}
-            </div>
-            <div class="text-muted small mt-2">Se nada for selecionado, todos os recintos de origem serão considerados.</div>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="text-muted small mt-2">
+            Se nada for selecionado, todos os recintos de origem serão considerados.
           </div>
         </div>
       </div>
-
-    </form>
+    </div>
+  </div>
+</form>
 
     <!-- Barra de "títulos de coluna" para ordenação (JS-only) -->
     {% if resultados and resultados|length > 0 %}
@@ -211,6 +247,8 @@
               data-key="outlier"><span>Outlier</span><span class="sort-indicator"></span></button>
       <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
               data-key="vazio"><span>Vazio</span><span class="sort-indicator"></span></button>
+      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
+              data-key="cnpjtransportador"><span>cnpj Transp.</span><span class="sort-indicator"></span></button>
     </div>
     {% endif %}
 
@@ -225,6 +263,7 @@
              data-tt="{% if r.transit_time_horas is not none %}{{ '%.6f'|format(r.transit_time_horas) }}{% endif %}"
              data-outlier="{{ 1 if r.is_outlier else 0 }}"
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
+             data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
              data-stable="{{ loop.index }}">
           <div class="card-header bg-white">
             <!-- Cabeçalho: texto à esquerda / imagens à direita -->
@@ -234,9 +273,9 @@
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
 
-                  {# Limite de exibição: transit time > 240 horas #}
+                  {# Limite de exibição: transit time > 120 horas #}
                   {% set tt = r.transit_time_horas %}
-                  {% set tt_limit = (tt is not none and tt > 240) %}
+                  {% set tt_limit = (tt is not none and tt > 120) %}
 
                   <span class="fw-semibold">Contêiner:</span>
                   <span class="me-3">{{ r.numeroConteiner }}</span>
@@ -247,7 +286,7 @@
                   <span class="fw-semibold">Vazio?</span>
                   <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
-                  <span class="fw-semibold">Origem:</span>
+                  <span class="fw-semibold">Redex de origem:</span>
                   <span class="me-3 text-nowrap">
                     {% if tt_limit %}
                       Estufado em recinto desconhecido ou não cadastrado
@@ -310,10 +349,10 @@
 			<span class="fw-semibold">CNPJ Transp.:</span>
 			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
 
-			<span class="fw-semibold">Placa:</span>
+			<span class="fw-semibold">Placa (entrada no Terminal):</span>
 			<span class="me-3">{{ r.placa or '—' }}</span>
 
-			  <span class="fw-semibold">Motorista:</span>
+			  <span class="fw-semibold">Motorista (entrada no Terminal):</span>
 			  <span class="me-3">
 				<span
 				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
@@ -328,7 +367,27 @@
 			  </span>
 				</div>
 
-                <!-- Linha 2.1 — DUE / Exportador / NCM -->
+                <!-- Linha 2.2 -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
+			<span class="fw-semibold">Placa (saída do redex):</span>
+			<span class="me-3">{{ r.s_placa or '—' }}</span>
+
+			  <span class="fw-semibold">Motorista (saída do redex):</span>
+			  <span class="me-3">
+				<span
+				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
+				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+				>
+				  {{ r.s_nomeMotorista or '—' }}
+				</span>
+				(CPF: {{ r.s_cpfMotorista or '—' }})
+				{% if r.motorista_risco %}
+				  <span class="badge text-bg-danger ms-1">RISCO</span>
+				{% endif %}
+			  </span>
+				</div>
+
+                <!-- Linha 2.3 — DUE / Exportador / NCM -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
                   <span class="fw-semibold">DUE:</span>
                   <span class="me-3">
@@ -357,7 +416,7 @@
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
                 </div>
 
-                <!-- Linha 2.2 — Itens da DUE (1 por linha) -->
+                <!-- Linha 2.4 — Itens da DUE (1 por linha) -->
                 <div class="mt-2 small">
                   <div class="fw-semibold mb-1">Itens da DUE:</div>
                   {% if r.due_itens and r.due_itens|length > 0 %}
@@ -369,6 +428,13 @@
                   {% else %}
                     <div class="text-muted">—</div>
                   {% endif %}
+                </div>
+
+                <!-- Linha 2.5 — Resumo da Carga (via Mongo) -->
+                <div class="mt-2 small carga-summary"
+                     data-numero="{{ r.numeroConteiner }}"
+                     data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                  <span class="text-muted">Carregando dados de carga…</span>
                 </div>
 
                 <!-- Linha 3 -->
@@ -830,6 +896,228 @@ function formatDateTime(isoString) {
     // Debug leve (apenas se quiser inspecionar no console)
     // console.warn('Barra de ordenação não encontrada.');
   }
+})();
+</script>
+
+<script>
+(function() {
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const NODES = Array.from(document.querySelectorAll('.carga-summary'));
+  if (!NODES.length) return;
+
+  // Renderização segura (constrói DOM, evita innerHTML com dados longos/desconhecidos)
+  function renderCarga(el, data) {
+    el.textContent = ''; // limpa placeholder
+
+    if (!data || !data.carga_present) {
+      const m = document.createElement('span');
+      m.className = 'text-muted';
+      m.textContent = 'Sem dados de carga';
+      el.appendChild(m);
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'd-flex flex-wrap align-items-center gap-2';
+
+    // Badge de alerta do terminal (quando sinalizado no XML)
+    if (data && data.alerta_terminal === true) {
+      const alertBadge = document.createElement('span');
+      alertBadge.className = 'badge text-bg-danger';
+      alertBadge.textContent = 'alerta do terminal';
+      wrap.appendChild(alertBadge);
+    }
+
+    // helper: cria "rótulo: valor"
+    function row(label, valueEl) {
+      const frag = document.createElement('div');
+      frag.className = 'd-flex align-items-center gap-1 me-3';
+      const b = document.createElement('span');
+      b.className = 'fw-semibold';
+      b.textContent = label;
+      frag.appendChild(b);
+      frag.appendChild(valueEl);
+      return frag;
+    }
+
+    // helper: badges
+    function badges(arr) {
+      const span = document.createElement('span');
+      if (!arr || !arr.length) { span.textContent = '—'; return span; }
+      for (const v of arr) {
+        const b = document.createElement('span');
+        b.className = 'badge text-bg-secondary me-1';
+        b.textContent = String(v);
+        span.appendChild(b);
+      }
+      return span;
+    }
+
+    // Manifestos
+    wrap.appendChild(row('Manifesto(s):', badges(data.manifestos)));
+
+    // Portos (origens/destinos)
+    const portos = document.createElement('span');
+    const po = (data.portos && data.portos.origens) || [];
+    const pd = (data.portos && data.portos.destinos) || [];
+    portos.appendChild(document.createTextNode('O: '));
+    portos.appendChild(badges(po));
+    portos.appendChild(document.createTextNode('  D: '));
+    portos.appendChild(badges(pd));
+    wrap.appendChild(row('Portos', portos));
+
+    // NCM(s)
+    wrap.appendChild(row('NCM(s):', badges(data.ncm)));
+
+    // Peso total (quando houver)
+    if (data.pesototal != null) {
+      const p = document.createElement('span');
+      p.textContent = Number(data.pesototal).toLocaleString('pt-BR');
+      wrap.appendChild(row('Peso total (kg):', p));
+    }
+
+    // Container info (lacre / tara / peso item / volume)
+    if (data.container_info) {
+      const ci = data.container_info;
+      const info = document.createElement('span');
+      const pedacos = [];
+      if (ci.lacre) pedacos.push(`Lacre: ${ci.lacre}`);
+      if (ci.tara_kg != null) pedacos.push(`Tara: ${ci.tara_kg} kg`);
+      if (ci.peso_bruto_item_kg != null) pedacos.push(`Peso item: ${ci.peso_bruto_item_kg} kg`);
+      if (ci.volume_item_m3 != null) pedacos.push(`Volume: ${ci.volume_item_m3} m³`);
+      info.textContent = pedacos.length ? pedacos.join(' · ') : '—';
+      wrap.appendChild(row('Container:', info));
+    }
+
+    // Botão de detalhes (conhecimentos)
+    const hasConhec = Array.isArray(data.conhecimentos) && data.conhecimentos.length > 0;
+    if (hasConhec) {
+      const detailsBtn = document.createElement('button');
+      detailsBtn.type = 'button';
+      detailsBtn.className = 'btn btn-sm btn-outline-secondary';
+      detailsBtn.textContent = 'Detalhes da carga';
+      detailsBtn.setAttribute('aria-expanded', 'false');
+
+      const detailsBox = document.createElement('div');
+      detailsBox.className = 'mt-2 d-none';
+
+      // monta lista
+      const list = document.createElement('div');
+      list.className = 'ms-2';
+      for (const c of data.conhecimentos) {
+        const linha = document.createElement('div');
+        linha.className = 'mb-1';
+        const cab = document.createElement('div');
+        cab.className = 'fw-semibold';
+        const tipo = (c.tipo || '').toUpperCase();
+        const num = c.numero || '';
+        cab.textContent = `${tipo || '—'} ${num || ''}`.trim();
+        const desc = document.createElement('div');
+        desc.className = 'text-muted';
+        desc.textContent = c.descricaomercadoria || '';
+        const meta = document.createElement('div');
+        meta.className = 'small';
+        const pedacos = [];
+        if (c.agente) pedacos.push(`Agente: ${c.agente}`);
+        if (c.consignatario) pedacos.push(`Consignatário: ${c.consignatario}`);
+        if (c.porto_origem) pedacos.push(`Origem: ${c.porto_origem}`);
+        if (c.porto_destino) pedacos.push(`Destino: ${c.porto_destino}`);
+        meta.textContent = pedacos.join(' · ') || '—';
+        linha.appendChild(cab);
+        linha.appendChild(desc);
+        linha.appendChild(meta);
+        list.appendChild(linha);
+      }
+      detailsBox.appendChild(list);
+
+      detailsBtn.addEventListener('click', () => {
+        const open = detailsBox.classList.toggle('d-none') === false;
+        detailsBtn.setAttribute('aria-expanded', String(open));
+        detailsBtn.textContent = open ? 'Ocultar detalhes' : 'Detalhes da carga';
+      });
+
+      el.appendChild(wrap);
+      el.appendChild(detailsBtn);
+      el.appendChild(detailsBox);
+    } else {
+      el.appendChild(wrap);
+    }
+
+    // Rodapé: referência do snapshot
+    if (data.snapshot_ref && (data.snapshot_ref.file_id || data.snapshot_ref.dataescaneamento)) {
+      const ref = document.createElement('div');
+      ref.className = 'text-muted small mt-1';
+      const ts = data.snapshot_ref.dataescaneamento || '';
+      ref.textContent = `(informação coletada ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
+      el.appendChild(ref);
+    }
+  }
+
+  // Lotes pendentes e controle (mantém a mesma ideia de /imgs_bulk)
+  const pending = new Set();
+  let inflight = false;
+
+  function scheduleFetch() {
+    if (inflight || pending.size === 0) return;
+    inflight = true;
+
+    // Tamanho de lote: mantenha moderado (ex.: 60)
+    const batch = Array.from(pending).slice(0, 60);
+    batch.forEach(el => pending.delete(el));
+
+    const filtered = batch.filter(el => !el.dataset.loaded);
+    if (filtered.length === 0) {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+      return;
+    }
+
+    const containers = filtered.map(el => ({
+      numero:  el.getAttribute('data-numero'),
+      entrada: el.getAttribute('data-entrada')
+    }));
+
+    fetch('{{ url_for("exportacao_transit_time_carga_bulk") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN
+      },
+      body: JSON.stringify({ containers })
+    })
+    .then(r => r.json())
+    .then(map => {
+      for (const el of filtered) {
+        const numero = el.getAttribute('data-numero');
+        renderCarga(el, map[numero]);
+        el.dataset.loaded = '1';
+      }
+    })
+    .catch(err => {
+      console.error('carga_bulk error', err);
+      for (const el of filtered) {
+        el.textContent = '';
+        const m = document.createElement('span');
+        m.className = 'text-muted';
+        m.textContent = 'Erro ao carregar carga';
+        el.appendChild(m);
+        el.dataset.loaded = '1';
+      }
+    })
+    .finally(() => {
+      inflight = false;
+      if (pending.size > 0) scheduleFetch();
+    });
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && !e.target.dataset.loaded) pending.add(e.target);
+    }
+    scheduleFetch();
+  }, { root: null, rootMargin: '200px 0px', threshold: 0 });
+
+  NODES.forEach(el => io.observe(el));
 })();
 </script>
 
