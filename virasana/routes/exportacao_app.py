@@ -80,9 +80,8 @@ def configure(app):
       "8932773": "ISIS 1",
       "8932788": "ISIS 2",
       "8931305": "TRANSBRASA",
-      "8931324":  "MARIMEX",
+      "8931342": "MARIMEX",
       "8931304": "REDEX/IPA ECOPORTO TERMARES",
-      "8931339": "ECOPORTO PATIO 2",
       "8935701": "MSC REDEX",
       "8935702": "BCS TERMINAL DE CONTEINER"
 
@@ -511,7 +510,7 @@ def configure(app):
                     AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                     AND (
                          s2.codigoRecinto LIKE '89327%'
-                      OR s2.codigoRecinto IN ('8931309', '8933204', '8933203', '8933001', '8931339', '8931305', '8931304','8935701', '8931324', '8935702')
+                      OR s2.codigoRecinto IN ('8931309', '8933204', '8933203', '8933001', '8931305', '8931304','8935701', '8931342', '8935702')
                     )
                     AND s2.codigoRecinto <> e.codigoRecinto
                     {sub_filtro_origem}
