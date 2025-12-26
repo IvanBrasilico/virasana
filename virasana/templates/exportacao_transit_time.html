@@ -370,16 +370,11 @@
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
 			<span class="fw-semibold">Placa (saída do redex):</span>
 			<span class="me-3">
-			
-			
-			                      {% if tt_limit %}
+			          {% if tt_limit %}
                         placa desconhecida
                       {% else %}
                         {{ r.s_placa or '—' }}
                       {% endif %}
-			
-			
-			
 			</span>
 
 			  <span class="fw-semibold">Motorista (saída do redex):</span>
@@ -388,9 +383,17 @@
 				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
 				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
 				>
-				  {{ r.s_nomeMotorista or '—' }}
+			          {% if tt_limit %}
+                        motorista desconhecido
+                      {% else %}
+                        {{ r.s_nomeMotorista or '—' }}
+                      {% endif %}
 				</span>
-				(CPF: {{ r.s_cpfMotorista or '—' }})
+			          {% if tt_limit %}
+                        -
+                      {% else %}
+                        (CPF: {{ r.s_cpfMotorista or '—' }})
+                      {% endif %}
 				{% if r.motorista_risco %}
 				  <span class="badge text-bg-danger ms-1">RISCO</span>
 				{% endif %}
