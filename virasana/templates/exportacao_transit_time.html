@@ -369,7 +369,18 @@
                 <!-- Linha 2.2 -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
 			<span class="fw-semibold">Placa (saída do redex):</span>
-			<span class="me-3">{{ r.s_placa or '—' }}</span>
+			<span class="me-3">
+			
+			
+			                      {% if tt_limit %}
+                        placa desconhecida
+                      {% else %}
+                        {{ r.s_placa or '—' }}
+                      {% endif %}
+			
+			
+			
+			</span>
 
 			  <span class="fw-semibold">Motorista (saída do redex):</span>
 			  <span class="me-3">
