@@ -24,8 +24,8 @@ from virasana.integracao.mercante.mercantealchemy import data_ultimo_arquivo_bai
 
 FORMATO_DATA_ANIITA = '%Y%m%d%H%M%S'
 FORMATO_DATA_ARQUIVO = '%Y-%m-%d-%H-%M-%S'
-URL_ANIITA_LISTA = 'http://10.61.8.42:3002/consultaArquivos'
-URL_ANIITA_DOWNLOAD = 'http://10.61.8.42:3002/download'
+URL_ANIITA_LISTA = 'http://10.61.8.187:3002/consultaArquivos'
+URL_ANIITA_DOWNLOAD = 'http://10.61.8.187:3002/download'
 
 
 def get_arquivos_novos(engine, start=None, days=1):
