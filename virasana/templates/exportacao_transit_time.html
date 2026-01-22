@@ -71,12 +71,11 @@
       "8932788": "ISIS 2",
       "8931305": "TRANSBRASA",
       "8931304": "REDEX/IPA ECOPORTO TERMARES",
-      "8931339": "ECOPORTO PÁTIO 2",
-      "8931356": "SANTOS BRASIL",
-      "8931359": "BTP",
-      "8931404": "DPW/EMBRAPORT",
-      "8931318": "ECOPORTO"
+      "8935701": "MSC REDEX",
+      "8931342": "MARIMEX",
+      "8935702": "BCS TERMINAL DE CONTEINER"
     } %}
+
 
      {% set destino_label =
           ('8931356 - Santos Brasil' if destino == '8931356'
@@ -370,7 +369,13 @@
                 <!-- Linha 2.2 -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
 			<span class="fw-semibold">Placa (saída do redex):</span>
-			<span class="me-3">{{ r.s_placa or '—' }}</span>
+			<span class="me-3">
+			          {% if tt_limit %}
+                        placa desconhecida
+                      {% else %}
+                        {{ r.s_placa or '—' }}
+                      {% endif %}
+			</span>
 
 			  <span class="fw-semibold">Motorista (saída do redex):</span>
 			  <span class="me-3">
@@ -378,9 +383,17 @@
 				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
 				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
 				>
-				  {{ r.s_nomeMotorista or '—' }}
+			          {% if tt_limit %}
+                        motorista desconhecido
+                      {% else %}
+                        {{ r.s_nomeMotorista or '—' }}
+                      {% endif %}
 				</span>
-				(CPF: {{ r.s_cpfMotorista or '—' }})
+			          {% if tt_limit %}
+                        -
+                      {% else %}
+                        (CPF: {{ r.s_cpfMotorista or '—' }})
+                      {% endif %}
 				{% if r.motorista_risco %}
 				  <span class="badge text-bg-danger ms-1">RISCO</span>
 				{% endif %}

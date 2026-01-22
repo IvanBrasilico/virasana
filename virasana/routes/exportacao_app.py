@@ -44,7 +44,7 @@ def configure(app):
     DEFAULT_LOOKBACK_DAYS = 30
 
     # -------------------------------------------------
-    # Opções de RECINTOS DE ORIGEM (para filtro checkboxes)
+    # Opções de RECINTOS DE ORIGEM REDEX (para filtro checkboxes)
     # (mantém alinhado com o template)
     # -------------------------------------------------
     ORIGENS_OPCOES = {
@@ -80,12 +80,11 @@ def configure(app):
       "8932773": "ISIS 1",
       "8932788": "ISIS 2",
       "8931305": "TRANSBRASA",
-      "8931356": "SANTOS BRASIL",
-      "8931359": "BTP",
+      "8931342": "MARIMEX",
       "8931304": "REDEX/IPA ECOPORTO TERMARES",
-      "8931339": "ECOPORTO PATIO 2",
-      "8931404": "DPW/EMBRAPORT",
-      "8931318": "ECOPORTO"
+      "8935701": "MSC REDEX",
+      "8935702": "BCS TERMINAL DE CONTEINER"
+
     }
 
     # Tupla imutável com todas as origens possíveis (ordem preservada)
@@ -511,7 +510,7 @@ def configure(app):
                     AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
                     AND (
                          s2.codigoRecinto LIKE '89327%'
-                      OR s2.codigoRecinto IN ('8931309', '8931356', '8931359', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
+                      OR s2.codigoRecinto IN ('8931309', '8933204', '8933203', '8933001', '8931305', '8931304','8935701', '8931342', '8935702')
                     )
                     AND s2.codigoRecinto <> e.codigoRecinto
                     {sub_filtro_origem}
