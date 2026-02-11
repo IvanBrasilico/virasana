@@ -51,6 +51,8 @@ def main():
             cont += 1
             print(df_acessos.head())
     print(f'{cont} acessos veículo encontrados para {len(df_ctrs)} apreensões')
+    for row in df_ctrs.itertuples():
+        print(row[1], row[2])
 
 
 if __name__ == '__main__':
