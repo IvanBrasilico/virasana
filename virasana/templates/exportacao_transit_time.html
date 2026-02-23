@@ -266,7 +266,7 @@
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
              data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
              data-stable="{{ loop.index }}">
-          <div class="card-header bg-white">
+          <div class="card-header {% if r.marcacao %}bg-transparent{% else %}bg-white{% endif %}">
             <!-- Cabeçalho: texto à esquerda / imagens à direita -->
             <div class="d-flex justify-content-between align-items-start gap-3">
               <!-- Coluna ESQUERDA (texto) -->
@@ -1156,6 +1156,7 @@ function formatDateTime(isoString) {
     e.preventDefault();
 
     const card = btn.closest('.card');
+	const header = card.querySelector('.card-header');
     const acessoId = btn.dataset.acessoId;
     const infoSpan = card.querySelector('.marcacao-info');
     const iconSpan = btn.querySelector('.marcar-icon');
@@ -1184,6 +1185,8 @@ function formatDateTime(isoString) {
 
       if (data.status === 'marked') {
         card.classList.add('bg-warning-subtle');
+        header.classList.remove('bg-white');
+        header.classList.add('bg-transparent');
         btn.classList.replace('btn-outline-secondary', 'btn-warning');
         iconSpan.textContent = '★';
         textSpan.textContent = 'Desmarcar';
@@ -1191,6 +1194,8 @@ function formatDateTime(isoString) {
         btn.disabled = false;
       } else if (data.status === 'unmarked') {
         card.classList.remove('bg-warning-subtle');
+        header.classList.remove('bg-transparent');
+        header.classList.add('bg-white');
         btn.classList.replace('btn-warning', 'btn-outline-secondary');
         iconSpan.textContent = '☆';
         textSpan.textContent = 'Marcar';
