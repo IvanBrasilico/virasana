@@ -281,7 +281,7 @@
                   <span class="fw-semibold">Contêiner:</span>
                   <span class="me-3">
                     {{ r.numeroConteiner }}
-                    <button type="button" class="btn btn-sm btn-outline-warning text-dark ms-2 py-0 btn-marcar"
+                    <button type="button" class="btn btn-sm ms-2 py-0 btn-marcar {% if r.marcacao %}btn-warning{% else %}btn-outline-secondary{% endif %}"
                             data-acesso-id="{{ r.id_acesso }}"
                             {% if r.marcacao and r.marcacao.usuario_cpf != current_user_id %}disabled title="Marcado por {{ r.marcacao.usuario_nome }}"{% endif %}>
                       <span class="marcar-icon">{{ '★' if r.marcacao else '☆' }}</span>
@@ -1183,13 +1183,15 @@ function formatDateTime(isoString) {
       }
 
       if (data.status === 'marked') {
-        card.classList.add('bg-warning', 'bg-opacity-10');
+        card.classList.add('border-warning', 'border-2');
+        btn.classList.replace('btn-outline-secondary', 'btn-warning');
         iconSpan.textContent = '★';
         textSpan.textContent = 'Desmarcar';
         infoSpan.textContent = `(Marcado por ${data.usuario_nome})`;
         btn.disabled = false;
       } else if (data.status === 'unmarked') {
-        card.classList.remove('bg-warning', 'bg-opacity-10');
+        card.classList.remove('border-warning', 'border-2');
+        btn.classList.replace('btn-warning', 'btn-outline-secondary');
         iconSpan.textContent = '☆';
         textSpan.textContent = 'Marcar';
         infoSpan.textContent = '';
