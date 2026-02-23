@@ -256,7 +256,7 @@
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-2 {% if r.marcacao %}bg-warning bg-opacity-10{% endif %}"
+        <div class="card shadow-sm mb-2 {% if r.marcacao %}bg-warning-subtle{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
              data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
@@ -1183,14 +1183,14 @@ function formatDateTime(isoString) {
       }
 
       if (data.status === 'marked') {
-        card.classList.add('border-warning', 'border-2');
+        card.classList.add('bg-warning-subtle');
         btn.classList.replace('btn-outline-secondary', 'btn-warning');
         iconSpan.textContent = '★';
         textSpan.textContent = 'Desmarcar';
         infoSpan.textContent = `(Marcado por ${data.usuario_nome})`;
         btn.disabled = false;
       } else if (data.status === 'unmarked') {
-        card.classList.remove('border-warning', 'border-2');
+        card.classList.remove('bg-warning-subtle');
         btn.classList.replace('btn-warning', 'btn-outline-secondary');
         iconSpan.textContent = '☆';
         textSpan.textContent = 'Marcar';
