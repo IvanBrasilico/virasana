@@ -6,6 +6,7 @@ import os
 import tempfile
 
 from datetime import timedelta, datetime, time, timezone
+from flask_login import current_user
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
@@ -314,6 +315,7 @@ def configure(app):
 
         sql_txt = f"""
             SELECT
+                e.id AS id_acesso,
                 e.numeroConteiner,
                 e.codigoRecinto,
                 e.dataHoraOcorrencia,
@@ -386,6 +388,7 @@ def configure(app):
             rows = session.execute(text(sql_txt), params).fetchall()
 
         resultados = [{
+             "id_acesso": r.id_acesso,
              "numeroConteiner": r.numeroConteiner,
              "codigoRecinto": r.codigoRecinto,
              "dataHoraOcorrencia": r.dataHoraOcorrencia,
@@ -436,7 +439,33 @@ def configure(app):
             em_risco = set()
         for it in resultados:
             it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
-        # 3) IQR/outliers
+
+        # 3) Marcações de usuários na nova tabela
+        ids_acesso = [it.get("id_acesso") for it in resultados if it.get("id_acesso")]
+        mapa_marcacoes = {}
+        if ids_acesso:
+            try:
+                sql_marc = text("""
+                    SELECT m.acesso_veiculo_id, m.usuario_cpf, m.data_marcacao, u.nome
+                    FROM narcos_containers_marcados m
+                    LEFT JOIN ovr_usuarios u ON u.cpf = m.usuario_cpf
+                    WHERE m.acesso_veiculo_id IN :ids
+                """).bindparams(bindparam("ids", expanding=True))
+                rows_marc = session.execute(sql_marc, {"ids": tuple(ids_acesso)}).mappings().all()
+                for rm in rows_marc:
+                    mapa_marcacoes[rm["acesso_veiculo_id"]] = {
+                        "usuario_cpf": rm["usuario_cpf"],
+                        "usuario_nome": rm["nome"] or rm["usuario_cpf"],
+                        "data_marcacao": rm["data_marcacao"]
+                    }
+            except Exception as e:
+                app.logger.exception("[marcacoes] erro ao consultar marcações")
+
+        for it in resultados:
+            it["marcacao"] = mapa_marcacoes.get(it.get("id_acesso"))
+
+        # 4) IQR/outliers
+
         vals = sorted([
             float(x["transit_time_horas"]) for x in resultados
             if x["transit_time_horas"] is not None
@@ -484,6 +513,7 @@ def configure(app):
 
         sql_txt = f"""
              SELECT
+                 e.id AS id_acesso,
                  e.numeroConteiner,
                  e.codigoRecinto,
                  e.dataHoraOcorrencia,
@@ -549,6 +579,7 @@ def configure(app):
             params["origens"] = tuple(origens_filtrar)
         rows = session.execute(bind, params).fetchall()
         resultados = [{
+            "id_acesso": r.id_acesso,
             "numeroConteiner": r.numeroConteiner,
             "codigoRecinto": r.codigoRecinto,
             "dataHoraOcorrencia": r.dataHoraOcorrencia,
@@ -1189,6 +1220,46 @@ def configure(app):
                 "Content-Disposition": f"attachment; filename={filename}"
             }
         )
+
+    @app.route('/exportacao/transit_time/toggle_marcacao', methods=['POST'])
+    def toggle_marcacao():
+        if not current_user.is_authenticated:
+            return jsonify({"error": "Usuário não autenticado"}), 401
+
+        payload = request.get_json(silent=True) or {}
+        acesso_id = payload.get("acesso_veiculo_id")
+
+        if not acesso_id:
+            return jsonify({"error": "ID do acesso não fornecido"}), 400
+
+        session = app.config['db_session']
+        usuario_cpf = current_user.id  # Flask-Login id na tabela ovr_usuarios = cpf
+
+        try:
+            sql_check = text("SELECT usuario_cpf FROM narcos_containers_marcados WHERE acesso_veiculo_id = :acesso_id")
+            marcacao = session.execute(sql_check, {"acesso_id": acesso_id}).mappings().first()
+
+            if marcacao:
+                if marcacao["usuario_cpf"] == usuario_cpf:
+                    sql_del = text("DELETE FROM narcos_containers_marcados WHERE acesso_veiculo_id = :acesso_id")
+                    session.execute(sql_del, {"acesso_id": acesso_id})
+                    session.commit()
+                    return jsonify({"status": "unmarked"})
+                else:
+                    return jsonify({"error": "Este contêiner já foi marcado por outro usuário."}), 403
+            else:
+                sql_ins = text("INSERT INTO narcos_containers_marcados (acesso_veiculo_id, usuario_cpf) VALUES (:acesso_id, :usuario_cpf)")
+                session.execute(sql_ins, {"acesso_id": acesso_id, "usuario_cpf": usuario_cpf})
+                session.commit()
+                
+                # Retorna o nome do usuario logado para o JS renderizar a UI sem reload da página
+                nome_exibicao = getattr(current_user, 'name', usuario_cpf)
+                return jsonify({"status": "marked", "usuario_nome": nome_exibicao})
+
+        except Exception as e:
+            session.rollback()
+            app.logger.exception("[toggle_marcacao] Erro ao alternar marcação")
+            return jsonify({"error": "Erro interno do servidor"}), 500
 
     # ======================
     #   IMAGENS (MongoDB)
