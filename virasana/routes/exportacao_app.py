@@ -2174,3 +2174,10 @@ def configure(app):
             return jsonify({"error": "Erro ao salvar anotação"}), 500
 
         return jsonify({"ok": True})
+
+@app.route('/exportacao/importar', methods=['GET'])
+    def importar_planilha_view():
+        return render_template(
+            'exportacao_importar_planilha.html',
+            csrf_token=generate_csrf
+        )
