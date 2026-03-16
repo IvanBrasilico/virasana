@@ -1,28 +1,41 @@
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<style>
-    /* Pequeno ajuste para a área de drag & drop, caso queira expandir no futuro */
-    .upload-area {
-        border: 2px dashed #ccc;
-        border-radius: 8px;
-        padding: 40px 20px;
-        text-align: center;
-        background-color: #f8f9fa;
-        transition: all 0.3s ease;
-    }
-    .upload-area:hover {
-        border-color: #0d6efd;
-        background-color: #e9ecef;
-    }
-</style>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Importar Planilha - AJNA Narcos</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    
+    <style>
+        body { background-color: #f8f9fa; }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            background-color: #ffffff;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #0d6efd;
+            background-color: #f1f6fe;
+        }
+    </style>
+</head>
+<body>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-5">
     <div class="row justify-content-center">
         <div class="col-md-8 col-lg-6">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white py-3">
                     <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i> Importar Planilha BTP Escâner</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <p class="text-muted mb-4">
                         Faça o upload do arquivo <strong>.csv</strong> ou <strong>.xlsx</strong> contendo os dados dos contêineres. 
                         O sistema irá ignorar automaticamente registros que já foram importados anteriormente.
@@ -31,20 +44,20 @@
                     <div id="alert-container"></div>
 
                     <form id="form-importar" enctype="multipart/form-data">
-                        <div class="mb-4 upload-area">
+                        <div class="mb-4 upload-area shadow-sm">
                             <i class="fas fa-cloud-upload-alt fa-3x text-secondary mb-3"></i>
-                            <div class="mb-3">
+                            <div class="mb-3 px-3">
                                 <label for="arquivo_planilha" class="form-label fw-bold">Selecione o arquivo da planilha</label>
-                                <input class="form-control" type="file" id="arquivo_planilha" name="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" required>
+                                <input class="form-control form-control-lg" type="file" id="arquivo_planilha" name="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" required>
                             </div>
-                            <small class="text-muted">Apenas arquivos Excel ou CSV são aceitos.</small>
+                            <small class="text-muted">Apenas arquivos Excel (.xlsx) ou CSV são aceitos.</small>
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                            <a href="/exportacao/" class="btn btn-outline-secondary">
+                            <a href="/exportacao/" class="btn btn-outline-secondary px-4">
                                 <i class="fas fa-arrow-left"></i> Voltar
                             </a>
-                            <button type="submit" class="btn btn-success" id="btn-submit">
+                            <button type="submit" class="btn btn-success px-4" id="btn-submit">
                                 <i class="fas fa-upload"></i> Importar Dados
                             </button>
                         </div>
@@ -54,6 +67,8 @@
         </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -79,39 +94,44 @@ document.addEventListener('DOMContentLoaded', function() {
         btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processando...';
         alertContainer.innerHTML = ''; 
 
-        // Requisição AJAX para a rota que criamos no exportacao_app.py
-        fetch("{{ url_for('importar_planilha_narcos') }}", {
+        fetch("/exportacao/importar_planilha_narcos", {
             method: 'POST',
             body: formData,
             headers: {
-                'X-CSRFToken': csrfToken // O Flask-WTF exige o token no header para requisições AJAX POST
+                'X-CSRFToken': csrfToken
             }
         })
-        .then(response => response.json().then(data => ({status: response.status, body: data})))
+        .then(async response => {
+            // Verifica se o Python quebrou e retornou uma página HTML de erro (500 ou 404)
+            const isJson = response.headers.get('content-type')?.includes('application/json');
+            if (!isJson) {
+                const text = await response.text();
+                throw new Error(`O servidor retornou um erro interno (Status ${response.status}). Verifique o terminal do Flask, provavelmente falta alguma biblioteca (ex: pandas, openpyxl) ou a tabela não existe.`);
+            }
+            return response.json().then(data => ({status: response.status, body: data}));
+        })
         .then(res => {
             // Restaura o botão
             btnSubmit.disabled = false;
             btnSubmit.innerHTML = originalBtnHtml;
 
             if (res.status === 200 && res.body.status === 'success') {
-                // Sucesso
                 showAlert(`<strong>Sucesso!</strong> ${res.body.message} <br><small>${res.body.linhas_lidas} linhas processadas no total.</small>`, 'success');
                 form.reset(); 
             } else {
-                // Erro tratado pelo backend
-                showAlert(`<strong>Erro:</strong> ${res.body.error || 'Ocorreu um erro desconhecido.'}`, 'danger');
+                showAlert(`<strong>Erro na importação:</strong> ${res.body.error || 'Ocorreu um erro desconhecido.'}`, 'danger');
             }
         })
         .catch(error => {
-            // Erro de rede ou servidor fora do ar
-            console.error('Erro na requisição:', error);
+            // Agora o catch captura erros HTML do Flask e exibe na tela
+            console.error('Erro detalhado:', error);
             btnSubmit.disabled = false;
             btnSubmit.innerHTML = originalBtnHtml;
-            showAlert('<strong>Erro crítico:</strong> Falha ao se comunicar com o servidor.', 'danger');
+            showAlert(`<strong>Falha Crítica:</strong> ${error.message}`, 'danger');
         });
     });
 
-    // Função auxiliar para exibir os alertas do Bootstrap
+    // Função auxiliar para exibir alertas
     function showAlert(message, type) {
         const alertHtml = `
             <div class="alert alert-${type} alert-dismissible fade show shadow-sm" role="alert">
@@ -123,3 +143,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+</body>
+</html>
