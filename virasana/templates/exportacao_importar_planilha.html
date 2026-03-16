@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
         alertContainer.innerHTML = ''; 
 
         // Requisição AJAX para a rota que criamos no exportacao_app.py
-        fetch("/exportacao/importar_planilha_narcos", {
+        fetch("{{ url_for('importar_planilha_narcos') }}", {
             method: 'POST',
             body: formData,
             headers: {
