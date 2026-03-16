@@ -442,6 +442,14 @@
 
                   <span class="fw-semibold">NCM(s):</span>
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
+
+                  {% if r.navio_embarque %}
+                  <span class="fw-semibold">Navio (Planilha):</span>
+                  <span class="badge bg-success" title="Informação cruzada com a planilha do escâner">
+                    🚢 {{ r.navio_embarque }}
+                  </span>
+                  {% endif %}
+
                 </div>
 
                 <!-- Linha 2.4 — Itens da DUE (1 por linha) -->

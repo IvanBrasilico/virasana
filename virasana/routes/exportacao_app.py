@@ -491,6 +491,35 @@ def configure(app):
             "limite_outlier_mild": limite_outlier_mild,
             "limite_outlier_strict": limite_outlier_strict
         }
+
+        # 5) Cruzamento com planilhas importadas (navio_embarque) com tolerância de 10 min
+        numeros_containers = list({(it.get("numeroConteiner") or "").strip().upper() for it in resultados if it.get("numeroConteiner")})
+        mapa_planilhas = {}
+        if numeros_containers:
+            try:
+                sql_planilha = text("""
+                    SELECT numero_conteiner, entrada_carreta, navio_embarque
+                    FROM narcos_planilhas_importadas
+                    WHERE numero_conteiner IN :numeros
+                """).bindparams(bindparam("numeros", expanding=True))
+                
+                rows_planilha = session.execute(sql_planilha, {"numeros": tuple(numeros_containers)}).mappings().all()
+                for rp in rows_planilha:
+                    mapa_planilhas.setdefault(rp["numero_conteiner"], []).append(rp)
+            except Exception as e:
+                app.logger.exception("[planilhas] erro ao consultar narcos_planilhas_importadas")
+
+        for item in resultados:
+            num = (item.get("numeroConteiner") or "").strip().upper()
+            dt_ocorrencia = item.get("dataHoraOcorrencia")
+            item["navio_embarque"] = None
+            if num in mapa_planilhas and dt_ocorrencia:
+                for rp in mapa_planilhas[num]:
+                    dt_carreta = rp["entrada_carreta"]
+                    if dt_carreta and abs((dt_ocorrencia - dt_carreta).total_seconds()) <= 600:
+                        item["navio_embarque"] = rp["navio_embarque"]
+                        break
+
         return resultados, stats
 
     def consultar_transit_time_por_container(
@@ -1181,7 +1210,8 @@ def configure(app):
             "numero_due",
             "exportador_nome",
             "cnpj_estabelecimento_exportador",
-            "nfe_ncm"
+            "nfe_ncm",
+            "navio_embarque"
         ])
 
         def _fmt_dt(dt):
@@ -1204,7 +1234,8 @@ def configure(app):
                 r.get("numero_due") or "",
                 r.get("exportador_nome") or "",
                 r.get("cnpj_estabelecimento_exportador") or "",
-                r.get("nfe_ncm") or ""
+                r.get("nfe_ncm") or "",
+                r.get("navio_embarque") or ""
             ])
 
         filename = (
