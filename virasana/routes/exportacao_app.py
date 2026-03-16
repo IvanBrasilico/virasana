@@ -2175,9 +2175,9 @@ def configure(app):
 
         return jsonify({"ok": True})
 
-    @app.route('/exportacao/importar', methods=['GET'])
-        def importar_planilha_view():
-            return render_template(
-                'exportacao_importar_planilha.html',
-                csrf_token=generate_csrf
-            )
+@app.route('/exportacao/importar', methods=['GET'])
+def importar_planilha_view():
+    return render_template(
+        'exportacao_importar_planilha.html',
+        csrf_token=generate_csrf
+    )
