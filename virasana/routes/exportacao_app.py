@@ -1261,6 +1261,164 @@ def configure(app):
             app.logger.exception("[toggle_marcacao] Erro ao alternar marcação")
             return jsonify({"error": "Erro interno do servidor"}), 500
 
+    @app.route('/exportacao/importar_planilha_narcos', methods=['POST'])
+    def importar_planilha_narcos():
+        if not current_user.is_authenticated:
+            return jsonify({"error": "Usuário não autenticado"}), 401
+
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+
+        try:
+            import pandas as pd
+            import numpy as np
+            import unicodedata
+        except ImportError:
+            return jsonify({"error": "Bibliotecas ausentes. Instale no ambiente: pip install pandas openpyxl"}), 500
+
+        try:
+            filename = file.filename
+            if filename.endswith('.csv'):
+                # sep=None com engine='python' faz o pandas descobrir automaticamente se é vírgula ou ponto-e-vírgula
+                df = pd.read_csv(file, sep=None, engine='python')
+            elif filename.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file)
+            else:
+                return jsonify({"error": "Formato inválido. Use arquivo CSV ou Excel."}), 400
+
+            # Limpeza inicial
+            df = df.replace({np.nan: None})
+
+            # Função para normalizar os cabeçalhos (tira acentos e coloca em minúsculo)
+            def normalize_col(col):
+                if not isinstance(col, str): return str(col)
+                nfkd = unicodedata.normalize('NFKD', col)
+                return u"".join([c for c in nfkd if not unicodedata.combining(c)]).strip().lower()
+
+            df.columns = [normalize_col(c) for c in df.columns]
+
+            # Mapeamento: "nome da coluna limpa" -> "coluna do banco de dados"
+            col_map = {
+                'conteiner': 'numero_conteiner',
+                'tipo': 'tipo_conteiner',
+                'iso': 'iso_code',
+                'categoria': 'categoria',
+                'entrada carreta': 'entrada_carreta',
+                'viagem embarque': 'viagem_embarque',
+                'navio embarque': 'navio_embarque',
+                'viagem descarga': 'viagem_descarga',
+                'navio descarga': 'navio_descarga',
+                'local da imagem': 'local_imagem',
+                'alerta if': 'alerta_if',
+                'erros de imagem': 'erros_imagem',
+                'ch/vz': 'ch_vz',
+                'status': 'status_conteiner',
+                'porto de descarga': 'porto_descarga',
+                'porto de destino final': 'porto_destino_final',
+                'descricao ncm': 'descricao_ncm',
+                'cpf motorista': 'cpf_motorista',
+                'nome motorista': 'nome_motorista',
+                'cpf operador do scanner': 'cpf_operador_scanner',
+                'nome do operador do scanner': 'nome_operador_scanner',
+                'cnpj transportadora': 'cnpj_transportadora',
+                'transportadora': 'transportadora',
+                'lote': 'numero_lote',
+                'razao social do exportador/importador': 'razao_social_exportador_importador',
+                'cnpj do exportador/importador': 'cnpj_exportador_importador',
+                'data do scanner': 'data_scanner'
+            }
+
+            records = []
+            usuario_identificador = getattr(current_user, 'id', None)
+            
+            for _, row in df.iterrows():
+                row_dict = {"nome_arquivo_origem": filename, "usuario_id": usuario_identificador}
+                
+                # Preenche via de/para
+                for plan_col, db_col in col_map.items():
+                    val = row.get(plan_col)
+                    row_dict[db_col] = val if val is not None else None
+                
+                if not row_dict.get('numero_conteiner'):
+                    continue # Ignora linhas totalmente vazias ou sem a chave de busca
+
+                row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
+
+                # Trata strings numéricas que o pandas as vezes lê como float (ex: "123.0" -> "123")
+                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador']:
+                    if row_dict.get(col):
+                        val_str = str(row_dict[col]).strip()
+                        if val_str.endswith('.0'):
+                            val_str = val_str[:-2]
+                        row_dict[col] = val_str
+
+                # Converte datas para string no formato correto do MariaDB
+                for date_field in ['entrada_carreta', 'data_scanner']:
+                    if row_dict.get(date_field):
+                        try:
+                            dt_val = pd.to_datetime(row_dict[date_field])
+                            if pd.notnull(dt_val):
+                                row_dict[date_field] = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            else:
+                                row_dict[date_field] = None
+                        except Exception:
+                            row_dict[date_field] = None
+
+                records.append(row_dict)
+
+            if not records:
+                return jsonify({"error": "Nenhum dado processável encontrado na planilha."}), 400
+
+            session = app.config['db_session']
+            
+            # INSERT IGNORE cuidará de ignorar graciosamente registros duplicados
+            sql_insert = text("""
+                INSERT IGNORE INTO narcos_planilhas_importadas (
+                    nome_arquivo_origem, usuario_id,
+                    numero_conteiner, tipo_conteiner, iso_code, categoria,
+                    entrada_carreta, viagem_embarque, navio_embarque, viagem_descarga, navio_descarga,
+                    local_imagem, alerta_if, erros_imagem, ch_vz, status_conteiner,
+                    porto_descarga, porto_destino_final, descricao_ncm,
+                    cpf_motorista, nome_motorista, cpf_operador_scanner, nome_operador_scanner,
+                    cnpj_transportadora, transportadora, numero_lote,
+                    razao_social_exportador_importador, cnpj_exportador_importador, data_scanner
+                ) VALUES (
+                    :nome_arquivo_origem, :usuario_id,
+                    :numero_conteiner, :tipo_conteiner, :iso_code, :categoria,
+                    :entrada_carreta, :viagem_embarque, :navio_embarque, :viagem_descarga, :navio_descarga,
+                    :local_imagem, :alerta_if, :erros_imagem, :ch_vz, :status_conteiner,
+                    :porto_descarga, :porto_destino_final, :descricao_ncm,
+                    :cpf_motorista, :nome_motorista, :cpf_operador_scanner, :nome_operador_scanner,
+                    :cnpj_transportadora, :transportadora, :numero_lote,
+                    :razao_social_exportador_importador, :cnpj_exportador_importador, :data_scanner
+                )
+            """)
+            
+            try:
+                result = session.execute(sql_insert, records)
+                session.commit()
+                
+                # O rowcount num INSERT IGNORE retorna exatamente as linhas que NÃO foram puladas
+                linhas_afetadas = result.rowcount
+
+                return jsonify({
+                    "status": "success", 
+                    "message": f"Sucesso! {linhas_afetadas} novas linhas inseridas.",
+                    "linhas_lidas": len(records),
+                    "linhas_importadas": linhas_afetadas
+                })
+
+            except Exception as e:
+                session.rollback()
+                app.logger.exception("[importar_planilha_narcos] Erro banco de dados")
+                return jsonify({"error": "Erro ao salvar os dados no banco."}), 500
+
+        except Exception as e:
+            app.logger.exception("[importar_planilha_narcos] Erro interno")
+            return jsonify({"error": "Erro interno ao processar a planilha."}), 500
+
+
     # ======================
     #   IMAGENS (MongoDB)
     # ======================
