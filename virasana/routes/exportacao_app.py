@@ -1325,14 +1325,18 @@ def configure(app):
             def normalize_col(col):
                 if not isinstance(col, str): return str(col)
                 nfkd = unicodedata.normalize('NFKD', col)
-                return u"".join([c for c in nfkd if not unicodedata.combining(c)]).strip().lower()
+                clean_str = u"".join([c for c in nfkd if not unicodedata.combining(c)]).lower()
+                # .split() seguido de " ".join() elimina espaços duplos, trailing e tabs
+                return " ".join(clean_str.split())
 
             df.columns = [normalize_col(c) for c in df.columns]
 
-            # Mapeamento: "nome da coluna limpa" -> "coluna do banco de dados"
+            # Mapeamento: vários formatos de nomes de planilhas apontando para a mesma coluna no BD
             col_map = {
                 'conteiner': 'numero_conteiner',
+                'tipo conteiner': 'tipo_conteiner',
                 'tipo': 'tipo_conteiner',
+                'iso code': 'iso_code',
                 'iso': 'iso_code',
                 'categoria': 'categoria',
                 'entrada carreta': 'entrada_carreta',
@@ -1340,25 +1344,39 @@ def configure(app):
                 'navio embarque': 'navio_embarque',
                 'viagem descarga': 'viagem_descarga',
                 'navio descarga': 'navio_descarga',
+                'local imagem': 'local_imagem',
                 'local da imagem': 'local_imagem',
+                'alerta / if': 'alerta_if',
                 'alerta if': 'alerta_if',
+                'erros na imagem': 'erros_imagem',
                 'erros de imagem': 'erros_imagem',
                 'ch/vz': 'ch_vz',
                 'status': 'status_conteiner',
+                'porto descarga': 'porto_descarga',
                 'porto de descarga': 'porto_descarga',
+                'porto destino final': 'porto_destino_final',
                 'porto de destino final': 'porto_destino_final',
                 'descricao ncm': 'descricao_ncm',
                 'cpf motorista': 'cpf_motorista',
                 'nome motorista': 'nome_motorista',
+                'cpf operador scanner': 'cpf_operador_scanner',
                 'cpf operador do scanner': 'cpf_operador_scanner',
+                'nome operador scanner': 'nome_operador_scanner',
                 'nome do operador do scanner': 'nome_operador_scanner',
                 'cnpj transportadora': 'cnpj_transportadora',
                 'transportadora': 'transportadora',
+                'numero de lote': 'numero_lote',
                 'lote': 'numero_lote',
+                'razao social exportador / importador': 'razao_social_exportador_importador',
                 'razao social do exportador/importador': 'razao_social_exportador_importador',
+                'cnpj exportador / importador': 'cnpj_exportador_importador',
                 'cnpj do exportador/importador': 'cnpj_exportador_importador',
+                'data scanner': 'data_scanner',
                 'data do scanner': 'data_scanner'
             }
+
+            # Identifica quais colunas úteis realmente vieram neste arquivo para economizar loops
+            colunas_presentes = [c for c in col_map.keys() if c in df.columns]
 
             records = []
             usuario_identificador = getattr(current_user, 'id', None)
@@ -1366,10 +1384,16 @@ def configure(app):
             for _, row in df.iterrows():
                 row_dict = {"nome_arquivo_origem": filename, "usuario_id": usuario_identificador}
                 
-                # Preenche via de/para
-                for plan_col, db_col in col_map.items():
-                    val = row.get(plan_col)
-                    row_dict[db_col] = val if val is not None else None
+                # Inicializa com None para garantir que a inserção SQL receba os parâmetros certos
+                for db_col in set(col_map.values()):
+                    row_dict[db_col] = None
+
+                # Preenche com os dados encontrados
+                for plan_col in colunas_presentes:
+                    val = row[plan_col]
+                    if pd.notnull(val): # Só sobrescreve se tiver algum dado válido
+                        db_col = col_map[plan_col]
+                        row_dict[db_col] = val
                 
                 if not row_dict.get('numero_conteiner'):
                     continue # Ignora linhas totalmente vazias ou sem a chave de busca
@@ -1377,7 +1401,7 @@ def configure(app):
                 row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
 
                 # Trata strings numéricas que o pandas as vezes lê como float (ex: "123.0" -> "123")
-                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador']:
+                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador', 'numero_lote']:
                     if row_dict.get(col):
                         val_str = str(row_dict[col]).strip()
                         if val_str.endswith('.0'):
