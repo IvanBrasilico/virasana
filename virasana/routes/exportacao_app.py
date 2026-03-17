@@ -1294,8 +1294,6 @@ def configure(app):
 
     @app.route('/exportacao/importar_planilha_narcos', methods=['POST'])
     def importar_planilha_narcos():
-        if not current_user.is_authenticated:
-            return jsonify({"error": "Usuário não autenticado"}), 401
 
         file = request.files.get('file')
         if not file or file.filename == '':
