@@ -443,13 +443,6 @@
                   <span class="fw-semibold">NCM(s):</span>
                   <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
 
-                  {% if r.navio_embarque %}
-                  <span class="fw-semibold">Navio (Planilha):</span>
-                  <span class="badge bg-success" title="Informação cruzada com a planilha do escâner">
-                    🚢 {{ r.navio_embarque }}
-                  </span>
-                  {% endif %}
-
                 </div>
 
                 <!-- Linha 2.4 — Itens da DUE (1 por linha) -->
@@ -465,6 +458,27 @@
                     <div class="text-muted">—</div>
                   {% endif %}
                 </div>
+
+                {% if r.planilha_info %}
+                <div class="card mt-3 border-success mb-2">
+                  <div class="card-header bg-success text-white py-1 small fw-bold">
+                    Informações da planilha
+                  </div>
+                  <div class="card-body py-2 small text-success">
+                    <div class="row gx-2 gy-1">
+                      <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong> {{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Descarga (Viagem/Navio):</strong> {{ r.planilha_info.viagem_descarga or '—' }} / {{ r.planilha_info.navio_descarga or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
+                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> {{ r.planilha_info.transportadora or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong> {{ r.planilha_info.razao_social_exportador_importador or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Nº Lote:</strong> {{ r.planilha_info.numero_lote or '—' }}</div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
 
                 <!-- Linha 2.5 — Resumo da Carga (via Mongo) -->
                 <div class="mt-2 small carga-summary"

@@ -498,7 +498,11 @@ def configure(app):
         if numeros_containers:
             try:
                 sql_planilha = text("""
-                    SELECT numero_conteiner, entrada_carreta, navio_embarque
+                    SELECT numero_conteiner, entrada_carreta, navio_embarque,
+                           tipo_conteiner, iso_code, categoria, viagem_embarque,
+                           viagem_descarga, navio_descarga, porto_descarga,
+                           porto_destino_final, descricao_ncm, cpf_operador_scanner,
+                           nome_operador_scanner, transportadora, numero_lote, razao_social_exportador_importador
                     FROM narcos_planilhas_importadas
                     WHERE numero_conteiner IN :numeros
                 """).bindparams(bindparam("numeros", expanding=True))
@@ -512,12 +516,12 @@ def configure(app):
         for item in resultados:
             num = (item.get("numeroConteiner") or "").strip().upper()
             dt_ocorrencia = item.get("dataHoraOcorrencia")
-            item["navio_embarque"] = None
+            item["planilha_info"] = None
             if num in mapa_planilhas and dt_ocorrencia:
                 for rp in mapa_planilhas[num]:
                     dt_carreta = rp["entrada_carreta"]
                     if dt_carreta and abs((dt_ocorrencia - dt_carreta).total_seconds()) <= 600:
-                        item["navio_embarque"] = rp["navio_embarque"]
+                        item["planilha_info"] = rp
                         break
 
         return resultados, stats
