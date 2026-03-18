@@ -256,7 +256,7 @@
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-4 border-primary {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
+        <div class="card shadow-sm mb-4 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
              data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
@@ -267,7 +267,7 @@
              data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
              data-stable="{{ loop.index }}">
 
-          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
             <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
             <div>
               <span class="marcacao-info small me-2 fw-bold text-light">
@@ -291,7 +291,7 @@
               <div class="flex-grow-1 pe-2">
 
                 <div class="card border-secondary mb-3">
-                  <div class="card-header bg-secondary text-white py-1 small fw-bold">
+                  <div class="card-header bg-secondary-subtle text-secondary-emphasis py-1 small fw-bold">
                     Informações da API
                   </div>
                   <div class="card-body py-2 small">
@@ -466,8 +466,8 @@
 
                 {% if r.planilha_info %}
                 <div class="card border-success mb-3">
-                  <div class="card-header bg-success text-white py-1 small fw-bold">
-                    Informações da planilha
+                  <div class="card-header bg-success-subtle text-success-emphasis py-1 small fw-bold">
+                    Informações da Planilha do terminal
                   </div>
                   <div class="card-body py-2 small text-success">
                     <div class="row gx-2 gy-1">
@@ -486,7 +486,7 @@
                 {% endif %}
 
                 <div class="card border-primary mb-2">
-                  <div class="card-header bg-primary text-white py-1 small fw-bold">
+                  <div class="card-header bg-primary-subtle text-primary-emphasis py-1 small fw-bold">
                     Informações DUE/CE
                   </div>
                   <div class="card-body py-2 small">
