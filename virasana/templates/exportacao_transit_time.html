@@ -271,6 +271,13 @@
             <div class="d-flex justify-content-between align-items-start gap-3">
               <!-- Coluna ESQUERDA (texto) -->
               <div class="flex-grow-1 pe-2">
+
+                <div class="card border-secondary mb-3">
+                  <div class="card-header bg-secondary text-white py-1 small fw-bold">
+                    Informações da API
+                  </div>
+                  <div class="card-body py-2 small">
+
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
 
@@ -415,52 +422,21 @@
 			  </span>
 				</div>
 
-                <!-- Linha 2.3 — DUE / Exportador / NCM -->
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
-                  <span class="fw-semibold">DUE:</span>
-                  <span class="me-3">
-                    {% if r.numero_due %}
-                      <a
-                        href="https://ajna1.rfoc.srf/bhadrasana2/consulta_due?numero={{ r.numero_due|urlencode }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >{{ r.numero_due }}</a>
-                    {% else %}
-                      —
-                    {% endif %}
-                  </span>
-
-                  <span class="fw-semibold">Exportador:</span>
-                  <span class="me-3">
-                    {% if r.exportador_nome %}
-                      {{ r.exportador_nome }}
-                      {% if r.cnpj_estabelecimento_exportador %} (CNPJ: {{ r.cnpj_estabelecimento_exportador }}){% endif %}
-                    {% else %}
-                      {{ r.cnpj_estabelecimento_exportador or '—' }}
-                    {% endif %}
-                  </span>
-
-                  <span class="fw-semibold">NCM(s):</span>
-                  <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
-
+                <div class="mt-3 mb-1">
+                  <button class="btn btn-sm btn-outline-primary"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#item-{{ idx }}"
+                          aria-expanded="false"
+                          aria-controls="item-{{ idx }}">
+                    Exibir peso de balança
+                  </button>
                 </div>
-
-                <!-- Linha 2.4 — Itens da DUE (1 por linha) -->
-                <div class="mt-2 small">
-                  <div class="fw-semibold mb-1">Itens da DUE:</div>
-                  {% if r.due_itens and r.due_itens|length > 0 %}
-                    <div class="ms-2">
-                      {% for linha in r.due_itens %}
-                        <div>• {{ linha }}</div>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    <div class="text-muted">—</div>
-                  {% endif %}
-                </div>
+              </div>
+            </div>
 
                 {% if r.planilha_info %}
-                <div class="card mt-3 border-success mb-2">
+                <div class="card border-success mb-3">
                   <div class="card-header bg-success text-white py-1 small fw-bold">
                     Informações da planilha
                   </div>
@@ -480,23 +456,53 @@
                 </div>
                 {% endif %}
 
-                <!-- Linha 2.5 — Resumo da Carga (via Mongo) -->
-                <div class="mt-2 small carga-summary"
-                     data-numero="{{ r.numeroConteiner }}"
-                     data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
-                  <span class="text-muted">Carregando dados de carga…</span>
-                </div>
-
-                <!-- Linha 3 -->
-                <div class="mt-2">
-                  <button class="btn btn-sm btn-outline-primary"
-                          type="button"
-                          data-bs-toggle="collapse"
-                          data-bs-target="#item-{{ idx }}"
-                          aria-expanded="false"
-                          aria-controls="item-{{ idx }}">
-                    Exibir peso de balança
-                  </button>
+                <div class="card border-primary mb-2">
+                  <div class="card-header bg-primary text-white py-1 small fw-bold">
+                    Informações DUE/CE
+                  </div>
+                  <div class="card-body py-2 small">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                      <span class="fw-semibold">DUE:</span>
+                      <span class="me-3">
+                        {% if r.numero_due %}
+                          <a href="https://ajna1.rfoc.srf/bhadrasana2/consulta_due?numero={{ r.numero_due|urlencode }}" target="_blank" rel="noopener noreferrer">{{ r.numero_due }}</a>
+                        {% else %}
+                          —
+                        {% endif %}
+                      </span>
+                      <span class="fw-semibold">Exportador:</span>
+                      <span class="me-3">
+                        {% if r.exportador_nome %}
+                          {{ r.exportador_nome }}
+                          {% if r.cnpj_estabelecimento_exportador %} (CNPJ: {{ r.cnpj_estabelecimento_exportador }}){% endif %}
+                        {% else %}
+                          {{ r.cnpj_estabelecimento_exportador or '—' }}
+                        {% endif %}
+                      </span>
+                      <span class="fw-semibold">NCM(s):</span>
+                      <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
+                    </div>
+                    <div class="mt-2">
+                      <div class="fw-semibold mb-1">Itens da DUE:</div>
+                      {% if r.due_itens and r.due_itens|length > 0 %}
+                        <div class="ms-2">
+                          {% for linha in r.due_itens %}
+                            <div>• {{ linha }}</div>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <div class="text-muted">—</div>
+                      {% endif %}
+                    </div>
+                    
+                    <hr class="my-2 border-primary opacity-25">
+                    
+                    <div class="carga-summary"
+                         data-numero="{{ r.numeroConteiner }}"
+                         data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                      <span class="text-muted">Carregando dados de carga…</span>
+                    </div>
+                  </div>
                 </div>
               </div><!-- /col esquerda -->
 
