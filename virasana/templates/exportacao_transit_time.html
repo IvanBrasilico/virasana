@@ -256,7 +256,7 @@
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-4 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
+        <div class="card shadow-sm mb-5 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
              data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
@@ -1054,7 +1054,7 @@ function formatDateTime(isoString) {
     if (hasConhec) {
       const detailsBtn = document.createElement('button');
       detailsBtn.type = 'button';
-      detailsBtn.className = 'btn btn-sm btn-outline-secondary';
+      detailsBtn.className = 'btn btn-sm btn-outline-secondary my-2';
       detailsBtn.textContent = 'Detalhes da carga';
       detailsBtn.setAttribute('aria-expanded', 'false');
 
@@ -1106,7 +1106,7 @@ function formatDateTime(isoString) {
     // Rodapé: referência do snapshot
     if (data.snapshot_ref && (data.snapshot_ref.file_id || data.snapshot_ref.dataescaneamento)) {
       const ref = document.createElement('div');
-      ref.className = 'text-muted small mt-1';
+      ref.className = 'text-muted small mt-2';
       const ts = data.snapshot_ref.dataescaneamento || '';
       ref.textContent = `(informação coletada ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
       el.appendChild(ref);
