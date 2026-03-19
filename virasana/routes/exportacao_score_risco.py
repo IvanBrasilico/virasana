@@ -75,7 +75,9 @@ def processar_lote_risco(session, registros_planilha):
     peso_pdf = pesos.get('PORTO_DESTINO_FINAL', 0.0)
     peso_alerta = pesos.get('ALERTA_IF', 0.0)
     
-    soma_pesos = peso_pd + peso_pdf + peso_alerta
+    peso_transp = pesos.get('TRANSPORTADORA', 0.0)
+    
+    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp
     
     if soma_pesos == 0:
         logger.warning("[score_risco] Soma dos pesos é zero. Verifique a configuração.")
@@ -103,6 +105,28 @@ def processar_lote_risco(session, registros_planilha):
         logger.exception("[score_risco] Erro ao buscar tabela de portos.")
         return 0 # Aborta se não conseguir ler as matrizes de risco
 
+    # ------------------------------------------------------------------
+    # 2.5. Buscar TODAS as transportadoras e criar mapas em memória
+    # Cria dois índices: um por CNPJ (prioridade) e um por Nome (fallback)
+    # ------------------------------------------------------------------
+    mapa_notas_transp_cnpj = {}
+    mapa_notas_transp_nome = {}
+    try:
+        sql_transp = text("""
+            SELECT nome_transportadora, cnpj_transportadora, nota_risco 
+            FROM narcos_risco_transportadoras
+        """)
+        rows_transp = session.execute(sql_transp).mappings().all()
+        for r in rows_transp:
+            cnpj_norm = normalizar_chave(r['cnpj_transportadora'])
+            nome_norm = normalizar_chave(r['nome_transportadora'])
+            nota = float(r['nota_risco'])
+            if cnpj_norm: mapa_notas_transp_cnpj[cnpj_norm] = nota
+            if nome_norm: mapa_notas_transp_nome[nome_norm] = nota
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de transportadoras.")
+        return 0
+
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
     
@@ -122,8 +146,20 @@ def processar_lote_risco(session, registros_planilha):
         tem_alerta = parse_booleano(reg.get('alerta_if'))
         nota_alerta = 10.0 if tem_alerta else 0.0
 
+        # Transportadora: Tenta por CNPJ primeiro, depois faz fallback pelo Nome
+        cnpj_original = reg.get('cnpj_transportadora')
+        nome_original = reg.get('transportadora')
+        chave_cnpj = normalizar_chave(cnpj_original)
+        chave_nome = normalizar_chave(nome_original)
+        
+        nota_transp = 0.0
+        if chave_cnpj and chave_cnpj in mapa_notas_transp_cnpj:
+            nota_transp = mapa_notas_transp_cnpj[chave_cnpj]
+        elif chave_nome and chave_nome in mapa_notas_transp_nome:
+            nota_transp = mapa_notas_transp_nome[chave_nome]
+
         # Média ponderada
-        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta)
+        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp)
         nota_final = soma_notas / soma_pesos
 
         # Montar a memória de cálculo (JSON)
@@ -132,7 +168,8 @@ def processar_lote_risco(session, registros_planilha):
             "criterios": {
                 "porto_descarga": {"valor_original": reg.get('porto_descarga'), "chave": chave_pd, "nota": nota_pd, "peso": peso_pd},
                 "porto_destino_final": {"valor_original": reg.get('porto_destino_final'), "chave": chave_pdf, "nota": nota_pdf, "peso": peso_pdf},
-                "alerta_if": {"valor_original": reg.get('alerta_if'), "nota": nota_alerta, "peso": peso_alerta}
+                "alerta_if": {"valor_original": reg.get('alerta_if'), "nota": nota_alerta, "peso": peso_alerta},
+                "transportadora": {"cnpj_original": cnpj_original, "nome_original": nome_original, "nota": nota_transp, "peso": peso_transp}
             }
         }
 
