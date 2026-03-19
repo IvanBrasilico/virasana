@@ -23,6 +23,7 @@ from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
 
+from exportacao_score_risco import processar_lote_risco
 
 def configure(app):
     '''  exportacao_app = Blueprint(

@@ -81,27 +81,27 @@ def processar_lote_risco(session, registros_planilha):
         logger.warning("[score_risco] Soma dos pesos é zero. Verifique a configuração.")
         return 0
 
-    # 1. Extrair todas as chaves de portos únicas do lote para fazer apenas 1 query no banco
-    chaves_portos_buscadas = set()
-    for reg in registros_planilha:
-        pd_norm = normalizar_chave(reg.get('porto_descarga'))
-        pdf_norm = normalizar_chave(reg.get('porto_destino_final'))
-        if pd_norm: chaves_portos_buscadas.add(pd_norm)
-        if pdf_norm: chaves_portos_buscadas.add(pdf_norm)
-
-    # 2. Buscar as notas dos portos no banco
+    # ------------------------------------------------------------------
+    # 1 e 2. Buscar TODOS os portos e criar o mapa normalizado em memória
+    # Como não temos mais a 'chave_busca' no banco, fazemos o match no Python.
+    # Isso é extremamente performático pois a lista de portos de risco é pequena.
+    # ------------------------------------------------------------------
     mapa_notas_portos = {}
-    if chaves_portos_buscadas:
-        # Usando expanding bindparam para a cláusula IN
+    try:
         sql_portos = text("""
-            SELECT chave_busca, nota_risco 
-            FROM narcos_risco_portos 
-            WHERE chave_busca IN :chaves
+            SELECT nome_porto_original, nota_risco 
+            FROM narcos_risco_portos
         """)
-        # Transforma o set em tupla para o SQLAlchemy
-        rows_portos = session.execute(sql_portos, {"chaves": tuple(chaves_portos_buscadas)}).mappings().all()
+        rows_portos = session.execute(sql_portos).mappings().all()
+        
         for r in rows_portos:
-            mapa_notas_portos[r['chave_busca']] = float(r['nota_risco'])
+            # Pega o nome "Rotterdam (Holanda)" e transforma em "ROTTERDAMHOLANDA"
+            chave_banco = normalizar_chave(r['nome_porto_original'])
+            mapa_notas_portos[chave_banco] = float(r['nota_risco'])
+            
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de portos.")
+        return 0 # Aborta se não conseguir ler as matrizes de risco
 
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
