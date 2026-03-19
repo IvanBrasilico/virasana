@@ -498,13 +498,15 @@ def configure(app):
         if numeros_containers:
             try:
                 sql_planilha = text("""
-                    SELECT numero_conteiner, entrada_carreta, navio_embarque,
-                           tipo_conteiner, iso_code, categoria, viagem_embarque,
-                           viagem_descarga, navio_descarga, porto_descarga,
-                           porto_destino_final, descricao_ncm, cpf_operador_scanner,
-                           nome_operador_scanner, transportadora, numero_lote, razao_social_exportador_importador
-                    FROM narcos_planilhas_importadas
-                    WHERE numero_conteiner IN :numeros
+                    SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
+                           p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
+                           p.viagem_descarga, p.navio_descarga, p.porto_descarga,
+                           p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
+                           p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
+                           r.nota_final AS risco_nota_final
+                    FROM narcos_planilhas_importadas p
+                    LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
+                    WHERE p.numero_conteiner IN :numeros
                 """).bindparams(bindparam("numeros", expanding=True))
                 
                 rows_planilha = session.execute(sql_planilha, {"numeros": tuple(numeros_containers)}).mappings().all()
@@ -1458,6 +1460,17 @@ def configure(app):
                 
                 # O rowcount num INSERT IGNORE retorna exatamente as linhas que NÃO foram puladas
                 linhas_afetadas = result.rowcount
+
+                # -----------------------------------------------------------------
+                # INTEGRAÇÃO DO MOTOR DE RISCO
+                # Calcula e salva as notas de risco para o lote recém-importado
+                # -----------------------------------------------------------------
+                try:
+                    notas_calculadas = processar_lote_risco(session, records)
+                    app.logger.info(f"[importar_planilha_narcos] Risco calculado para {notas_calculadas} contêineres.")
+                except Exception as e:
+                    app.logger.exception("[importar_planilha_narcos] Erro ao calcular risco do lote.")
+                    # O pass garante que não vamos quebrar a resposta de sucesso da importação se o risco falhar
 
                 return jsonify({
                     "status": "success", 

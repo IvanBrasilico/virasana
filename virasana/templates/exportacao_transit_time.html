@@ -268,7 +268,17 @@
              data-stable="{{ loop.index }}">
 
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
-            <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
+            <div class="d-flex align-items-center">
+              <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
+              {% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}
+                {% set nota = r.planilha_info.risco_nota_final %}
+                {% set badge_color = 'text-bg-danger' if nota >= 7 else ('text-bg-warning' if nota >= 4 else 'text-bg-success') %}
+                <span class="badge {{ badge_color }} ms-3 border border-light" style="font-size: 0.9rem; letter-spacing: 0.5px;" title="Score de Risco Calculado">
+                  Risco: {{ "%.2f"|format(nota) }}
+                </span>
+              {% endif %}
+            </div>
+             <div>
             <div>
               <span class="marcacao-info small me-2 fw-bold text-light">
                 {% if r.marcacao %}
@@ -473,7 +483,6 @@
                     <div class="row gx-2 gy-1">
                       <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong> {{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Descarga (Viagem/Navio):</strong> {{ r.planilha_info.viagem_descarga or '—' }} / {{ r.planilha_info.navio_descarga or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
