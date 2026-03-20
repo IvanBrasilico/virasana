@@ -906,7 +906,7 @@ function formatDateTime(isoString) {
         // estável
         const sa = parseInt(a.dataset.stable || '0', 10);
         const sb = parseInt(b.dataset.stable || '0', 10);
-        cmp = sa - sb;
+        return sa - sb;
       }
       return asc ? cmp : -cmp;
     };
@@ -918,7 +918,13 @@ function formatDateTime(isoString) {
     const cmp = compareFactory(key, dir);
 	if (!cards.length) return;
     cards.sort(cmp);
-    for (const c of cards) container.appendChild(c);
+
+    // Move o card (ou o wrapper dele, se houver) de volta para o container na nova ordem
+    cards.forEach(c => {
+      const toMove = (c.parentElement === container) ? c : c.closest('#resultadosAccordion > *');
+      container.appendChild(toMove);
+    });
+
   }
 
   // UI dos botões
@@ -958,8 +964,8 @@ function formatDateTime(isoString) {
   // Define um estado inicial para ficar claro visualmente
   const hasButtons = buttons.length > 0;
   if (hasButtons) {
-    // Ordena inicialmente por "Entrada" asc
-    current = { key: 'entrada', dir: 'asc' };
+    // Geralmente auditores preferem ver as entradas mais recentes primeiro (desc)
+    current = { key: 'entrada', dir: 'desc' };
     applySort(current.key, current.dir);
     updateButtonsUI();
   } else {
