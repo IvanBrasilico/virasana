@@ -4,6 +4,7 @@ import logging
 import csv
 import os
 import tempfile
+import json
 
 from datetime import timedelta, datetime, time, timezone
 from flask_login import current_user
@@ -498,13 +499,15 @@ def configure(app):
         mapa_planilhas = {}
         if numeros_containers:
             try:
+                # 1. Atualize a query SQL para buscar a memoria_calculo
                 sql_planilha = text("""
                     SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
                            p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
                            p.viagem_descarga, p.navio_descarga, p.porto_descarga,
                            p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
                            p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
-                           r.nota_final AS risco_nota_final
+                           r.nota_final AS risco_nota_final,
+                           r.memoria_calculo AS risco_memoria_calculo
                     FROM narcos_planilhas_importadas p
                     LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
                     WHERE p.numero_conteiner IN :numeros
@@ -512,7 +515,18 @@ def configure(app):
                 
                 rows_planilha = session.execute(sql_planilha, {"numeros": tuple(numeros_containers)}).mappings().all()
                 for rp in rows_planilha:
-                    mapa_planilhas.setdefault(rp["numero_conteiner"], []).append(rp)
+                    # 2. Converta o RowMapping para dict para que possamos modificá-lo
+                    rp_dict = dict(rp) 
+                    
+                    # 3. Faça o parse do JSON de memória de cálculo
+                    memoria_str = rp_dict.get("risco_memoria_calculo")
+                    if memoria_str:
+                        try:
+                            rp_dict["risco_memoria_calculo"] = json.loads(memoria_str)
+                        except json.JSONDecodeError:
+                            rp_dict["risco_memoria_calculo"] = None
+                    
+                    mapa_planilhas.setdefault(rp_dict["numero_conteiner"], []).append(rp_dict)
             except Exception as e:
                 app.logger.exception("[planilhas] erro ao consultar narcos_planilhas_importadas")
 

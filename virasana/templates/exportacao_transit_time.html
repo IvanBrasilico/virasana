@@ -256,7 +256,7 @@
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-5 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
+        <div class="card item-card shadow-sm mb-5 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
              data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
@@ -270,13 +270,68 @@
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
             <div class="d-flex align-items-center">
               <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
-              {% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}
-                {% set nota = r.planilha_info.risco_nota_final %}
-                {% set badge_color = 'text-bg-danger' if nota >= 7 else ('text-bg-warning' if nota >= 4 else 'text-bg-success') %}
-                <span class="badge {{ badge_color }} ms-3 border border-light" style="font-size: 0.9rem; letter-spacing: 0.5px;" title="Score de Risco Calculado">
-                  Risco: {{ "%.2f"|format(nota) }}
-                </span>
-              {% endif %}
+{% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}
+  {% set nota = r.planilha_info.risco_nota_final %}
+  {% set badge_color = 'text-bg-danger' if nota >= 7 else ('text-bg-warning' if nota >= 4 else 'text-bg-success') %}
+  
+  {# 1. Construir o texto do tooltip (Explicabilidade) #}
+  {% set tooltip_html = "Score base: " ~ "%.2f"|format(nota) %}
+  
+{% if r.planilha_info.risco_memoria_calculo and r.planilha_info.risco_memoria_calculo.criterios %}
+  {% set crit = r.planilha_info.risco_memoria_calculo.criterios %}
+  
+  {# 1. Descobrir a soma total dos pesos para calcular a proporção #}
+  {% set soma_pesos = (crit.porto_descarga.peso | default(0)) + 
+                      (crit.porto_destino_final.peso | default(0)) + 
+                      (crit.alerta_if.peso | default(0)) + 
+                      (crit.transportadora.peso | default(0)) %}
+  
+  {% set tooltip_html = "<div class='text-start small'><strong>Composição do Risco (" ~ "%.2f"|format(nota) ~ "):</strong><br>" %}
+  
+  {% if soma_pesos > 0 %}
+    {# 2. Calcular e exibir a contribuição (parcela) de cada item #}
+    
+    {# Porto de Descarga #}
+    {% if crit.porto_descarga and crit.porto_descarga.peso > 0 %}
+      {% set parcela = (crit.porto_descarga.nota * crit.porto_descarga.peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Porto Descarga: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_descarga.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Porto Destino Final #}
+    {% if crit.porto_destino_final and crit.porto_destino_final.peso > 0 %}
+      {% set parcela = (crit.porto_destino_final.nota * crit.porto_destino_final.peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Destino Final: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_destino_final.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Alerta IF #}
+    {% if crit.alerta_if and crit.alerta_if.peso > 0 %}
+      {% set parcela = (crit.alerta_if.nota * crit.alerta_if.peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Alerta IF: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.alerta_if.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Transportadora #}
+    {% if crit.transportadora and crit.transportadora.peso > 0 %}
+      {% set parcela = (crit.transportadora.nota * crit.transportadora.peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Transportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.transportadora.nota ~ ")</span>" %}
+    {% endif %}
+    
+  {% else %}
+    {% set tooltip_html = tooltip_html ~ "Soma de pesos inválida." %}
+  {% endif %}
+  
+  {% set tooltip_html = tooltip_html ~ "</div>" %}
+{% endif %}
+
+{# Renderizar a Badge #}
+<span class="badge {{ badge_color }} ms-3 border border-light" 
+      style="font-size: 0.9rem; letter-spacing: 0.5px; cursor: help;"
+      data-bs-toggle="tooltip" 
+      data-bs-html="true" 
+      data-bs-placement="bottom"
+      data-bs-title="{{ tooltip_html }}">
+  Risco: {{ "%.2f"|format(nota) }}
+</span>
+{% endif %}
             </div>
             <div>
               <span class="marcacao-info small me-2 fw-bold text-light">
@@ -855,10 +910,23 @@ function formatDateTime(isoString) {
 
   function parseDate(s) {
     if (!s) return null;
-    // aceita "YYYY-MM-DD HH:MM:SS"
-    const t = Date.parse(s.replace(' ', 'T'));
-    return Number.isFinite(t) ? t : null;
-    // Obs.: se for timezone local/servidor, manter o mesmo padrão para todos.
+    
+    // 1. Tenta o padrão ISO (YYYY-MM-DD)
+    let t = Date.parse(s.replace(' ', 'T'));
+    if (Number.isFinite(t)) return t;
+
+    // 2. Fallback: Tenta converter o padrão pt-BR (DD/MM/YYYY HH:MM:SS) para ISO
+    const parts = s.split(' ');
+    if (parts.length > 0) {
+      const dateParts = parts[0].split('/');
+      if (dateParts.length === 3) {
+        // Remonta como YYYY-MM-DD
+        const isoStr = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T${parts[1] || '00:00:00'}`;
+        t = Date.parse(isoStr);
+        if (Number.isFinite(t)) return t;
+      }
+    }
+    return null;
   }
 
   function getVal(el, key) {
@@ -873,7 +941,7 @@ function formatDateTime(isoString) {
   }
 
   // Ordenação estável: usamos data-stable como tie-breaker
-  function compareFactory(key, dir) {
+function compareFactory(key, dir) {
     const type = keyTypes[key] || 'text';
     const asc = dir === 'asc';
 
@@ -881,40 +949,42 @@ function formatDateTime(isoString) {
       let va = getVal(a, key);
       let vb = getVal(b, key);
 
-      // valores nulos, vazios ou undefined sempre no fim
       const aNull = (va === null || va === undefined || va === '');
       const bNull = (vb === null || vb === undefined || vb === '');
-      if (aNull && !bNull) return  1;
-      if (!aNull && bNull) return -1;
+
+      // --- REGRA DE NEGÓCIO: NULOS SEMPRE NO FUNDO ---
+      // Impede que dados vazios poluam o topo da tela
+      if (aNull && !bNull) return 1;  // A é nulo, vai para o fundo
+      if (!aNull && bNull) return -1; // B é nulo, vai para o fundo
       if (aNull && bNull) {
-        // desempate por estável
         const sa = parseInt(a.dataset.stable || '0', 10);
         const sb = parseInt(b.dataset.stable || '0', 10);
-        return sa - sb;
+        return sa - sb; // Mantém ordem original se ambos forem nulos
       }
 
+      // --- ORDENAÇÃO DE DADOS VÁLIDOS ---
       let cmp = 0;
       if (type === 'number' || type === 'date') {
-        // números/datas: comparação direta
         cmp = (va < vb) ? -1 : ((va > vb) ? 1 : 0);
       } else {
-        // texto
         cmp = collator.compare(String(va), String(vb));
       }
 
+      // Desempate por estabilidade
       if (cmp === 0) {
-        // estável
         const sa = parseInt(a.dataset.stable || '0', 10);
         const sb = parseInt(b.dataset.stable || '0', 10);
         return sa - sb;
       }
+
+      // Inverte a lógica dependendo do clique (apenas para os dados válidos)
       return asc ? cmp : -cmp;
     };
   }
 
   function applySort(key, dir) {
     // Busca SOMENTE os cards de nível superior (evita pegar cards internos)
-    const cards = Array.from(container.querySelectorAll(':scope > .card[data-stable]'));
+    const cards = Array.from(container.querySelectorAll('.item-card[data-stable]'));
     const cmp = compareFactory(key, dir);
 	if (!cards.length) return;
     cards.sort(cmp);
@@ -1249,6 +1319,16 @@ function formatDateTime(isoString) {
       alert('Erro de rede ao processar marcação.');
       btn.disabled = false;
     }
+  });
+</script>
+
+<script>
+  // Inicializa todos os tooltips da página
+  document.addEventListener("DOMContentLoaded", function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
   });
 </script>
 
