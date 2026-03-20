@@ -158,6 +158,24 @@ def processar_lote_risco(session, registros_planilha):
         logger.exception("[score_risco] Erro ao buscar tabela de motoristas.")
         return 0
 
+    # ------------------------------------------------------------------
+    # 2.8. Buscar TODAS as mercadorias e criar mapa em memória
+    # ------------------------------------------------------------------
+    mapa_notas_mercadorias = {}
+    try:
+        sql_merc = text("""
+            SELECT descricao_mercadoria, nota_risco 
+            FROM narcos_risco_mercadorias
+        """)
+        rows_merc = session.execute(sql_merc).mappings().all()
+        for r in rows_merc:
+            desc_norm = normalizar_chave(r['descricao_mercadoria'])
+            if desc_norm: 
+                mapa_notas_mercadorias[desc_norm] = float(r['nota_risco'])
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de mercadorias.")
+        return 0
+
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
     
