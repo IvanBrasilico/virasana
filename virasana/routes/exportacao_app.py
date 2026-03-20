@@ -2248,7 +2248,23 @@ def configure(app):
 
     @app.route('/exportacao/importar', methods=['GET'])
     def importar_planilha_view():
+
+        session = app.config['db_session']
+        try:
+            sql = text("""
+                SELECT nome_arquivo_origem, MAX(data_importacao) AS data_importacao, COUNT(id) AS total_linhas
+                FROM narcos_planilhas_importadas
+                GROUP BY nome_arquivo_origem
+                ORDER BY data_importacao DESC
+                LIMIT 10
+            """)
+            ultimas_planilhas = session.execute(sql).mappings().all()
+        except Exception as e:
+            app.logger.exception("[importar_planilha_view] Erro ao buscar histórico de planilhas importadas.")
+            ultimas_planilhas = []
+
         return render_template(
             'exportacao_importar_planilha.html',
-            csrf_token=generate_csrf
+            csrf_token=generate_csrf,
+            ultimas_planilhas=ultimas_planilhas
         )
