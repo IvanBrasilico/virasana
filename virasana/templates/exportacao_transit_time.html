@@ -279,47 +279,62 @@
   
 {% if r.planilha_info.risco_memoria_calculo and r.planilha_info.risco_memoria_calculo.criterios %}
   {% set crit = r.planilha_info.risco_memoria_calculo.criterios %}
-  
-  {# 1. Descobrir a soma total dos pesos para calcular a proporção #}
-  {% set soma_pesos = (crit.porto_descarga.peso | default(0)) + 
-                      (crit.porto_destino_final.peso | default(0)) + 
-                      (crit.alerta_if.peso | default(0)) + 
-                      (crit.transportadora.peso | default(0)) %}
-  
-  {% set tooltip_html = "<div class='text-start small'><strong>Composição do Risco (" ~ "%.2f"|format(nota) ~ "):</strong><br>" %}
+
+  {# 1. Extração segura dos pesos (Retrocompatibilidade garantida) #}
+  {% set pd_peso = crit.get('porto_descarga', {}).get('peso', 0) %}
+  {% set pdf_peso = crit.get('porto_destino_final', {}).get('peso', 0) %}
+  {% set alerta_peso = crit.get('alerta_if', {}).get('peso', 0) %}
+  {% set transp_peso = crit.get('transportadora', {}).get('peso', 0) %}
+  {% set mot_peso = crit.get('motorista', {}).get('peso', 0) %}
+  {% set merc_peso = crit.get('mercadoria', {}).get('peso', 0) %}
+
+  {# 2. Descobrir a soma total dos pesos para calcular a proporção #}
+  {% set soma_pesos = pd_peso + pdf_peso + alerta_peso + transp_peso + mot_peso + merc_peso %}
   
   {% if soma_pesos > 0 %}
-    {# 2. Calcular e exibir a contribuição (parcela) de cada item #}
+    {# 3. Calcular e exibir a contribuição de cada item de forma segura #}
     
     {# Porto de Descarga #}
-    {% if crit.porto_descarga and crit.porto_descarga.peso > 0 %}
-      {% set parcela = (crit.porto_descarga.nota * crit.porto_descarga.peso) / soma_pesos %}
-      {% set tooltip_html = tooltip_html ~ "&bull; Porto Descarga: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_descarga.nota ~ ")</span><br>" %}
+    {% if pd_peso > 0 %}
+      {% set parcela = (crit.porto_descarga.nota * pd_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "<br><br>&bull; Porto Descarga: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_descarga.nota ~ ")</span><br>" %}
     {% endif %}
     
     {# Porto Destino Final #}
-    {% if crit.porto_destino_final and crit.porto_destino_final.peso > 0 %}
-      {% set parcela = (crit.porto_destino_final.nota * crit.porto_destino_final.peso) / soma_pesos %}
+    {% if pdf_peso > 0 %}
+      {% set parcela = (crit.porto_destino_final.nota * pdf_peso) / soma_pesos %}
       {% set tooltip_html = tooltip_html ~ "&bull; Destino Final: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_destino_final.nota ~ ")</span><br>" %}
     {% endif %}
     
     {# Alerta IF #}
-    {% if crit.alerta_if and crit.alerta_if.peso > 0 %}
-      {% set parcela = (crit.alerta_if.nota * crit.alerta_if.peso) / soma_pesos %}
+    {% if alerta_peso > 0 %}
+      {% set parcela = (crit.alerta_if.nota * alerta_peso) / soma_pesos %}
       {% set tooltip_html = tooltip_html ~ "&bull; Alerta IF: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.alerta_if.nota ~ ")</span><br>" %}
     {% endif %}
     
     {# Transportadora #}
-    {% if crit.transportadora and crit.transportadora.peso > 0 %}
-      {% set parcela = (crit.transportadora.nota * crit.transportadora.peso) / soma_pesos %}
-      {% set tooltip_html = tooltip_html ~ "&bull; Transportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.transportadora.nota ~ ")</span>" %}
+    {% if transp_peso > 0 %}
+      {% set parcela = (crit.transportadora.nota * transp_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Transportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.transportadora.nota ~ ")</span><br>" %}
+    {% endif %}
+
+    {# Motorista #}
+    {% if mot_peso > 0 %}
+      {% set parcela = (crit.motorista.nota * mot_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Motorista: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.motorista.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Mercadoria #}
+    {% if merc_peso > 0 %}
+      {% set parcela = (crit.mercadoria.nota * merc_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Mercadoria: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.mercadoria.nota ~ ")</span>" %}
+
     {% endif %}
     
   {% else %}
-    {% set tooltip_html = tooltip_html ~ "Soma de pesos inválida." %}
+    {% set tooltip_html = tooltip_html ~ "<br>Soma de pesos inválida." %}
   {% endif %}
-  
-  {% set tooltip_html = tooltip_html ~ "</div>" %}
+
 {% endif %}
 
 {# Renderizar a Badge #}

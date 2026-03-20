@@ -73,11 +73,12 @@ def processar_lote_risco(session, registros_planilha):
     pesos = obter_pesos_ativos(session)
     peso_pd = pesos.get('PORTO_DESCARGA', 0.0)
     peso_pdf = pesos.get('PORTO_DESTINO_FINAL', 0.0)
-    peso_alerta = pesos.get('ALERTA_IF', 0.0)
-    
+    peso_alerta = pesos.get('ALERTA_IF', 0.0) 
     peso_transp = pesos.get('TRANSPORTADORA', 0.0)
-    
-    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp
+    peso_motorista = pesos.get('MOTORISTA', 0.0)
+    peso_mercadoria = pesos.get('MERCADORIA', 0.0)
+
+    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp + peso_motorista + peso_mercadoria
     
     if soma_pesos == 0:
         logger.warning("[score_risco] Soma dos pesos é zero. Verifique a configuração.")
@@ -127,6 +128,36 @@ def processar_lote_risco(session, registros_planilha):
         logger.exception("[score_risco] Erro ao buscar tabela de transportadoras.")
         return 0
 
+    # ------------------------------------------------------------------
+    # 2.7. Buscar TODOS os motoristas e criar mapas em memória
+    # A classificação é varchar(1), portanto fazemos um cast seguro para float.
+    # ------------------------------------------------------------------
+    mapa_notas_mot_cpf = {}
+    mapa_notas_mot_nome = {}
+    try:
+        sql_mot = text("""
+            SELECT cpf, nome, classificacao 
+            FROM risco_motoristas
+        """)
+        rows_mot = session.execute(sql_mot).mappings().all()
+        for r in rows_mot:
+            cpf_norm = normalizar_chave(r['cpf'])
+            nome_norm = normalizar_chave(r['nome'])
+            
+            # Extrai a nota lidando com o fato de ser VARCHAR(1)
+            val_class = str(r['classificacao'] or '').strip()
+            nota = 0.0
+            if val_class.isdigit():
+                nota = float(val_class)
+            elif val_class:
+                nota = 10.0 # Fallback caso seja preenchido com letras (ex: 'A', 'X')
+                
+            if cpf_norm: mapa_notas_mot_cpf[cpf_norm] = nota
+            if nome_norm: mapa_notas_mot_nome[nome_norm] = nota
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de motoristas.")
+        return 0
+
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
     
@@ -158,9 +189,29 @@ def processar_lote_risco(session, registros_planilha):
         elif chave_nome and chave_nome in mapa_notas_transp_nome:
             nota_transp = mapa_notas_transp_nome[chave_nome]
 
+        # Motorista: Tenta por CPF primeiro, depois por Nome
+        cpf_mot_original = reg.get('cpf_motorista')
+        nome_mot_original = reg.get('nome_motorista')
+        chave_cpf_mot = normalizar_chave(cpf_mot_original)
+        chave_nome_mot = normalizar_chave(nome_mot_original)
+        
+        nota_motorista = 0.0
+        if chave_cpf_mot and chave_cpf_mot in mapa_notas_mot_cpf:
+            nota_motorista = mapa_notas_mot_cpf[chave_cpf_mot]
+        elif chave_nome_mot and chave_nome_mot in mapa_notas_mot_nome:
+            nota_motorista = mapa_notas_mot_nome[chave_nome_mot]
+
+        # Mercadoria: Busca pela descrição do NCM
+        mercadoria_original = reg.get('descricao_ncm')
+        chave_mercadoria = normalizar_chave(mercadoria_original)
+        nota_mercadoria = mapa_notas_mercadorias.get(chave_mercadoria, 0.0)
+
         # Média ponderada
-        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp)
+        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp) + (nota_motorista * peso_motorista) + (nota_mercadoria * peso_mercadoria)
         nota_final = soma_notas / soma_pesos
+
+        # TRAVA DE LIMITES: Garante que a nota nunca fuja da escala de 0 a 10
+        nota_final = max(0.0, min(10.0, nota_final))
 
         # Montar a memória de cálculo (JSON)
         memoria = {
@@ -169,7 +220,10 @@ def processar_lote_risco(session, registros_planilha):
                 "porto_descarga": {"valor_original": reg.get('porto_descarga'), "chave": chave_pd, "nota": nota_pd, "peso": peso_pd},
                 "porto_destino_final": {"valor_original": reg.get('porto_destino_final'), "chave": chave_pdf, "nota": nota_pdf, "peso": peso_pdf},
                 "alerta_if": {"valor_original": reg.get('alerta_if'), "nota": nota_alerta, "peso": peso_alerta},
-                "transportadora": {"cnpj_original": cnpj_original, "nome_original": nome_original, "nota": nota_transp, "peso": peso_transp}
+                "transportadora": {"cnpj_original": cnpj_original, "nome_original": nome_original, "nota": nota_transp, "peso": peso_transp},
+                "motorista": {"cpf_original": cpf_mot_original, "nome_original": nome_mot_original, "nota": nota_motorista, "peso": peso_motorista},
+                "mercadoria": {"descricao_original": mercadoria_original, "nota": nota_mercadoria, "peso": peso_mercadoria}
+             
             }
         }
 
