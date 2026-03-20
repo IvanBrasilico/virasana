@@ -913,17 +913,14 @@ function formatDateTime(isoString) {
   }
 
   function applySort(key, dir) {
-    // Busca os cards dentro do container, mesmo que não sejam filhos diretos
-    const cards = Array.from(container.querySelectorAll('.card[data-stable]'));
+    // Busca SOMENTE os cards de nível superior (evita pegar cards internos)
+    const cards = Array.from(container.querySelectorAll(':scope > .card[data-stable]'));
     const cmp = compareFactory(key, dir);
 	if (!cards.length) return;
     cards.sort(cmp);
 
-    // Move o card (ou o wrapper dele, se houver) de volta para o container na nova ordem
-    cards.forEach(c => {
-      const toMove = (c.parentElement === container) ? c : c.closest('#resultadosAccordion > *');
-      container.appendChild(toMove);
-    });
+    // Reanexa na ordem correta (mantendo apenas os cards principais)
+    cards.forEach(c => container.appendChild(c));
 
   }
 
