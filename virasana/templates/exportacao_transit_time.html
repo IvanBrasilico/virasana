@@ -264,7 +264,7 @@
              data-tt="{% if r.transit_time_horas is not none %}{{ '%.6f'|format(r.transit_time_horas) }}{% endif %}"
              data-outlier="{{ 1 if r.is_outlier else 0 }}"
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
-             data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
+             data-cnpjtransportador="{{ r.cnpjTransportador or '' }}"
              data-stable="{{ loop.index }}">
 
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
@@ -843,11 +843,12 @@ function formatDateTime(isoString) {
     origem: 'text',     // código do recinto (string)
     tt: 'number',       // transit time (float)
     outlier: 'number',  // 0/1
-    vazio: 'number'     // 0/1
+    vazio: 'number',    // 0/1
+    cnpjtransportador: 'text'
   };
 
   function parseNumber(s) {
-    if (s == null || s === '') return null;
+    if (s == null || s === '' || s === '—') return null;
     const n = parseFloat(String(s).replace(',', '.'));
     return Number.isFinite(n) ? n : null;
   }
@@ -861,12 +862,13 @@ function formatDateTime(isoString) {
   }
 
   function getVal(el, key) {
-    const raw = el.dataset[key];
+    // Busca no dataset ignorando diferença de maiúsculas/minúsculas
+    let raw = el.dataset[key] || el.dataset[key.toLowerCase()];
+    if (raw === '—') raw = '';
     switch (keyTypes[key]) {
       case 'number': return parseNumber(raw);
       case 'date':   return parseDate(raw);
-      case 'text':
-      default:       return (raw ?? '').toString();
+      default:       return (raw || '').toString().trim();
     }
   }
 
@@ -879,9 +881,9 @@ function formatDateTime(isoString) {
       let va = getVal(a, key);
       let vb = getVal(b, key);
 
-      // valores nulos/vazios sempre no fim
-      const aNull = (va === null || va === '');
-      const bNull = (vb === null || vb === '');
+      // valores nulos, vazios ou undefined sempre no fim
+      const aNull = (va === null || va === undefined || va === '');
+      const bNull = (vb === null || vb === undefined || vb === '');
       if (aNull && !bNull) return  1;
       if (!aNull && bNull) return -1;
       if (aNull && bNull) {
@@ -911,8 +913,8 @@ function formatDateTime(isoString) {
   }
 
   function applySort(key, dir) {
-    // Considera apenas filhos diretos com classe .card
-    const cards = Array.from(container.children).filter(el => el.classList?.contains('card'));
+    // Busca os cards dentro do container, mesmo que não sejam filhos diretos
+    const cards = Array.from(container.querySelectorAll('.card[data-stable]'));
     const cmp = compareFactory(key, dir);
 	if (!cards.length) return;
     cards.sort(cmp);
