@@ -311,9 +311,9 @@ def configure(app):
         recinto_destino = _normaliza_destino(recinto_destino)
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        # Usa expanding bind param para listas IN
         sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+        
+        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
 
         sql_txt = f"""
             SELECT
@@ -408,6 +408,51 @@ def configure(app):
              "s_vazioConteiner": r.s_vazioConteiner,
              "transit_time_horas": r.transit_time_horas,
          } for r in rows]
+
+        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS ---
+        sql_planilha_extra = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
+            FROM narcos_planilhas_importadas p
+            WHERE p.entrada_carreta >= :inicio AND p.entrada_carreta < :fim
+        """)
+        planilhas_no_periodo = session.execute(sql_planilha_extra, {"inicio": inicio, "fim": fim}).mappings().all()
+
+        for p in planilhas_no_periodo:
+            num_planilha = (p["numero_conteiner"] or "").strip().upper()
+            dt_carreta = p["entrada_carreta"]
+            if not num_planilha or not dt_carreta:
+                continue
+                
+            encontrado = any(
+                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
+                r["dataHoraOcorrencia"] and
+                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
+                for r in resultados
+            )
+            
+            if not encontrado:
+                resultados.append({
+                    "id_acesso": None,
+                    "numeroConteiner": num_planilha,
+                    "codigoRecinto": recinto_destino,
+                    "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None,
+                    "placa": None,
+                    "cpfMotorista": p["cpf_motorista"],
+                    "nomeMotorista": p["nome_motorista"],
+                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
+                    "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None,
+                    "s_cnpjTransportador": None,
+                    "s_placa": None,
+                    "s_cpfMotorista": None,
+                    "s_nomeMotorista": None,
+                    "s_vazioConteiner": None,
+                    "transit_time_horas": None
+                })
+        
+        resultados.sort(key=lambda x: (x["numeroConteiner"] or "", x["dataHoraOcorrencia"] or datetime.min))
+        # --- FIM DA INSERÇÃO ---
 
         # Pós-processamento comum (DUE, risco, IQR)
         return _posprocessar_transit_rows(session, resultados)
@@ -541,6 +586,21 @@ def configure(app):
                         item["planilha_info"] = rp
                         break
 
+        # Ordenação final: Maior risco primeiro, itens sem risco no final. 
+        # Empate resolvido por ordem cronológica de entrada.
+        def sort_key(item):
+            planilha = item.get("planilha_info") or {}
+            risco = planilha.get("risco_nota_final")
+            
+            # has_no_risk = 0 (tem risco, sobe na lista) ou 1 (não tem, desce)
+            has_no_risk = 1 if risco is None else 0
+            # inverte o valor para que ordenação crescente coloque os maiores no topo
+            inv_risk = -float(risco) if risco is not None else 0.0
+            dt = item.get("dataHoraOcorrencia") or datetime.min
+            return (has_no_risk, inv_risk, dt)
+            
+        resultados.sort(key=sort_key)
+
         return resultados, stats
 
     def consultar_transit_time_por_container(
@@ -558,8 +618,11 @@ def configure(app):
         """
         destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
+
         sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+        
+        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
+
 
         sql_txt = f"""
              SELECT
@@ -647,6 +710,58 @@ def configure(app):
             "s_vazioConteiner": r.s_vazioConteiner,
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
+
+        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS (POR CONTÊINER) ---
+        sql_planilha_extra = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
+            FROM narcos_planilhas_importadas p
+            WHERE p.numero_conteiner = :numero
+              AND p.entrada_carreta >= :inicio 
+              AND p.entrada_carreta < :fim
+        """)
+        planilhas_no_periodo = session.execute(sql_planilha_extra, {
+            "numero": (numero_conteiner or "").strip().upper(),
+            "inicio": inicio, 
+            "fim": fim
+        }).mappings().all()
+
+        for p in planilhas_no_periodo:
+            num_planilha = (p["numero_conteiner"] or "").strip().upper()
+            dt_carreta = p["entrada_carreta"]
+            if not num_planilha or not dt_carreta:
+                continue
+                
+            encontrado = any(
+                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
+                r["dataHoraOcorrencia"] and
+                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
+                for r in resultados
+            )
+            
+            if not encontrado:
+                resultados.append({
+                    "id_acesso": None,
+                    "numeroConteiner": num_planilha,
+                    "codigoRecinto": destinos_validos[0] if destinos_validos else None,
+                    "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None,
+                    "placa": None,
+                    "cpfMotorista": p["cpf_motorista"],
+                    "nomeMotorista": p["nome_motorista"],
+                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
+                    "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None,
+                    "s_cnpjTransportador": None,
+                    "s_placa": None,
+                    "s_cpfMotorista": None,
+                    "s_nomeMotorista": None,
+                    "s_vazioConteiner": None,
+                    "transit_time_horas": None
+                })
+        
+        resultados.sort(key=lambda x: x["dataHoraOcorrencia"] or datetime.min)
+        # --- FIM DA INSERÇÃO ---
+
         return _posprocessar_transit_rows(session, resultados)
 
     @app.route('/exportacao/', methods=['GET'])

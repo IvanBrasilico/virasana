@@ -20,17 +20,6 @@
       display: block;
     }
 
-    /* Indicadores visuais de ordenação */
-    .sort-bar .btn[aria-pressed="true"] {
-      font-weight: 600;
-      border: 1px dashed #ced4da;
-      padding: .5rem .75rem;
-    }
-    .sort-indicator {
-      display: inline-block;
-      min-width: 1em;
-      margin-left: .25rem;
-    }
   </style>
 
 </head>
@@ -230,27 +219,6 @@
   </div>
 </form>
 
-    <!-- Barra de "títulos de coluna" para ordenação (JS-only) -->
-    {% if resultados and resultados|length > 0 %}
-    <div class="sort-bar d-flex flex-wrap align-items-center gap-2 mb-3">
-      <span class="text-muted me-1">Ordenar por:</span>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="entrada"><span>Entrada</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="tt"><span>Transit Time (h)</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="container"><span>Contêiner</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="origem"><span>Origem (cód.)</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="outlier"><span>Outlier</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="vazio"><span>Vazio</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="cnpjtransportador"><span>cnpj Transp.</span><span class="sort-indicator"></span></button>
-    </div>
-    {% endif %}
-
     {% if resultados and resultados|length > 0 %}
       <div class="accordion" id="resultadosAccordion">
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
@@ -265,6 +233,7 @@
              data-outlier="{{ 1 if r.is_outlier else 0 }}"
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
              data-cnpjtransportador="{{ r.cnpjTransportador or '' }}"
+             data-risco="{% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}{{ r.planilha_info.risco_nota_final }}{% endif %}"
              data-stable="{{ loop.index }}">
 
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
@@ -896,164 +865,6 @@ function formatDateTime(isoString) {
   }, { root: null, rootMargin: '200px 0px', threshold: 0 });
 
   STRIPS.forEach(el => io.observe(el));
-})();
-</script>
-
-<!-- JS de ordenação dos cards (sem nova consulta SQL) -->
-<script>
-(function() {
-  const container = document.getElementById('resultadosAccordion');
-  if (!container) return;
-
-  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
-  const keyTypes = {
-    // chave -> tipo de comparação
-    container: 'text',
-    entrada: 'date',    // string "YYYY-MM-DD HH:MM:SS"
-    origem: 'text',     // código do recinto (string)
-    tt: 'number',       // transit time (float)
-    outlier: 'number',  // 0/1
-    vazio: 'number',    // 0/1
-    cnpjtransportador: 'text'
-  };
-
-  function parseNumber(s) {
-    if (s == null || s === '' || s === '—') return null;
-    const n = parseFloat(String(s).replace(',', '.'));
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function parseDate(s) {
-    if (!s) return null;
-    
-    // 1. Tenta o padrão ISO (YYYY-MM-DD)
-    let t = Date.parse(s.replace(' ', 'T'));
-    if (Number.isFinite(t)) return t;
-
-    // 2. Fallback: Tenta converter o padrão pt-BR (DD/MM/YYYY HH:MM:SS) para ISO
-    const parts = s.split(' ');
-    if (parts.length > 0) {
-      const dateParts = parts[0].split('/');
-      if (dateParts.length === 3) {
-        // Remonta como YYYY-MM-DD
-        const isoStr = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T${parts[1] || '00:00:00'}`;
-        t = Date.parse(isoStr);
-        if (Number.isFinite(t)) return t;
-      }
-    }
-    return null;
-  }
-
-  function getVal(el, key) {
-    // Busca no dataset ignorando diferença de maiúsculas/minúsculas
-    let raw = el.dataset[key] || el.dataset[key.toLowerCase()];
-    if (raw === '—') raw = '';
-    switch (keyTypes[key]) {
-      case 'number': return parseNumber(raw);
-      case 'date':   return parseDate(raw);
-      default:       return (raw || '').toString().trim();
-    }
-  }
-
-  // Ordenação estável: usamos data-stable como tie-breaker
-function compareFactory(key, dir) {
-    const type = keyTypes[key] || 'text';
-    const asc = dir === 'asc';
-
-    return (a, b) => {
-      let va = getVal(a, key);
-      let vb = getVal(b, key);
-
-      const aNull = (va === null || va === undefined || va === '');
-      const bNull = (vb === null || vb === undefined || vb === '');
-
-      // --- REGRA DE NEGÓCIO: NULOS SEMPRE NO FUNDO ---
-      // Impede que dados vazios poluam o topo da tela
-      if (aNull && !bNull) return 1;  // A é nulo, vai para o fundo
-      if (!aNull && bNull) return -1; // B é nulo, vai para o fundo
-      if (aNull && bNull) {
-        const sa = parseInt(a.dataset.stable || '0', 10);
-        const sb = parseInt(b.dataset.stable || '0', 10);
-        return sa - sb; // Mantém ordem original se ambos forem nulos
-      }
-
-      // --- ORDENAÇÃO DE DADOS VÁLIDOS ---
-      let cmp = 0;
-      if (type === 'number' || type === 'date') {
-        cmp = (va < vb) ? -1 : ((va > vb) ? 1 : 0);
-      } else {
-        cmp = collator.compare(String(va), String(vb));
-      }
-
-      // Desempate por estabilidade
-      if (cmp === 0) {
-        const sa = parseInt(a.dataset.stable || '0', 10);
-        const sb = parseInt(b.dataset.stable || '0', 10);
-        return sa - sb;
-      }
-
-      // Inverte a lógica dependendo do clique (apenas para os dados válidos)
-      return asc ? cmp : -cmp;
-    };
-  }
-
-  function applySort(key, dir) {
-    // Busca SOMENTE os cards de nível superior (evita pegar cards internos)
-    const cards = Array.from(container.querySelectorAll('.item-card[data-stable]'));
-    const cmp = compareFactory(key, dir);
-	if (!cards.length) return;
-    cards.sort(cmp);
-
-    // Reanexa na ordem correta (mantendo apenas os cards principais)
-    cards.forEach(c => container.appendChild(c));
-
-  }
-
-  // UI dos botões
-  const buttons = Array.from(document.querySelectorAll('.sort-bar .sort-btn'));
-  let current = { key: null, dir: 'asc' };
-
-  function updateButtonsUI() {
-    buttons.forEach(btn => {
-      const key = btn.dataset.key;
-      const indicator = btn.querySelector('.sort-indicator');
-      if (key === current.key) {
-        btn.setAttribute('aria-pressed', 'true');
-        btn.setAttribute('aria-sort', current.dir === 'asc' ? 'ascending' : 'descending');
-        if (indicator) indicator.textContent = current.dir === 'asc' ? '▲' : '▼';
-      } else {
-        btn.setAttribute('aria-pressed', 'false');
-        btn.removeAttribute('aria-sort');
-        if (indicator) indicator.textContent = '';
-      }
-    });
-  }
-
-  buttons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.key;
-      if (current.key === key) {
-        current.dir = current.dir === 'asc' ? 'desc' : 'asc';
-      } else {
-        current.key = key;
-        current.dir = 'asc';
-      }
-      applySort(current.key, current.dir);
-      updateButtonsUI();
-    });
-  });
-
-  // Define um estado inicial para ficar claro visualmente
-  const hasButtons = buttons.length > 0;
-  if (hasButtons) {
-    // Geralmente auditores preferem ver as entradas mais recentes primeiro (desc)
-    current = { key: 'entrada', dir: 'desc' };
-    applySort(current.key, current.dir);
-    updateButtonsUI();
-  } else {
-    // Debug leve (apenas se quiser inspecionar no console)
-    // console.warn('Barra de ordenação não encontrada.');
-  }
 })();
 </script>
 
