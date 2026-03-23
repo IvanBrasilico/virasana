@@ -549,6 +549,7 @@ def configure(app):
                     SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
                            p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
                            p.viagem_descarga, p.navio_descarga, p.porto_descarga,
+                           p.local_imagem, p.alerta_if, p.status_conteiner,
                            p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
                            p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
                            r.nota_final AS risco_nota_final,
