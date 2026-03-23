@@ -1516,6 +1516,7 @@ def configure(app):
 
             records = []
             usuario_identificador = getattr(current_user, 'id', None)
+            linhas_sem_conteiner = 0
             
             for _, row in df.iterrows():
                 row_dict = {"nome_arquivo_origem": filename, "usuario_id": usuario_identificador}
@@ -1532,6 +1533,7 @@ def configure(app):
                         row_dict[db_col] = val
                 
                 if not row_dict.get('numero_conteiner'):
+                    linhas_sem_conteiner += 1
                     continue # Ignora linhas totalmente vazias ou sem a chave de busca
 
                 row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
@@ -1604,11 +1606,16 @@ def configure(app):
                     app.logger.exception("[importar_planilha_narcos] Erro ao calcular risco do lote.")
                     # O pass garante que não vamos quebrar a resposta de sucesso da importação se o risco falhar
 
+                linhas_duplicadas = len(records) - linhas_afetadas
+
                 return jsonify({
-                    "status": "success", 
-                    "message": f"Sucesso! {linhas_afetadas} novas linhas inseridas.",
-                    "linhas_lidas": len(records),
-                    "linhas_importadas": linhas_afetadas
+                    "status": "success",
+                    "estatisticas": {
+                        "total_planilha": len(df),
+                        "inseridas_sucesso": linhas_afetadas,
+                        "ignoradas_sem_conteiner": linhas_sem_conteiner,
+                        "ignoradas_duplicadas": linhas_duplicadas
+                    }
                 })
 
             except Exception as e:

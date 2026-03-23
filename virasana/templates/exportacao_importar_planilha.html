@@ -144,7 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
             btnSubmit.innerHTML = originalBtnHtml;
 
             if (res.status === 200 && res.body.status === 'success') {
-                showAlert(`<strong>Sucesso!</strong> ${res.body.message} <br><small>${res.body.linhas_lidas} linhas processadas no total.</small>`, 'success');
+                const est = res.body.estatisticas;
+                const alertMsg = `
+                    <strong>Importação concluída!</strong> Foram lidas ${est.total_planilha} linhas do arquivo.
+                    <ul class="mb-0 mt-2 text-start" style="list-style-type: none; padding-left: 0;">
+                        <li><span class="text-success"><i class="fas fa-check-circle"></i></span> <strong>${est.inseridas_sucesso}</strong> inseridas com sucesso.</li>
+                        <li><span class="text-warning"><i class="fas fa-exclamation-triangle"></i></span> <strong>${est.ignoradas_duplicadas}</strong> ignoradas (já existiam no banco ou duplicadas na planilha).</li>
+                        <li><span class="text-danger"><i class="fas fa-times-circle"></i></span> <strong>${est.ignoradas_sem_conteiner}</strong> ignoradas (sem número de contêiner válido).</li>
+                    </ul>
+                `;
+                showAlert(alertMsg, 'success');
                 form.reset(); 
             } else {
                 showAlert(`<strong>Erro na importação:</strong> ${res.body.error || 'Ocorreu um erro desconhecido.'}`, 'danger');
