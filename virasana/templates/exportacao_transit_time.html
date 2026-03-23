@@ -280,7 +280,7 @@
     {# Alerta IF #}
     {% if alerta_peso > 0 %}
       {% set parcela = (crit.alerta_if.nota * alerta_peso) / soma_pesos %}
-      {% set tooltip_html = tooltip_html ~ "&bull; Alerta IF: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.alerta_if.nota ~ ")</span><br>" %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Alerta terminal: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.alerta_if.nota ~ ")</span><br>" %}
     {% endif %}
     
     {# Transportadora #}
