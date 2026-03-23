@@ -35,7 +35,7 @@ def parse_booleano(valor):
         return valor
     
     val_str = str(valor).strip().upper()
-    return val_str in ('TRUE', '1', 'SIM', 'S', 'X', 'YES', 'Y')
+    return val_str in ('TRUE', '1', 'SIM', 'S', 'X', 'YES', 'Y', 'AL', 'ALERTA')
 
 def obter_pesos_ativos(session):
     """
