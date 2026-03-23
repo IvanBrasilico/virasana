@@ -257,9 +257,10 @@
   {% set mot_peso = crit.get('motorista', {}).get('peso', 0) %}
   {% set merc_peso = crit.get('mercadoria', {}).get('peso', 0) %}
   {% set tc_peso = crit.get('tipo_container', {}).get('peso', 0) %}
+  {% set exp_peso = crit.get('exportadora', {}).get('peso', 0) %}
 
   {# 2. Descobrir a soma total dos pesos para calcular a proporção #}
-  {% set soma_pesos = pd_peso + pdf_peso + alerta_peso + transp_peso + mot_peso + merc_peso + tc_peso %}
+  {% set soma_pesos = pd_peso + pdf_peso + alerta_peso + transp_peso + mot_peso + merc_peso + tc_peso + exp_peso %}
   
   {% if soma_pesos > 0 %}
     {# 3. Calcular e exibir a contribuição de cada item de forma segura #}
@@ -303,7 +304,13 @@
     {# Tipo Contêiner #}
     {% if tc_peso > 0 %}
       {% set parcela = (crit.tipo_container.nota * tc_peso) / soma_pesos %}
-      {% set tooltip_html = tooltip_html ~ "&bull; Tipo Contêiner: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.tipo_container.nota ~ ")</span>" %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Tipo Contêiner: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.tipo_container.nota ~ ")</span><br>" %}
+    {% endif %}
+
+    {# Exportadora #}
+    {% if exp_peso > 0 %}
+      {% set parcela = (crit.exportadora.nota * exp_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Exportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.exportadora.nota ~ ")</span>" %}
 
     {% endif %}
     

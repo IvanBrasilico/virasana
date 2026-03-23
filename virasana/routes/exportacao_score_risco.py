@@ -78,8 +78,9 @@ def processar_lote_risco(session, registros_planilha):
     peso_motorista = pesos.get('MOTORISTA', 0.0)
     peso_mercadoria = pesos.get('MERCADORIA', 0.0)
     peso_tipo_container = pesos.get('TIPO_CONTAINER', 0.0)
+    peso_exportadora = pesos.get('EXPORTADORA', 0.0)
 
-    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp + peso_motorista + peso_mercadoria + peso_tipo_container
+    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp + peso_motorista + peso_mercadoria + peso_tipo_container + peso_exportadora
     
     if soma_pesos == 0:
         logger.warning("[score_risco] Soma dos pesos é zero. Verifique a configuração.")
@@ -195,6 +196,28 @@ def processar_lote_risco(session, registros_planilha):
         logger.exception("[score_risco] Erro ao buscar tabela de tipos de contêiner.")
         return 0
 
+    # ------------------------------------------------------------------
+    # 2.10. Buscar TODAS as empresas exportadoras/importadoras e criar mapas
+    # Cria dois índices: um por CNPJ (prioridade) e um por Razão Social
+    # ------------------------------------------------------------------
+    mapa_notas_emp_cnpj = {}
+    mapa_notas_emp_nome = {}
+    try:
+        sql_emp = text("""
+            SELECT razao_social, cnpj_empresa, nota_risco 
+            FROM narcos_risco_empresas
+        """)
+        rows_emp = session.execute(sql_emp).mappings().all()
+        for r in rows_emp:
+            cnpj_norm = normalizar_chave(r['cnpj_empresa'])
+            nome_norm = normalizar_chave(r['razao_social'])
+            nota = float(r['nota_risco'])
+            if cnpj_norm: mapa_notas_emp_cnpj[cnpj_norm] = nota
+            if nome_norm: mapa_notas_emp_nome[nome_norm] = nota
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de empresas exportadoras.")
+        return 0
+
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
     
@@ -248,8 +271,20 @@ def processar_lote_risco(session, registros_planilha):
         chave_tipo_conteiner = normalizar_chave(tipo_conteiner_original)
         nota_tipo_container = mapa_notas_tipo_container.get(chave_tipo_conteiner, 0.0)
 
+        # Exportadora/Importadora: Tenta por CNPJ primeiro, depois por Razão Social
+        cnpj_exp_original = reg.get('cnpj_exportador_importador')
+        nome_exp_original = reg.get('razao_social_exportador_importador')
+        chave_cnpj_exp = normalizar_chave(cnpj_exp_original)
+        chave_nome_exp = normalizar_chave(nome_exp_original)
+        
+        nota_exportadora = 0.0
+        if chave_cnpj_exp and chave_cnpj_exp in mapa_notas_emp_cnpj:
+            nota_exportadora = mapa_notas_emp_cnpj[chave_cnpj_exp]
+        elif chave_nome_exp and chave_nome_exp in mapa_notas_emp_nome:
+            nota_exportadora = mapa_notas_emp_nome[chave_nome_exp]
+
         # Média ponderada
-        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp) + (nota_motorista * peso_motorista) + (nota_mercadoria * peso_mercadoria) + (nota_tipo_container * peso_tipo_container)
+        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp) + (nota_motorista * peso_motorista) + (nota_mercadoria * peso_mercadoria) + (nota_tipo_container * peso_tipo_container) + (nota_exportadora * peso_exportadora)
         nota_final = soma_notas / soma_pesos
 
         # TRAVA DE LIMITES: Garante que a nota nunca fuja da escala de 0 a 10
@@ -265,7 +300,8 @@ def processar_lote_risco(session, registros_planilha):
                 "transportadora": {"cnpj_original": cnpj_original, "nome_original": nome_original, "nota": nota_transp, "peso": peso_transp},
                 "motorista": {"cpf_original": cpf_mot_original, "nome_original": nome_mot_original, "nota": nota_motorista, "peso": peso_motorista},
                 "mercadoria": {"descricao_original": mercadoria_original, "nota": nota_mercadoria, "peso": peso_mercadoria},
-                "tipo_container": {"valor_original": tipo_conteiner_original, "nota": nota_tipo_container, "peso": peso_tipo_container}
+                "tipo_container": {"valor_original": tipo_conteiner_original, "nota": nota_tipo_container, "peso": peso_tipo_container},
+                "exportadora": {"cnpj_original": cnpj_exp_original, "nome_original": nome_exp_original, "nota": nota_exportadora, "peso": peso_exportadora}
             }
         }
 
