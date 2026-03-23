@@ -77,8 +77,9 @@ def processar_lote_risco(session, registros_planilha):
     peso_transp = pesos.get('TRANSPORTADORA', 0.0)
     peso_motorista = pesos.get('MOTORISTA', 0.0)
     peso_mercadoria = pesos.get('MERCADORIA', 0.0)
+    peso_tipo_container = pesos.get('TIPO_CONTAINER', 0.0)
 
-    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp + peso_motorista + peso_mercadoria
+    soma_pesos = peso_pd + peso_pdf + peso_alerta + peso_transp + peso_motorista + peso_mercadoria + peso_tipo_container
     
     if soma_pesos == 0:
         logger.warning("[score_risco] Soma dos pesos é zero. Verifique a configuração.")
@@ -176,6 +177,24 @@ def processar_lote_risco(session, registros_planilha):
         logger.exception("[score_risco] Erro ao buscar tabela de mercadorias.")
         return 0
 
+    # ------------------------------------------------------------------
+    # 2.9. Buscar TODOS os tipos de contêiner e criar mapa em memória
+    # ------------------------------------------------------------------
+    mapa_notas_tipo_container = {}
+    try:
+        sql_tc = text("""
+            SELECT tipo_conteiner, nota_risco 
+            FROM narcos_risco_tipo_container
+        """)
+        rows_tc = session.execute(sql_tc).mappings().all()
+        for r in rows_tc:
+            tc_norm = normalizar_chave(r['tipo_conteiner'])
+            if tc_norm: 
+                mapa_notas_tipo_container[tc_norm] = float(r['nota_risco'])
+    except SQLAlchemyError as e:
+        logger.exception("[score_risco] Erro ao buscar tabela de tipos de contêiner.")
+        return 0
+
     # 3. Calcular o risco para cada contêiner
     resultados_para_salvar = []
     
@@ -224,8 +243,13 @@ def processar_lote_risco(session, registros_planilha):
         chave_mercadoria = normalizar_chave(mercadoria_original)
         nota_mercadoria = mapa_notas_mercadorias.get(chave_mercadoria, 0.0)
 
+        # Tipo do Contêiner
+        tipo_conteiner_original = reg.get('tipo_conteiner')
+        chave_tipo_conteiner = normalizar_chave(tipo_conteiner_original)
+        nota_tipo_container = mapa_notas_tipo_container.get(chave_tipo_conteiner, 0.0)
+
         # Média ponderada
-        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp) + (nota_motorista * peso_motorista) + (nota_mercadoria * peso_mercadoria)
+        soma_notas = (nota_pd * peso_pd) + (nota_pdf * peso_pdf) + (nota_alerta * peso_alerta) + (nota_transp * peso_transp) + (nota_motorista * peso_motorista) + (nota_mercadoria * peso_mercadoria) + (nota_tipo_container * peso_tipo_container)
         nota_final = soma_notas / soma_pesos
 
         # TRAVA DE LIMITES: Garante que a nota nunca fuja da escala de 0 a 10
@@ -240,8 +264,8 @@ def processar_lote_risco(session, registros_planilha):
                 "alerta_if": {"valor_original": reg.get('alerta_if'), "nota": nota_alerta, "peso": peso_alerta},
                 "transportadora": {"cnpj_original": cnpj_original, "nome_original": nome_original, "nota": nota_transp, "peso": peso_transp},
                 "motorista": {"cpf_original": cpf_mot_original, "nome_original": nome_mot_original, "nota": nota_motorista, "peso": peso_motorista},
-                "mercadoria": {"descricao_original": mercadoria_original, "nota": nota_mercadoria, "peso": peso_mercadoria}
-             
+                "mercadoria": {"descricao_original": mercadoria_original, "nota": nota_mercadoria, "peso": peso_mercadoria},
+                "tipo_container": {"valor_original": tipo_conteiner_original, "nota": nota_tipo_container, "peso": peso_tipo_container}
             }
         }
 
