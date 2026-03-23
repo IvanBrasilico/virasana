@@ -1514,6 +1514,14 @@ def configure(app):
             # Identifica quais colunas úteis realmente vieram neste arquivo para economizar loops
             colunas_presentes = [c for c in col_map.keys() if c in df.columns]
 
+            # Validação de colunas obrigatórias
+            colunas_obrigatorias = {'numero_conteiner', 'entrada_carreta'}
+            colunas_mapeadas_nesta_planilha = {col_map[c] for c in colunas_presentes}
+            
+            faltando = colunas_obrigatorias - colunas_mapeadas_nesta_planilha
+            if faltando:
+                return jsonify({"error": f"Planilha inválida. Faltam as colunas obrigatórias: {', '.join(faltando)}"}), 400
+
             records = []
             usuario_identificador = getattr(current_user, 'id', None)
             linhas_sem_conteiner = 0
