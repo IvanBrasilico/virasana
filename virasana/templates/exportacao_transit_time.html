@@ -539,7 +539,17 @@
                       <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
                       <div class="col-12 col-md-6"><strong>Transportadora:</strong> {{ r.planilha_info.transportadora or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong> {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista or '—' }})</div>
+
+                      <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong>
+                        {% if r.planilha_info and r.planilha_info.cpf_motorista %}
+                          {% set cpf_limpo = r.planilha_info.cpf_motorista|replace('.','')|replace('-','')|replace(' ','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCpf&inAtivo=0&entCnpjCpf={{ "%011d"|format(cpf_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista or '—' }})
+                        {% endif %}
+                      </div>
 
                       <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
                         {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
