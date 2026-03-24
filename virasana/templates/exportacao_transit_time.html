@@ -74,6 +74,20 @@
           else ('Todos os terminais' if destino == 'multi' else destino))
       %}
 
+    {# MACRO: Renderizador universal de Badges de Risco para Entidades #}
+    {% macro badge_risco_entidade(nota) %}
+      {% if nota is not none and nota > 2 %}
+        {% set b_color = 'text-bg-danger' if nota > 3.5 else 'text-bg-warning' %}
+        <span class="badge {{ b_color }} ms-1 border border-light"
+              style="font-size: 0.75rem; letter-spacing: 0.5px; cursor: help;"
+              data-bs-toggle="tooltip"
+              data-bs-placement="top"
+              data-bs-title="Nota de risco na matriz: {{ '%.2f'|format(nota) }}">
+          RISCO: {{ "%.2f"|format(nota) }}
+        </span>
+      {% endif %}
+    {% endmacro %}
+
      <h1 class="mb-1">
        {% if is_container_mode %}
          Contêiner {{ numero }} — {{ data_label }}
@@ -538,7 +552,13 @@
                       <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
-                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> {{ r.planilha_info.transportadora or '—' }}</div>
+
+                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> 
+                        {{ r.planilha_info.transportadora or '—' }}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('transportadora', {}).get('nota', 0)) }}
+                        {% endif %}
+                      </div>
 
                       <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong>
                         {% if r.planilha_info and r.planilha_info.cpf_motorista %}
@@ -559,6 +579,9 @@
                           </a>
                         {% else %}
                           {{ r.planilha_info.razao_social_exportador_importador or '—' }}
+                        {% endif %}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('exportadora', {}).get('nota', 0)) }}
                         {% endif %}
                       </div>
 
