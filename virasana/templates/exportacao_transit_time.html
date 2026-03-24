@@ -543,7 +543,8 @@
 
                       <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
                         {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
-                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                          {% set cnpj_limpo = r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ "%014d"|format(cnpj_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
                             {{ r.planilha_info.razao_social_exportador_importador or '—' }} ({{ r.planilha_info.cnpj_exportador_importador }})
                           </a>
                         {% else %}
