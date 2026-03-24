@@ -540,7 +540,17 @@
                       <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
                       <div class="col-12 col-md-6"><strong>Transportadora:</strong> {{ r.planilha_info.transportadora or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong> {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista or '—' }})</div>
-                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong> <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ r.planilha_info.cnpj_exportador_importador }}&tipoConsulta=E&controle=S" target="_blank">{{ r.planilha_info.razao_social_exportador_importador or '—' }}</a></div>
+
+                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
+                        {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.razao_social_exportador_importador or '—' }} ({{ r.planilha_info.cnpj_exportador_importador }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.razao_social_exportador_importador or '—' }}
+                        {% endif %}
+                      </div>
+
                       <div class="col-12 col-md-6"><strong>Nº Lote:</strong> {{ r.planilha_info.numero_lote or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Local Imagem:</strong> {{ r.planilha_info.local_imagem or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Alerta / IF:</strong> {{ r.planilha_info.alerta_if or '—' }}</div>
