@@ -553,6 +553,7 @@ def configure(app):
                            p.nome_motorista, p.cpf_motorista,
                            p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
                            p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
+                           p.cnpj_exportador_importador,
                            r.nota_final AS risco_nota_final,
                            r.memoria_calculo AS risco_memoria_calculo
                     FROM narcos_planilhas_importadas p
