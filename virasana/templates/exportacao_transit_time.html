@@ -548,7 +548,7 @@
                   <div class="card-body py-2 small text-success">
                     <div class="row gx-2 gy-1">
                       <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong> {{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong><a href="https://portaldocliente.btp.com.br/sistemas/processos-logisticos/ConsultasLivres/listaatracacaoindex" target="_blank">{{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</a></div>
                       <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
                       <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
