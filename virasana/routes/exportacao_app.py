@@ -4,8 +4,10 @@ import logging
 import csv
 import os
 import tempfile
+import json
 
 from datetime import timedelta, datetime, time, timezone
+from flask_login import current_user
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
@@ -22,6 +24,7 @@ from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
 
+from virasana.routes.exportacao_score_risco import processar_lote_risco
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -308,12 +311,13 @@ def configure(app):
         recinto_destino = _normaliza_destino(recinto_destino)
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        # Usa expanding bind param para listas IN
         sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+        
+        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
 
         sql_txt = f"""
             SELECT
+                e.id AS id_acesso,
                 e.numeroConteiner,
                 e.codigoRecinto,
                 e.dataHoraOcorrencia,
@@ -386,6 +390,7 @@ def configure(app):
             rows = session.execute(text(sql_txt), params).fetchall()
 
         resultados = [{
+             "id_acesso": r.id_acesso,
              "numeroConteiner": r.numeroConteiner,
              "codigoRecinto": r.codigoRecinto,
              "dataHoraOcorrencia": r.dataHoraOcorrencia,
@@ -403,6 +408,51 @@ def configure(app):
              "s_vazioConteiner": r.s_vazioConteiner,
              "transit_time_horas": r.transit_time_horas,
          } for r in rows]
+
+        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS ---
+        sql_planilha_extra = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
+            FROM narcos_planilhas_importadas p
+            WHERE p.entrada_carreta >= :inicio AND p.entrada_carreta < :fim
+        """)
+        planilhas_no_periodo = session.execute(sql_planilha_extra, {"inicio": inicio, "fim": fim}).mappings().all()
+
+        for p in planilhas_no_periodo:
+            num_planilha = (p["numero_conteiner"] or "").strip().upper()
+            dt_carreta = p["entrada_carreta"]
+            if not num_planilha or not dt_carreta:
+                continue
+                
+            encontrado = any(
+                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
+                r["dataHoraOcorrencia"] and
+                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
+                for r in resultados
+            )
+            
+            if not encontrado:
+                resultados.append({
+                    "id_acesso": None,
+                    "numeroConteiner": num_planilha,
+                    "codigoRecinto": recinto_destino,
+                    "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None,
+                    "placa": None,
+                    "cpfMotorista": p["cpf_motorista"],
+                    "nomeMotorista": p["nome_motorista"],
+                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
+                    "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None,
+                    "s_cnpjTransportador": None,
+                    "s_placa": None,
+                    "s_cpfMotorista": None,
+                    "s_nomeMotorista": None,
+                    "s_vazioConteiner": None,
+                    "transit_time_horas": None
+                })
+        
+        resultados.sort(key=lambda x: (x["numeroConteiner"] or "", x["dataHoraOcorrencia"] or datetime.min))
+        # --- FIM DA INSERÇÃO ---
 
         # Pós-processamento comum (DUE, risco, IQR)
         return _posprocessar_transit_rows(session, resultados)
@@ -436,7 +486,33 @@ def configure(app):
             em_risco = set()
         for it in resultados:
             it["motorista_risco"] = (_cpf_digits(it.get("cpfMotorista")) in em_risco)
-        # 3) IQR/outliers
+
+        # 3) Marcações de usuários na nova tabela
+        ids_acesso = [it.get("id_acesso") for it in resultados if it.get("id_acesso")]
+        mapa_marcacoes = {}
+        if ids_acesso:
+            try:
+                sql_marc = text("""
+                    SELECT m.acesso_veiculo_id, m.usuario_cpf, m.data_marcacao, u.nome
+                    FROM narcos_containers_marcados m
+                    LEFT JOIN ovr_usuarios u ON u.cpf = m.usuario_cpf
+                    WHERE m.acesso_veiculo_id IN :ids
+                """).bindparams(bindparam("ids", expanding=True))
+                rows_marc = session.execute(sql_marc, {"ids": tuple(ids_acesso)}).mappings().all()
+                for rm in rows_marc:
+                    mapa_marcacoes[rm["acesso_veiculo_id"]] = {
+                        "usuario_cpf": rm["usuario_cpf"],
+                        "usuario_nome": rm["nome"] or rm["usuario_cpf"],
+                        "data_marcacao": rm["data_marcacao"]
+                    }
+            except Exception as e:
+                app.logger.exception("[marcacoes] erro ao consultar marcações")
+
+        for it in resultados:
+            it["marcacao"] = mapa_marcacoes.get(it.get("id_acesso"))
+
+        # 4) IQR/outliers
+
         vals = sorted([
             float(x["transit_time_horas"]) for x in resultados
             if x["transit_time_horas"] is not None
@@ -462,6 +538,72 @@ def configure(app):
             "limite_outlier_mild": limite_outlier_mild,
             "limite_outlier_strict": limite_outlier_strict
         }
+
+        # 5) Cruzamento com planilhas importadas (navio_embarque) com tolerância de 10 min
+        numeros_containers = list({(it.get("numeroConteiner") or "").strip().upper() for it in resultados if it.get("numeroConteiner")})
+        mapa_planilhas = {}
+        if numeros_containers:
+            try:
+                # 1. Atualize a query SQL para buscar a memoria_calculo
+                sql_planilha = text("""
+                    SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
+                           p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
+                           p.viagem_descarga, p.navio_descarga, p.porto_descarga,
+                           p.local_imagem, p.alerta_if, p.status_conteiner,
+                           p.nome_motorista, p.cpf_motorista,
+                           p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
+                           p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
+                           p.cnpj_exportador_importador,
+                           r.nota_final AS risco_nota_final,
+                           r.memoria_calculo AS risco_memoria_calculo
+                    FROM narcos_planilhas_importadas p
+                    LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
+                    WHERE p.numero_conteiner IN :numeros
+                """).bindparams(bindparam("numeros", expanding=True))
+                
+                rows_planilha = session.execute(sql_planilha, {"numeros": tuple(numeros_containers)}).mappings().all()
+                for rp in rows_planilha:
+                    # 2. Converta o RowMapping para dict para que possamos modificá-lo
+                    rp_dict = dict(rp) 
+                    
+                    # 3. Faça o parse do JSON de memória de cálculo
+                    memoria_str = rp_dict.get("risco_memoria_calculo")
+                    if memoria_str:
+                        try:
+                            rp_dict["risco_memoria_calculo"] = json.loads(memoria_str)
+                        except json.JSONDecodeError:
+                            rp_dict["risco_memoria_calculo"] = None
+                    
+                    mapa_planilhas.setdefault(rp_dict["numero_conteiner"], []).append(rp_dict)
+            except Exception as e:
+                app.logger.exception("[planilhas] erro ao consultar narcos_planilhas_importadas")
+
+        for item in resultados:
+            num = (item.get("numeroConteiner") or "").strip().upper()
+            dt_ocorrencia = item.get("dataHoraOcorrencia")
+            item["planilha_info"] = None
+            if num in mapa_planilhas and dt_ocorrencia:
+                for rp in mapa_planilhas[num]:
+                    dt_carreta = rp["entrada_carreta"]
+                    if dt_carreta and abs((dt_ocorrencia - dt_carreta).total_seconds()) <= 600:
+                        item["planilha_info"] = rp
+                        break
+
+        # Ordenação final: Maior risco primeiro, itens sem risco no final. 
+        # Empate resolvido por ordem cronológica de entrada.
+        def sort_key(item):
+            planilha = item.get("planilha_info") or {}
+            risco = planilha.get("risco_nota_final")
+            
+            # has_no_risk = 0 (tem risco, sobe na lista) ou 1 (não tem, desce)
+            has_no_risk = 1 if risco is None else 0
+            # inverte o valor para que ordenação crescente coloque os maiores no topo
+            inv_risk = -float(risco) if risco is not None else 0.0
+            dt = item.get("dataHoraOcorrencia") or datetime.min
+            return (has_no_risk, inv_risk, dt)
+            
+        resultados.sort(key=sort_key)
+
         return resultados, stats
 
     def consultar_transit_time_por_container(
@@ -479,11 +621,15 @@ def configure(app):
         """
         destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
+
         sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        where_filtro_origem = (" AND s.codigoRecinto IN :origens" if origens_filtrar else "")
+        
+        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
+
 
         sql_txt = f"""
              SELECT
+                 e.id AS id_acesso,
                  e.numeroConteiner,
                  e.codigoRecinto,
                  e.dataHoraOcorrencia,
@@ -549,6 +695,7 @@ def configure(app):
             params["origens"] = tuple(origens_filtrar)
         rows = session.execute(bind, params).fetchall()
         resultados = [{
+            "id_acesso": r.id_acesso,
             "numeroConteiner": r.numeroConteiner,
             "codigoRecinto": r.codigoRecinto,
             "dataHoraOcorrencia": r.dataHoraOcorrencia,
@@ -566,6 +713,58 @@ def configure(app):
             "s_vazioConteiner": r.s_vazioConteiner,
             "transit_time_horas": r.transit_time_horas,
         } for r in rows]
+
+        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS (POR CONTÊINER) ---
+        sql_planilha_extra = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
+            FROM narcos_planilhas_importadas p
+            WHERE p.numero_conteiner = :numero
+              AND p.entrada_carreta >= :inicio 
+              AND p.entrada_carreta < :fim
+        """)
+        planilhas_no_periodo = session.execute(sql_planilha_extra, {
+            "numero": (numero_conteiner or "").strip().upper(),
+            "inicio": inicio, 
+            "fim": fim
+        }).mappings().all()
+
+        for p in planilhas_no_periodo:
+            num_planilha = (p["numero_conteiner"] or "").strip().upper()
+            dt_carreta = p["entrada_carreta"]
+            if not num_planilha or not dt_carreta:
+                continue
+                
+            encontrado = any(
+                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
+                r["dataHoraOcorrencia"] and
+                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
+                for r in resultados
+            )
+            
+            if not encontrado:
+                resultados.append({
+                    "id_acesso": None,
+                    "numeroConteiner": num_planilha,
+                    "codigoRecinto": destinos_validos[0] if destinos_validos else None,
+                    "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None,
+                    "placa": None,
+                    "cpfMotorista": p["cpf_motorista"],
+                    "nomeMotorista": p["nome_motorista"],
+                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
+                    "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None,
+                    "s_cnpjTransportador": None,
+                    "s_placa": None,
+                    "s_cpfMotorista": None,
+                    "s_nomeMotorista": None,
+                    "s_vazioConteiner": None,
+                    "transit_time_horas": None
+                })
+        
+        resultados.sort(key=lambda x: x["dataHoraOcorrencia"] or datetime.min)
+        # --- FIM DA INSERÇÃO ---
+
         return _posprocessar_transit_rows(session, resultados)
 
     @app.route('/exportacao/', methods=['GET'])
@@ -1150,7 +1349,8 @@ def configure(app):
             "numero_due",
             "exportador_nome",
             "cnpj_estabelecimento_exportador",
-            "nfe_ncm"
+            "nfe_ncm",
+            "navio_embarque"
         ])
 
         def _fmt_dt(dt):
@@ -1173,7 +1373,8 @@ def configure(app):
                 r.get("numero_due") or "",
                 r.get("exportador_nome") or "",
                 r.get("cnpj_estabelecimento_exportador") or "",
-                r.get("nfe_ncm") or ""
+                r.get("nfe_ncm") or "",
+                r.get("navio_embarque") or ""
             ])
 
         filename = (
@@ -1189,6 +1390,252 @@ def configure(app):
                 "Content-Disposition": f"attachment; filename={filename}"
             }
         )
+
+    @app.route('/exportacao/transit_time/toggle_marcacao', methods=['POST'])
+    def toggle_marcacao():
+        if not current_user.is_authenticated:
+            return jsonify({"error": "Usuário não autenticado"}), 401
+
+        payload = request.get_json(silent=True) or {}
+        acesso_id = payload.get("acesso_veiculo_id")
+
+        if not acesso_id:
+            return jsonify({"error": "ID do acesso não fornecido"}), 400
+
+        session = app.config['db_session']
+        usuario_cpf = current_user.id  # Flask-Login id na tabela ovr_usuarios = cpf
+
+        try:
+            sql_check = text("SELECT usuario_cpf FROM narcos_containers_marcados WHERE acesso_veiculo_id = :acesso_id")
+            marcacao = session.execute(sql_check, {"acesso_id": acesso_id}).mappings().first()
+
+            if marcacao:
+                if marcacao["usuario_cpf"] == usuario_cpf:
+                    sql_del = text("DELETE FROM narcos_containers_marcados WHERE acesso_veiculo_id = :acesso_id")
+                    session.execute(sql_del, {"acesso_id": acesso_id})
+                    session.commit()
+                    return jsonify({"status": "unmarked"})
+                else:
+                    return jsonify({"error": "Este contêiner já foi marcado por outro usuário."}), 403
+            else:
+                sql_ins = text("INSERT INTO narcos_containers_marcados (acesso_veiculo_id, usuario_cpf) VALUES (:acesso_id, :usuario_cpf)")
+                session.execute(sql_ins, {"acesso_id": acesso_id, "usuario_cpf": usuario_cpf})
+                session.commit()
+                
+                # Retorna o nome do usuario logado para o JS renderizar a UI sem reload da página
+                nome_exibicao = getattr(current_user, 'name', usuario_cpf)
+                return jsonify({"status": "marked", "usuario_nome": nome_exibicao})
+
+        except Exception as e:
+            session.rollback()
+            app.logger.exception("[toggle_marcacao] Erro ao alternar marcação")
+            return jsonify({"error": "Erro interno do servidor"}), 500
+
+    @app.route('/exportacao/importar_planilha_narcos', methods=['POST'])
+    def importar_planilha_narcos():
+
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+
+        try:
+            import pandas as pd
+            import numpy as np
+            import unicodedata
+        except ImportError:
+            return jsonify({"error": "Bibliotecas ausentes. Instale no ambiente: pip install pandas openpyxl"}), 500
+
+        try:
+            filename = file.filename
+            if filename.endswith('.csv'):
+                # sep=None com engine='python' faz o pandas descobrir automaticamente se é vírgula ou ponto-e-vírgula
+                df = pd.read_csv(file, sep=None, engine='python')
+            elif filename.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file)
+            else:
+                return jsonify({"error": "Formato inválido. Use arquivo CSV ou Excel."}), 400
+
+            # Limpeza inicial
+            df = df.replace({np.nan: None})
+
+            # Função para normalizar os cabeçalhos (tira acentos e coloca em minúsculo)
+            def normalize_col(col):
+                if not isinstance(col, str): return str(col)
+                nfkd = unicodedata.normalize('NFKD', col)
+                clean_str = u"".join([c for c in nfkd if not unicodedata.combining(c)]).lower()
+                # .split() seguido de " ".join() elimina espaços duplos, trailing e tabs
+                return " ".join(clean_str.split())
+
+            df.columns = [normalize_col(c) for c in df.columns]
+
+            # Mapeamento: vários formatos de nomes de planilhas apontando para a mesma coluna no BD
+            col_map = {
+                'conteiner': 'numero_conteiner',
+                'tipo conteiner': 'tipo_conteiner',
+                'tipo': 'tipo_conteiner',
+                'iso code': 'iso_code',
+                'iso': 'iso_code',
+                'categoria': 'categoria',
+                'entrada carreta': 'entrada_carreta',
+                'viagem embarque': 'viagem_embarque',
+                'navio embarque': 'navio_embarque',
+                'viagem descarga': 'viagem_descarga',
+                'navio descarga': 'navio_descarga',
+                'local imagem': 'local_imagem',
+                'local da imagem': 'local_imagem',
+                'alerta / if': 'alerta_if',
+                'alerta if': 'alerta_if',
+                'erros na imagem': 'erros_imagem',
+                'erros de imagem': 'erros_imagem',
+                'ch/vz': 'ch_vz',
+                'status': 'status_conteiner',
+                'porto descarga': 'porto_descarga',
+                'porto de descarga': 'porto_descarga',
+                'porto destino final': 'porto_destino_final',
+                'porto de destino final': 'porto_destino_final',
+                'descricao ncm': 'descricao_ncm',
+                'cpf motorista': 'cpf_motorista',
+                'nome motorista': 'nome_motorista',
+                'cpf operador scanner': 'cpf_operador_scanner',
+                'cpf operador do scanner': 'cpf_operador_scanner',
+                'nome operador scanner': 'nome_operador_scanner',
+                'nome do operador do scanner': 'nome_operador_scanner',
+                'cnpj transportadora': 'cnpj_transportadora',
+                'transportadora': 'transportadora',
+                'numero de lote': 'numero_lote',
+                'lote': 'numero_lote',
+                'razao social exportador / importador': 'razao_social_exportador_importador',
+                'razao social do exportador/importador': 'razao_social_exportador_importador',
+                'cnpj exportador / importador': 'cnpj_exportador_importador',
+                'cnpj do exportador/importador': 'cnpj_exportador_importador',
+                'data scanner': 'data_scanner',
+                'data do scanner': 'data_scanner'
+            }
+
+            # Identifica quais colunas úteis realmente vieram neste arquivo para economizar loops
+            colunas_presentes = [c for c in col_map.keys() if c in df.columns]
+
+            # Validação de colunas obrigatórias
+            colunas_obrigatorias = {'numero_conteiner', 'entrada_carreta'}
+            colunas_mapeadas_nesta_planilha = {col_map[c] for c in colunas_presentes}
+            
+            faltando = colunas_obrigatorias - colunas_mapeadas_nesta_planilha
+            if faltando:
+                return jsonify({"error": f"Planilha inválida. Faltam as colunas obrigatórias: {', '.join(faltando)}"}), 400
+
+            records = []
+            usuario_identificador = getattr(current_user, 'id', None)
+            linhas_sem_conteiner = 0
+            
+            for _, row in df.iterrows():
+                row_dict = {"nome_arquivo_origem": filename, "usuario_id": usuario_identificador}
+                
+                # Inicializa com None para garantir que a inserção SQL receba os parâmetros certos
+                for db_col in set(col_map.values()):
+                    row_dict[db_col] = None
+
+                # Preenche com os dados encontrados
+                for plan_col in colunas_presentes:
+                    val = row[plan_col]
+                    if pd.notnull(val): # Só sobrescreve se tiver algum dado válido
+                        db_col = col_map[plan_col]
+                        row_dict[db_col] = val
+                
+                if not row_dict.get('numero_conteiner'):
+                    linhas_sem_conteiner += 1
+                    continue # Ignora linhas totalmente vazias ou sem a chave de busca
+
+                row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
+
+                # Trata strings numéricas que o pandas as vezes lê como float (ex: "123.0" -> "123")
+                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador', 'numero_lote']:
+                    if row_dict.get(col):
+                        val_str = str(row_dict[col]).strip()
+                        if val_str.endswith('.0'):
+                            val_str = val_str[:-2]
+                        row_dict[col] = val_str
+
+                # Converte datas para string no formato correto do MariaDB
+                for date_field in ['entrada_carreta', 'data_scanner']:
+                    if row_dict.get(date_field):
+                        try:
+                            dt_val = pd.to_datetime(row_dict[date_field])
+                            if pd.notnull(dt_val):
+                                row_dict[date_field] = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            else:
+                                row_dict[date_field] = None
+                        except Exception:
+                            row_dict[date_field] = None
+
+                records.append(row_dict)
+
+            if not records:
+                return jsonify({"error": "Nenhum dado processável encontrado na planilha."}), 400
+
+            session = app.config['db_session']
+            
+            # INSERT IGNORE cuidará de ignorar graciosamente registros duplicados
+            sql_insert = text("""
+                INSERT IGNORE INTO narcos_planilhas_importadas (
+                    nome_arquivo_origem, usuario_id,
+                    numero_conteiner, tipo_conteiner, iso_code, categoria,
+                    entrada_carreta, viagem_embarque, navio_embarque, viagem_descarga, navio_descarga,
+                    local_imagem, alerta_if, erros_imagem, ch_vz, status_conteiner,
+                    porto_descarga, porto_destino_final, descricao_ncm,
+                    cpf_motorista, nome_motorista, cpf_operador_scanner, nome_operador_scanner,
+                    cnpj_transportadora, transportadora, numero_lote,
+                    razao_social_exportador_importador, cnpj_exportador_importador, data_scanner
+                ) VALUES (
+                    :nome_arquivo_origem, :usuario_id,
+                    :numero_conteiner, :tipo_conteiner, :iso_code, :categoria,
+                    :entrada_carreta, :viagem_embarque, :navio_embarque, :viagem_descarga, :navio_descarga,
+                    :local_imagem, :alerta_if, :erros_imagem, :ch_vz, :status_conteiner,
+                    :porto_descarga, :porto_destino_final, :descricao_ncm,
+                    :cpf_motorista, :nome_motorista, :cpf_operador_scanner, :nome_operador_scanner,
+                    :cnpj_transportadora, :transportadora, :numero_lote,
+                    :razao_social_exportador_importador, :cnpj_exportador_importador, :data_scanner
+                )
+            """)
+            
+            try:
+                result = session.execute(sql_insert, records)
+                session.commit()
+                
+                # O rowcount num INSERT IGNORE retorna exatamente as linhas que NÃO foram puladas
+                linhas_afetadas = result.rowcount
+
+                # -----------------------------------------------------------------
+                # INTEGRAÇÃO DO MOTOR DE RISCO
+                # Calcula e salva as notas de risco para o lote recém-importado
+                # -----------------------------------------------------------------
+                try:
+                    notas_calculadas = processar_lote_risco(session, records)
+                    app.logger.info(f"[importar_planilha_narcos] Risco calculado para {notas_calculadas} contêineres.")
+                except Exception as e:
+                    app.logger.exception("[importar_planilha_narcos] Erro ao calcular risco do lote.")
+                    # O pass garante que não vamos quebrar a resposta de sucesso da importação se o risco falhar
+
+                linhas_duplicadas = len(records) - linhas_afetadas
+
+                return jsonify({
+                    "status": "success",
+                    "estatisticas": {
+                        "total_planilha": len(df),
+                        "inseridas_sucesso": linhas_afetadas,
+                        "ignoradas_sem_conteiner": linhas_sem_conteiner,
+                        "ignoradas_duplicadas": linhas_duplicadas
+                    }
+                })
+
+            except Exception as e:
+                session.rollback()
+                app.logger.exception("[importar_planilha_narcos] Erro banco de dados")
+                return jsonify({"error": "Erro ao salvar os dados no banco."}), 500
+
+        except Exception as e:
+            app.logger.exception("[importar_planilha_narcos] Erro interno")
+            return jsonify({"error": "Erro interno ao processar a planilha."}), 500
+
 
     # ======================
     #   IMAGENS (MongoDB)
@@ -1945,3 +2392,26 @@ def configure(app):
             return jsonify({"error": "Erro ao salvar anotação"}), 500
 
         return jsonify({"ok": True})
+
+    @app.route('/exportacao/importar', methods=['GET'])
+    def importar_planilha_view():
+
+        session = app.config['db_session']
+        try:
+            sql = text("""
+                SELECT nome_arquivo_origem, MAX(data_importacao) AS data_importacao, COUNT(id) AS total_linhas
+                FROM narcos_planilhas_importadas
+                GROUP BY nome_arquivo_origem
+                ORDER BY data_importacao DESC
+                LIMIT 10
+            """)
+            ultimas_planilhas = session.execute(sql).mappings().all()
+        except Exception as e:
+            app.logger.exception("[importar_planilha_view] Erro ao buscar histórico de planilhas importadas.")
+            ultimas_planilhas = []
+
+        return render_template(
+            'exportacao_importar_planilha.html',
+            csrf_token=generate_csrf,
+            ultimas_planilhas=ultimas_planilhas
+        )

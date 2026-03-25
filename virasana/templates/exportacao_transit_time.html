@@ -20,17 +20,6 @@
       display: block;
     }
 
-    /* Indicadores visuais de ordenação */
-    .sort-bar .btn[aria-pressed="true"] {
-      font-weight: 600;
-      border: 1px dashed #ced4da;
-      padding: .5rem .75rem;
-    }
-    .sort-indicator {
-      display: inline-block;
-      min-width: 1em;
-      margin-left: .25rem;
-    }
   </style>
 
 </head>
@@ -85,6 +74,20 @@
           else ('Todos os terminais' if destino == 'multi' else destino))
       %}
 
+    {# MACRO: Renderizador universal de Badges de Risco para Entidades #}
+    {% macro badge_risco_entidade(nota) %}
+      {% if nota is not none and nota > 2 %}
+        {% set b_color = 'text-bg-danger' if nota > 3.5 else 'text-bg-warning' %}
+        <span class="badge {{ b_color }} ms-1 border border-light"
+              style="font-size: 0.75rem; letter-spacing: 0.5px; cursor: help;"
+              data-bs-toggle="tooltip"
+              data-bs-placement="top"
+              data-bs-title="Nota de risco na matriz: {{ '%.2f'|format(nota) }}">
+          RISCO: {{ "%.2f"|format(nota) }}
+        </span>
+      {% endif %}
+    {% endmacro %}
+
      <h1 class="mb-1">
        {% if is_container_mode %}
          Contêiner {{ numero }} — {{ data_label }}
@@ -122,9 +125,6 @@
             a
             <strong>{{ '%.2f'|format(limite_outlier_strict) }}</strong>
             (Q3 + 1.5·IQR → Q3 + 15·IQR)
-          </span>
-          <span class="ms-auto">
-            <span class="badge text-bg-danger">Outlier</span> = valor dentro do intervalo
           </span>
         </div>
       </div>
@@ -230,54 +230,151 @@
   </div>
 </form>
 
-    <!-- Barra de "títulos de coluna" para ordenação (JS-only) -->
-    {% if resultados and resultados|length > 0 %}
-    <div class="sort-bar d-flex flex-wrap align-items-center gap-2 mb-3">
-      <span class="text-muted me-1">Ordenar por:</span>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="entrada"><span>Entrada</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="tt"><span>Transit Time (h)</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="container"><span>Contêiner</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="origem"><span>Origem (cód.)</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="outlier"><span>Outlier</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="vazio"><span>Vazio</span><span class="sort-indicator"></span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary sort-btn"
-              data-key="cnpjtransportador"><span>cnpj Transp.</span><span class="sort-indicator"></span></button>
-    </div>
-    {% endif %}
-
     {% if resultados and resultados|length > 0 %}
       <div class="accordion" id="resultadosAccordion">
+        {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card shadow-sm mb-2"
+        <div class="card item-card shadow-sm mb-5 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
+             data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
              data-origem="{{ r.s_codigoRecinto or '' }}"
              data-tt="{% if r.transit_time_horas is not none %}{{ '%.6f'|format(r.transit_time_horas) }}{% endif %}"
              data-outlier="{{ 1 if r.is_outlier else 0 }}"
              data-vazio="{{ 1 if r.vazioConteiner else 0 }}"
-             data-cnpjTransportador="{{ r.cnpjTransportador or '—' }}"
+             data-cnpjtransportador="{{ r.cnpjTransportador or '' }}"
+             data-risco="{% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}{{ r.planilha_info.risco_nota_final }}{% endif %}"
              data-stable="{{ loop.index }}">
-          <div class="card-header bg-white">
-            <!-- Cabeçalho: texto à esquerda / imagens à direita -->
+
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
+            <div class="d-flex align-items-center">
+              <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
+{% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}
+  {% set nota = r.planilha_info.risco_nota_final %}
+  {% set badge_color = 'text-bg-danger' if nota >= 7 else ('text-bg-warning' if nota >= 4 else 'text-bg-success') %}
+  
+  {# 1. Construir o texto do tooltip (Explicabilidade) #}
+  {% set tooltip_html = "Score base: " ~ "%.2f"|format(nota) %}
+  
+{% if r.planilha_info.risco_memoria_calculo and r.planilha_info.risco_memoria_calculo.criterios %}
+  {% set crit = r.planilha_info.risco_memoria_calculo.criterios %}
+
+  {# 1. Extração segura dos pesos (Retrocompatibilidade garantida) #}
+  {% set pd_peso = crit.get('porto_descarga', {}).get('peso', 0) %}
+  {% set pdf_peso = crit.get('porto_destino_final', {}).get('peso', 0) %}
+  {% set alerta_peso = crit.get('alerta_if', {}).get('peso', 0) %}
+  {% set transp_peso = crit.get('transportadora', {}).get('peso', 0) %}
+  {% set mot_peso = crit.get('motorista', {}).get('peso', 0) %}
+  {% set merc_peso = crit.get('mercadoria', {}).get('peso', 0) %}
+  {% set tc_peso = crit.get('tipo_container', {}).get('peso', 0) %}
+  {% set exp_peso = crit.get('exportadora', {}).get('peso', 0) %}
+
+  {# 2. Descobrir a soma total dos pesos para calcular a proporção #}
+  {% set soma_pesos = pd_peso + pdf_peso + alerta_peso + transp_peso + mot_peso + merc_peso + tc_peso + exp_peso %}
+  
+  {% if soma_pesos > 0 %}
+    {# 3. Calcular e exibir a contribuição de cada item de forma segura #}
+    
+    {# Porto de Descarga #}
+    {% if pd_peso > 0 %}
+      {% set parcela = (crit.porto_descarga.nota * pd_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "<br><br>&bull; Porto Descarga: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_descarga.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Porto Destino Final #}
+    {% if pdf_peso > 0 %}
+      {% set parcela = (crit.porto_destino_final.nota * pdf_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Destino Final: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.porto_destino_final.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Alerta IF #}
+    {% if alerta_peso > 0 %}
+      {% set parcela = (crit.alerta_if.nota * alerta_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Alerta terminal: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.alerta_if.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Transportadora #}
+    {% if transp_peso > 0 %}
+      {% set parcela = (crit.transportadora.nota * transp_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Transportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.transportadora.nota ~ ")</span><br>" %}
+    {% endif %}
+
+    {# Motorista #}
+    {% if mot_peso > 0 %}
+      {% set parcela = (crit.motorista.nota * mot_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Motorista: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.motorista.nota ~ ")</span><br>" %}
+    {% endif %}
+    
+    {# Mercadoria #}
+    {% if merc_peso > 0 %}
+      {% set parcela = (crit.mercadoria.nota * merc_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Mercadoria: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.mercadoria.nota ~ ")</span><br>" %}
+    {% endif %}
+
+    {# Tipo Contêiner #}
+    {% if tc_peso > 0 %}
+      {% set parcela = (crit.tipo_container.nota * tc_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Tipo Contêiner: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.tipo_container.nota ~ ")</span><br>" %}
+    {% endif %}
+
+    {# Exportadora #}
+    {% if exp_peso > 0 %}
+      {% set parcela = (crit.exportadora.nota * exp_peso) / soma_pesos %}
+      {% set tooltip_html = tooltip_html ~ "&bull; Exportadora: <strong>+" ~ "%.2f"|format(parcela) ~ "</strong> <span class='text-muted'>(nota base: " ~ crit.exportadora.nota ~ ")</span>" %}
+
+    {% endif %}
+    
+  {% else %}
+    {% set tooltip_html = tooltip_html ~ "<br>Soma de pesos inválida." %}
+  {% endif %}
+
+{% endif %}
+
+{# Renderizar a Badge #}
+<span class="badge {{ badge_color }} ms-3 border border-light" 
+      style="font-size: 0.9rem; letter-spacing: 0.5px; cursor: help;"
+      data-bs-toggle="tooltip" 
+      data-bs-html="true" 
+      data-bs-placement="bottom"
+      data-bs-title="{{ tooltip_html }}">
+  Risco: {{ "%.2f"|format(nota) }}
+</span>
+{% endif %}
+            </div>
+            <div>
+              <span class="marcacao-info small me-2 fw-bold text-light">
+                {% if r.marcacao %}
+                  (Marcado por {{ r.marcacao.usuario_nome }})
+                {% endif %}
+              </span>
+              <button type="button" class="btn btn-sm py-0 btn-marcar {% if r.marcacao %}btn-warning{% else %}btn-outline-light{% endif %}"
+                      data-acesso-id="{{ r.id_acesso }}"
+                      {% if r.marcacao and r.marcacao.usuario_cpf != current_user_id %}disabled title="Marcado por {{ r.marcacao.usuario_nome }}"{% endif %}>
+                <span class="marcar-icon">{{ '★' if r.marcacao else '☆' }}</span>
+                <span class="marcar-text">{{ 'Desmarcar' if r.marcacao else 'Marcar' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body bg-transparent">
             <div class="d-flex justify-content-between align-items-start gap-3">
+
               <!-- Coluna ESQUERDA (texto) -->
               <div class="flex-grow-1 pe-2">
+
+                <div class="card border-secondary mb-3">
+                  <div class="card-header bg-secondary-subtle text-secondary-emphasis py-1 small fw-bold">
+                    Informações da API
+                  </div>
+                  <div class="card-body py-2 small">
+
                 <!-- Linha 1 -->
                 <div class="d-flex flex-wrap align-items-center gap-2">
 
                   {# Limite de exibição: transit time > 120 horas #}
                   {% set tt = r.transit_time_horas %}
                   {% set tt_limit = (tt is not none and tt > 120) %}
-
-                  <span class="fw-semibold">Contêiner:</span>
-                  <span class="me-3">{{ r.numeroConteiner }}</span>
 
                   <span class="fw-semibold">Entrada:</span>
                   <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
@@ -400,58 +497,7 @@
 			  </span>
 				</div>
 
-                <!-- Linha 2.3 — DUE / Exportador / NCM -->
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
-                  <span class="fw-semibold">DUE:</span>
-                  <span class="me-3">
-                    {% if r.numero_due %}
-                      <a
-                        href="https://ajna1.rfoc.srf/bhadrasana2/consulta_due?numero={{ r.numero_due|urlencode }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >{{ r.numero_due }}</a>
-                    {% else %}
-                      —
-                    {% endif %}
-                  </span>
-
-                  <span class="fw-semibold">Exportador:</span>
-                  <span class="me-3">
-                    {% if r.exportador_nome %}
-                      {{ r.exportador_nome }}
-                      {% if r.cnpj_estabelecimento_exportador %} (CNPJ: {{ r.cnpj_estabelecimento_exportador }}){% endif %}
-                    {% else %}
-                      {{ r.cnpj_estabelecimento_exportador or '—' }}
-                    {% endif %}
-                  </span>
-
-                  <span class="fw-semibold">NCM(s):</span>
-                  <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
-                </div>
-
-                <!-- Linha 2.4 — Itens da DUE (1 por linha) -->
-                <div class="mt-2 small">
-                  <div class="fw-semibold mb-1">Itens da DUE:</div>
-                  {% if r.due_itens and r.due_itens|length > 0 %}
-                    <div class="ms-2">
-                      {% for linha in r.due_itens %}
-                        <div>• {{ linha }}</div>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    <div class="text-muted">—</div>
-                  {% endif %}
-                </div>
-
-                <!-- Linha 2.5 — Resumo da Carga (via Mongo) -->
-                <div class="mt-2 small carga-summary"
-                     data-numero="{{ r.numeroConteiner }}"
-                     data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
-                  <span class="text-muted">Carregando dados de carga…</span>
-                </div>
-
-                <!-- Linha 3 -->
-                <div class="mt-2">
+                <div class="mt-3 mb-1">
                   <button class="btn btn-sm btn-outline-primary"
                           type="button"
                           data-bs-toggle="collapse"
@@ -460,6 +506,138 @@
                           aria-controls="item-{{ idx }}">
                     Exibir peso de balança
                   </button>
+                </div>
+
+                <div id="item-{{ idx }}" class="collapse mt-2">
+                  <div class="p-2 border rounded bg-light">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary consultar-peso"
+                        data-numero="{{ r.numeroConteiner }}"
+                        data-recinto="{{ r.codigoRecinto }}"
+                        data-dtmin="{{
+                          r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+                          if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
+                        }}"
+                        {% if r.s_codigoRecinto and r.s_dataHoraOcorrencia %}
+                        data-s-codigo="{{ r.s_codigoRecinto }}"
+                        data-s-dh="{{
+                          r.s_dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
+                          if r.s_dataHoraOcorrencia is not string else r.s_dataHoraOcorrencia
+                        }}"
+                        {% endif %}>
+                        Consultar peso
+                      </button>
+                      <span class="peso-resposta text-muted ms-2"></span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+                {% if r.planilha_info %}
+                <div class="card border-success mb-3">
+                  <div class="card-header bg-success-subtle text-success-emphasis py-1 small fw-bold">
+                    Informações da Planilha do terminal
+                  </div>
+                  <div class="card-body py-2 small text-success">
+                    <div class="row gx-2 gy-1">
+                      <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong> <a href="https://portaldocliente.btp.com.br/sistemas/processos-logisticos/ConsultasLivres/listaatracacaoindex" target="_blank">{{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</a></div>
+                      <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
+
+                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> 
+                        {{ r.planilha_info.transportadora or '—' }}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('transportadora', {}).get('nota', 0)) }}
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong>
+                        {% if r.planilha_info and r.planilha_info.cpf_motorista %}
+                          {% set cpf_limpo = r.planilha_info.cpf_motorista|replace('.','')|replace('-','')|replace(' ','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCpf&inAtivo=0&entCnpjCpf={{ "%011d"|format(cpf_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista or '—' }})
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
+                        {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
+                          {% set cnpj_limpo = r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ "%014d"|format(cnpj_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.razao_social_exportador_importador or '—' }} ({{ r.planilha_info.cnpj_exportador_importador }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.razao_social_exportador_importador or '—' }}
+                        {% endif %}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('exportadora', {}).get('nota', 0)) }}
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Nº Lote:</strong> {{ r.planilha_info.numero_lote or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Local Imagem:</strong> {{ r.planilha_info.local_imagem or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Alerta / IF:</strong> {{ r.planilha_info.alerta_if or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Status:</strong> {{ r.planilha_info.status_conteiner or '—' }}</div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
+
+                <div class="card border-primary mb-2">
+                  <div class="card-header bg-primary-subtle text-primary-emphasis py-1 small fw-bold">
+                    Informações DUE/CE
+                  </div>
+                  <div class="card-body py-2 small">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                      <span class="fw-semibold">DUE:</span>
+                      <span class="me-3">
+                        {% if r.numero_due %}
+                          <a href="https://ajna1.rfoc.srf/bhadrasana2/consulta_due?numero={{ r.numero_due|urlencode }}" target="_blank" rel="noopener noreferrer">{{ r.numero_due }}</a>
+                        {% else %}
+                          —
+                        {% endif %}
+                      </span>
+                      <span class="fw-semibold">Exportador:</span>
+                      <span class="me-3">
+                        {% if r.exportador_nome %}
+                          {{ r.exportador_nome }}
+                          {% if r.cnpj_estabelecimento_exportador %} (CNPJ: {{ r.cnpj_estabelecimento_exportador }}){% endif %}
+                        {% else %}
+                          {{ r.cnpj_estabelecimento_exportador or '—' }}
+                        {% endif %}
+                      </span>
+                      <span class="fw-semibold">NCM(s):</span>
+                      <span class="me-3">{{ r.nfe_ncm or '—' }}</span>
+                    </div>
+                    <div class="mt-2">
+                      <div class="fw-semibold mb-1">Itens da DUE:</div>
+                      {% if r.due_itens and r.due_itens|length > 0 %}
+                        <div class="ms-2">
+                          {% for linha in r.due_itens %}
+                            <div>• {{ linha }}</div>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <div class="text-muted">—</div>
+                      {% endif %}
+                    </div>
+                    
+                    <hr class="my-2 border-primary opacity-25">
+                    
+                    <div class="carga-summary"
+                         data-numero="{{ r.numeroConteiner }}"
+                         data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% else %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% endif %}">
+                      <span class="text-muted">Carregando dados de carga…</span>
+                    </div>
+                  </div>
                 </div>
               </div><!-- /col esquerda -->
 
@@ -479,32 +657,8 @@
               </div><!-- /col direita -->
             </div><!-- /linha header -->
 
-          </div>
-          <div id="item-{{ idx }}" class="collapse" data-bs-parent="#resultadosAccordion">
-            <div class="card-body">
-              <div class="d-flex flex-wrap align-items-center gap-2">
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-secondary consultar-peso"
-                  data-numero="{{ r.numeroConteiner }}"
-                  data-recinto="{{ r.codigoRecinto }}"
-                  data-dtmin="{{
-                    r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
-                    if r.dataHoraOcorrencia is not string else r.dataHoraOcorrencia
-                  }}"
-                  {% if r.s_codigoRecinto and r.s_dataHoraOcorrencia %}
-                  data-s-codigo="{{ r.s_codigoRecinto }}"
-                  data-s-dh="{{
-                    r.s_dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S')
-                    if r.s_dataHoraOcorrencia is not string else r.s_dataHoraOcorrencia
-                  }}"
-                  {% endif %}>
-                  Consultar peso
-                </button>
-                <span class="peso-resposta text-muted ms-2"></span>
               </div>
               <!-- Espaço para detalhes adicionais no futuro -->
-            </div>
           </div>
         </div>
         {% endfor %}
@@ -512,7 +666,6 @@
     {% else %}
       <div class="alert alert-info">Nenhum registro de entrada encontrado para o período solicitado.</div>
     {% endif %}
-  </div>
 
 <!-- Modal para visualizar imagens ampliadas -->
 <div class="modal fade" id="imgViewerModal" tabindex="-1" aria-hidden="true">
@@ -774,144 +927,6 @@ function formatDateTime(isoString) {
 })();
 </script>
 
-<!-- JS de ordenação dos cards (sem nova consulta SQL) -->
-<script>
-(function() {
-  const container = document.getElementById('resultadosAccordion');
-  if (!container) return;
-
-  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
-  const keyTypes = {
-    // chave -> tipo de comparação
-    container: 'text',
-    entrada: 'date',    // string "YYYY-MM-DD HH:MM:SS"
-    origem: 'text',     // código do recinto (string)
-    tt: 'number',       // transit time (float)
-    outlier: 'number',  // 0/1
-    vazio: 'number'     // 0/1
-  };
-
-  function parseNumber(s) {
-    if (s == null || s === '') return null;
-    const n = parseFloat(String(s).replace(',', '.'));
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function parseDate(s) {
-    if (!s) return null;
-    // aceita "YYYY-MM-DD HH:MM:SS"
-    const t = Date.parse(s.replace(' ', 'T'));
-    return Number.isFinite(t) ? t : null;
-    // Obs.: se for timezone local/servidor, manter o mesmo padrão para todos.
-  }
-
-  function getVal(el, key) {
-    const raw = el.dataset[key];
-    switch (keyTypes[key]) {
-      case 'number': return parseNumber(raw);
-      case 'date':   return parseDate(raw);
-      case 'text':
-      default:       return (raw ?? '').toString();
-    }
-  }
-
-  // Ordenação estável: usamos data-stable como tie-breaker
-  function compareFactory(key, dir) {
-    const type = keyTypes[key] || 'text';
-    const asc = dir === 'asc';
-
-    return (a, b) => {
-      let va = getVal(a, key);
-      let vb = getVal(b, key);
-
-      // valores nulos/vazios sempre no fim
-      const aNull = (va === null || va === '');
-      const bNull = (vb === null || vb === '');
-      if (aNull && !bNull) return  1;
-      if (!aNull && bNull) return -1;
-      if (aNull && bNull) {
-        // desempate por estável
-        const sa = parseInt(a.dataset.stable || '0', 10);
-        const sb = parseInt(b.dataset.stable || '0', 10);
-        return sa - sb;
-      }
-
-      let cmp = 0;
-      if (type === 'number' || type === 'date') {
-        // números/datas: comparação direta
-        cmp = (va < vb) ? -1 : ((va > vb) ? 1 : 0);
-      } else {
-        // texto
-        cmp = collator.compare(String(va), String(vb));
-      }
-
-      if (cmp === 0) {
-        // estável
-        const sa = parseInt(a.dataset.stable || '0', 10);
-        const sb = parseInt(b.dataset.stable || '0', 10);
-        cmp = sa - sb;
-      }
-      return asc ? cmp : -cmp;
-    };
-  }
-
-  function applySort(key, dir) {
-    // Considera apenas filhos diretos com classe .card
-    const cards = Array.from(container.children).filter(el => el.classList?.contains('card'));
-    const cmp = compareFactory(key, dir);
-	if (!cards.length) return;
-    cards.sort(cmp);
-    for (const c of cards) container.appendChild(c);
-  }
-
-  // UI dos botões
-  const buttons = Array.from(document.querySelectorAll('.sort-bar .sort-btn'));
-  let current = { key: null, dir: 'asc' };
-
-  function updateButtonsUI() {
-    buttons.forEach(btn => {
-      const key = btn.dataset.key;
-      const indicator = btn.querySelector('.sort-indicator');
-      if (key === current.key) {
-        btn.setAttribute('aria-pressed', 'true');
-        btn.setAttribute('aria-sort', current.dir === 'asc' ? 'ascending' : 'descending');
-        if (indicator) indicator.textContent = current.dir === 'asc' ? '▲' : '▼';
-      } else {
-        btn.setAttribute('aria-pressed', 'false');
-        btn.removeAttribute('aria-sort');
-        if (indicator) indicator.textContent = '';
-      }
-    });
-  }
-
-  buttons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.key;
-      if (current.key === key) {
-        current.dir = current.dir === 'asc' ? 'desc' : 'asc';
-      } else {
-        current.key = key;
-        current.dir = 'asc';
-      }
-      applySort(current.key, current.dir);
-      updateButtonsUI();
-    });
-  });
-
-  // Define um estado inicial para ficar claro visualmente
-  const hasButtons = buttons.length > 0;
-  if (hasButtons) {
-    // Ordena inicialmente por "Entrada" asc
-    current = { key: 'entrada', dir: 'asc' };
-    applySort(current.key, current.dir);
-    updateButtonsUI();
-  } else {
-    // Debug leve (apenas se quiser inspecionar no console)
-    // console.warn('Barra de ordenação não encontrada.');
-  }
-})();
-</script>
-
 <script>
 (function() {
   const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -1007,7 +1022,7 @@ function formatDateTime(isoString) {
     if (hasConhec) {
       const detailsBtn = document.createElement('button');
       detailsBtn.type = 'button';
-      detailsBtn.className = 'btn btn-sm btn-outline-secondary';
+      detailsBtn.className = 'btn btn-sm btn-outline-secondary my-2';
       detailsBtn.textContent = 'Detalhes da carga';
       detailsBtn.setAttribute('aria-expanded', 'false');
 
@@ -1059,7 +1074,7 @@ function formatDateTime(isoString) {
     // Rodapé: referência do snapshot
     if (data.snapshot_ref && (data.snapshot_ref.file_id || data.snapshot_ref.dataescaneamento)) {
       const ref = document.createElement('div');
-      ref.className = 'text-muted small mt-1';
+      ref.className = 'text-muted small mt-2';
       const ts = data.snapshot_ref.dataescaneamento || '';
       ref.textContent = `(informação coletada ${ts ? new Date(ts).toLocaleString('pt-BR') : 's/ data'})`;
       el.appendChild(ref);
@@ -1132,6 +1147,74 @@ function formatDateTime(isoString) {
 
   NODES.forEach(el => io.observe(el));
 })();
+</script>
+
+<script>
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-marcar');
+    if (!btn) return;
+    e.preventDefault();
+
+    const card = btn.closest('.card');
+    const acessoId = btn.dataset.acessoId;
+    const infoSpan = card.querySelector('.marcacao-info');
+    const iconSpan = btn.querySelector('.marcar-icon');
+    const textSpan = btn.querySelector('.marcar-text');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch('{{ url_for("toggle_marcacao") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ acesso_veiculo_id: acessoId })
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        alert(data.error || 'Erro ao processar marcação');
+        btn.disabled = false;
+        return;
+      }
+
+      if (data.status === 'marked') {
+        card.classList.add('bg-warning-subtle');
+        card.classList.add('border-warning');
+        btn.classList.replace('btn-outline-light', 'btn-warning');
+        iconSpan.textContent = '★';
+        textSpan.textContent = 'Desmarcar';
+        infoSpan.textContent = `(Marcado por ${data.usuario_nome})`;
+        btn.disabled = false;
+      } else if (data.status === 'unmarked') {
+        card.classList.remove('bg-warning-subtle');
+        card.classList.remove('border-warning');
+        btn.classList.replace('btn-warning', 'btn-outline-light');
+        iconSpan.textContent = '☆';
+        textSpan.textContent = 'Marcar';
+        infoSpan.textContent = '';
+        btn.disabled = false;
+      }
+    } catch (err) {
+      console.error('Erro na marcação:', err);
+      alert('Erro de rede ao processar marcação.');
+      btn.disabled = false;
+    }
+  });
+</script>
+
+<script>
+  // Inicializa todos os tooltips da página
+  document.addEventListener("DOMContentLoaded", function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+  });
 </script>
 
 </body>
