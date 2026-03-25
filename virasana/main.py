@@ -11,7 +11,7 @@ import ajna_commons.flask.log as log
 from ajna_commons.flask import api_login
 from ajna_commons.flask.flask_log import configure_applog
 from virasana.db import mongodb, mysql, mongodb_risco
-from virasana.routes import apirecintos_app
+from virasana.routes import apirecintos_app, integracao_app
 from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import escaneamento_app
@@ -44,6 +44,7 @@ configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)
 inspecaonaoinvasiva_app.configure(app)
+integracao_app.configure(app)
 list_routes()
 log.logger.info('Servidor (re)iniciado!')
 

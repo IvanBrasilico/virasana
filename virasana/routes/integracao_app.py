@@ -15,10 +15,16 @@ em um script do ContÁgil (que será o equivalente do virasana_periodic).
 '''
 import io
 import json
-from datetime import datetime
+import sys
+from datetime import datetime, timedelta, time
 
 import pandas as pd
+import requests
 from flask import request, jsonify
+
+sys.path.append('.')
+sys.path.append('../bhadrasana2')
+sys.path.append('../ajna_docs/commons')
 
 # from flask_login import login_required
 from ajna_commons.flask.log import logger
@@ -33,9 +39,9 @@ CODIGOS_RECINTOS = ['8931318', '8931356', '8931359', '8931404']
 def configure(app):
     """Configura rotas para app integracao."""
 
-    @app.route('/integracao/exporta_ctrs_sem_due', methods=['GET'])
+    @app.route('/integracao/lista_ctrs_sem_due', methods=['GET'])
     # @login_required
-    def integracao_exporta_ctrs_sem_due_api():
+    def integracao_lista_ctrs_sem_due_api():
         """Retorna lista com escaneamentos sem due.
 
         Exemplo de resposta: {
@@ -80,9 +86,10 @@ def configure(app):
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
 
-    @app.route('/integracao/importa_cnpjs', methods=['POST'])
+    @app.route('/integracao/insere_cnpjs', methods=['POST'])
     # @login_required
-    def integracao_importa_cnpjs_api():
+    def integracao_insere_cnpjs_api():
+        """Recebe lista de CNPJs formato cnpj, nome. Alimenta tabela laudo_empresas."""
         db_session = app.config['db_session']
         empresas_data = request.get_json()
         if not empresas_data or not isinstance(empresas_data, list):
@@ -115,7 +122,7 @@ def configure(app):
                 'total_lidos': len(empresas_data),
                 'total_importados': total_importados,
                 'total_criados': total_criados,
-                'erros': erros
+                'error': erros
             }
             return jsonify(response), 200
 
@@ -124,8 +131,14 @@ def configure(app):
                 db_session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 500
 
-    @app.route('/integracao/atualiza_acesso_mongo', methods=['POST'])
-    def integracao_atualiza_acesso_e_mongo():
+    @app.route('/integracao/atualiza_due_acessoveiculo_e_mongo', methods=['POST'])
+    def integracao_atualiza_due_acessoveiculo_e_mongo():
+        """Recebe a planilha de DUEs e de escaneamentos_sem_due atualizados.
+
+        Com estes dados, vincula a imagem e o acesso veiculo à DUE correta. Ver arquivos csv de exemplo.
+
+        Provisório, estudar como atualizar registro a registro com REST.
+        """
         mongodb = app.config['mongodb']
         db_session = app.config['db_session']
 
@@ -149,8 +162,13 @@ def configure(app):
         except Exception as e:
             return jsonify({'success': False, 'error': f'Erro crítico: {str(e)}'}), 500
 
-    @app.route('/integracao/importa_dues', methods=['POST'])
-    def integracao_importa_dues():
+    @app.route('/integracao/upload_dues', methods=['POST'])
+    def integracao_upload_dues():
+        """Insere dados de dues e itens.
+
+        Provisório, até
+
+        Recebe duas lista csv, uma com as DUEs e outra com os itens."""
         mongodb = app.config['mongodb']  # Não usado aqui, mas padrão
         db_session = app.config['db_session']
         processados = {'dues': 0, 'itens_dues': 0}
@@ -168,3 +186,66 @@ def configure(app):
             if integra_dues_itens(db_session, df_itens_dues):
                 logger.info(f'{len(df_itens_dues)} Itens de DUE inseridos')
         return jsonify({'success': True, 'processados': processados}), 200
+
+
+if __name__ == '__main__':
+    if __name__ == "__main__":
+        # CARREGA CSVs DO DISCO (simplificado)
+        # Obs.: Como a lógica do script era trabalhar em grandes "batchs", aqui foi mantida a lógica de
+        # transferência de arquivos. Depois, será necessário decompor os endpoints dos passos 4 e 5
+        # para uma atualização/inclusão REST registro a registro.
+        BASE_URL = 'http://localhost:5001'
+        # BASE_URL = 'https://ajna1.rfoc.srf/virasana/'
+
+        # PASSO 1: Gera lista de contêineres
+        print('PASSO 1: GET /integracao/lista_ctrs_sem_due ')
+        # Define período: 3 dias até hoje 00h
+        fim = datetime.combine(datetime.now(), time.min)
+        inicio = fim - timedelta(days=3)
+        recintos = ['893618']
+        print(f'Período: {inicio.isoformat()} → {fim.isoformat()}')
+        print(f' Recintos: {recintos}')
+        params = {
+            'inicio': inicio.isoformat(),
+            'fim': fim.isoformat(),
+            'codigos_recintos': ','.join(recintos)
+        }
+        r1 = requests.get(f"{BASE_URL}/integracao/lista_ctrs_sem_due", params=params)
+        print(f'Status: {r1.status_code}')
+        print(f'Sucesso: {r1.json().get("success")}, Erros: {r1.json().get("error")}')
+        escaneamentos_sem_due = r1.json().get('data')
+        print(escaneamentos_sem_due[:10])
+
+        # PASSO 2:
+        # Aqui é o código que será feito no ContÁgil
+
+        # PASSO 3: Insere CNPJs
+        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+        print('PASSO 1: POST /integracao/insere_cnpjs')
+        df_cnpjs = pd.read_csv('cnpjs.csv')
+        cnpjs_json = df_cnpjs[['cnpj', 'nome']].to_dict('records')
+        r1 = requests.post(f'{BASE_URL}/integracao/insere_cnpjs', json=cnpjs_json)
+        print(f'Status: {r1.status_code} | {r1.json()}')
+        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+        # PASSO 4: Atualiza acesso veículo e MongoDB ajna realizando vinculação com DUE
+        print('PASSO 4: POST /integracao/atualiza_due_acessoveiculo_e_mongo')
+        with open('escaneamentos_sem_due.csv', 'rb') as esc, open('dues.csv', 'rb') as due:
+            files = {
+                'escaneamentos_sem_due': ('escaneamentos_sem_due.csv', esc, 'text/csv'),
+                'dues': ('dues.csv', due, 'text/csv')
+            }
+            r2 = requests.post(f'{BASE_URL}/integracao/atualiza_due_acessoveiculo_e_mongo', files=files)
+        print(f'Status: {r2.status_code} | {r2.json()}')
+
+        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+        # PASSO 5: Insere ou atualiza DUEs + Itens
+        print('PASSO 5: POST /integracao/insere_dues')
+        with open('dues.csv', 'rb') as dues, open('itens_dues.csv', 'rb') as itens:
+            files3 = {
+                'dues': ('dues.csv', dues, 'text/csv'),
+                'itens_dues': ('itens_dues.csv', itens, 'text/csv')
+            }
+            r3 = requests.post(f'{BASE_URL}/integracao/insere_dues', files=files3)
+        print(f'Status: {r3.status_code} | {r3.json()}')
+
+        print('PIPELINE CONCLUÍDA!')
