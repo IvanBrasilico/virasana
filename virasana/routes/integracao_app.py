@@ -202,7 +202,7 @@ if __name__ == '__main__':
         # Define período: 3 dias até hoje 00h
         fim = datetime.combine(datetime.now(), time.min)
         inicio = fim - timedelta(days=3)
-        recintos = ['893618']
+        recintos = ['8931404']
         print(f'Período: {inicio.isoformat()} → {fim.isoformat()}')
         print(f' Recintos: {recintos}')
         params = {
