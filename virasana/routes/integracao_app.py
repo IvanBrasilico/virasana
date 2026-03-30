@@ -44,6 +44,17 @@ def configure(app):
     def integracao_lista_ctrs_sem_due_api():
         """Retorna lista com escaneamentos sem due.
 
+        Parâmetros obrigatórios:
+        inicio, fim: Data ISO de início e fim do filtro;
+        codigosrecintos: lista dos códigos dos recintos a pesquisar (operadores portuários com entrada de
+        veículos com contêiner carregados para exportação e escaneamento).
+
+        Resposta: ID do AgendamentoAcessoVeiculo, ID do InspecaoNaoInvasiva, _id da imagem no mongo,
+        número do contêiner, data do escaneamento, DUE pré informada no evento AgendamentoAcessoVeiculo (se houver).
+
+        Com contêiner e data, é possível consultar a DUE no ReceitaData, e então atualizar os objetos através dos
+        3 ids passados (AgendamentoAcessoVeiculo, InspecaoNaoInvasiva, _id da imagem no mongo)
+
         Exemplo de resposta: {
           "success": true,
           "total_registros": 1500,
@@ -189,63 +200,65 @@ def configure(app):
 
 
 if __name__ == '__main__':
-    if __name__ == "__main__":
-        # CARREGA CSVs DO DISCO (simplificado)
-        # Obs.: Como a lógica do script era trabalhar em grandes "batchs", aqui foi mantida a lógica de
-        # transferência de arquivos. Depois, será necessário decompor os endpoints dos passos 4 e 5
-        # para uma atualização/inclusão REST registro a registro.
-        BASE_URL = 'http://localhost:5001'
-        # BASE_URL = 'https://ajna1.rfoc.srf/virasana/'
+    # Obs.: Como a lógica do script era trabalhar em grandes "batchs", aqui foi mantida a lógica de
+    # transferência de arquivos. Depois, será necessário decompor os endpoints dos passos 4 e 5
+    # para uma atualização/inclusão REST registro a registro.
+    BASE_URL = 'http://localhost:5001'
+    # BASE_URL = 'https://ajna1.rfoc.srf/virasana/'
 
-        # PASSO 1: Gera lista de contêineres
-        print('PASSO 1: GET /integracao/lista_ctrs_sem_due ')
-        # Define período: 3 dias até hoje 00h
-        fim = datetime.combine(datetime.now(), time.min)
-        inicio = fim - timedelta(days=3)
-        recintos = ['8931404']
-        print(f'Período: {inicio.isoformat()} → {fim.isoformat()}')
-        print(f' Recintos: {recintos}')
-        params = {
-            'inicio': inicio.isoformat(),
-            'fim': fim.isoformat(),
-            'codigos_recintos': ','.join(recintos)
+    # PASSO 1: Gera lista de contêineres
+    print('PASSO 1: GET /integracao/lista_ctrs_sem_due ')
+    # Define período: 3 dias até hoje 00h
+    fim = datetime.combine(datetime.now(), time.min)
+    inicio = fim - timedelta(days=3)
+    recintos = ['8931404']
+    print(f'Período: {inicio.isoformat()} → {fim.isoformat()}')
+    print(f' Recintos: {recintos}')
+    params = {
+        'inicio': inicio.isoformat(),
+        'fim': fim.isoformat(),
+        'codigos_recintos': ','.join(recintos)
+    }
+    r1 = requests.get(f"{BASE_URL}/integracao/lista_ctrs_sem_due", params=params)
+    print(f'Status: {r1.status_code}')
+    print(f'Sucesso: {r1.json().get("success")}, Erros: {r1.json().get("error")}')
+    escaneamentos_sem_due = r1.json().get('data')
+    print(escaneamentos_sem_due[:10])
+
+
+    # PASSO 2:
+    # Aqui é o código que será feito no ContÁgil. É possível testar fazendo upload do arquivo gerado acima
+    # no script do Receita Data e depois baixando os arquivos de resultado.
+    print('Não implementado! Para testar passos 3 a 5 faça upload do arquivo no RD, '
+          'rode o script no RD e baixe os resultados.')
+
+    # PASSO 3: Insere CNPJs
+    # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+    print('PASSO 3: POST /integracao/insere_cnpjs')
+    df_cnpjs = pd.read_csv('cnpjs.csv')
+    cnpjs_json = df_cnpjs[['cnpj', 'nome']].to_dict('records')
+    r1 = requests.post(f'{BASE_URL}/integracao/insere_cnpjs', json=cnpjs_json)
+    print(f'Status: {r1.status_code} | {r1.json()}')
+    # PASSO 4: Atualiza acesso veículo e MongoDB ajna realizando vinculação com DUE
+    # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+    print('PASSO 4: POST /integracao/atualiza_due_acessoveiculo_e_mongo')
+    with open('escaneamentos_sem_due.csv', 'rb') as esc, open('dues.csv', 'rb') as due:
+        files = {
+            'escaneamentos_sem_due': ('escaneamentos_sem_due.csv', esc, 'text/csv'),
+            'dues': ('dues.csv', due, 'text/csv')
         }
-        r1 = requests.get(f"{BASE_URL}/integracao/lista_ctrs_sem_due", params=params)
-        print(f'Status: {r1.status_code}')
-        print(f'Sucesso: {r1.json().get("success")}, Erros: {r1.json().get("error")}')
-        escaneamentos_sem_due = r1.json().get('data')
-        print(escaneamentos_sem_due[:10])
+        r2 = requests.post(f'{BASE_URL}/integracao/atualiza_due_acessoveiculo_e_mongo', files=files)
+    print(f'Status: {r2.status_code} | {r2.json()}')
 
-        # PASSO 2:
-        # Aqui é o código que será feito no ContÁgil
+    # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
+    # PASSO 5: Insere ou atualiza DUEs + Itens
+    print('PASSO 5: POST /integracao/insere_dues')
+    with open('dues.csv', 'rb') as dues, open('itens_dues.csv', 'rb') as itens:
+        files3 = {
+            'dues': ('dues.csv', dues, 'text/csv'),
+            'itens_dues': ('itens_dues.csv', itens, 'text/csv')
+        }
+        r3 = requests.post(f'{BASE_URL}/integracao/insere_dues', files=files3)
+    print(f'Status: {r3.status_code} | {r3.json()}')
 
-        # PASSO 3: Insere CNPJs
-        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
-        print('PASSO 1: POST /integracao/insere_cnpjs')
-        df_cnpjs = pd.read_csv('cnpjs.csv')
-        cnpjs_json = df_cnpjs[['cnpj', 'nome']].to_dict('records')
-        r1 = requests.post(f'{BASE_URL}/integracao/insere_cnpjs', json=cnpjs_json)
-        print(f'Status: {r1.status_code} | {r1.json()}')
-        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
-        # PASSO 4: Atualiza acesso veículo e MongoDB ajna realizando vinculação com DUE
-        print('PASSO 4: POST /integracao/atualiza_due_acessoveiculo_e_mongo')
-        with open('escaneamentos_sem_due.csv', 'rb') as esc, open('dues.csv', 'rb') as due:
-            files = {
-                'escaneamentos_sem_due': ('escaneamentos_sem_due.csv', esc, 'text/csv'),
-                'dues': ('dues.csv', due, 'text/csv')
-            }
-            r2 = requests.post(f'{BASE_URL}/integracao/atualiza_due_acessoveiculo_e_mongo', files=files)
-        print(f'Status: {r2.status_code} | {r2.json()}')
-
-        # Teste FAKE - carregando CSVs locais. Estes CSVs DEVEM ser gerados pelo passo 2.
-        # PASSO 5: Insere ou atualiza DUEs + Itens
-        print('PASSO 5: POST /integracao/insere_dues')
-        with open('dues.csv', 'rb') as dues, open('itens_dues.csv', 'rb') as itens:
-            files3 = {
-                'dues': ('dues.csv', dues, 'text/csv'),
-                'itens_dues': ('itens_dues.csv', itens, 'text/csv')
-            }
-            r3 = requests.post(f'{BASE_URL}/integracao/insere_dues', files=files3)
-        print(f'Status: {r3.status_code} | {r3.json()}')
-
-        print('PIPELINE CONCLUÍDA!')
+    print('PIPELINE CONCLUÍDA!')

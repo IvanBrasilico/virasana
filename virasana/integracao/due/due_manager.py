@@ -149,7 +149,7 @@ def update_due_mongo_db(db, dues):
 
 
 def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df_dues):
-    # Passo 5: Atualizar metadata e Acesso com número da DUE
+    # Passo 5: Atualizar metadata do _id e AcessoVeiculo com número da DUE
     conteineres_due = dict()
     logger.info(f'set_conteineres_escaneados_sem_due: {len(df_dues)} DUEs a atualizar.')
     for index, row in df_dues.iterrows():
@@ -158,12 +158,11 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
         for conteiner in conteineres.split(','):
             conteineres_due[conteiner.strip()] = numero_due
     logger.info(f'set_conteineres_escaneados_sem_due: {len(conteineres_due)} contêineres a atualizar.')
+    acessos_veiculos_ids = df_escaneamentos_sem_due[
+        df_escaneamentos_sem_due['numero_conteiner'].isin(conteineres_due.keys())]['AcessoVeiculo'].unique()
+    logger.info(f'set_conteineres_escaneados_sem_due: {len(acessos_veiculos_ids)} AcessosVeiculo para atualizar.')
+    acessosveiculos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id.in_(acessos_veiculos_ids)).all()
     try:
-        _ids_dues = dict()
-        acessos_veiculos_ids = df_escaneamentos_sem_due[
-            df_escaneamentos_sem_due['numero_conteiner'].isin(conteineres_due.keys())]['AcessoVeiculo'].unique()
-        logger.info(f'set_conteineres_escaneados_sem_due: {len(acessos_veiculos_ids)} AcessosVeiculo para atualizar.')
-        acessosveiculos = session.query(AcessoVeiculo).filter(AcessoVeiculo.id.in_(acessos_veiculos_ids)).all()
         for acessoveiculo in acessosveiculos:
             due = conteineres_due.get(acessoveiculo.numeroConteiner)
             if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
@@ -174,20 +173,25 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
             logger.debug(f'{acessoveiculo.numeroConteiner},{acessoveiculo.id},{due}')
         session.commit()
         logger.info(f'set_conteineres_escaneados_sem_due: {len(acessosveiculos)} AcessosVeiculo atualizados.')
-        for index, row in df_escaneamentos_sem_due.iterrows():
-            _id = row['id_imagem']
-            conteiner = row['numero_conteiner']
-            due = conteineres_due.get(conteiner)
-            if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
-                continue
-            # Monta dict de _id: due
-            _ids_dues[_id] = due
-            logger.debug(f'{conteiner},{_id},{due}')
-        update_due_mongo_db(db, _ids_dues)
-        logger.info(f'set_conteineres_escaneados_sem_due: {len(_ids_dues)} imagens MongoDB atualizadas.')
     except Exception as err:
         session.rollback()
         raise err
+    cont_ids_atualizados = 0
+    for index, row in df_escaneamentos_sem_due.iterrows():
+        _id = row['id_imagem']
+        conteiner = row['numero_conteiner']
+        due = conteineres_due.get(conteiner)
+        if due is None:  # DUE-conteiner não foi encontrada pelo passo do RD
+            continue
+        # Monta dict de _id: due
+        result = db.fs.files.update_one(
+            {'_id': ObjectId(_id)},
+            {'$set': {'metadata.due': due, 'metadata.carga.vazio': False}}
+        )
+        # _ids_dues[_id] = due
+        logger.debug(f'{conteiner},{_id},{due}, {result}')
+        cont_ids_atualizados += 1
+        logger.info(f'set_conteineres_escaneados_sem_due: {cont_ids_atualizados} imagens MongoDB atualizadas.')
 
 
 def update_instance(model_instance, update_dict):
