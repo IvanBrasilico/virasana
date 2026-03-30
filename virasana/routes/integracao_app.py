@@ -224,7 +224,9 @@ if __name__ == '__main__':
     print(f'Sucesso: {r1.json().get("success")}, Erros: {r1.json().get("error")}')
     escaneamentos_sem_due = r1.json().get('data')
     print(escaneamentos_sem_due[:10])
-
+    df_escaneamentos_sem_due = pd.DataFrame(escaneamentos_sem_due)
+    print(df_escaneamentos_sem_due.head())
+    df_escaneamentos_sem_due.to_csv('escaneamentos_sem_due.csv', index=False)
 
     # PASSO 2:
     # Aqui é o código que será feito no ContÁgil. É possível testar fazendo upload do arquivo gerado acima
