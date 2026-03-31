@@ -1083,7 +1083,17 @@ function formatDateTime(isoString) {
 
     // Injeção do botão "Ver/criar Ficha" no cabeçalho
     const fileId = data.snapshot_ref && data.snapshot_ref.file_id;
-    if (hasConhec && fileId) {
+    const dscIso = data.snapshot_ref && data.snapshot_ref.dataescaneamento;
+    let isScanRecent = false;
+
+    if (dscIso) {
+      const scanDate = new Date(dscIso);
+      const now = new Date();
+      const diffDays = (now - scanDate) / (1000 * 60 * 60 * 24);
+      isScanRecent = (diffDays <= 7 && diffDays >= -1); // >= -1 evita bugs de fuso horário local vs UTC
+    }
+
+    if (fileId && (hasConhec || isScanRecent)) {
       const card = el.closest('.item-card');
       if (card) {
         const linkContainer = card.querySelector('.ficha-link-container');
