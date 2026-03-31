@@ -1998,6 +1998,7 @@ def configure(app):
             cursor = (
                 mongodb["fs.files"]
                 .find(filtro, projection)
+                .hint([("metadata.numeroinformado", 1), ("metadata.dataescaneamento", 1)])
                 .sort(sort_spec)
                 
             )

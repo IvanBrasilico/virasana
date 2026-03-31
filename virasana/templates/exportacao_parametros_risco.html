@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Parâmetros de Risco - AJNA Narcos</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    
+    <style>
+        body { background-color: #f8f9fa; }
+        .input-peso {
+            max-width: 100px;
+            text-align: right;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .input-peso.is-saving {
+            border-color: #ffc107;
+            box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.25);
+        }
+        .input-peso.is-saved {
+            border-color: #198754;
+        }
+        .input-peso.is-error {
+            border-color: #dc3545;
+        }
+        /* Ajuste sutil para as abas */
+        .nav-tabs .nav-link { color: #495057; font-weight: 500; }
+        .nav-tabs .nav-link.active { color: #0d6efd; font-weight: bold; border-bottom: 3px solid #0d6efd; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10 col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i> Ajuste de Pesos de Risco</h5>
+                    <a href="javascript:history.back()" class="btn btn-sm btn-outline-light"><i class="fas fa-arrow-left"></i> Voltar</a>
+                </div>
+                
+                <div class="card-body p-0">
+                    <ul class="nav nav-tabs px-4 pt-3 border-bottom-0" id="riscoTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="portos-tab" data-bs-toggle="tab" data-bs-target="#portos" type="button" role="tab" aria-controls="portos" aria-selected="true">
+                                <i class="fas fa-ship me-1"></i> Portos
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="ncm-tab" data-bs-toggle="tab" data-bs-target="#ncm" type="button" role="tab" aria-controls="ncm" aria-selected="false">
+                                <i class="fas fa-boxes me-1"></i> NCMs
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="cnpjs-tab" data-bs-toggle="tab" data-bs-target="#cnpjs" type="button" role="tab" aria-controls="cnpjs" aria-selected="false">
+                                <i class="fas fa-building me-1"></i> CNPJs
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content p-4 border-top" id="riscoTabsContent">
+                        
+                        <div class="tab-pane fade show active" id="portos" role="tabpanel" aria-labelledby="portos-tab">
+                            <p class="text-muted mb-4"><i class="fas fa-info-circle me-1"></i> Altere os valores abaixo e clique fora do campo para salvar automaticamente.</p>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle border">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Código</th>
+                                            <th>Nome do Porto</th>
+                                            <th class="text-end">Peso de Risco</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for p in portos %}
+                                        <tr>
+                                            <td><span class="badge bg-secondary">{{ p.codigo_porto }}</span></td>
+                                            <td>{{ p.nome_porto }}</td>
+                                            <td class="text-end">
+                                                <div class="d-flex justify-content-end align-items-center">
+                                                    <input type="number" 
+                                                           step="0.01" 
+                                                           class="form-control form-control-sm input-peso" 
+                                                           data-tabela="portos" 
+                                                           data-id="{{ p.id }}" 
+                                                           value="{{ p.peso_risco }}">
+                                                    <i class="fas fa-check-circle text-success ms-2 d-none status-icon"></i>
+                                                    <i class="fas fa-times-circle text-danger ms-2 d-none error-icon"></i>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="3" class="text-center text-muted py-3">Nenhum porto cadastrado.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="ncm" role="tabpanel" aria-labelledby="ncm-tab">
+                            <div class="alert alert-secondary text-center py-4">
+                                <i class="fas fa-tools fa-2x mb-2 text-muted"></i><br>
+                                Funcionalidade de NCMs em construção.
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="cnpjs" role="tabpanel" aria-labelledby="cnpjs-tab">
+                            <div class="alert alert-secondary text-center py-4">
+                                <i class="fas fa-tools fa-2x mb-2 text-muted"></i><br>
+                                Funcionalidade de CNPJs em construção.
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">
+                Atualizado com sucesso.
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const toastEl = document.getElementById('liveToast');
+    const bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    const toastMessage = document.getElementById('toastMessage');
+
+    // Função para exibir o toast de notificação
+    function showToast(message, isError = false) {
+        toastMessage.textContent = message;
+        toastEl.className = `toast align-items-center text-bg-${isError ? 'danger' : 'success'} border-0`;
+        bsToast.show();
+    }
+
+    // Adiciona o listener de 'change' para todos os inputs de peso
+    document.querySelectorAll('.input-peso').forEach(input => {
+        
+        // Guarda o valor original para poder reverter caso dê erro no backend
+        let originalValue = input.value;
+
+        input.addEventListener('change', function() {
+            const newValue = this.value;
+            const recordId = this.dataset.id;
+            const tableName = this.dataset.tabela;
+            
+            const container = this.closest('div');
+            const successIcon = container.querySelector('.status-icon');
+            const errorIcon = container.querySelector('.error-icon');
+
+            // Feedback visual: estado de "salvando"
+            this.classList.add('is-saving');
+            this.classList.remove('is-saved', 'is-error');
+            successIcon.classList.add('d-none');
+            errorIcon.classList.add('d-none');
+
+            // Faz a requisição AJAX para salvar o dado
+            fetch("{{ url_for('parametros_risco.atualizar_peso') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    tabela: tableName,
+                    id: recordId,
+                    peso_risco: newValue
+                })
+            })
+            .then(response => response.json().then(data => ({status: response.status, body: data})))
+            .then(res => {
+                this.classList.remove('is-saving');
+                
+                if (res.status === 200 && res.body.status === 'success') {
+                    // Feedback visual de sucesso
+                    this.classList.add('is-saved');
+                    successIcon.classList.remove('d-none');
+                    originalValue = newValue; // Atualiza o backup do valor
+                    showToast('Peso atualizado com sucesso!');
+                    
+                    // Remove o contorno verde após 2 segundos
+                    setTimeout(() => {
+                        this.classList.remove('is-saved');
+                        successIcon.classList.add('d-none');
+                    }, 2000);
+                } else {
+                    // Erro tratado pela API
+                    throw new Error(res.body.error || 'Erro desconhecido ao salvar.');
+                }
+            })
+            .catch(error => {
+                // Feedback visual de erro
+                this.classList.remove('is-saving');
+                this.classList.add('is-error');
+                errorIcon.classList.remove('d-none');
+                
+                // Reverte o valor do input pro número antes da tentativa
+                this.value = originalValue; 
+                showToast(error.message, true);
+                console.error('Falha ao salvar peso:', error);
+            });
+        });
+    });
+});
+</script>
+
+</body>
+</html>
