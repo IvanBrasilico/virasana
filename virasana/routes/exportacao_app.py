@@ -1969,7 +1969,7 @@ def configure(app):
         janela_fim = t_max + timedelta(hours=2, days=4)
 
         base_filter = {
-            "metadata.carga": {"$exists": True},
+            "metadata.contentType": {"$in": ["image/jpeg", "image/jpg"]},
             "metadata.dataescaneamento": {"$gte": janela_ini, "$lte": janela_fim},
         }
         projection = {
@@ -2105,7 +2105,7 @@ def configure(app):
                 }
 
             payload = {
-                "carga_present": True,
+                "carga_present": bool(carga),
                 "pesototal": carga.get("pesototal"),
                 "manifestos": sorted(set(manifestos)),
                 "portos": {
