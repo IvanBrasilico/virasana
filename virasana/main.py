@@ -16,6 +16,7 @@ from virasana.routes import bagagens_app, pyxvis_app
 from virasana.routes import conformidade_app
 from virasana.routes import escaneamento_app
 from virasana.routes import exportacao_app
+from virasana.routes.exportacao_parametros_risco import parametros_risco_bp
 from virasana.routes import imagens_app
 from virasana.routes import inspecaonaoinvasiva_app
 from virasana.views import configure_app, csrf
@@ -40,6 +41,9 @@ pyxvis_app.configure(app)
 imagens_app.configure(app)
 escaneamento_app.configure(app)
 exportacao_app.configure(app)
+
+app.register_blueprint(parametros_risco_bp)
+
 configure_applog(app)
 api = api_login.configure(app)
 csrf.exempt(api)

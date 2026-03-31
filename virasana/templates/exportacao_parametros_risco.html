@@ -71,7 +71,7 @@
                                 <table class="table table-sm table-hover align-middle border">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Código</th>
+                                            <th>Continente / País</th>
                                             <th>Nome do Porto</th>
                                             <th class="text-end">Peso de Risco</th>
                                         </tr>
@@ -79,8 +79,8 @@
                                     <tbody>
                                         {% for p in portos %}
                                         <tr>
-                                            <td><span class="badge bg-secondary">{{ p.codigo_porto }}</span></td>
-                                            <td>{{ p.nome_porto }}</td>
+                                            <td><span class="badge bg-secondary">{{ p.continente_pais or 'N/A' }}</span></td>
+                                            <td>{{ p.nome_porto_original }}</td>
                                             <td class="text-end">
                                                 <div class="d-flex justify-content-end align-items-center">
                                                     <input type="number" 
@@ -88,7 +88,7 @@
                                                            class="form-control form-control-sm input-peso" 
                                                            data-tabela="portos" 
                                                            data-id="{{ p.id }}" 
-                                                           value="{{ p.peso_risco }}">
+                                                           value="{{ p.nota_risco }}">
                                                     <i class="fas fa-check-circle text-success ms-2 d-none status-icon"></i>
                                                     <i class="fas fa-times-circle text-danger ms-2 d-none error-icon"></i>
                                                 </div>
@@ -145,17 +145,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
     const toastMessage = document.getElementById('toastMessage');
 
-    // Função para exibir o toast de notificação
     function showToast(message, isError = false) {
         toastMessage.textContent = message;
         toastEl.className = `toast align-items-center text-bg-${isError ? 'danger' : 'success'} border-0`;
         bsToast.show();
     }
 
-    // Adiciona o listener de 'change' para todos os inputs de peso
     document.querySelectorAll('.input-peso').forEach(input => {
-        
-        // Guarda o valor original para poder reverter caso dê erro no backend
         let originalValue = input.value;
 
         input.addEventListener('change', function() {
@@ -167,13 +163,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const successIcon = container.querySelector('.status-icon');
             const errorIcon = container.querySelector('.error-icon');
 
-            // Feedback visual: estado de "salvando"
             this.classList.add('is-saving');
             this.classList.remove('is-saved', 'is-error');
             successIcon.classList.add('d-none');
             errorIcon.classList.add('d-none');
 
-            // Faz a requisição AJAX para salvar o dado
             fetch("{{ url_for('parametros_risco.atualizar_peso') }}", {
                 method: 'POST',
                 headers: {
@@ -191,29 +185,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('is-saving');
                 
                 if (res.status === 200 && res.body.status === 'success') {
-                    // Feedback visual de sucesso
                     this.classList.add('is-saved');
                     successIcon.classList.remove('d-none');
-                    originalValue = newValue; // Atualiza o backup do valor
+                    originalValue = newValue; 
                     showToast('Peso atualizado com sucesso!');
                     
-                    // Remove o contorno verde após 2 segundos
                     setTimeout(() => {
                         this.classList.remove('is-saved');
                         successIcon.classList.add('d-none');
                     }, 2000);
                 } else {
-                    // Erro tratado pela API
                     throw new Error(res.body.error || 'Erro desconhecido ao salvar.');
                 }
             })
             .catch(error => {
-                // Feedback visual de erro
                 this.classList.remove('is-saving');
                 this.classList.add('is-error');
                 errorIcon.classList.remove('d-none');
                 
-                // Reverte o valor do input pro número antes da tentativa
                 this.value = originalValue; 
                 showToast(error.message, true);
                 console.error('Falha ao salvar peso:', error);
