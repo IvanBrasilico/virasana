@@ -1547,13 +1547,24 @@ def configure(app):
 
                 row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
 
-                # Trata strings numéricas que o pandas as vezes lê como float (ex: "123.0" -> "123")
-                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador', 'numero_lote']:
+                # Trata identificadores numéricos com LPAD (zfill)
+                campos_id = {
+                    'cpf_motorista': 11, 'cpf_operador_scanner': 11,
+                    'cnpj_transportadora': 14, 'cnpj_exportador_importador': 14
+                }
+                for col, size in campos_id.items():
                     if row_dict.get(col):
-                        val_str = str(row_dict[col]).strip()
-                        if val_str.endswith('.0'):
-                            val_str = val_str[:-2]
-                        row_dict[col] = val_str
+                        val = str(row_dict[col]).strip()
+                        if val.endswith('.0'): val = val[:-2]
+                        # Remove possíveis máscaras e garante preenchimento de zeros à esquerda
+                        digits = "".join(filter(str.isdigit, val))
+                        row_dict[col] = digits.zfill(size) if digits else None
+
+                # Limpa apenas o ".0" do lote (sem tamanho fixo)
+                if row_dict.get('numero_lote'):
+                    lote = str(row_dict['numero_lote']).strip()
+                    if lote.endswith('.0'): lote = lote[:-2]
+                    row_dict['numero_lote'] = lote
 
                 # Converte datas para string no formato correto do MariaDB
                 for date_field in ['entrada_carreta', 'data_scanner']:
