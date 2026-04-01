@@ -341,6 +341,7 @@
   Risco: {{ "%.2f"|format(nota) }}
 </span>
 {% endif %}
+              <span class="ficha-link-container ms-3 d-flex align-items-center"></span>
             </div>
             <div>
               <span class="marcacao-info small me-2 fw-bold text-light">
@@ -937,6 +938,35 @@ function formatDateTime(isoString) {
   function renderCarga(el, data) {
     el.textContent = ''; // limpa placeholder
 
+    // 1. Injeção do botão "Ver/criar Ficha" no cabeçalho (Movido para ANTES do return)
+    const fileId = data && data.snapshot_ref && data.snapshot_ref.file_id;
+    const dscIso = data && data.snapshot_ref && data.snapshot_ref.dataescaneamento;
+    const hasConhec = data && Array.isArray(data.conhecimentos) && data.conhecimentos.length > 0;
+    let isScanRecent = false;
+
+    if (dscIso) {
+      const scanDate = new Date(dscIso);
+      const now = new Date();
+      const diffDays = (now - scanDate) / (1000 * 60 * 60 * 24);
+      isScanRecent = (diffDays <= 7 && diffDays >= -1); // >= -1 evita bugs de fuso horário local vs UTC
+    }
+
+    if (fileId && (hasConhec || isScanRecent)) {
+      const card = el.closest('.item-card');
+      if (card) {
+        const linkContainer = card.querySelector('.ficha-link-container');
+        if (linkContainer && !linkContainer.hasChildNodes()) {
+          const btn = document.createElement('a');
+          btn.href = `https://ajna1.rfoc.srf/bhadrasana2/nova_inspecaoni/${fileId}`;
+          btn.target = '_blank';
+          btn.className = 'btn btn-sm btn-light text-primary fw-bold py-0 shadow-sm border border-light';
+          btn.innerHTML = 'Ver/criar Ficha <small>&#8599;</small>';
+          linkContainer.appendChild(btn);
+        }
+      }
+    }
+
+    // 2. Renderização dos dados da carga
     if (!data || !data.carga_present) {
       const m = document.createElement('span');
       m.className = 'text-muted';
@@ -1018,7 +1048,6 @@ function formatDateTime(isoString) {
     }
 
     // Botão de detalhes (conhecimentos)
-    const hasConhec = Array.isArray(data.conhecimentos) && data.conhecimentos.length > 0;
     if (hasConhec) {
       const detailsBtn = document.createElement('button');
       detailsBtn.type = 'button';
