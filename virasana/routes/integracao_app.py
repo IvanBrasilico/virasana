@@ -32,7 +32,7 @@ from bhadrasana.models.laudo import get_empresa, Empresa
 from virasana.integracao.due.due_manager import (get_conteineres_escaneados_sem_due,
                                                  set_conteineres_escaneados_sem_due,
                                                  integra_dues, integra_dues_itens)
-from virasana.views import csrf
+# from virasana.views import csrf
 
 CODIGOS_RECINTOS = ['8931318', '8931356', '8931359', '8931404']
 
@@ -100,7 +100,7 @@ def configure(app):
 
     @app.route('/integracao/insere_cnpjs', methods=['POST'])
     # @login_required
-    @csrf.exempt
+    # @csrf.exempt
     def integracao_insere_cnpjs_api():
         """Recebe lista de CNPJs formato cnpj, nome. Alimenta tabela laudo_empresas."""
         logger.info('Acesso a /integracao/insere_cnpjs')
@@ -147,7 +147,7 @@ def configure(app):
 
     @app.route('/integracao/atualiza_due_acessoveiculo_e_mongo', methods=['POST'])
     # @login_required
-    @csrf.exempt
+    # @csrf.exempt
     def integracao_atualiza_due_acessoveiculo_e_mongo():
         """Recebe a planilha de DUEs e de escaneamentos_sem_due atualizados.
 
@@ -180,7 +180,7 @@ def configure(app):
 
     @app.route('/integracao/upload_dues', methods=['POST'])
     # @login_required
-    @csrf.exempt
+    # @csrf.exempt
     def integracao_upload_dues():
         """Insere dados de dues e itens.
 
