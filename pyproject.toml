@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "virasana"
+version = "0.0.1"
+description = "AJNA_MOD Visao computacional e Aprendizado de Maquina na Vigilancia Aduaneira"
+readme = "README.md"
+authors = [
+  { name = "Ivan Brasilico", email = "brasilico.ivan@gmail.com" }
+]
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.6"
+dependencies = [
+  "chardet",
+  "click",
+  "defusedxml",
+  "Flask==2.3.3",
+  "Flask-BootStrap",
+  "Flask-Login",
+  "Flask-cors",
+  "flask-jwt-extended",
+  "Flask-nav",
+  "Flask-session",
+  "Flask-wtf",
+  "gunicorn",
+  "lxml",
+  "matplotlib",
+  "marshmallow",
+  "marshmallow-sqlalchemy",
+  "opencv-python-headless",
+  "openpyxl",
+  "plotly",
+  "pandas==2.1.4",
+  "pillow",
+  "pymongo",
+  "pymysql",
+  "python-dotenv",
+  "requests",
+  "requests-pkcs12",
+  "scipy",
+  "scikit-learn",
+  "sqlalchemy==1.4.54",
+  "selenium",
+  "xlrd",
+  "wtforms",
+  "markupsafe"
+]
+
+[project.urls]
+Homepage = "https://github.com/IvanBrasilico/virasana"
+
+[project.optional-dependencies]
+dev = [
+  "alembic",
+  "autopep8",
+  "bandit",
+  "coverage",
+  "flake8",
+  "flake8-quotes",
+  "flake8-docstrings",
+  "flake8-todo",
+  "flask-webtest",
+  "isort",
+  "mypy",
+  "pylint",
+  "pytest",
+  "pytest-cov",
+  "pytest-mock",
+  "radon",
+  "selenium",
+  "testfixtures",
+  "tox"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
