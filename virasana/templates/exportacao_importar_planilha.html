@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processando...';
         alertContainer.innerHTML = ''; 
 
-        fetch("{{ url_for('importar_planilha_narcos') }}", {
+        fetch("{{ url_for('importar_planilhas.importar_planilha_narcos') }}", {
             method: 'POST',
             body: formData,
             headers: {
