@@ -5,8 +5,8 @@ import tempfile
 import json
 
 from datetime import timedelta, datetime, time, timezone
-from flask_login import current_user, login_required
-from flask import render_template, request, jsonify, Response, Blueprint, redirect, url_for
+from flask_login import current_user
+from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,17 +24,13 @@ from PIL import Image
 
 
 def configure(app):
-    exportacao_app = Blueprint(
+    '''  exportacao_app = Blueprint(
         'exportacao_app',
         __name__,
         url_prefix='/exportacao'
     )
-
-    @app.route('/exportacao/', endpoint='exportacao_app_index')
-    @login_required
-    def exportacao_app_index():
-        """Shim para manter compatibilidade com a navbar global.
-        O endpoint 'exportacao_app_index' é exigido pelo sistema de menus."""
+    app.register_blueprint(exportacao_app)
+    '''
 
     app.logger.setLevel(logging.DEBUG)
 
@@ -737,6 +733,15 @@ def configure(app):
 
         return resultados, stats
 
+
+    @app.route('/exportacao/', methods=['GET'])
+    def exportacao_app_index():
+        return render_template(
+            'exportacao_index.html',
+            csrf_token=generate_csrf
+        )
+
+
     # ---------------------------------------------------------
     # Consulta de PESO: primeira pesagem válida (I/R) do contêiner
     # no recinto de destino após dt_min (hora da entrada).
@@ -922,8 +927,7 @@ def configure(app):
             "placa": row["placa"]
         }
 
-    @app.route('/consulta_peso', methods=['GET'])
-    @login_required
+    @app.route('/exportacao/consulta_peso', methods=['GET'])
     def exportacao_consulta_peso():
         """
         Endpoint para o fetch() do front-end.
@@ -991,8 +995,7 @@ def configure(app):
         return jsonify(payload)
 
     # rota para listar entradas (E) em um recinto em uma data
-    @app.route('/transit_time', methods=['GET'])
-    @login_required
+    @app.route('/exportacao/transit_time', methods=['GET'])
     def transit_time():
         """
         Lista todos os containers que ENTRARAM (direcao = 'E') em um recinto específico
@@ -1124,8 +1127,7 @@ def configure(app):
             emails_recintos=emails_map
          )
 
-    @app.route('/transit_time/exportar_csv', methods=['GET'])
-    @login_required
+    @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
     def transit_time_export():
         """
         Exporta os resultados filtrados em CSV compatível com Excel.
@@ -1265,7 +1267,7 @@ def configure(app):
             }
         )
 
-    @app.route('/transit_time/toggle_marcacao', methods=['POST'])
+    @app.route('/exportacao/transit_time/toggle_marcacao', methods=['POST'])
     def toggle_marcacao():
         if not current_user.is_authenticated:
             return jsonify({"error": "Usuário não autenticado"}), 401
@@ -1805,8 +1807,7 @@ def configure(app):
         return out
 
 
-    @app.route("/transit_time/carga_bulk", methods=["POST"])
-    @login_required
+    @app.route("/exportacao/transit_time/carga_bulk", methods=["POST"])
     def exportacao_transit_time_carga_bulk():
         """Endpoint bulk que retorna um *resumo* da carga por contêiner.
 
@@ -1849,8 +1850,7 @@ def configure(app):
             app.logger.exception("[carga_bulk] Erro inesperado")
             return jsonify({"error": "Erro interno"}), 500
 
-    @app.route("/transit_time/imgs_bulk", methods=["POST"])
-    @login_required
+    @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
     def exportacao_transit_time_imgs_bulk():
         """
         Recebe um lote de contêineres visíveis no front e devolve,
@@ -1900,8 +1900,7 @@ def configure(app):
             app.logger.exception("[imgs_bulk] Erro inesperado")
             return jsonify({"error": "Erro interno"}), 500
 
-    @app.route("/img/<file_id>", methods=["GET"])
-    @login_required
+    @app.route("/exportacao/img/<file_id>", methods=["GET"])
     def exportacao_img(file_id: str):
         """
         Serve thumbnail JPEG cacheável de uma imagem do GridFS por _id.
@@ -1976,8 +1975,7 @@ def configure(app):
             app.logger.exception("[exportacao_img] erro ao servir imagem")
             return Response("Internal error", status=500)
 
-    @app.route("/img/<file_id>/anotar", methods=["GET"])
-    @login_required
+    @app.route("/exportacao/img/<file_id>/anotar", methods=["GET"])
     def exportacao_img_anotar(file_id: str):
         """
         Tela para visualizar uma imagem e suas anotações.
@@ -1999,8 +1997,7 @@ def configure(app):
             csrf_token=generate_csrf,  # se quiser usar CSRF depois no JS
         )
 
-    @app.route("/img/<file_id>/anotacoes", methods=["POST"])
-    @login_required
+    @app.route("/exportacao/img/<file_id>/anotacoes", methods=["POST"])
     def exportacao_img_anotacoes_criar(file_id: str):
         """
         Recebe coordenadas relativas (0.0 a 1.0) e o texto da anotação,
@@ -2067,5 +2064,3 @@ def configure(app):
             return jsonify({"error": "Erro ao salvar anotação"}), 500
 
         return jsonify({"ok": True})
-
-    app.register_blueprint(exportacao_app)
