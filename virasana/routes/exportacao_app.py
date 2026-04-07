@@ -5,7 +5,7 @@ import tempfile
 import json
 
 from datetime import timedelta, datetime, time, timezone
-from flask_login import current_user
+from flask_login import current_user, login_required
 from flask import render_template, request, jsonify, Response
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
@@ -733,15 +733,6 @@ def configure(app):
 
         return resultados, stats
 
-
-    @app.route('/exportacao/', methods=['GET'])
-    def exportacao_app_index():
-        return render_template(
-            'exportacao_index.html',
-            csrf_token=generate_csrf
-        )
-
-
     # ---------------------------------------------------------
     # Consulta de PESO: primeira pesagem válida (I/R) do contêiner
     # no recinto de destino após dt_min (hora da entrada).
@@ -928,6 +919,7 @@ def configure(app):
         }
 
     @app.route('/exportacao/consulta_peso', methods=['GET'])
+    @login_required
     def exportacao_consulta_peso():
         """
         Endpoint para o fetch() do front-end.
@@ -996,6 +988,7 @@ def configure(app):
 
     # rota para listar entradas (E) em um recinto em uma data
     @app.route('/exportacao/transit_time', methods=['GET'])
+    @login_required
     def transit_time():
         """
         Lista todos os containers que ENTRARAM (direcao = 'E') em um recinto específico
@@ -1128,6 +1121,7 @@ def configure(app):
          )
 
     @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
+    @login_required
     def transit_time_export():
         """
         Exporta os resultados filtrados em CSV compatível com Excel.
@@ -1808,6 +1802,7 @@ def configure(app):
 
 
     @app.route("/exportacao/transit_time/carga_bulk", methods=["POST"])
+    @login_required
     def exportacao_transit_time_carga_bulk():
         """Endpoint bulk que retorna um *resumo* da carga por contêiner.
 
@@ -1851,6 +1846,7 @@ def configure(app):
             return jsonify({"error": "Erro interno"}), 500
 
     @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
+    @login_required
     def exportacao_transit_time_imgs_bulk():
         """
         Recebe um lote de contêineres visíveis no front e devolve,
@@ -1901,6 +1897,7 @@ def configure(app):
             return jsonify({"error": "Erro interno"}), 500
 
     @app.route("/exportacao/img/<file_id>", methods=["GET"])
+    @login_required
     def exportacao_img(file_id: str):
         """
         Serve thumbnail JPEG cacheável de uma imagem do GridFS por _id.
@@ -1976,6 +1973,7 @@ def configure(app):
             return Response("Internal error", status=500)
 
     @app.route("/exportacao/img/<file_id>/anotar", methods=["GET"])
+    @login_required
     def exportacao_img_anotar(file_id: str):
         """
         Tela para visualizar uma imagem e suas anotações.
@@ -1998,6 +1996,7 @@ def configure(app):
         )
 
     @app.route("/exportacao/img/<file_id>/anotacoes", methods=["POST"])
+    @login_required
     def exportacao_img_anotacoes_criar(file_id: str):
         """
         Recebe coordenadas relativas (0.0 a 1.0) e o texto da anotação,
