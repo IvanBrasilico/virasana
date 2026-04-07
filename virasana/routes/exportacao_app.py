@@ -30,11 +30,11 @@ def configure(app):
         url_prefix='/exportacao'
     )
 
-    @exportacao_app.route('/')
+    @app.route('/exportacao/', endpoint='exportacao_app_index')
     @login_required
-    def index():
-        """Endpoint index exigido pela navbar (layout.html)."""
-        return redirect(url_for('exportacao_app.transit_time'))
+    def exportacao_app_index():
+        """Shim para manter compatibilidade com a navbar global.
+        O endpoint 'exportacao_app_index' é exigido pelo sistema de menus."""
 
     app.logger.setLevel(logging.DEBUG)
 
