@@ -6,7 +6,7 @@ import json
 
 from datetime import timedelta, datetime, time, timezone
 from flask_login import current_user, login_required
-from flask import render_template, request, jsonify, Response
+from flask import render_template, request, jsonify, Response, Blueprint, redirect, url_for
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,13 +24,17 @@ from PIL import Image
 
 
 def configure(app):
-    '''  exportacao_app = Blueprint(
+    exportacao_app = Blueprint(
         'exportacao_app',
         __name__,
         url_prefix='/exportacao'
     )
-    app.register_blueprint(exportacao_app)
-    '''
+
+    @exportacao_app.route('/')
+    @login_required
+    def index():
+        """Endpoint index exigido pela navbar (layout.html)."""
+        return redirect(url_for('exportacao_app.transit_time'))
 
     app.logger.setLevel(logging.DEBUG)
 
@@ -918,7 +922,7 @@ def configure(app):
             "placa": row["placa"]
         }
 
-    @app.route('/exportacao/consulta_peso', methods=['GET'])
+    @app.route('/consulta_peso', methods=['GET'])
     @login_required
     def exportacao_consulta_peso():
         """
@@ -987,7 +991,7 @@ def configure(app):
         return jsonify(payload)
 
     # rota para listar entradas (E) em um recinto em uma data
-    @app.route('/exportacao/transit_time', methods=['GET'])
+    @app.route('/transit_time', methods=['GET'])
     @login_required
     def transit_time():
         """
@@ -1120,7 +1124,7 @@ def configure(app):
             emails_recintos=emails_map
          )
 
-    @app.route('/exportacao/transit_time/exportar_csv', methods=['GET'])
+    @app.route('/transit_time/exportar_csv', methods=['GET'])
     @login_required
     def transit_time_export():
         """
@@ -1261,7 +1265,7 @@ def configure(app):
             }
         )
 
-    @app.route('/exportacao/transit_time/toggle_marcacao', methods=['POST'])
+    @app.route('/transit_time/toggle_marcacao', methods=['POST'])
     def toggle_marcacao():
         if not current_user.is_authenticated:
             return jsonify({"error": "Usuário não autenticado"}), 401
@@ -1801,7 +1805,7 @@ def configure(app):
         return out
 
 
-    @app.route("/exportacao/transit_time/carga_bulk", methods=["POST"])
+    @app.route("/transit_time/carga_bulk", methods=["POST"])
     @login_required
     def exportacao_transit_time_carga_bulk():
         """Endpoint bulk que retorna um *resumo* da carga por contêiner.
@@ -1845,7 +1849,7 @@ def configure(app):
             app.logger.exception("[carga_bulk] Erro inesperado")
             return jsonify({"error": "Erro interno"}), 500
 
-    @app.route("/exportacao/transit_time/imgs_bulk", methods=["POST"])
+    @app.route("/transit_time/imgs_bulk", methods=["POST"])
     @login_required
     def exportacao_transit_time_imgs_bulk():
         """
@@ -1896,7 +1900,7 @@ def configure(app):
             app.logger.exception("[imgs_bulk] Erro inesperado")
             return jsonify({"error": "Erro interno"}), 500
 
-    @app.route("/exportacao/img/<file_id>", methods=["GET"])
+    @app.route("/img/<file_id>", methods=["GET"])
     @login_required
     def exportacao_img(file_id: str):
         """
@@ -1972,7 +1976,7 @@ def configure(app):
             app.logger.exception("[exportacao_img] erro ao servir imagem")
             return Response("Internal error", status=500)
 
-    @app.route("/exportacao/img/<file_id>/anotar", methods=["GET"])
+    @app.route("/img/<file_id>/anotar", methods=["GET"])
     @login_required
     def exportacao_img_anotar(file_id: str):
         """
@@ -1995,7 +1999,7 @@ def configure(app):
             csrf_token=generate_csrf,  # se quiser usar CSRF depois no JS
         )
 
-    @app.route("/exportacao/img/<file_id>/anotacoes", methods=["POST"])
+    @app.route("/img/<file_id>/anotacoes", methods=["POST"])
     @login_required
     def exportacao_img_anotacoes_criar(file_id: str):
         """
@@ -2063,3 +2067,5 @@ def configure(app):
             return jsonify({"error": "Erro ao salvar anotação"}), 500
 
         return jsonify({"ok": True})
+
+    app.register_blueprint(exportacao_app)
