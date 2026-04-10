@@ -113,23 +113,6 @@
       {% endif %}
     </p>
 
-    {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
-      <div class="alert alert-secondary py-2">
-        <div class="d-flex flex-wrap gap-3 align-items-center">
-          <span class="fw-semibold">Estatísticas (IQR):</span>
-          <span>Q1 = {{ '%.2f'|format(q1) if q1 is not none else '—' }}</span>
-          <span>Q3 = {{ '%.2f'|format(q3) if q3 is not none else '—' }}</span>
-          <span>IQR = {{ '%.2f'|format(iqr) }}</span>
-          <span>Intervalo outlier:
-            <strong>{{ '%.2f'|format(limite_outlier_mild) }}</strong>
-            a
-            <strong>{{ '%.2f'|format(limite_outlier_strict) }}</strong>
-            (Q3 + 1.5·IQR → Q3 + 15·IQR)
-          </span>
-        </div>
-      </div>
-    {% endif %}
-
 <!-- Filtro por data/destino/origem/contêiner (GET) -->
 <form class="container-fluid mt-3 mb-4" method="get" action="">
   <!-- Linha 1: Data + Destino + Origem -->
@@ -235,7 +218,8 @@
         {% set current_user_id = current_user.id if current_user.is_authenticated else '' %}
         {% for r in resultados %}
         {% set idx = loop.index %}
-        <div class="card item-card shadow-sm mb-5 border-primary border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% endif %}"
+        {% set is_sobra = not r.planilha_info %}
+        <div class="card item-card shadow-sm mb-5 border-3 overflow-hidden {% if r.marcacao %}bg-warning-subtle border-warning{% elif is_sobra %}bg-secondary-subtle border-secondary{% else %}border-primary{% endif %}"
              data-container="{{ r.numeroConteiner or '' }}"
              data-acesso-id="{{ r.id_acesso }}"
              data-entrada="{% if r.dataHoraOcorrencia is string %}{{ r.dataHoraOcorrencia }}{% elif r.dataHoraOcorrencia %}{{ r.dataHoraOcorrencia.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
@@ -247,9 +231,14 @@
              data-risco="{% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}{{ r.planilha_info.risco_nota_final }}{% endif %}"
              data-stable="{{ loop.index }}">
 
-          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
+          <div class="card-header {% if is_sobra %}bg-secondary{% else %}bg-primary{% endif %} text-white d-flex justify-content-between align-items-center py-2 border-bottom-0 rounded-0">
             <div class="d-flex align-items-center">
               <h5 class="mb-0 fw-bold fs-5">{{ r.numeroConteiner }}</h5>
+
+              {% if is_sobra %}
+                <span class="badge text-bg-warning ms-3 text-dark fw-bold border border-warning" style="letter-spacing: 0.5px;">NÃO CONSTA NA PLANILHA</span>
+              {% endif %}
+
 {% if r.planilha_info and r.planilha_info.risco_nota_final is not none %}
   {% set nota = r.planilha_info.risco_nota_final %}
   {% set badge_color = 'text-bg-danger' if nota >= 7 else ('text-bg-warning' if nota >= 4 else 'text-bg-success') %}
@@ -361,8 +350,61 @@
           <div class="card-body bg-transparent">
             <div class="d-flex justify-content-between align-items-start gap-3">
 
-              <!-- Coluna ESQUERDA (texto) -->
               <div class="flex-grow-1 pe-2">
+
+                {% if r.planilha_info %}
+                <div class="card border-success mb-3">
+                  <div class="card-header bg-success-subtle text-success-emphasis py-1 small fw-bold">
+                    Informações da Planilha do terminal
+                  </div>
+                  <div class="card-body py-2 small text-success">
+                    <div class="row gx-2 gy-1">
+                      <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Navio:</strong> <a href="https://portaldocliente.btp.com.br/sistemas/processos-logisticos/ConsultasLivres/listaatracacaoindex" target="_blank">{{ r.planilha_info.navio_embarque or '—' }}</a></div>
+                      <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
+
+                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> 
+                        {{ r.planilha_info.transportadora or '—' }}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('transportadora', {}).get('nota', 0)) }}
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong>
+                        {% if r.planilha_info and r.planilha_info.p_cpf_motorista %}
+                          {% set cpf_limpo = r.planilha_info.p_cpf_motorista|replace('.','')|replace('-','')|replace(' ','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCpf&inAtivo=0&entCnpjCpf={{ "%011d"|format(cpf_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.p_nome_motorista or '—' }} ({{ r.planilha_info.p_cpf_motorista }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.p_nome_motorista or '—' }} ({{ r.planilha_info.p_cpf_motorista or '—' }})
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
+                        {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
+                          {% set cnpj_limpo = r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') %}
+                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ "%014d"|format(cnpj_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
+                            {{ r.planilha_info.razao_social_exportador_importador or '—' }} ({{ r.planilha_info.cnpj_exportador_importador }})
+                          </a>
+                        {% else %}
+                          {{ r.planilha_info.razao_social_exportador_importador or '—' }}
+                        {% endif %}
+                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
+                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('exportadora', {}).get('nota', 0)) }}
+                        {% endif %}
+                      </div>
+
+                      <div class="col-12 col-md-6"><strong>Nº Lote:</strong> {{ r.planilha_info.numero_lote or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Local Imagem:</strong> {{ r.planilha_info.local_imagem or '—' }}</div>
+                      <div class="col-12 col-md-6"><strong>Alerta terminal:</strong> {{ r.planilha_info.alerta_if or 'não' }}</div>
+                      <div class="col-12 col-md-6"><strong>Status:</strong> {{ r.planilha_info.status_conteiner or '—' }}</div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
 
                 <div class="card border-secondary mb-3">
                   <div class="card-header bg-secondary-subtle text-secondary-emphasis py-1 small fw-bold">
@@ -370,64 +412,21 @@
                   </div>
                   <div class="card-body py-2 small">
 
-                <!-- Linha 1 -->
-                <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="text-primary fw-bold mb-1 border-bottom border-primary-subtle pb-1" style="font-size: 0.85rem;">ENTRADA NO TERMINAL (DESTINO)</div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
 
                   {# Limite de exibição: transit time > 120 horas #}
                   {% set tt = r.transit_time_horas %}
                   {% set tt_limit = (tt is not none and tt > 120) %}
 
-                  <span class="fw-semibold">Entrada:</span>
+                  <span class="fw-semibold">Data/Hora:</span>
                   <span class="me-3">{{ r.dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.dataHoraOcorrencia else '—' }}</span>
 
                   <span class="fw-semibold">Vazio?</span>
                   <span class="me-3">{{ 'Sim' if r.vazioConteiner else 'Não' }}</span>
 
-                  <span class="fw-semibold">Redex de origem:</span>
-                  <span class="me-3 text-nowrap">
-                    {% if tt_limit %}
-                      Estufado em recinto desconhecido ou não cadastrado
-                    {% elif r.s_codigoRecinto %}
-					 ({{ recintos.get(r.s_codigoRecinto, '—') }})
-					 {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
-					 {% if _email %}
-						<a href="mailto:{{ _email }}?subject={{ ('Container ' ~ (r.numeroConteiner or '')) | urlencode }}"
-						   class="ms-1 align-middle text-decoration-none"
-						   aria-label="Enviar e-mail para {{ recintos.get(r.s_codigoRecinto, 'recinto') }}"
-						   title="Enviar e-mail">
-						 <!-- Ícone envelope (inline SVG — sem dependências extras) -->
-						 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-							  fill="currentColor" viewBox="0 0 16 16"
-							  style="vertical-align: text-bottom;">
-						   <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 
-									2 0 0 1-2 2H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v.217l7 
-									4.2 7-4.2V4a1 1 0 0 0-1-1zm13 
-									3.383l-4.708 2.825L15 12.118zm-.034 
-									5.876-5.64-3.388L8 10.917l-1.326-.805-5.64 3.388A1 
-									1 0 0 0 2 14h12a1 1 0 0 0 .966-.741M1 
-									12.118l4.708-2.91L1 6.383z"/>
-						 </svg>
-					   </a>
-					 {% endif %}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </span>
-
-                  <span class="fw-semibold">Saída (origem):</span>
-                  <span class="me-3">
-                    {% if tt_limit %}
-                      horário desconhecido
-                    {% else %}
-                      {{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}
-                    {% endif %}
-                  </span>
-
                   <span class="fw-semibold">Transit Time (h):</span>
-                  <span class="me-2 {{ 'text-danger fw-bold' if r.is_outlier else '' }}"
-                        {% if limite_outlier_mild is not none and limite_outlier_strict is not none %}
-                        title="Outlier se {{ '%.2f'|format(limite_outlier_mild) }} ≤ TT ≤ {{ '%.2f'|format(limite_outlier_strict) }}"
-                        {% endif %}>
+                  <span class="me-2">
                     {% if r.transit_time_horas is not none %}
                       {% if tt_limit %}
                         tempo desconhecido
@@ -436,67 +435,104 @@
                       {% endif %}
                     {% else %}—{% endif %}
                   </span>
-                  {% if r.is_outlier %}
-                    <span class="badge text-bg-danger">Outlier</span>
-                  {% endif %}
                 </div>
 
-                <!-- Linha 2 -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small mb-3">
+                  <span class="fw-semibold">CNPJ Transp.:</span>
+                  <span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
+
+                  <span class="fw-semibold">Placa:</span>
+                  <span class="me-3">{{ r.placa or '—' }}</span>
+
+                  <span class="fw-semibold">Motorista:</span>
+                  <span class="me-3">
+                    <span
+                      class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
+                      {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+                    >
+                      {{ r.nomeMotorista or '—' }}
+                    </span>
+                    (CPF: {{ r.cpfMotorista or '—' }})
+                    {% if r.motorista_risco %}
+                      <span class="badge text-bg-danger ms-1">RISCO</span>
+                    {% endif %}
+                  </span>
+                </div>
+
+                <div class="text-secondary fw-bold mb-1 border-bottom border-secondary-subtle pb-1" style="font-size: 0.85rem;">SAÍDA ANTERIOR (ORIGEM)</div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  <span class="fw-semibold">Local:</span>
+                  <span class="me-3 text-nowrap">
+                    {% if tt_limit %}
+                      Estufado em recinto desconhecido ou não cadastrado
+                    {% elif r.s_codigoRecinto %}
+                      ({{ recintos.get(r.s_codigoRecinto, '—') }})
+                      {% set _email = emails_recintos.get(r.s_codigoRecinto) %}
+                      {% if _email %}
+                        <a href="mailto:{{ _email }}?subject={{ ('Container ' ~ (r.numeroConteiner or '')) | urlencode }}"
+                           class="ms-1 align-middle text-decoration-none"
+                           aria-label="Enviar e-mail para {{ recintos.get(r.s_codigoRecinto, 'recinto') }}"
+                           title="Enviar e-mail">
+                         +                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                              fill="currentColor" viewBox="0 0 16 16"
+                              style="vertical-align: text-bottom;">
+                           <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 
+                                    2 0 0 1-2 2H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v.217l7 
+                                    4.2 7-4.2V4a1 1 0 0 0-1-1zm13 
+                                    3.383l-4.708 2.825L15 12.118zm-.034 
+                                    5.876-5.64-3.388L8 10.917l-1.326-.805-5.64 3.388A1 
+                                    1 0 0 0 2 14h12a1 1 0 0 0 .966-.741M1 
+                                    12.118l4.708-2.91L1 6.383z"/>
+                         </svg>
+                       </a>
+                     {% endif %}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </span>
+
+                  <span class="fw-semibold">Data/Hora:</span>
+                  <span class="me-3">
+                    {% if tt_limit %}
+                      horário desconhecido
+                    {% else %}
+                      {{ r.s_dataHoraOcorrencia.strftime("%d/%m/%Y %H:%M:%S") if r.s_dataHoraOcorrencia else '—' }}
+                    {% endif %}
+                  </span>
+                </div>
+
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
-			<span class="fw-semibold">CNPJ Transp.:</span>
-			<span class="me-3">{{ r.cnpjTransportador or '—' }}</span>
+                  <span class="fw-semibold">Placa:</span>
+                  <span class="me-3">
+                    {% if tt_limit %}
+                      placa desconhecida
+                    {% else %}
+                      {{ r.s_placa or '—' }}
+                    {% endif %}
+                  </span>
 
-			<span class="fw-semibold">Placa (entrada no Terminal):</span>
-			<span class="me-3">{{ r.placa or '—' }}</span>
-
-			  <span class="fw-semibold">Motorista (entrada no Terminal):</span>
-			  <span class="me-3">
-				<span
-				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
-				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
-				>
-				  {{ r.nomeMotorista or '—' }}
-				</span>
-				(CPF: {{ r.cpfMotorista or '—' }})
-				{% if r.motorista_risco %}
-				  <span class="badge text-bg-danger ms-1">RISCO</span>
-				{% endif %}
-			  </span>
-				</div>
-
-                <!-- Linha 2.2 -->
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 text-muted small">
-			<span class="fw-semibold">Placa (saída do redex):</span>
-			<span class="me-3">
-			          {% if tt_limit %}
-                        placa desconhecida
-                      {% else %}
-                        {{ r.s_placa or '—' }}
-                      {% endif %}
-			</span>
-
-			  <span class="fw-semibold">Motorista (saída do redex):</span>
-			  <span class="me-3">
-				<span
-				  class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
-				  {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
-				>
-			          {% if tt_limit %}
+                  <span class="fw-semibold">Motorista:</span>
+                  <span class="me-3">
+                    <span
+                      class="{{ 'text-danger fw-semibold' if r.motorista_risco else '' }}"
+                      {% if r.motorista_risco %}title="Motorista presente na lista de risco"{% endif %}
+                    >
+                      {% if tt_limit %}
                         motorista desconhecido
                       {% else %}
                         {{ r.s_nomeMotorista or '—' }}
                       {% endif %}
-				</span>
-			          {% if tt_limit %}
-                        -
-                      {% else %}
-                        (CPF: {{ r.s_cpfMotorista or '—' }})
-                      {% endif %}
-				{% if r.motorista_risco %}
-				  <span class="badge text-bg-danger ms-1">RISCO</span>
-				{% endif %}
-			  </span>
-				</div>
+                    </span>
+                    {% if tt_limit %}
+                      -
+                    {% else %}
+                      (CPF: {{ r.s_cpfMotorista or '—' }})
+                    {% endif %}
+                    {% if r.motorista_risco %}
+                      <span class="badge text-bg-danger ms-1">RISCO</span>
+                    {% endif %}
+                  </span>
+                </div>
 
                 <div class="mt-3 mb-1">
                   <button class="btn btn-sm btn-outline-primary"
@@ -505,7 +541,7 @@
                           data-bs-target="#item-{{ idx }}"
                           aria-expanded="false"
                           aria-controls="item-{{ idx }}">
-                    Exibir peso de balança
+                    Exibir pesos de balança
                   </button>
                 </div>
 
@@ -537,60 +573,6 @@
 
               </div>
             </div>
-
-                {% if r.planilha_info %}
-                <div class="card border-success mb-3">
-                  <div class="card-header bg-success-subtle text-success-emphasis py-1 small fw-bold">
-                    Informações da Planilha do terminal
-                  </div>
-                  <div class="card-body py-2 small text-success">
-                    <div class="row gx-2 gy-1">
-                      <div class="col-12 col-md-6"><strong>Tipo/ISO/Cat:</strong> {{ r.planilha_info.tipo_conteiner or '—' }} / {{ r.planilha_info.iso_code or '—' }} / {{ r.planilha_info.categoria or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Embarque (Viagem/Navio):</strong> <a href="https://portaldocliente.btp.com.br/sistemas/processos-logisticos/ConsultasLivres/listaatracacaoindex" target="_blank">{{ r.planilha_info.viagem_embarque or '—' }} / {{ r.planilha_info.navio_embarque or '—' }}</a></div>
-                      <div class="col-12 col-md-6"><strong>Portos (Desc/Dest):</strong> {{ r.planilha_info.porto_descarga or '—' }} / {{ r.planilha_info.porto_destino_final or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>NCM:</strong> {{ r.planilha_info.descricao_ncm or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Op. Scanner:</strong> {{ r.planilha_info.nome_operador_scanner or '—' }} (CPF: {{ r.planilha_info.cpf_operador_scanner or '—' }})</div>
-
-                      <div class="col-12 col-md-6"><strong>Transportadora:</strong> 
-                        {{ r.planilha_info.transportadora or '—' }}
-                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
-                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('transportadora', {}).get('nota', 0)) }}
-                        {% endif %}
-                      </div>
-
-                      <div class="col-12 col-md-6"><strong>Motorista (Planilha):</strong>
-                        {% if r.planilha_info and r.planilha_info.cpf_motorista %}
-                          {% set cpf_limpo = r.planilha_info.cpf_motorista|replace('.','')|replace('-','')|replace(' ','') %}
-                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCpf&inAtivo=0&entCnpjCpf={{ "%011d"|format(cpf_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
-                            {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista }})
-                          </a>
-                        {% else %}
-                          {{ r.planilha_info.nome_motorista or '—' }} ({{ r.planilha_info.cpf_motorista or '—' }})
-                        {% endif %}
-                      </div>
-
-                      <div class="col-12 col-md-6"><strong>Exp/Imp:</strong>
-                        {% if r.planilha_info and r.planilha_info.cnpj_exportador_importador %}
-                          {% set cnpj_limpo = r.planilha_info.cnpj_exportador_importador|replace('.','')|replace('/','')|replace('-','') %}
-                          <a href="https://www4c.receita.fazenda/g36161/jsp/DossieFrame.jsp?transacao=ConsultaDossieCnpj&inAtivo=0&entCnpjCpf={{ "%014d"|format(cnpj_limpo|int) }}&tipoConsulta=E&controle=S" target="_blank" rel="noopener noreferrer">
-                            {{ r.planilha_info.razao_social_exportador_importador or '—' }} ({{ r.planilha_info.cnpj_exportador_importador }})
-                          </a>
-                        {% else %}
-                          {{ r.planilha_info.razao_social_exportador_importador or '—' }}
-                        {% endif %}
-                        {% if r.planilha_info and r.planilha_info.risco_memoria_calculo %}
-                          {{ badge_risco_entidade(r.planilha_info.risco_memoria_calculo.get('criterios', {}).get('exportadora', {}).get('nota', 0)) }}
-                        {% endif %}
-                      </div>
-
-                      <div class="col-12 col-md-6"><strong>Nº Lote:</strong> {{ r.planilha_info.numero_lote or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Local Imagem:</strong> {{ r.planilha_info.local_imagem or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Alerta / IF:</strong> {{ r.planilha_info.alerta_if or '—' }}</div>
-                      <div class="col-12 col-md-6"><strong>Status:</strong> {{ r.planilha_info.status_conteiner or '—' }}</div>
-                    </div>
-                  </div>
-                </div>
-                {% endif %}
 
                 <div class="card border-primary mb-2">
                   <div class="card-header bg-primary-subtle text-primary-emphasis py-1 small fw-bold">

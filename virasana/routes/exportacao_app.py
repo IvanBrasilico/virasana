@@ -1,5 +1,3 @@
-# exportacao_app.py
-
 import logging
 import csv
 import os
@@ -24,7 +22,6 @@ from bson import ObjectId
 from gridfs import GridFS
 from PIL import Image
 
-from virasana.routes.exportacao_score_risco import processar_lote_risco
 
 def configure(app):
     '''  exportacao_app = Blueprint(
@@ -222,33 +219,6 @@ def configure(app):
         destinos_validos = ("8931356", "8931359", "8931404", "8931318")
         return valor if valor in destinos_validos else "8931356"
 
-    def _quartis(sorted_vals):
-        """ Q1/Q3 pelo método de Tukey
-        (exclui o elemento central se ímpar). """
-        n = len(sorted_vals)
-        if n == 0:
-            return None, None
-
-        def _mediana(vals):
-            m = len(vals)
-            if m == 0:
-                return None
-            mid = m // 2
-            if m % 2 == 1:
-                return float(vals[mid])
-            else:
-                return (float(vals[mid - 1]) + float(vals[mid])) / 2.0
-        mid = n // 2
-        if n % 2 == 0:
-            lower = sorted_vals[:mid]
-            upper = sorted_vals[mid:]
-        else:
-            lower = sorted_vals[:mid]
-            upper = sorted_vals[mid+1:]
-        q1 = _mediana(lower)
-        q3 = _mediana(upper)
-        return q1, q3
-
     # -------------------------------------------
     # Helpers: CPF (normalização) e risco
     # -------------------------------------------
@@ -296,6 +266,11 @@ def configure(app):
                 encontrados.add(_cpf_digits(getattr(r, "cpf", None)))
         return encontrados
 
+
+
+
+
+
     def consultar_transit_time(
         session,
         recinto_destino: str,
@@ -304,163 +279,382 @@ def configure(app):
         origens_filtrar: Optional[List[str]] = None
     ):
         """
-        Executa a mesma SQL da rota /exportacao/transit_time
-        e marca outliers (IQR).
-        Retorna (resultados:list[dict], stats:dict).
+        Lista baseada na Fonte da Verdade: Planilhas Importadas.
+        Busca Entradas e Saídas desacopladas para evitar bugs de subquery no MariaDB 5.5.
         """
         recinto_destino = _normaliza_destino(recinto_destino)
         origens_filtrar = _sanitize_origens(origens_filtrar or [])
 
-        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        
-        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
-
-        sql_txt = f"""
-            SELECT
-                e.id AS id_acesso,
-                e.numeroConteiner,
-                e.codigoRecinto,
-                e.dataHoraOcorrencia,
-                e.cnpjTransportador,
-                e.placa,
-                e.cpfMotorista,
-                e.nomeMotorista,
-                e.vazioConteiner,
-
-                s.codigoRecinto         AS s_codigoRecinto,
-                s.dataHoraOcorrencia    AS s_dataHoraOcorrencia,
-                s.cnpjTransportador     AS s_cnpjTransportador,
-                s.placa                 AS s_placa,
-                s.cpfMotorista          AS s_cpfMotorista,
-                s.nomeMotorista         AS s_nomeMotorista,
-                s.vazioConteiner        AS s_vazioConteiner,
-
-                TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
-            FROM apirecintos_acessosveiculo e
-            LEFT JOIN apirecintos_acessosveiculo s
-              ON s.id = (
-                 SELECT s2.id
-                 FROM apirecintos_acessosveiculo s2
-                 WHERE s2.numeroConteiner = e.numeroConteiner
-                   AND s2.direcao = 'S'
-                   AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
-                   AND (
-                        s2.codigoRecinto LIKE '89327%'
-                     OR s2.codigoRecinto IN ('8931309', '8931356', '8931359', '8933204', '8931404', '8933203', '8933001', '8931339', '8931305', '8931304')
-                   )
-                   AND s2.codigoRecinto <> e.codigoRecinto
-                   {sub_filtro_origem}
-                 ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
-                 LIMIT 1
-              )
-            WHERE
-                e.codigoRecinto = :recinto_destino
-                AND e.direcao = 'E'
-                AND e.numeroConteiner IS NOT NULL
-                AND e.numeroConteiner <> ''
-                AND (
-                  e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
-                )
-                AND e.dataHoraOcorrencia >= :inicio
-                AND e.dataHoraOcorrencia < :fim
---                 AND NOT EXISTS (
---                   SELECT 1
---                   FROM apirecintos_acessosveiculo s3
---                   WHERE s3.numeroConteiner    = e.numeroConteiner
---                     AND s3.codigoRecinto      = e.codigoRecinto
---                     AND s3.direcao            = 'S'
---                     AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
---                 )
-                {where_filtro_origem}
-            ORDER BY e.numeroConteiner ASC, e.dataHoraOcorrencia ASC
-        """
-
-        params = {
-            "recinto_destino": recinto_destino,
-            "inicio": inicio,
-            "fim": fim
-        }
-        if origens_filtrar:
-            params["origens"] = tuple(origens_filtrar)
-            rows = session.execute(
-                text(sql_txt).bindparams(bindparam("origens", expanding=True)),
-                params
-            ).fetchall()
-        else:
-            rows = session.execute(text(sql_txt), params).fetchall()
-
-        resultados = [{
-             "id_acesso": r.id_acesso,
-             "numeroConteiner": r.numeroConteiner,
-             "codigoRecinto": r.codigoRecinto,
-             "dataHoraOcorrencia": r.dataHoraOcorrencia,
-             "cnpjTransportador": r.cnpjTransportador,
-             "placa": r.placa,
-             "cpfMotorista": r.cpfMotorista,
-             "nomeMotorista": r.nomeMotorista,
-             "vazioConteiner": r.vazioConteiner,
-             "s_codigoRecinto": r.s_codigoRecinto,
-             "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
-             "s_cnpjTransportador": r.s_cnpjTransportador,
-             "s_placa": r.s_placa,
-             "s_cpfMotorista": r.s_cpfMotorista,
-             "s_nomeMotorista": r.s_nomeMotorista,
-             "s_vazioConteiner": r.s_vazioConteiner,
-             "transit_time_horas": r.transit_time_horas,
-         } for r in rows]
-
-        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS ---
-        sql_planilha_extra = text("""
-            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
+        # 1. A Fonte da Verdade: Buscar Planilhas
+        sql_planilhas = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
+                   p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
+                   p.viagem_descarga, p.navio_descarga, p.porto_descarga,
+                   p.local_imagem, p.alerta_if, p.status_conteiner,
+                   p.nome_motorista AS p_nome_motorista, p.cpf_motorista AS p_cpf_motorista,
+                   p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
+                   p.nome_operador_scanner, p.transportadora, p.numero_lote, 
+                   p.razao_social_exportador_importador, p.cnpj_exportador_importador,
+                   p.ch_vz,
+                   r.nota_final AS risco_nota_final,
+                   r.memoria_calculo AS risco_memoria_calculo
             FROM narcos_planilhas_importadas p
+            LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
             WHERE p.entrada_carreta >= :inicio AND p.entrada_carreta < :fim
         """)
-        planilhas_no_periodo = session.execute(sql_planilha_extra, {"inicio": inicio, "fim": fim}).mappings().all()
+        rows_planilha = session.execute(sql_planilhas, {"inicio": inicio, "fim": fim}).mappings().all()
+        
+        planilhas_list = []
+        for rp in rows_planilha:
+            rp_dict = dict(rp)
+            memoria_str = rp_dict.get("risco_memoria_calculo")
+            if memoria_str:
+                try: rp_dict["risco_memoria_calculo"] = json.loads(memoria_str)
+                except json.JSONDecodeError: rp_dict["risco_memoria_calculo"] = None
+            planilhas_list.append(rp_dict)
 
-        for p in planilhas_no_periodo:
+        # 2. As Evidências: Buscas Desacopladas da API Recintos
+        inicio_api = inicio - timedelta(hours=24)
+        fim_api = fim + timedelta(hours=24)
+        inicio_saidas = inicio_api - timedelta(days=15) # Tolerância longa para achar a origem
+
+        # 2.1 Busca todas as Entradas
+        sql_e = text("""
+            SELECT id AS id_acesso, numeroConteiner, codigoRecinto, dataHoraOcorrencia,
+                   cnpjTransportador, placa, cpfMotorista, nomeMotorista, vazioConteiner
+            FROM apirecintos_acessosveiculo
+            WHERE codigoRecinto = :recinto_destino
+              AND direcao = 'E'
+              AND numeroConteiner IS NOT NULL AND numeroConteiner <> ''
+              AND dataHoraOcorrencia >= :inicio_api AND dataHoraOcorrencia < :fim_api
+            ORDER BY dataHoraOcorrencia ASC
+        """)
+        rows_e = session.execute(sql_e, {"recinto_destino": recinto_destino, "inicio_api": inicio_api, "fim_api": fim_api}).mappings().all()
+
+        acessos_api = []
+        if rows_e:
+            numeros_e = list({r["numeroConteiner"] for r in rows_e if r["numeroConteiner"]})
+            
+            # 2.2 Busca todas as Saídas (S) desses conteineres
+            rows_s = []
+            if numeros_e:
+                CHUNK = 500 # Evitar queries explodirem tamanho máximo
+                for i in range(0, len(numeros_e), CHUNK):
+                    lote = numeros_e[i:i+CHUNK]
+                    sql_s = text("""
+                        SELECT id, numeroConteiner, codigoRecinto, dataHoraOcorrencia,
+                               cnpjTransportador, placa, cpfMotorista, nomeMotorista, vazioConteiner
+                        FROM apirecintos_acessosveiculo
+                        WHERE direcao = 'S'
+                          AND numeroConteiner IN :numeros
+                          AND dataHoraOcorrencia >= :inicio_saidas AND dataHoraOcorrencia <= :fim_api
+                    """).bindparams(bindparam("numeros", expanding=True))
+                    rs = session.execute(sql_s, {"numeros": tuple(lote), "inicio_saidas": inicio_saidas, "fim_api": fim_api}).mappings().all()
+                    rows_s.extend(rs)
+
+            # Agrupa Saídas em um dicionário rápido na memória
+            saidas_dict = {}
+            for s in rows_s:
+                num = s["numeroConteiner"].upper()
+                if num not in saidas_dict: saidas_dict[num] = []
+                saidas_dict[num].append(s)
+
+            # Verifica se o usuário aplicou filtro intencional no HTML
+            is_filtered_user = bool(origens_filtrar and len(origens_filtrar) < len(ORIGENS_TODAS))
+
+            # 2.3 Faz o Pareamento em Memória
+            for e in rows_e:
+                num_e = e["numeroConteiner"].upper()
+                dt_e = e["dataHoraOcorrencia"]
+                
+                s_match = None
+                if num_e in saidas_dict:
+                    # Filtra saídas que ocorreram ANTES da entrada e em recinto diferente
+                    cand_s = [s for s in saidas_dict[num_e] if s["dataHoraOcorrencia"] <= dt_e and s["codigoRecinto"] != e["codigoRecinto"]]
+                    if cand_s:
+                        # Pega a mais recente
+                        cand_s.sort(key=lambda x: x["dataHoraOcorrencia"], reverse=True)
+                        s_match = cand_s[0]
+                
+                # Se houver filtro ativo na tela e não bater, descartamos apenas da API
+                s_rec = str(s_match["codigoRecinto"]) if s_match else None
+                if is_filtered_user and s_rec is not None and s_rec not in origens_filtrar:
+                    continue
+
+                tt_horas = None
+                if s_match:
+                    diff = (dt_e - s_match["dataHoraOcorrencia"]).total_seconds()
+                    tt_horas = diff / 3600.0
+
+                acessos_api.append({
+                    "id_acesso": e["id_acesso"],
+                    "numeroConteiner": e["numeroConteiner"],
+                    "codigoRecinto": e["codigoRecinto"],
+                    "dataHoraOcorrencia": e["dataHoraOcorrencia"],
+                    "cnpjTransportador": e["cnpjTransportador"],
+                    "placa": e["placa"],
+                    "cpfMotorista": e["cpfMotorista"],
+                    "nomeMotorista": e["nomeMotorista"],
+                    "vazioConteiner": e["vazioConteiner"],
+                    "s_codigoRecinto": s_match["codigoRecinto"] if s_match else None,
+                    "s_dataHoraOcorrencia": s_match["dataHoraOcorrencia"] if s_match else None,
+                    "s_cnpjTransportador": s_match["cnpjTransportador"] if s_match else None,
+                    "s_placa": s_match["placa"] if s_match else None,
+                    "s_cpfMotorista": s_match["cpfMotorista"] if s_match else None,
+                    "s_nomeMotorista": s_match["nomeMotorista"] if s_match else None,
+                    "s_vazioConteiner": s_match["vazioConteiner"] if s_match else None,
+                    "transit_time_horas": tt_horas,
+                    "utilizado": False
+                })
+
+        # 3. O Merge Planilha x API
+        def _parse_dt(val):
+            if isinstance(val, str):
+                try: return datetime.strptime(val[:19], "%Y-%m-%d %H:%M:%S")
+                except: return None
+            return val
+
+        resultados = []
+        for p in planilhas_list:
             num_planilha = (p["numero_conteiner"] or "").strip().upper()
             dt_carreta = p["entrada_carreta"]
-            if not num_planilha or not dt_carreta:
-                continue
-                
-            encontrado = any(
-                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
-                r["dataHoraOcorrencia"] and
-                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
-                for r in resultados
-            )
+            dt_carreta_parsed = _parse_dt(dt_carreta)
             
-            if not encontrado:
+            match_api = None
+            if num_planilha and dt_carreta_parsed:
+                for a in acessos_api:
+                    num_api = (a["numeroConteiner"] or "").strip().upper()
+                    api_dt_parsed = _parse_dt(a["dataHoraOcorrencia"])
+                    
+                    if num_api == num_planilha and api_dt_parsed:
+                        # 43200s = 12h de tolerância
+                        if abs((api_dt_parsed - dt_carreta_parsed).total_seconds()) <= 43200:
+                            match_api = a
+                            a["utilizado"] = True
+                            break
+            
+            if match_api:
+                item = match_api.copy()
+                del item["utilizado"]
+                item["planilha_info"] = p
+                if not item["cpfMotorista"]: item["cpfMotorista"] = p.get("p_cpf_motorista")
+                if not item["nomeMotorista"]: item["nomeMotorista"] = p.get("p_nome_motorista")
+                if item["vazioConteiner"] is None:
+                    item["vazioConteiner"] = True if p.get("ch_vz") == "VZ" else (False if p.get("ch_vz") == "CH" else None)
+                resultados.append(item)
+            else:
+                vazio_val = True if p.get("ch_vz") == "VZ" else (False if p.get("ch_vz") == "CH" else None)
                 resultados.append({
-                    "id_acesso": None,
-                    "numeroConteiner": num_planilha,
-                    "codigoRecinto": recinto_destino,
-                    "dataHoraOcorrencia": dt_carreta,
-                    "cnpjTransportador": None,
-                    "placa": None,
-                    "cpfMotorista": p["cpf_motorista"],
-                    "nomeMotorista": p["nome_motorista"],
-                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
-                    "s_codigoRecinto": None,
-                    "s_dataHoraOcorrencia": None,
-                    "s_cnpjTransportador": None,
-                    "s_placa": None,
-                    "s_cpfMotorista": None,
-                    "s_nomeMotorista": None,
-                    "s_vazioConteiner": None,
-                    "transit_time_horas": None
+                    "id_acesso": None, "numeroConteiner": num_planilha,
+                    "codigoRecinto": recinto_destino, "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None, "placa": None,
+                    "cpfMotorista": p.get("p_cpf_motorista"), "nomeMotorista": p.get("p_nome_motorista"),
+                    "vazioConteiner": vazio_val, "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None, "s_cnpjTransportador": None,
+                    "s_placa": None, "s_cpfMotorista": None, "s_nomeMotorista": None,
+                    "s_vazioConteiner": None, "transit_time_horas": None, "planilha_info": p
                 })
-        
-        resultados.sort(key=lambda x: (x["numeroConteiner"] or "", x["dataHoraOcorrencia"] or datetime.min))
-        # --- FIM DA INSERÇÃO ---
 
-        # Pós-processamento comum (DUE, risco, IQR)
+        # 4. As Sobras
+        for a in acessos_api:
+            if not a["utilizado"]:
+                item = a.copy()
+                del item["utilizado"]
+                item["planilha_info"] = None
+                resultados.append(item)
+
         return _posprocessar_transit_rows(session, resultados)
 
+    def consultar_transit_time_por_container(
+         session,
+         numero_conteiner: str,
+         inicio: datetime,
+         fim: datetime,
+         origens_filtrar: Optional[List[str]] = None,
+         destinos_validos: Optional[List[str]] = None
+     ):
+        """
+        Busca focada num container específico. Prioriza a planilha e mergeia com a API.
+        Busca desacoplada.
+        """
+        destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
+        origens_filtrar = _sanitize_origens(origens_filtrar or [])
+        numero_norm = (numero_conteiner or "").strip().upper()
+
+        # 1. Planilha
+        sql_planilhas = text("""
+            SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
+                   p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
+                   p.viagem_descarga, p.navio_descarga, p.porto_descarga,
+                   p.local_imagem, p.alerta_if, p.status_conteiner,
+                   p.nome_motorista AS p_nome_motorista, p.cpf_motorista AS p_cpf_motorista,
+                   p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
+                   p.nome_operador_scanner, p.transportadora, p.numero_lote, 
+                   p.razao_social_exportador_importador, p.cnpj_exportador_importador,
+                   p.ch_vz,
+                   r.nota_final AS risco_nota_final,
+                   r.memoria_calculo AS risco_memoria_calculo
+            FROM narcos_planilhas_importadas p
+            LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
+            WHERE p.numero_conteiner = :numero 
+              AND p.entrada_carreta >= :inicio AND p.entrada_carreta < :fim
+        """)
+        rows_planilha = session.execute(sql_planilhas, {"numero": numero_norm, "inicio": inicio, "fim": fim}).mappings().all()
+        
+        planilhas_list = []
+        for rp in rows_planilha:
+            rp_dict = dict(rp)
+            memoria_str = rp_dict.get("risco_memoria_calculo")
+            if memoria_str:
+                try: rp_dict["risco_memoria_calculo"] = json.loads(memoria_str)
+                except json.JSONDecodeError: rp_dict["risco_memoria_calculo"] = None
+            planilhas_list.append(rp_dict)
+
+        # 2. API: Buscas Desacopladas
+        inicio_api = inicio - timedelta(hours=24)
+        fim_api = fim + timedelta(hours=24)
+        inicio_saidas = inicio_api - timedelta(days=15)
+
+        sql_e = text("""
+             SELECT id AS id_acesso, numeroConteiner, codigoRecinto, dataHoraOcorrencia,
+                    cnpjTransportador, placa, cpfMotorista, nomeMotorista, vazioConteiner
+             FROM apirecintos_acessosveiculo
+             WHERE direcao = 'E'
+               AND numeroConteiner = :numero
+               AND codigoRecinto IN :destinos
+               AND dataHoraOcorrencia >= :inicio_api AND dataHoraOcorrencia < :fim_api
+             ORDER BY dataHoraOcorrencia ASC
+         """).bindparams(bindparam("destinos", expanding=True))
+        rows_e = session.execute(sql_e, {"numero": numero_norm, "destinos": tuple(destinos_validos), "inicio_api": inicio_api, "fim_api": fim_api}).mappings().all()
+
+        acessos_api = []
+        if rows_e:
+            sql_s = text("""
+                 SELECT id, numeroConteiner, codigoRecinto, dataHoraOcorrencia,
+                        cnpjTransportador, placa, cpfMotorista, nomeMotorista, vazioConteiner
+                 FROM apirecintos_acessosveiculo
+                 WHERE direcao = 'S'
+                   AND numeroConteiner = :numero
+                   AND dataHoraOcorrencia >= :inicio_saidas AND dataHoraOcorrencia <= :fim_api
+             """)
+            rows_s = session.execute(sql_s, {"numero": numero_norm, "inicio_saidas": inicio_saidas, "fim_api": fim_api}).mappings().all()
+
+            saidas_dict = {}
+            for s in rows_s:
+                num = s["numeroConteiner"].upper()
+                if num not in saidas_dict: saidas_dict[num] = []
+                saidas_dict[num].append(s)
+
+            is_filtered_user = bool(origens_filtrar and len(origens_filtrar) < len(ORIGENS_TODAS))
+
+            for e in rows_e:
+                num_e = e["numeroConteiner"].upper()
+                dt_e = e["dataHoraOcorrencia"]
+                
+                s_match = None
+                if num_e in saidas_dict:
+                    cand_s = [s for s in saidas_dict[num_e] if s["dataHoraOcorrencia"] <= dt_e and s["codigoRecinto"] != e["codigoRecinto"]]
+                    if cand_s:
+                        cand_s.sort(key=lambda x: x["dataHoraOcorrencia"], reverse=True)
+                        s_match = cand_s[0]
+
+                s_rec = str(s_match["codigoRecinto"]) if s_match else None
+                if is_filtered_user and s_rec is not None and s_rec not in origens_filtrar:
+                    continue
+
+                tt_horas = None
+                if s_match:
+                    diff = (dt_e - s_match["dataHoraOcorrencia"]).total_seconds()
+                    tt_horas = diff / 3600.0
+
+                acessos_api.append({
+                    "id_acesso": e["id_acesso"],
+                    "numeroConteiner": e["numeroConteiner"],
+                    "codigoRecinto": e["codigoRecinto"],
+                    "dataHoraOcorrencia": e["dataHoraOcorrencia"],
+                    "cnpjTransportador": e["cnpjTransportador"],
+                    "placa": e["placa"],
+                    "cpfMotorista": e["cpfMotorista"],
+                    "nomeMotorista": e["nomeMotorista"],
+                    "vazioConteiner": e["vazioConteiner"],
+                    "s_codigoRecinto": s_match["codigoRecinto"] if s_match else None,
+                    "s_dataHoraOcorrencia": s_match["dataHoraOcorrencia"] if s_match else None,
+                    "s_cnpjTransportador": s_match["cnpjTransportador"] if s_match else None,
+                    "s_placa": s_match["placa"] if s_match else None,
+                    "s_cpfMotorista": s_match["cpfMotorista"] if s_match else None,
+                    "s_nomeMotorista": s_match["nomeMotorista"] if s_match else None,
+                    "s_vazioConteiner": s_match["vazioConteiner"] if s_match else None,
+                    "transit_time_horas": tt_horas,
+                    "utilizado": False
+                })
+
+        # 3. Merge e 4. Sobras
+        def _parse_dt(val):
+            if isinstance(val, str):
+                try: return datetime.strptime(val[:19], "%Y-%m-%d %H:%M:%S")
+                except: return None
+            return val
+
+        resultados = []
+        for p in planilhas_list:
+            num_planilha = (p["numero_conteiner"] or "").strip().upper()
+            dt_carreta = p["entrada_carreta"]
+            dt_carreta_parsed = _parse_dt(dt_carreta)
+            
+            match_api = None
+            if num_planilha and dt_carreta_parsed:
+                for a in acessos_api:
+                    num_api = (a["numeroConteiner"] or "").strip().upper()
+                    api_dt_parsed = _parse_dt(a["dataHoraOcorrencia"])
+                    
+                    if num_api == num_planilha and api_dt_parsed:
+                        if abs((api_dt_parsed - dt_carreta_parsed).total_seconds()) <= 43200:
+                            match_api = a
+                            a["utilizado"] = True
+                            break
+            
+            if match_api:
+                item = match_api.copy()
+                del item["utilizado"]
+                item["planilha_info"] = p
+                if not item.get("cpfMotorista"): item["cpfMotorista"] = p.get("p_cpf_motorista")
+                if not item.get("nomeMotorista"): item["nomeMotorista"] = p.get("p_nome_motorista")
+                if item.get("vazioConteiner") is None:
+                    item["vazioConteiner"] = True if p.get("ch_vz") == "VZ" else (False if p.get("ch_vz") == "CH" else None)
+                resultados.append(item)
+            else:
+                vazio_val = True if p.get("ch_vz") == "VZ" else (False if p.get("ch_vz") == "CH" else None)
+                resultados.append({
+                    "id_acesso": None, "numeroConteiner": num_planilha,
+                    "codigoRecinto": destinos_validos[0] if destinos_validos else None,
+                    "dataHoraOcorrencia": dt_carreta,
+                    "cnpjTransportador": None, "placa": None,
+                    "cpfMotorista": p.get("p_cpf_motorista"), "nomeMotorista": p.get("p_nome_motorista"),
+                    "vazioConteiner": vazio_val, "s_codigoRecinto": None,
+                    "s_dataHoraOcorrencia": None, "s_cnpjTransportador": None,
+                    "s_placa": None, "s_cpfMotorista": None, "s_nomeMotorista": None,
+                    "s_vazioConteiner": None, "transit_time_horas": None, "planilha_info": p
+                })
+
+        for a in acessos_api:
+            if not a["utilizado"]:
+                item = a.copy()
+                del item["utilizado"]
+                item["planilha_info"] = None
+                resultados.append(item)
+
+        return _posprocessar_transit_rows(session, resultados)
+
+
+
+
+
+
     def _posprocessar_transit_rows(session, resultados: List[Dict]):
-        """Enriquece linhas de trânsito (DUE, risco CPF) e calcula IQR/outliers.
-        Retorna (resultados_enriquecidos, stats)."""
-        resultados = deepcopy(resultados)  # não mutar quem chamou
+        """Enriquece as linhas com DUE, risco de CPF e Marcações.
+        Aplica a ordenação final de negócio (Planilhas com risco > Planilhas > Sobras API)."""
+        resultados = deepcopy(resultados) 
+        
         # 1) DUE/Exportador/NCM — âncora = ENTRADA
         anchors = []
         for it in resultados:
@@ -469,6 +663,7 @@ def configure(app):
             if num and dt:
                 anchors.append((num, dt))
         mapa_due = _enriquecer_due_por_container(session, anchors, janela_dias=15)
+        
         for item in resultados:
             k = ((item.get("numeroConteiner") or "").strip().upper(), item.get("dataHoraOcorrencia"))
             info = mapa_due.get(k)
@@ -477,6 +672,11 @@ def configure(app):
             item["nfe_ncm"] = info["nfe_ncm"] if info else None
             item["due_itens"] = info.get("due_itens") if info else []
             item["exportador_nome"] = info.get("exportador_nome") if info else None
+            
+            # Mantemos a flag is_outlier como False apenas para não quebrar 
+            # templates jinja ou exportação CSV que a utilizem.
+            item["is_outlier"] = False
+            
         # 2) Risco por CPF (apenas ENTRADA)
         cpfs_entrada = [it.get("cpfMotorista") for it in resultados if it.get("cpfMotorista")]
         try:
@@ -511,261 +711,28 @@ def configure(app):
         for it in resultados:
             it["marcacao"] = mapa_marcacoes.get(it.get("id_acesso"))
 
-        # 4) IQR/outliers
-
-        vals = sorted([
-            float(x["transit_time_horas"]) for x in resultados
-            if x["transit_time_horas"] is not None
-        ])
-        q1, q3 = _quartis(vals)
-        if q1 is None or q3 is None:
-            iqr = 0.0
-            limite_outlier_mild = None
-            limite_outlier_strict = None
-        else:
-            iqr = float(q3 - q1)
-            limite_outlier_mild = float(q3 + 1.5 * iqr)
-            limite_outlier_strict = float(q3 + 15.0 * iqr)
-        for item in resultados:
-            v = item["transit_time_horas"]
-            if v is None or iqr <= 0 or limite_outlier_mild is None or limite_outlier_strict is None:
-                item["is_outlier"] = False
-            else:
-                vv = float(v)
-                item["is_outlier"] = (vv >= limite_outlier_mild) and (vv <= limite_outlier_strict)
-        stats = {
-            "q1": q1, "q3": q3, "iqr": iqr,
-            "limite_outlier_mild": limite_outlier_mild,
-            "limite_outlier_strict": limite_outlier_strict
-        }
-
-        # 5) Cruzamento com planilhas importadas (navio_embarque) com tolerância de 10 min
-        numeros_containers = list({(it.get("numeroConteiner") or "").strip().upper() for it in resultados if it.get("numeroConteiner")})
-        mapa_planilhas = {}
-        if numeros_containers:
-            try:
-                # 1. Atualize a query SQL para buscar a memoria_calculo
-                sql_planilha = text("""
-                    SELECT p.numero_conteiner, p.entrada_carreta, p.navio_embarque,
-                           p.tipo_conteiner, p.iso_code, p.categoria, p.viagem_embarque,
-                           p.viagem_descarga, p.navio_descarga, p.porto_descarga,
-                           p.local_imagem, p.alerta_if, p.status_conteiner,
-                           p.nome_motorista, p.cpf_motorista,
-                           p.porto_destino_final, p.descricao_ncm, p.cpf_operador_scanner,
-                           p.nome_operador_scanner, p.transportadora, p.numero_lote, p.razao_social_exportador_importador,
-                           p.cnpj_exportador_importador,
-                           r.nota_final AS risco_nota_final,
-                           r.memoria_calculo AS risco_memoria_calculo
-                    FROM narcos_planilhas_importadas p
-                    LEFT JOIN narcos_risco_calculado r ON p.numero_conteiner = r.numero_conteiner
-                    WHERE p.numero_conteiner IN :numeros
-                """).bindparams(bindparam("numeros", expanding=True))
-                
-                rows_planilha = session.execute(sql_planilha, {"numeros": tuple(numeros_containers)}).mappings().all()
-                for rp in rows_planilha:
-                    # 2. Converta o RowMapping para dict para que possamos modificá-lo
-                    rp_dict = dict(rp) 
-                    
-                    # 3. Faça o parse do JSON de memória de cálculo
-                    memoria_str = rp_dict.get("risco_memoria_calculo")
-                    if memoria_str:
-                        try:
-                            rp_dict["risco_memoria_calculo"] = json.loads(memoria_str)
-                        except json.JSONDecodeError:
-                            rp_dict["risco_memoria_calculo"] = None
-                    
-                    mapa_planilhas.setdefault(rp_dict["numero_conteiner"], []).append(rp_dict)
-            except Exception as e:
-                app.logger.exception("[planilhas] erro ao consultar narcos_planilhas_importadas")
-
-        for item in resultados:
-            num = (item.get("numeroConteiner") or "").strip().upper()
-            dt_ocorrencia = item.get("dataHoraOcorrencia")
-            item["planilha_info"] = None
-            if num in mapa_planilhas and dt_ocorrencia:
-                for rp in mapa_planilhas[num]:
-                    dt_carreta = rp["entrada_carreta"]
-                    if dt_carreta and abs((dt_ocorrencia - dt_carreta).total_seconds()) <= 600:
-                        item["planilha_info"] = rp
-                        break
-
         # Ordenação final: Maior risco primeiro, itens sem risco no final. 
         # Empate resolvido por ordem cronológica de entrada.
         def sort_key(item):
             planilha = item.get("planilha_info") or {}
             risco = planilha.get("risco_nota_final")
             
-            # has_no_risk = 0 (tem risco, sobe na lista) ou 1 (não tem, desce)
             has_no_risk = 1 if risco is None else 0
-            # inverte o valor para que ordenação crescente coloque os maiores no topo
             inv_risk = -float(risco) if risco is not None else 0.0
             dt = item.get("dataHoraOcorrencia") or datetime.min
             return (has_no_risk, inv_risk, dt)
             
         resultados.sort(key=sort_key)
 
+        # Retorna mock dos stats para manter estabilidade na resposta (rotas que chamam a tuple stats)
+        stats = {
+            "q1": None, "q3": None, "iqr": None,
+            "limite_outlier_mild": None,
+            "limite_outlier_strict": None
+        }
+
         return resultados, stats
 
-    def consultar_transit_time_por_container(
-         session,
-         numero_conteiner: str,
-         inicio: datetime,
-         fim: datetime,
-         origens_filtrar: Optional[List[str]] = None,
-         destinos_validos: Optional[List[str]] = None
-     ):
-        """
-        Lista TODAS as ENTRADAS (E) do contêiner nos terminais de destino (default 4)
-        no intervalo [inicio, fim), emparelhando com a última SAÍDA (S) anterior,
-        e aplicando o mesmo pós-processamento da tela de transit time.
-        """
-        destinos_validos = destinos_validos or ["8931356", "8931359", "8931404", "8931318"]
-        origens_filtrar = _sanitize_origens(origens_filtrar or [])
-
-        sub_filtro_origem = (" AND s2.codigoRecinto IN :origens" if origens_filtrar else "")
-        
-        where_filtro_origem = (" AND (s.codigoRecinto IN :origens OR s.codigoRecinto IS NULL)" if origens_filtrar else "")
-
-
-        sql_txt = f"""
-             SELECT
-                 e.id AS id_acesso,
-                 e.numeroConteiner,
-                 e.codigoRecinto,
-                 e.dataHoraOcorrencia,
-                 e.cnpjTransportador,
-                 e.placa,
-                 e.cpfMotorista,
-                 e.nomeMotorista,
-                 e.vazioConteiner,
-                 s.codigoRecinto       AS s_codigoRecinto,
-                 s.dataHoraOcorrencia  AS s_dataHoraOcorrencia,
-                 s.cnpjTransportador   AS s_cnpjTransportador,
-                 s.placa               AS s_placa,
-                 s.cpfMotorista        AS s_cpfMotorista,
-                 s.nomeMotorista       AS s_nomeMotorista,
-                 s.vazioConteiner      AS s_vazioConteiner,
-                 TIMESTAMPDIFF(SECOND, s.dataHoraOcorrencia, e.dataHoraOcorrencia) / 3600.0 AS transit_time_horas
-             FROM apirecintos_acessosveiculo e
-             LEFT JOIN apirecintos_acessosveiculo s
-               ON s.id = (
-                  SELECT s2.id
-                  FROM apirecintos_acessosveiculo s2
-                  WHERE s2.numeroConteiner = e.numeroConteiner
-                    AND s2.direcao = 'S'
-                    AND s2.dataHoraOcorrencia < e.dataHoraOcorrencia
-                    AND (
-                         s2.codigoRecinto LIKE '89327%'
-                      OR s2.codigoRecinto IN ('8931309', '8933204', '8933203', '8933001', '8931305', '8931304','8935701', '8931342', '8935702')
-                    )
-                    AND s2.codigoRecinto <> e.codigoRecinto
-                    {sub_filtro_origem}
-                  ORDER BY s2.dataHoraOcorrencia DESC, s2.id DESC
-                  LIMIT 1
-               )
-             WHERE
-                 e.direcao = 'E'
-                 AND e.numeroConteiner = :numero
-                 AND e.codigoRecinto IN :destinos
-                 AND (
-                   e.tipoDeclaracao IS NULL OR e.tipoDeclaracao = '' OR e.tipoDeclaracao NOT IN ('DI','DUI','DTA')
-                 )
-                 AND e.dataHoraOcorrencia >= :inicio
-                 AND e.dataHoraOcorrencia < :fim
---                AND NOT EXISTS (
---                  SELECT 1
---                  FROM apirecintos_acessosveiculo s3
---                  WHERE s3.numeroConteiner    = e.numeroConteiner
---                    AND s3.codigoRecinto      = e.codigoRecinto
---                    AND s3.direcao            = 'S'
---                    AND s3.dataHoraOcorrencia > e.dataHoraOcorrencia
---                )
-                 {where_filtro_origem}
-             ORDER BY e.dataHoraOcorrencia ASC
-         """
-        params = {
-             "numero": (numero_conteiner or "").strip().upper(),
-             "destinos": tuple(destinos_validos),
-             "inicio": inicio,
-             "fim": fim
-        }
-        bind = text(sql_txt).bindparams(bindparam("destinos", expanding=True))
-        if origens_filtrar:
-            bind = bind.bindparams(bindparam("origens", expanding=True))
-            params["origens"] = tuple(origens_filtrar)
-        rows = session.execute(bind, params).fetchall()
-        resultados = [{
-            "id_acesso": r.id_acesso,
-            "numeroConteiner": r.numeroConteiner,
-            "codigoRecinto": r.codigoRecinto,
-            "dataHoraOcorrencia": r.dataHoraOcorrencia,
-            "cnpjTransportador": r.cnpjTransportador,
-            "placa": r.placa,
-            "cpfMotorista": r.cpfMotorista,
-            "nomeMotorista": r.nomeMotorista,
-            "vazioConteiner": r.vazioConteiner,
-            "s_codigoRecinto": r.s_codigoRecinto,
-            "s_dataHoraOcorrencia": r.s_dataHoraOcorrencia,
-            "s_cnpjTransportador": r.s_cnpjTransportador,
-            "s_placa": r.s_placa,
-            "s_cpfMotorista": r.s_cpfMotorista,
-            "s_nomeMotorista": r.s_nomeMotorista,
-            "s_vazioConteiner": r.s_vazioConteiner,
-            "transit_time_horas": r.transit_time_horas,
-        } for r in rows]
-
-        # --- INÍCIO DA INSERÇÃO PARA INCLUIR PLANILHAS ÓRFÃS (POR CONTÊINER) ---
-        sql_planilha_extra = text("""
-            SELECT p.numero_conteiner, p.entrada_carreta, p.cpf_motorista, p.nome_motorista, p.ch_vz
-            FROM narcos_planilhas_importadas p
-            WHERE p.numero_conteiner = :numero
-              AND p.entrada_carreta >= :inicio 
-              AND p.entrada_carreta < :fim
-        """)
-        planilhas_no_periodo = session.execute(sql_planilha_extra, {
-            "numero": (numero_conteiner or "").strip().upper(),
-            "inicio": inicio, 
-            "fim": fim
-        }).mappings().all()
-
-        for p in planilhas_no_periodo:
-            num_planilha = (p["numero_conteiner"] or "").strip().upper()
-            dt_carreta = p["entrada_carreta"]
-            if not num_planilha or not dt_carreta:
-                continue
-                
-            encontrado = any(
-                (r["numeroConteiner"] or "").strip().upper() == num_planilha and
-                r["dataHoraOcorrencia"] and
-                abs((r["dataHoraOcorrencia"] - dt_carreta).total_seconds()) <= 600
-                for r in resultados
-            )
-            
-            if not encontrado:
-                resultados.append({
-                    "id_acesso": None,
-                    "numeroConteiner": num_planilha,
-                    "codigoRecinto": destinos_validos[0] if destinos_validos else None,
-                    "dataHoraOcorrencia": dt_carreta,
-                    "cnpjTransportador": None,
-                    "placa": None,
-                    "cpfMotorista": p["cpf_motorista"],
-                    "nomeMotorista": p["nome_motorista"],
-                    "vazioConteiner": True if p["ch_vz"] == "VZ" else (False if p["ch_vz"] == "CH" else None),
-                    "s_codigoRecinto": None,
-                    "s_dataHoraOcorrencia": None,
-                    "s_cnpjTransportador": None,
-                    "s_placa": None,
-                    "s_cpfMotorista": None,
-                    "s_nomeMotorista": None,
-                    "s_vazioConteiner": None,
-                    "transit_time_horas": None
-                })
-        
-        resultados.sort(key=lambda x: x["dataHoraOcorrencia"] or datetime.min)
-        # --- FIM DA INSERÇÃO ---
-
-        return _posprocessar_transit_rows(session, resultados)
 
     @app.route('/exportacao/', methods=['GET'])
     def exportacao_app_index():
@@ -773,97 +740,6 @@ def configure(app):
             'exportacao_index.html',
             csrf_token=generate_csrf
         )
-
-
-# TRECHO COMENTADO A SEGUIR NÃO É MAIS UTILIZADO NO PROJETO
-#    def get_imagens_container_data(
-#        mongodb,
-#        numero,
-#        inicio_scan,
-#        fim_scan,
-#        vazio=False
-#    ) -> list:
-#        query = {
-#            'metadata.contentType': 'image/jpeg',
-#            'metadata.dataescaneamento': {'$gte': inicio_scan, '$lte': fim_scan}
-#        }
-#
-#        # Adiciona o filtro por número apenas se fornecido
-#        if numero:
-#            query['metadata.numeroinformado'] = numero
-#
-#        projection = {
-#            'metadata.numeroinformado': 1,
-#            'metadata.dataescaneamento': 1,
-#            'metadata.predictions.vazio': 1
-#        }
-#
-#        cursor = (
-#            mongodb['fs.files']
-#            .find(query, projection)
-#            .sort('metadata.dataescaneamento', -1)
-#            .limit(10)
-#        )
-#
-#        return list(cursor)
-#
-#    def get_imagens_container_sem_data(mongodb, numero, vazio=False) -> list:
-#        query = {
-#            'metadata.contentType': 'image/jpeg',
-#        }
-#
-#        # Adiciona o filtro por número apenas se fornecido
-#        if numero:
-#            query['metadata.numeroinformado'] = numero
-#
-#        projection = {
-#            'metadata.numeroinformado': 1,
-#            'metadata.dataescaneamento': 1,
-#            'metadata.predictions.vazio': 1
-#        }
-#
-#        cursor = (
-#            mongodb['fs.files']
-#            .find(query, projection)
-#            .sort('metadata.dataescaneamento', -1)
-#            .limit(10)
-#        )
-#
-#        return list(cursor)
-#
-#    @app.route('/exportacao/stats', methods=['POST'])
-#    def exportacao_stats():
-#
-#        mongodb = app.config['mongodb']
-#        session = app.config['db_session']
-#
-#        numero = request.form.get('numero')
-#        start = request.form.get('start')
-#        end = request.form.get('end')
-#
-#        if not start and not end and numero:
-#            arquivos = get_imagens_container_sem_data(mongodb, numero)
-#            return render_template(
-#                'exportacao.html',
-#                arquivos=arquivos,
-#                csrf_token=generate_csrf
-#            )
-#
-#        inicio_scan = datetime.strptime(start, '%Y-%m-%d')
-#        fim_scan = datetime.strptime(end, '%Y-%m-%d')
-#
-#        arquivos = get_imagens_container_data(
-#            mongodb,
-#            numero,
-#            inicio_scan,
-#            fim_scan,
-#        )
-#
-#        return render_template(
-#            'exportacao.html',
-#            arquivos=arquivos,
-#            csrf_token=generate_csrf
-#        )
 
 
     # ---------------------------------------------------------
@@ -1430,211 +1306,6 @@ def configure(app):
             session.rollback()
             app.logger.exception("[toggle_marcacao] Erro ao alternar marcação")
             return jsonify({"error": "Erro interno do servidor"}), 500
-
-    @app.route('/exportacao/importar_planilha_narcos', methods=['POST'])
-    def importar_planilha_narcos():
-
-        file = request.files.get('file')
-        if not file or file.filename == '':
-            return jsonify({"error": "Nenhum arquivo enviado"}), 400
-
-        try:
-            import pandas as pd
-            import numpy as np
-            import unicodedata
-        except ImportError:
-            return jsonify({"error": "Bibliotecas ausentes. Instale no ambiente: pip install pandas openpyxl"}), 500
-
-        try:
-            filename = file.filename
-            if filename.endswith('.csv'):
-                # sep=None com engine='python' faz o pandas descobrir automaticamente se é vírgula ou ponto-e-vírgula
-                df = pd.read_csv(file, sep=None, engine='python')
-            elif filename.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file)
-            else:
-                return jsonify({"error": "Formato inválido. Use arquivo CSV ou Excel."}), 400
-
-            # Limpeza inicial
-            df = df.replace({np.nan: None})
-
-            # Função para normalizar os cabeçalhos (tira acentos e coloca em minúsculo)
-            def normalize_col(col):
-                if not isinstance(col, str): return str(col)
-                nfkd = unicodedata.normalize('NFKD', col)
-                clean_str = u"".join([c for c in nfkd if not unicodedata.combining(c)]).lower()
-                # .split() seguido de " ".join() elimina espaços duplos, trailing e tabs
-                return " ".join(clean_str.split())
-
-            df.columns = [normalize_col(c) for c in df.columns]
-
-            # Mapeamento: vários formatos de nomes de planilhas apontando para a mesma coluna no BD
-            col_map = {
-                'conteiner': 'numero_conteiner',
-                'tipo conteiner': 'tipo_conteiner',
-                'tipo': 'tipo_conteiner',
-                'iso code': 'iso_code',
-                'iso': 'iso_code',
-                'categoria': 'categoria',
-                'entrada carreta': 'entrada_carreta',
-                'viagem embarque': 'viagem_embarque',
-                'navio embarque': 'navio_embarque',
-                'viagem descarga': 'viagem_descarga',
-                'navio descarga': 'navio_descarga',
-                'local imagem': 'local_imagem',
-                'local da imagem': 'local_imagem',
-                'alerta / if': 'alerta_if',
-                'alerta if': 'alerta_if',
-                'erros na imagem': 'erros_imagem',
-                'erros de imagem': 'erros_imagem',
-                'ch/vz': 'ch_vz',
-                'status': 'status_conteiner',
-                'porto descarga': 'porto_descarga',
-                'porto de descarga': 'porto_descarga',
-                'porto destino final': 'porto_destino_final',
-                'porto de destino final': 'porto_destino_final',
-                'descricao ncm': 'descricao_ncm',
-                'cpf motorista': 'cpf_motorista',
-                'nome motorista': 'nome_motorista',
-                'cpf operador scanner': 'cpf_operador_scanner',
-                'cpf operador do scanner': 'cpf_operador_scanner',
-                'nome operador scanner': 'nome_operador_scanner',
-                'nome do operador do scanner': 'nome_operador_scanner',
-                'cnpj transportadora': 'cnpj_transportadora',
-                'transportadora': 'transportadora',
-                'numero de lote': 'numero_lote',
-                'lote': 'numero_lote',
-                'razao social exportador / importador': 'razao_social_exportador_importador',
-                'razao social do exportador/importador': 'razao_social_exportador_importador',
-                'cnpj exportador / importador': 'cnpj_exportador_importador',
-                'cnpj do exportador/importador': 'cnpj_exportador_importador',
-                'data scanner': 'data_scanner',
-                'data do scanner': 'data_scanner'
-            }
-
-            # Identifica quais colunas úteis realmente vieram neste arquivo para economizar loops
-            colunas_presentes = [c for c in col_map.keys() if c in df.columns]
-
-            # Validação de colunas obrigatórias
-            colunas_obrigatorias = {'numero_conteiner', 'entrada_carreta'}
-            colunas_mapeadas_nesta_planilha = {col_map[c] for c in colunas_presentes}
-            
-            faltando = colunas_obrigatorias - colunas_mapeadas_nesta_planilha
-            if faltando:
-                return jsonify({"error": f"Planilha inválida. Faltam as colunas obrigatórias: {', '.join(faltando)}"}), 400
-
-            records = []
-            usuario_identificador = getattr(current_user, 'id', None)
-            linhas_sem_conteiner = 0
-            
-            for _, row in df.iterrows():
-                row_dict = {"nome_arquivo_origem": filename, "usuario_id": usuario_identificador}
-                
-                # Inicializa com None para garantir que a inserção SQL receba os parâmetros certos
-                for db_col in set(col_map.values()):
-                    row_dict[db_col] = None
-
-                # Preenche com os dados encontrados
-                for plan_col in colunas_presentes:
-                    val = row[plan_col]
-                    if pd.notnull(val): # Só sobrescreve se tiver algum dado válido
-                        db_col = col_map[plan_col]
-                        row_dict[db_col] = val
-                
-                if not row_dict.get('numero_conteiner'):
-                    linhas_sem_conteiner += 1
-                    continue # Ignora linhas totalmente vazias ou sem a chave de busca
-
-                row_dict['numero_conteiner'] = str(row_dict['numero_conteiner']).strip().upper()
-
-                # Trata strings numéricas que o pandas as vezes lê como float (ex: "123.0" -> "123")
-                for col in ['cpf_motorista', 'cpf_operador_scanner', 'cnpj_transportadora', 'cnpj_exportador_importador', 'numero_lote']:
-                    if row_dict.get(col):
-                        val_str = str(row_dict[col]).strip()
-                        if val_str.endswith('.0'):
-                            val_str = val_str[:-2]
-                        row_dict[col] = val_str
-
-                # Converte datas para string no formato correto do MariaDB
-                for date_field in ['entrada_carreta', 'data_scanner']:
-                    if row_dict.get(date_field):
-                        try:
-                            dt_val = pd.to_datetime(row_dict[date_field])
-                            if pd.notnull(dt_val):
-                                row_dict[date_field] = dt_val.strftime("%Y-%m-%d %H:%M:%S")
-                            else:
-                                row_dict[date_field] = None
-                        except Exception:
-                            row_dict[date_field] = None
-
-                records.append(row_dict)
-
-            if not records:
-                return jsonify({"error": "Nenhum dado processável encontrado na planilha."}), 400
-
-            session = app.config['db_session']
-            
-            # INSERT IGNORE cuidará de ignorar graciosamente registros duplicados
-            sql_insert = text("""
-                INSERT IGNORE INTO narcos_planilhas_importadas (
-                    nome_arquivo_origem, usuario_id,
-                    numero_conteiner, tipo_conteiner, iso_code, categoria,
-                    entrada_carreta, viagem_embarque, navio_embarque, viagem_descarga, navio_descarga,
-                    local_imagem, alerta_if, erros_imagem, ch_vz, status_conteiner,
-                    porto_descarga, porto_destino_final, descricao_ncm,
-                    cpf_motorista, nome_motorista, cpf_operador_scanner, nome_operador_scanner,
-                    cnpj_transportadora, transportadora, numero_lote,
-                    razao_social_exportador_importador, cnpj_exportador_importador, data_scanner
-                ) VALUES (
-                    :nome_arquivo_origem, :usuario_id,
-                    :numero_conteiner, :tipo_conteiner, :iso_code, :categoria,
-                    :entrada_carreta, :viagem_embarque, :navio_embarque, :viagem_descarga, :navio_descarga,
-                    :local_imagem, :alerta_if, :erros_imagem, :ch_vz, :status_conteiner,
-                    :porto_descarga, :porto_destino_final, :descricao_ncm,
-                    :cpf_motorista, :nome_motorista, :cpf_operador_scanner, :nome_operador_scanner,
-                    :cnpj_transportadora, :transportadora, :numero_lote,
-                    :razao_social_exportador_importador, :cnpj_exportador_importador, :data_scanner
-                )
-            """)
-            
-            try:
-                result = session.execute(sql_insert, records)
-                session.commit()
-                
-                # O rowcount num INSERT IGNORE retorna exatamente as linhas que NÃO foram puladas
-                linhas_afetadas = result.rowcount
-
-                # -----------------------------------------------------------------
-                # INTEGRAÇÃO DO MOTOR DE RISCO
-                # Calcula e salva as notas de risco para o lote recém-importado
-                # -----------------------------------------------------------------
-                try:
-                    notas_calculadas = processar_lote_risco(session, records)
-                    app.logger.info(f"[importar_planilha_narcos] Risco calculado para {notas_calculadas} contêineres.")
-                except Exception as e:
-                    app.logger.exception("[importar_planilha_narcos] Erro ao calcular risco do lote.")
-                    # O pass garante que não vamos quebrar a resposta de sucesso da importação se o risco falhar
-
-                linhas_duplicadas = len(records) - linhas_afetadas
-
-                return jsonify({
-                    "status": "success",
-                    "estatisticas": {
-                        "total_planilha": len(df),
-                        "inseridas_sucesso": linhas_afetadas,
-                        "ignoradas_sem_conteiner": linhas_sem_conteiner,
-                        "ignoradas_duplicadas": linhas_duplicadas
-                    }
-                })
-
-            except Exception as e:
-                session.rollback()
-                app.logger.exception("[importar_planilha_narcos] Erro banco de dados")
-                return jsonify({"error": "Erro ao salvar os dados no banco."}), 500
-
-        except Exception as e:
-            app.logger.exception("[importar_planilha_narcos] Erro interno")
-            return jsonify({"error": "Erro interno ao processar a planilha."}), 500
 
 
     # ======================
@@ -2393,26 +2064,3 @@ def configure(app):
             return jsonify({"error": "Erro ao salvar anotação"}), 500
 
         return jsonify({"ok": True})
-
-    @app.route('/exportacao/importar', methods=['GET'])
-    def importar_planilha_view():
-
-        session = app.config['db_session']
-        try:
-            sql = text("""
-                SELECT nome_arquivo_origem, MAX(data_importacao) AS data_importacao, COUNT(id) AS total_linhas
-                FROM narcos_planilhas_importadas
-                GROUP BY nome_arquivo_origem
-                ORDER BY data_importacao DESC
-                LIMIT 10
-            """)
-            ultimas_planilhas = session.execute(sql).mappings().all()
-        except Exception as e:
-            app.logger.exception("[importar_planilha_view] Erro ao buscar histórico de planilhas importadas.")
-            ultimas_planilhas = []
-
-        return render_template(
-            'exportacao_importar_planilha.html',
-            csrf_token=generate_csrf,
-            ultimas_planilhas=ultimas_planilhas
-        )
