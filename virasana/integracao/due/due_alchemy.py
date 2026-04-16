@@ -57,8 +57,8 @@ class DueItem(Base):
 
     nr_due = Column(CHAR(14), ForeignKey('pucomex_due.numero_due'), primary_key=True)
     due_nr_item = Column(Integer, primary_key=True)
-    descricao_item = Column(String(100))
-    descricao_complementar_item = Column(String(100))
+    descricao_item = Column(String(1000))
+    descricao_complementar_item = Column(String(1000))
     nfe_nr_item = Column(Integer)
     nfe_ncm = Column(String(100))
     unidade_comercial = Column(String(100))

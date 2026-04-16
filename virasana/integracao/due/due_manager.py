@@ -9,6 +9,7 @@ from typing import List, Optional
 import requests
 import urllib3
 from bson import ObjectId
+from sqlalchemy.exc import SQLAlchemyError
 
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.laudo import get_empresa
@@ -201,18 +202,20 @@ def update_instance(model_instance, update_dict):
 
 
 def integra_dues(session, df_dues):
-    try:
-        df_dues['ni_declarante'] = df_dues['ni_declarante'].astype(str).str[:14].str.zfill(14)
-        df_dues['cnpj_estabelecimento_exportador'] = (
-            df_dues['cnpj_estabelecimento_exportador'].astype(str).str[:14].str.zfill(14))
-        logger.info(f'Iniciando "UPSERT" de {len(df_dues)} DUEs')
+    erros = 0
+    df_dues['ni_declarante'] = df_dues['ni_declarante'].astype(str).str[:14].str.zfill(14)
+    df_dues['cnpj_estabelecimento_exportador'] = (
+        df_dues['cnpj_estabelecimento_exportador'].astype(str).str[:14].str.zfill(14))
+    logger.info(f'Iniciando "UPSERT" de {len(df_dues)} DUEs')
+    for index, row in df_dues.iterrows():
         try:
-            for index, row in df_dues.iterrows():
+            with session.begin_nested():
                 due = session.query(Due).filter(Due.numero_due == row['numero_due']).one_or_none()
                 if due is None:
                     due = Due()
                 update_instance(due, row.to_dict())
                 session.add(due)
+                session.flush()
                 # Passo 6b - popular DueConteiner
                 for conteiner in due.lista_id_conteiner.split(', '):
                     conteiner = conteiner.strip()
@@ -224,28 +227,59 @@ def integra_dues(session, df_dues):
                     due_conteiner.numero_due = due.numero_due
                     due_conteiner.numero_conteiner = conteiner.strip()
                     session.add(due_conteiner)
-            session.commit()
-            return True
-        except Exception as err:
-            session.rollback()
-            raise err
+        except SQLAlchemyError as err:
+            erros += 1
+            logger.error(f'Erro na DUE {row.get("numero_due")}: {err}')
+            continue  # só sai deste item, o resto continua
+    try:
+        session.commit()
+        logger.info(f'Upsert de DUEs concluído com {len(df_dues) - erros} sucessos, {erros} erros')
+        return True
     except Exception as err:
         logger.error(err)
+        session.rollback()
         return False
+
+
+def trunca_descricao(row, nomecampo, tamanho=1000):
+    descricao = row.get(nomecampo)
+    if descricao is None:
+        row[nomecampo] = ''
+    else:
+        if len(descricao) > tamanho:
+            logger.error(f'{nomecampo} excede {tamanho} caracteres: {descricao}')
+            row[nomecampo] = str(descricao).strip()[:tamanho]
 
 
 def integra_dues_itens(session, df_itens_dues):
     logger.info(f'Iniciando "UPSERT" de {len(df_itens_dues)} Itens de DUEs')
+    erros = 0
+    for index, row in df_itens_dues.iterrows():
+        try:
+            with session.begin_nested():
+                trunca_descricao(row, 'descricao_complementar_item')
+                trunca_descricao(row, 'descricao_item')
+                try:
+                    row['nfe_nr_item'] = int(row['nfe_nr_item'])
+                except (ValueError, TypeError) as err:
+                    logger.error(err)
+                    erros += 1
+                    continue
+                dueitem = session.query(DueItem).filter(
+                    DueItem.nr_due == row['nr_due'],
+                    DueItem.due_nr_item == row['due_nr_item']).one_or_none()
+                if dueitem is None:
+                    dueitem = DueItem()
+                update_instance(dueitem, row.to_dict())
+                session.add(dueitem)
+                session.flush()
+        except SQLAlchemyError as err:
+            erros += 1
+            logger.error(f'Erro no item índice {index}, DUE {row.get("nr_due")}: {err}')
+            continue  # só sai deste item, o resto continua
     try:
-        for index, row in df_itens_dues.iterrows():
-            dueitem = session.query(DueItem).filter(
-                DueItem.nr_due == row['nr_due'],
-                DueItem.due_nr_item == row['due_nr_item']).one_or_none()
-            if dueitem is None:
-                dueitem = DueItem()
-            update_instance(dueitem, row.to_dict())
-            session.add(dueitem)
         session.commit()
+        logger.info(f'Upsert de itens concluído com {len(df_itens_dues) - erros} sucessos, {erros} erros')
         return True
     except Exception as err:
         session.rollback()
