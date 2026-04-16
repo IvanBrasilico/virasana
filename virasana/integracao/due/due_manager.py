@@ -246,9 +246,10 @@ def trunca_descricao(row, nomecampo, tamanho=1000):
     if descricao is None:
         row[nomecampo] = ''
     else:
+        descricao = str(descricao).strip()
         if len(descricao) > tamanho:
             logger.error(f'{nomecampo} excede {tamanho} caracteres: {descricao}')
-            row[nomecampo] = str(descricao).strip()[:tamanho]
+            row[nomecampo] = descricao[:tamanho]
 
 
 def integra_dues_itens(session, df_itens_dues):
