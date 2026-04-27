@@ -48,7 +48,8 @@ CHAVES_CARGA = [
     'metadata.diferencapeso2',
     'metadata.alertapeso',
     'metadata.alertapeso2',
-    'metadata.carga.container.indicadorusoparcial'
+    'metadata.carga.container.indicadorusoparcial',
+    'metadata.carga.conhecimento.codigoPortoOrigem'
 ]
 
 TIPOS_CARGA = {
