@@ -34,6 +34,7 @@ CHAVES_CARGA = [
     'metadata.carga.manifesto.tipomanifesto',
     'metadata.carga.manifesto.codigoportocarregamento',
     'metadata.carga.manifesto.codigoportodescarregamento',
+    'metadata.carga.conhecimento.codigoportoorigem',
     'metadata.carga.conhecimento.conhecimento',
     'metadata.carga.conhecimento.cpfcnpjconsignatario',
     'metadata.carga.container.container',
@@ -48,8 +49,7 @@ CHAVES_CARGA = [
     'metadata.diferencapeso2',
     'metadata.alertapeso',
     'metadata.alertapeso2',
-    'metadata.carga.container.indicadorusoparcial',
-    'metadata.carga.conhecimento.codigoPortoOrigem'
+    'metadata.carga.container.indicadorusoparcial'
 ]
 
 TIPOS_CARGA = {
