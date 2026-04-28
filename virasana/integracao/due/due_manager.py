@@ -9,6 +9,7 @@ from typing import List, Optional
 import requests
 import urllib3
 from bson import ObjectId
+from sqlalchemy import not_
 from sqlalchemy.exc import SQLAlchemyError
 
 from bhadrasana.models.laudo import Empresa
@@ -417,3 +418,40 @@ def get_dues_empresa(session, cnpj: str, limit=40) -> List[Due]:
         raise ValueError('get_dues: Informe o CNPJ da empresa com no mínimo 8 posições!')
     return session.query(Due).filter(Due.cnpj_estabelecimento_exportador.like(cnpj + '%')). \
         limit(limit).all()
+
+
+def get_dues_sem_detalhes(session, datainicio: datetime, datafim: datetime,
+                          codigos_recintos: list = None) -> list:
+    """1 - Pega acessos veículo do período e recintos que não possuem DUE correspondente.
+
+    Args:
+        session: conexão SQLAlchemy
+        datainicio, datafim: periodo between
+        codigoRecinto: opcional
+
+    Returns: lista de números de due.
+
+    """
+    # Filtros: A"C"esso, direção "E"ntrada, numeroNfe não vazio, numeroConteiner não vazio,
+    q = (
+        session.query(AcessoVeiculo.numeroDeclaracao)
+        .filter(AcessoVeiculo.operacao == 'C')
+        .filter(AcessoVeiculo.direcao == 'E')
+        .filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
+        .filter(AcessoVeiculo.numeroConteiner.isnot(None))
+        .filter(AcessoVeiculo.numeroConteiner != '')
+        .filter(AcessoVeiculo.tipoDeclaracao == 'DUE')
+        .filter(AcessoVeiculo.numeroDeclaracao.isnot(None))
+        .filter(AcessoVeiculo.numeroDeclaracao != '')
+        .filter(
+            not_(
+                session.query(Due)
+                .filter(Due.numero_due == AcessoVeiculo.numeroDeclaracao)
+                .exists()
+            )
+        )
+    )
+    if codigos_recintos:
+        q = q.filter(AcessoVeiculo.codigoRecinto.in_(codigos_recintos))
+    q = q.distinct()
+    return [acesso.numeroDeclaracao for acesso in q.all()]

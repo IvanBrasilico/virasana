@@ -30,7 +30,7 @@ from ajna_commons.flask.log import logger
 from bhadrasana.models.laudo import get_empresa, Empresa
 from virasana.integracao.due.due_manager import (get_conteineres_escaneados_sem_due,
                                                  set_conteineres_escaneados_sem_due,
-                                                 integra_dues, integra_dues_itens)
+                                                 integra_dues, integra_dues_itens, get_dues_sem_detalhes)
 
 from virasana.views import csrf
 
@@ -214,6 +214,68 @@ def configure(app):
             if integra_dues_itens(db_session, df_itens_dues):
                 logger.info(f'{len(df_itens_dues)} Itens de DUE inseridos')
         return jsonify({'success': True, 'processados': processados}), 200
+
+
+    @app.route('/integracao/lista_dues_sem_detalhes', methods=['GET'])
+    # @login_required
+    def integracao_lista_dues_sem_detalhes():
+        """Retorna lista de números de DUE.
+
+        Pega acessos veículo do período e recintos que não possuem DUE correspondente, isto é, que não possuem
+        detalhes da DUE informada. Com estes números, é possível buscar no Pucomex e inserir na nossa base os dados
+        da DUE e dos Itens de DUE.
+
+        Parâmetros obrigatórios:
+        inicio, fim: Data ISO de início e fim do filtro;
+        codigosrecintos: lista dos códigos dos recintos a pesquisar (operadores portuários com entrada de
+        veículos com contêiner carregados para exportação e escaneamento).
+
+        Resposta: lista de números de DUE.
+
+
+        Exemplo de resposta: {
+          "success": true,
+          "total_registros": 13,
+          "periodo": {"inicio": "2026-03-01T00:00:00", "fim": "2026-03-25T23:59:59"},
+          "codigos_recintos": ["001", "002"],
+          "data": [ "BR0000000", "BR00000001", ...],
+          "error": ""
+          ]
+        }
+        Resposta em caso de erro: {
+          "error": "Erro!"
+        }
+        """
+        db_session = app.config['db_session']
+        inicio_str = request.args.get('inicio')
+        fim_str = request.args.get('fim')
+        codigos_str = request.args.get('codigos_recintos', CODIGOS_RECINTOS)
+        if not inicio_str or not fim_str:
+            return jsonify({'error': 'Parâmetros "inicio" e "fim" obrigatórios (YYYY-MM-DD)'}), 400
+        try:
+            inicio = datetime.fromisoformat(inicio_str)
+            fim = datetime.fromisoformat(fim_str)
+            codigos_recintos = [c.strip() for c in codigos_str.split(',') if c.strip()]
+        except ValueError:
+            return jsonify({'error': 'Datas inválidas. Use YYYY-MM-DDTHH:MM:SS ou YYYY-MM-DD'}), 400
+        try:
+            lista_dues = get_dues_sem_detalhes(db_session, inicio, fim, codigos_recintos)
+            response = {
+                'success': True,
+                'total_registros': len(lista_dues),
+                'periodo': {
+                    'inicio': inicio.isoformat(),
+                    'fim': fim.isoformat()
+                },
+                'codigos_recintos': codigos_recintos,
+                'data': lista_dues
+            }
+            logger.info(f'{len(lista_dues)} números de DUE retornados')
+            logger.info(f'Filtro: Início{inicio_str} Fim{fim_str} Recintos{codigos_recintos}')
+            return jsonify(response), 200
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 if __name__ == '__main__':
