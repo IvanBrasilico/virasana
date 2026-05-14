@@ -66,6 +66,8 @@ class DueItem(Base):
     valor_total_due_itens = Column(Numeric)
     nfe_nm_importador = Column(String(100))
     pais_destino_item = Column(String(100))
+    nfe_nr_chave = Column(CHAR(44))
+    nfe_dt_emissao = Column(Date)
 
     def __repr__(self):
         return (f"<DueItem(nr_due={self.nr_due}, due_nr_item={self.due_nr_item}, "
