@@ -1,6 +1,6 @@
 import sys
 
-from sqlalchemy import Column, String, Integer, Numeric, Date, create_engine, CHAR, ForeignKey, BigInteger, TIMESTAMP, \
+from sqlalchemy import Column, String, Integer, Numeric, Date, DateTime, create_engine, CHAR, ForeignKey, BigInteger, TIMESTAMP, \
     func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -66,6 +66,8 @@ class DueItem(Base):
     valor_total_due_itens = Column(Numeric)
     nfe_nm_importador = Column(String(100))
     pais_destino_item = Column(String(100))
+    nfe_nr_chave = Column(CHAR(44))
+    nfe_dt_emissao = Column(DateTime)
 
     def __repr__(self):
         return (f"<DueItem(nr_due={self.nr_due}, due_nr_item={self.due_nr_item}, "
