@@ -51,12 +51,6 @@ class Due(Base):
     data_primeira_recepcao_nota_recinto = Column(CHAR(30))
     data_ultima_recepcao_nota_recinto = Column(CHAR(30))
     data_final_manifestacao_carga = Column(CHAR(30))
-    desc_sit_cadastral_pj = Column(CHAR(30))
-    desc_nivel1_secao_cnae_estudo_pj = Column(CHAR(50))
-    cpf_resp_pj = Column(CHAR(11))
-    data_abertura_pj = Column(TIMESTAMP)
-    end_desc_mun_pj = Column(CHAR(32))
-    end_sg_uf_pj = Column(CHAR(2))
 
 
     itens = relationship("DueItem", backref="due")

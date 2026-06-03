@@ -4,6 +4,17 @@ Módulo Virasana é o Servidor de imagens e a interface para carga,
 consulta e integração das imagens com outras bases.
 
 """
+import os
+import sys
+from pathlib import Path #PARA O .ENV
+from dotenv import load_dotenv #PARA O .ENV
+load_dotenv()#PARA O .ENV
+
+sys.path.insert(0, '.')
+sys.path.insert(0, '../ajna_docs/commons')
+sys.path.insert(0, '../commons')
+sys.path.append('../bhadrasana2')
+
 
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -21,6 +32,8 @@ from virasana.routes.exportacao_importar_planilhas import importar_planilhas_bp
 from virasana.routes import imagens_app
 from virasana.routes import inspecaonaoinvasiva_app
 from virasana.views import configure_app, csrf
+
+
 
 # from bhadrasana.models import db_session
 
@@ -63,3 +76,4 @@ def shutdown_session(exception=None):
 
 if __name__ == '__main__':  # pragma: no cover
     app.run(debug=app.config['DEBUG'])
+
