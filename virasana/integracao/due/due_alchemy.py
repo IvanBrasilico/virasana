@@ -42,6 +42,17 @@ class Due(Base):
     codigo_recinto_embarque = Column(CHAR(7))
     codigo_unidade_embarque = Column(CHAR(7))
     lista_id_conteiner = Column(String(650))  # Até 50 contêineres aproximadamente
+    data_ultimo_embarque = Column(TIMESTAMP)
+    data_carga_apresentada_despacho = Column(TIMESTAMP)
+    data_desembaraco = Column(TIMESTAMP)
+    data_cce = Column(TIMESTAMP)
+    data_averbacao = Column(TIMESTAMP)
+    data_inicial_entrada_recinto = Column(CHAR(30))
+    data_primeira_recepcao_nota_recinto = Column(CHAR(30))
+    data_ultima_recepcao_nota_recinto = Column(CHAR(30))
+    data_final_manifestacao_carga = Column(CHAR(30))
+
+
     itens = relationship("DueItem", backref="due")
 
     def __repr__(self):
