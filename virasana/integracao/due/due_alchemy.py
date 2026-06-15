@@ -44,8 +44,6 @@ class Due(Base):
     lista_id_conteiner = Column(String(650))  # Até 50 contêineres aproximadamente
     data_carga_apresentada_despacho = Column(TIMESTAMP)
     data_desembaraco = Column(TIMESTAMP)
-    data_cce = Column(TIMESTAMP)
-    data_averbacao = Column(TIMESTAMP)
     data_inicial_entrada_recinto = Column(CHAR(30))
     data_primeira_recepcao_nota_recinto = Column(CHAR(30))
     data_ultima_recepcao_nota_recinto = Column(CHAR(30))
