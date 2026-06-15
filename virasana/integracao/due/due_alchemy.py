@@ -42,7 +42,6 @@ class Due(Base):
     codigo_recinto_embarque = Column(CHAR(7))
     codigo_unidade_embarque = Column(CHAR(7))
     lista_id_conteiner = Column(String(650))  # Até 50 contêineres aproximadamente
-    data_ultimo_embarque = Column(TIMESTAMP)
     data_carga_apresentada_despacho = Column(TIMESTAMP)
     data_desembaraco = Column(TIMESTAMP)
     data_cce = Column(TIMESTAMP)
