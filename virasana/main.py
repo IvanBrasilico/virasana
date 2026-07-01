@@ -28,7 +28,7 @@ from virasana.routes import conformidade_app
 from virasana.routes import escaneamento_app
 from virasana.routes import exportacao_app
 from virasana.routes.exportacao_parametros_risco import parametros_risco_bp
-from virasana.routes.exportacao_importar_planilhas import importar_planilhas_bp
+#from virasana.routes.exportacao_importar_planilhas import importar_planilhas_bp
 from virasana.routes import imagens_app
 from virasana.routes import inspecaonaoinvasiva_app
 from virasana.views import configure_app, csrf
@@ -57,7 +57,7 @@ escaneamento_app.configure(app)
 exportacao_app.configure(app)
 
 app.register_blueprint(parametros_risco_bp)
-app.register_blueprint(importar_planilhas_bp)
+#app.register_blueprint(importar_planilhas_bp) # deixou de ser necessário, pois usamos o Narcos novo em Django
 
 configure_applog(app)
 api = api_login.configure(app)
