@@ -91,6 +91,10 @@ def get_conteineres_escaneados_sem_due(session, datainicio: datetime, datafim: d
     q = q.filter(AcessoVeiculo.numeroConteiner.isnot(None))
     q = q.filter(AcessoVeiculo.numeroConteiner != '')
     q = q.filter(AcessoVeiculo.listaNfe != '')
+    q = q.filter(
+        (AcessoVeiculo.numeroDeclaracao.is_(None)) |
+        (AcessoVeiculo.numeroDeclaracao == '')
+    )
     lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
     conteineres_exportacao_detalhes = {}
     conteineres_exportacao = set()
