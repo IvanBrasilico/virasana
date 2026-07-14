@@ -8,9 +8,22 @@ from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
 from virasana.views import csrf
 
 # Dicionário para traduzir codigoRecinto
-RECINTO_DICT = {
-    "8931305": "TRANSBRASA",
+DICT_RA_AJNA = {
+    '8931305': 'TRANSBRASA',
+    '8931356': 'SBT',
+    '8931359': 'BTP1',
+    '8931364': 'BANDEIRANTES',
+    '8933206': 'DEICMAR',
+    '8931318': 'ECOPORTO',
+    '8931404': 'EMBRAPORT',
+    '8931342': 'MARIMEX',
+    '8933001': 'LOCALFRIO',
+    '8933202': 'EUDMARCO',
 }
+
+DICT_AJNA_RA = {v: k for k, v in DICT_RA_AJNA.items()}
+
+DICT_AJNA_RA['RECINTO_NAO_ENCONTRADO'] = '0000000'
 
 
 def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
@@ -32,7 +45,7 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     metadata['numeroinformado'] = numeroinformado
     metadata['unidade'] = 'ALFSTS'
     codigo_recinto = json_original.get('codigoRecinto')
-    recinto = RECINTO_DICT.get(codigo_recinto, 'RECINTO_NAO_ENCONTRADO')
+    recinto = DICT_RA_AJNA.get(codigo_recinto, 'RECINTO_NAO_ENCONTRADO')
     metadata['recinto'] = recinto
 
     # 4) Salvar arquivo no GridFS com metadata
