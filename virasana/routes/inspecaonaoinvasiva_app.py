@@ -21,6 +21,7 @@ DICT_RA_AJNA = {
     '8933202': 'EUDMARCO',
 }
 
+# Dicionário reverso
 DICT_AJNA_RA = {v: k for k, v in DICT_RA_AJNA.items()}
 
 DICT_AJNA_RA['RECINTO_NAO_ENCONTRADO'] = '0000000'
@@ -80,7 +81,7 @@ def configure(app):
 
         return render_template('inspecaonaoinvasiva.html', oform=form)
 
-    @csrf.exempt
+    # @csrf.exempt
     @app.route('/api/inspecaonaoinvasiva', methods=['POST'])
     def api_inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
