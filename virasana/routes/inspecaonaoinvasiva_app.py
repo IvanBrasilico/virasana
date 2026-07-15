@@ -5,7 +5,7 @@ from dateutil import parser
 from flask import request, jsonify, flash, redirect, url_for, render_template
 
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
-from virasana.views import csrf
+# from virasana.views import csrf
 
 # Dicionário para traduzir codigoRecinto
 DICT_RA_AJNA = {
