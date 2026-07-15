@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, time
 
 import pandas as pd
 
-sys.path.append('.')
+sys.path.append('../scripts')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 sys.path.append('../ajna_docs/commons')
