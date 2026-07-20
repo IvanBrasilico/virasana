@@ -9,6 +9,7 @@ import json
 import os
 from datetime import date, datetime, timedelta
 from json import JSONDecodeError
+from pathlib import Path
 
 import requests
 from PIL import Image
@@ -37,8 +38,10 @@ from ajna_commons.flask.log import logger
 from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
 from ajna_commons.utils.sanitiza import mongo_sanitizar
+from virasana.analytic_scripts.apirecintos.completude_escaneamentos import valida_regra_escaneamento_json
 from bhadrasana.models import Usuario
 from bhadrasana.models.ovr import OVR
+from virasana.routes.inspecaonaoinvasiva_app import DICT_AJNA_RA
 from virasana.conf import APP_PATH
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
@@ -1483,6 +1486,46 @@ def image_editor(_id):
     db = app.config['mongodb']
     return render_template('filerobot.html', _id=_id)
 
+
+def parse_datetime_local(value):
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+
+@csrf.exempt
+@app.route("/completude_escaneamento", methods=["GET", "POST"])
+def validacao():
+    session = app.config.get('db_session')
+    dados = None
+    selecionado = "SBT"
+    data_inicio = ""
+    data_fim = ""
+
+    if request.method == "POST":
+        selecionado = request.form.get("codigo_recinto", "SBT")
+        data_inicio = request.form.get("data_inicio", "")
+        data_fim = request.form.get("data_fim", "")
+
+        codigo_recinto = DICT_AJNA_RA.get(selecionado)
+        inicio = parse_datetime_local(data_inicio)
+        fim = parse_datetime_local(data_fim)
+
+        if codigo_recinto and inicio and fim:
+            dados = valida_regra_escaneamento_json(
+                session,
+                inicio,
+                fim,
+                recintos=[codigo_recinto]
+            )
+
+    return render_template(
+        "completude_escaneamentos.html",
+        dados=dados,
+        selecionado=selecionado,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        recintos=sorted(DICT_AJNA_RA.keys())
+    )
 
 @nav.navigation()
 def mynavbar():

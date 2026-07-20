@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validação de Escaneamento</title>
+  <style>
+    :root{
+      --gov-blue:#155b9c;
+      --gov-blue-dark:#0b3d6e;
+      --gov-bg:#f8fafc;
+      --gov-surface:#fff;
+      --gov-border:#d9e2ec;
+      --gov-text:#1f2933;
+      --gov-muted:#52606d;
+      --shadow:0 2px 8px rgba(21,91,156,.08);
+      --radius:10px;
+      --font:'Rawline', 'Open Sans', Arial, sans-serif;
+    }
+    @font-face {
+      font-family: 'Rawline';
+      src: local('Rawline'), local('Open Sans');
+      font-display: swap;
+    }
+    body{
+      margin:0;
+      font-family:var(--font);
+      background:var(--gov-bg);
+      color:var(--gov-text);
+    }
+    header{
+      background:linear-gradient(90deg,var(--gov-blue-dark),var(--gov-blue));
+      color:#fff;
+      padding:20px 24px;
+      box-shadow:var(--shadow);
+    }
+    main{
+      max-width:1400px;
+      margin:24px auto;
+      padding:0 16px 32px;
+    }
+    .card{
+      background:var(--gov-surface);
+      border:1px solid var(--gov-border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:16px;
+      margin-bottom:16px;
+    }
+    h1,h2,h3{ margin:0 0 12px; }
+    h1{ font-size:24px; }
+    h2{ font-size:18px; color:var(--gov-blue-dark); }
+    h3{ font-size:15px; color:var(--gov-blue-dark); }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+      overflow:hidden;
+      background:#fff;
+    }
+    th, td{
+      border-bottom:1px solid var(--gov-border);
+      padding:10px 12px;
+      text-align:left;
+      vertical-align:top;
+      font-size:13px;
+      word-break:break-word;
+    }
+    th{
+      background:#f2f7fb;
+      color:var(--gov-blue-dark);
+      font-weight:700;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+      gap:12px;
+    }
+    .muted{ color:var(--gov-muted); font-size:13px; }
+    .empty{
+      padding:12px;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+      background:#f9fbfd;
+      color:var(--gov-muted);
+    }
+    label{
+      display:block;
+      font-weight:700;
+      margin-bottom:6px;
+      color:var(--gov-blue-dark);
+    }
+    select, input[type="datetime-local"]{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+      padding:10px 12px;
+      font-family:var(--font);
+      font-size:14px;
+      background:#fff;
+    }
+    .form-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+      gap:12px;
+      align-items:end;
+    }
+    button{
+      border:0;
+      background:var(--gov-blue);
+      color:#fff;
+      padding:11px 16px;
+      border-radius:8px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    button:hover{ background:var(--gov-blue-dark); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Validação de Escaneamento</h1>
+    <div class="muted" style="color:#eaf2f8;">Informe recinto e intervalo para gerar o relatório</div>
+  </header>
+
+  <main>
+    <div class="card">
+      <form method="POST" action="/completude_escaneamento">
+        <div class="form-grid">
+          <div>
+            <label for="codigo_recinto">Recinto</label>
+            <select id="codigo_recinto" name="codigo_recinto" required>
+              {% for nome in recintos %}
+              <option value="{{ nome }}" {% if selecionado == nome %}selected{% endif %}>
+                {{ nome }} - {{ DICT_AJNA_RA[nome] if DICT_AJNA_RA is defined else nome }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label for="data_inicio">Data início</label>
+            <input
+              id="data_inicio"
+              name="data_inicio"
+              type="datetime-local"
+              value="{{ data_inicio }}"
+              required
+            >
+          </div>
+
+          <div>
+            <label for="data_fim">Data fim</label>
+            <input
+              id="data_fim"
+              name="data_fim"
+              type="datetime-local"
+              value="{{ data_fim }}"
+              required
+            >
+          </div>
+
+          <div>
+            <button type="submit">Gerar relatório</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {% if dados %}
+    <div class="card">
+      <h2>Resumo</h2>
+      <div class="grid">
+        <div>
+          <h3>Parâmetros</h3>
+          <table>
+            <tbody>
+              <tr><th>Recintos</th><td>{{ dados.info.parametros.recintos | join(', ') }}</td></tr>
+              <tr><th>Data início</th><td>{{ dados.info.parametros.intervaloPesquisa.data_inicio }}</td></tr>
+              <tr><th>Data fim</th><td>{{ dados.info.parametros.intervaloPesquisa.data_fim }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h3>Totais gerais</h3>
+          <table>
+            <tbody>
+              <tr><th>Total desembarque</th><td>{{ dados.info.totais.geral.totalDesembarque }}</td></tr>
+              <tr><th>Total sem escaneamento</th><td>{{ dados.info.totais.geral.totalSemEscaneamento }}</td></tr>
+              <tr><th>Total baldeação</th><td>{{ dados.info.totais.geral.totalBaldeacao }}</td></tr>
+              <tr><th>Total com entrada sem escaneamento</th><td>{{ dados.info.totais.geral.totalComEntradaSemEscaneamento }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% macro render_lista(titulo, itens) -%}
+    <div class="card">
+      <h2>{{ titulo }}</h2>
+      {% if itens %}
+      {% set keys = itens[0].keys() %}
+      <table>
+        <thead>
+          <tr>
+            {% for k in keys %}
+            <th>{{ k }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in itens %}
+          <tr>
+            {% for k in keys %}
+            <td>{{ row[k] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">Sem registros.</div>
+      {% endif %}
+    </div>
+    {%- endmacro %}
+
+    {{ render_lista('Desembarques baldeação', dados.desembarques_baldeacao) }}
+    {{ render_lista('Sem saída e sem escaneamento', dados.sem_saida_sem_escaneamento) }}
+    {{ render_lista('Com saída e sem escaneamento', dados.com_saida_sem_escaneamento) }}
+    {{ render_lista('Com entrada e sem escaneamento', dados.com_entrada_sem_escaneamento) }}
+    {{ render_lista('Escaneados após 24h', dados.escaneados_apos_24h) }}
+    {% endif %}
+  </main>
+</body>
+</html>
