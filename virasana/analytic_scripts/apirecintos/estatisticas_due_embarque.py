@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import os
 import pandas as pd
 
-RECINTO_PADRAO = '8931359'
+RECINTO_PADRAO = '8931356'
 
 
 def parse_dt(valor):
@@ -267,8 +267,8 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    data_fim = datetime.now() - timedelta(days=7)
-    data_inicio = datetime.now() - timedelta(days=21)
+    data_fim = datetime.now() - timedelta(days=21)
+    data_inicio = datetime.now() - timedelta(days=40)
 
     # padrão: de 14 dias atrás até 7 dias atrás
     analisar(session, data_inicio, data_fim, RECINTO_PADRAO)
