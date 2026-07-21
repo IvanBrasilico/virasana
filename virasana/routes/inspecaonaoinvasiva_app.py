@@ -5,6 +5,7 @@ from dateutil import parser
 from flask import request, jsonify, flash, redirect, url_for, render_template
 
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
+
 # from virasana.views import csrf
 
 # Dicionário para traduzir codigoRecinto
@@ -12,13 +13,14 @@ DICT_RA_AJNA = {
     '8931305': 'TRANSBRASA',
     '8931356': 'SBT',
     '8931359': 'BTP1',
-    '8931364': 'BANDEIRANTES', #
-    '8933206': 'DEICMAR', #
+    '8931364': 'BANDEIRANTES',  #
+    '8933206': 'DEICMAR',  #
     '8931318': 'ECOPORTO',
     '8931404': 'EMBRAPORT',
-    '8931342': 'MARIMEX', #
+    '8931342': 'MARIMEX',  #
     '8933001': 'LOCALFRIO',
-    '8933202': 'EUDMARCO', #
+    '8933202': 'EUDMARCO',  #
+    '8933201': 'MULTILOG'
 }
 
 # Dicionário reverso
