@@ -1,23 +1,32 @@
 import sys
+from datetime import datetime, timedelta
+
+from pymongo import MongoClient
 
 sys.path.append('.')
-sys.path.insert(0, '../ajna_docs/commons')
-sys.path.insert(0, '../bhadrasana')
+sys.path.append('../ajna_docs/commons')
+sys.path.append('../bhadrasana2')
 
 from ajna_commons.flask.log import logger
-from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao
+from bhadrasana.models.apirecintos import EmbarqueDesembarque
+from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao, \
+    CicloDeVidaImportacaoEscaneamentos
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida_helpers import (
-    busca_ce_mercante_conteiner_desembarque, busca_desembarque_conteiner)
+    busca_ce_mercante_conteiner_desembarque, busca_desembarque_conteiner,
+    busca_acesso_veiculo_desembarque_conteiner,
+    busca_escaneamentos_desembarque_conteiner, busca_mongo,
+    busca_entrada_seco,
+    busca_saida_seco,
+    busca_escaneamentos_seco, HORAS_TRANSIT_TIME, HORAS_PERMANENCIA_MOLHADO)
 
 
 class CicloDeVidaImportacaoManager():
-    def __init__(self, session, ciclo_de_vida: CicloDeVidaImportacao):
+    def __init__(self, db, session, ciclo_de_vida: CicloDeVidaImportacao):
+        self.db = db
         self.session = session
         self.ciclo_de_vida = ciclo_de_vida
 
     def get_conhecimento(self):
-        if self.ciclo_de_vida is None:
-            return None
         if self.ciclo_de_vida.numeroCEmercante:
             return self.ciclo_de_vida.numeroCEmercante
         if self.ciclo_de_vida.numeroConteiner is None or self.ciclo_de_vida.data_desembarque is None:
@@ -32,13 +41,13 @@ class CicloDeVidaImportacaoManager():
         try:
             self.session.add(self.ciclo_de_vida)
             self.session.commit()
+            return cemercante.numeroCEmercante
         except Exception as e:
             logger.error(e)
             self.session.rollback()
+            return None
 
     def get_desembarque(self):
-        if self.ciclo_de_vida is None:
-            return None
         if self.ciclo_de_vida.desembarque_id:
             return self.ciclo_de_vida.desembarque_id
         if self.ciclo_de_vida.numeroConteiner is None or self.ciclo_de_vida.data_desembarque is None:
@@ -47,10 +56,271 @@ class CicloDeVidaImportacaoManager():
         desembarque = busca_desembarque_conteiner(self.session,
                                                   self.ciclo_de_vida.numeroConteiner,
                                                   self.ciclo_de_vida.data_desembarque)
-        self.ciclo_de_vida.desembarque_id = desembarque.id
+        if desembarque is None:
+            return None
+        self.ciclo_de_vida.set_desembarque(desembarque)
         try:
             self.session.add(self.ciclo_de_vida)
+            self.session.commit()
+            return desembarque.id
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return None
+
+    def get_saida(self):
+        if self.ciclo_de_vida.saida_id:
+            return self.ciclo_de_vida.saida_id
+        if (self.ciclo_de_vida.numeroConteiner is None or self.ciclo_de_vida.desembarque_id is None
+                or self.ciclo_de_vida.codigoRecintoDesembarque is None):
+            return None
+        saida = busca_acesso_veiculo_desembarque_conteiner(self.session,
+                                                           self.ciclo_de_vida.codigoRecintoDesembarque,
+                                                           self.ciclo_de_vida.numeroConteiner,
+                                                           self.ciclo_de_vida.data_desembarque)
+        if saida is None:
+            return None
+        self.ciclo_de_vida.set_saida(saida)
+        try:
+            self.session.add(self.ciclo_de_vida)
+            self.session.commit()
+            return saida.id
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return None
+
+    def get_escaneamentos(self):
+        if (self.ciclo_de_vida.desembarque_id is None or self.ciclo_de_vida.numeroConteiner is None or
+                self.ciclo_de_vida.codigoRecintoDesembarque is None):
+            return []
+        if self.ciclo_de_vida.data_saida is not None:
+            data_saida = self.ciclo_de_vida.data_saida
+        else:
+            data_saida = self.ciclo_de_vida.data_desembarque + timedelta(hours=HORAS_PERMANENCIA_MOLHADO)
+        escaneamentos = busca_escaneamentos_desembarque_conteiner(self.session,
+                                                                  self.ciclo_de_vida.codigoRecintoDesembarque,
+                                                                  self.ciclo_de_vida.numeroConteiner,
+                                                                  self.ciclo_de_vida.data_desembarque,
+                                                                  data_saida)
+        result = []
+        for escaneamento in escaneamentos:
+            ciclo_escaneamento = self.session.query(CicloDeVidaImportacaoEscaneamentos).filter(
+                CicloDeVidaImportacaoEscaneamentos.escaneamento_id == escaneamento.id).one_or_none()
+            if ciclo_escaneamento is None:
+                ciclo_escaneamento = CicloDeVidaImportacaoEscaneamentos()
+                ciclo_escaneamento.ciclo_de_vida_id = self.ciclo_de_vida.ID
+                ciclo_escaneamento.escaneamento_id = escaneamento.id
+                ciclo_escaneamento.data_escaneamento = escaneamento.dataHoraOcorrencia
+                self.session.add(ciclo_escaneamento)
+                result.append(escaneamento.id)
+        try:
+            self.session.commit()
+            return result
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return []
+
+    def get_escaneamentos_seco(self):
+        # Como ficam os escaneamentos por delegação?? Será necessário mais uma entrada e saída seco?
+        # Será necessário distinguir escaneamento de um recinto/período e outro?
+        # Provalmente a parte de escaneamento precisará de mais informações
+        if self.ciclo_de_vida.numeroConteiner is None or self.ciclo_de_vida.entrada_seco_id is None:
+            return []
+        escaneamentos = busca_escaneamentos_seco(
+            self.session,
+            self.ciclo_de_vida.codigoRecintoArmazenagem,
+            self.ciclo_de_vida.numeroConteiner,
+            self.ciclo_de_vida.data_entrada_seco,
+        )
+        result = []
+        for escaneamento in escaneamentos:
+            ciclo_escaneamento = self.session.query(CicloDeVidaImportacaoEscaneamentos).filter(
+                CicloDeVidaImportacaoEscaneamentos.escaneamento_id == escaneamento.escaneamento_id).one_or_none()
+            if ciclo_escaneamento is None:
+                ciclo_escaneamento = CicloDeVidaImportacaoEscaneamentos()
+                ciclo_escaneamento.ciclo_de_vida_id = self.ciclo_de_vida.ID
+                ciclo_escaneamento.escaneamento_id = escaneamento.id
+                ciclo_escaneamento.data_escaneamento = escaneamento.dataHoraOcorrencia
+                self.session.add(ciclo_escaneamento)
+                result.append(escaneamento.id)
+
+        try:
+            self.session.commit()
+            return result
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return []
+
+    def get_imagens(self):
+        result = []
+        if self.ciclo_de_vida.numeroConteiner is None:
+            return result
+        for ciclo_escaneamento in self.ciclo_de_vida.escaneamentos:
+            _id = busca_mongo(self.db,
+                              self.ciclo_de_vida.numeroConteiner,
+                              ciclo_escaneamento.data_escaneamento)
+            if _id is not None:
+                ciclo_escaneamento.imagem_id = _id
+                self.session.add(ciclo_escaneamento)
+                result.append(_id)
+        try:
             self.session.commit()
         except Exception as e:
             logger.error(e)
             self.session.rollback()
+        return result
+
+    def get_entrada_seco(self):
+        if self.ciclo_de_vida.entrada_seco_id:
+            return self.ciclo_de_vida.entrada_seco_id
+        if (self.ciclo_de_vida.numeroConteiner is None or self.ciclo_de_vida.codigoRecintoDesembarque
+                or self.ciclo_de_vida.saida_id is None):
+            return None
+        entrada_seco = busca_entrada_seco(
+            self.session,
+            self.ciclo_de_vida.codigoRecintoDesembarque,
+            self.ciclo_de_vida.numeroConteiner,
+            self.ciclo_de_vida.data_saida,
+        )
+        if entrada_seco is None:
+            return None
+        self.ciclo_de_vida.set_entrada_seco(entrada_seco)
+        try:
+            self.session.add(self.ciclo_de_vida)
+            self.session.commit()
+            return entrada_seco.id
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return None
+
+    def get_saida_seco(self):
+        if self.ciclo_de_vida.saida_seco_id:
+            return self.ciclo_de_vida.saida_seco_id
+        if (self.ciclo_de_vida.entrada_seco_id is None or self.ciclo_de_vida.numeroConteiner is None or
+                self.ciclo_de_vida.codigoRecintoArmazenagem is None):
+            return None
+        saida_seco = busca_saida_seco(
+            self.session,
+            self.ciclo_de_vida.codigoRecintoArmazenagem,
+            self.ciclo_de_vida.numeroConteiner,
+            self.ciclo_de_vida.data_entrada_seco,
+        )
+        if saida_seco is None:
+            return None
+        self.ciclo_de_vida.saida_seco_id = saida_seco.id
+        self.ciclo_de_vida.data_saida_seco = saida_seco.dataHoraOcorrencia
+        try:
+            self.session.add(self.ciclo_de_vida)
+            self.session.commit()
+            return saida_seco.id
+        except Exception as e:
+            logger.error(e)
+            self.session.rollback()
+            return None
+
+    def check_ciclo_concluido(self):
+        # Entrega pelo recinto depositário, portanto concluído
+        if self.ciclo_de_vida.saida_seco_id is not None:
+            self.ciclo_de_vida.concluido = True
+        # Assume entrega pelo Operador se transit time estourou para não ficar preso...
+        elif self.ciclo_de_vida.entrada_seco_id is None and self.ciclo_de_vida.saida_id is not None:
+            if datetime.now() > self.ciclo_de_vida.data_saida + timedelta(hours=HORAS_TRANSIT_TIME):
+                self.ciclo_de_vida.concluido = True
+        # E se as saídas forem omitidas? Estabelecer uma validade máxima?? Usar prazo de abandono + 3 dias!
+        elif self.ciclo_de_vida.desembarque_id is not None:
+            if datetime.now() > self.ciclo_de_vida.data_desembarque + timedelta(days=93):
+                self.ciclo_de_vida.concluido = True
+
+
+def completar_ciclo_de_vida(db, session, ciclo):
+    manager = CicloDeVidaImportacaoManager(db, session, ciclo)
+    manager.get_conhecimento()  # Custo zero se já existir
+    manager.get_desembarque()  # Custo zero se já existir
+    if manager.get_saida() is None:  # Custo zero se já existir
+        manager.get_escaneamentos()  # Tem custo, só pesquisar se não saiu do Operador - ver se dá tolerância de tempo??
+        manager.get_imagens()
+    else:  # Já saiu do Operador, procurar eventos fora
+        manager.get_entrada_seco()  # Custo zero se já existir
+        if manager.get_saida_seco() is not None:  # Custo zero se já existir
+            manager.get_escaneamentos_seco()  # Tem custo, só pesquisar se não saiu do Recinto - ver se dá tolerância de tempo??
+            manager.get_imagens()
+    # E se olhou o passado e não pegou nenhum escaneamento e nenhuma imagem? Repetir tentativa? Qual o custo?
+    session.refresh(manager.ciclo_de_vida)
+    if manager.get_desembarque() is not None and len(manager.ciclo_de_vida.escaneamentos) == 0:
+        manager.get_escaneamentos()
+        manager.get_escaneamentos_seco()
+        manager.get_imagens()
+    manager.check_ciclo_concluido()
+    try:
+        session.add(ciclo)
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(e)
+        session.rollback()
+        return False
+
+
+def processar_ciclos_pendentes(db, session, limite=1000):
+    lote = (
+        session.query(CicloDeVidaImportacao)
+        .filter(CicloDeVidaImportacao.concluido.isnot(True))
+        .order_by(CicloDeVidaImportacao.ID.asc())
+        .limit(limite)
+        .all()
+    )
+    ok = 0
+    for ciclo in lote:
+        if completar_ciclo_de_vida(db, session, ciclo):
+            ok += 1
+    return ok, len(lote)
+
+
+if __name__ == '__main__':
+    # Popular Ciclos de Vida
+    # Escolher um ponto de partida para inicializar os Ciclos de Vida!
+    # Depois, basta ficar populando os ciclos de vida até detetar uma conclusão...
+    from ajna_commons.flask.conf import SQL_URI, MONGODB_URI, DATABASE
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine(SQL_URI)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    conn = MongoClient(host=MONGODB_URI)
+    mongodb = conn[DATABASE]
+
+    # Inicializar ciclos de vida. Estou escolhendo novos desembarques, poderiam ser novos CEs cadastrados.
+    OPERADORES = ('8931356', '8931359', '8931404')
+    data_inicial = datetime.now() - timedelta(days=7)
+    data_final = data_inicial + timedelta(days=2)
+    desembarques = (
+        session.query(EmbarqueDesembarque)
+        .filter(EmbarqueDesembarque.codigoRecinto.in_(OPERADORES))
+        .filter(EmbarqueDesembarque.embarqueDesembarque == 'D')
+        .filter(EmbarqueDesembarque.dataHoraOcorrencia >= data_inicial)
+        .filter(EmbarqueDesembarque.dataHoraOcorrencia < data_final)
+        .order_by(EmbarqueDesembarque.id.asc())
+        .limit(100)
+        .all()
+    )
+    logger.info("%s desembarques encontrados", len(desembarques))
+    for desembarque in desembarques:
+        ciclo_de_vida = session.query(CicloDeVidaImportacao).filter(
+            CicloDeVidaImportacao.desembarque_id == desembarque.id).one_or_none()
+        if ciclo_de_vida is None:
+            ciclo_de_vida = CicloDeVidaImportacao()
+        ciclo_de_vida.set_desembarque(desembarque)
+        session.add(ciclo_de_vida)
+    try:
+        session.commit()
+    except Exception as e:
+        logger.error(e)
+        session.rollback()
+    # Popular ciclos de vida
+    ok, total = processar_ciclos_pendentes(mongodb, session, limite=1000)
+    logger.info(f'Processados com sucesso: {ok}/{total}')

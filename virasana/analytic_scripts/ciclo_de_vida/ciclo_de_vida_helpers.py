@@ -1,20 +1,24 @@
 import sys
+from pprint import pprint
 
 sys.path.append('.')
-sys.path.insert(0, '../ajna_docs/commons')
-sys.path.insert(0, '../bhadrasana')
-
+sys.path.append('../ajna_docs/commons')
+sys.path.append('../bhadrasana2')
+from ajna_commons.flask.log import logger
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Escala, EscalaManifesto, Item, Manifesto
-from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque
+from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva
 
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List
 
 TOLERANCIA_PREVISAO_ATRACACAO = 5  # 5 dias
 TOLERANCIA_DATA_DESEMBARQUE = 1  # 1 dia
 HORAS_PERMANENCIA_MOLHADO = 72  # 72 horas
 HORAS_TRANSIT_TIME = 6  # 6 horas
-HORAS_ESCANEAMENTO_SECO = 2  # 2 horas
+HORAS_ESCANEAMENTO_SECO = 6  # 2 horas
+HORAS_IMAGEM_ANTES = 4
+HORAS_IMAGEM_DEPOIS = 4
+DIAS_BUSCA_SAIDA_SECO = 30
 
 
 def _parse_dt(value):
@@ -36,8 +40,8 @@ def _parse_dt(value):
 
 def busca_ce_mercante_conteiner_desembarque(session, codigoConteiner, data_desembarque) -> Optional[Conhecimento]:
     data_desembarque = _parse_dt(data_desembarque)
-    inicio = data_desembarque - timedelta(days=5)
-    fim = data_desembarque + timedelta(days=5)
+    inicio = data_desembarque - timedelta(days=TOLERANCIA_PREVISAO_ATRACACAO)
+    fim = data_desembarque + timedelta(days=TOLERANCIA_PREVISAO_ATRACACAO)
     q = (
         session.query(Conhecimento)
         .join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
@@ -56,7 +60,7 @@ def busca_ce_mercante_conteiner_desembarque(session, codigoConteiner, data_desem
 
 
 def busca_desembarque_conteiner(session, numeroConteiner, data_desembarque) -> Optional[EmbarqueDesembarque]:
-    inicio = data_desembarque - timedelta(days=1)
+    inicio = data_desembarque - timedelta(days=TOLERANCIA_DATA_DESEMBARQUE)
     fim = data_desembarque + timedelta(days=1)
     return session.query(EmbarqueDesembarque).filter(
         EmbarqueDesembarque.numeroConteiner == numeroConteiner,
@@ -65,14 +69,90 @@ def busca_desembarque_conteiner(session, numeroConteiner, data_desembarque) -> O
     ).first()
 
 
-def busca_acesso_veiculo_desembarque_conteiner(session, desembarque: EmbarqueDesembarque) -> Optional[AcessoVeiculo]:
-    inicio = desembarque.dataHoraOcorrencia
-    fim = inicio + timedelta(hours=72)
+def busca_acesso_veiculo_desembarque_conteiner(session, codigoRecinto: str, numeroConteiner: str,
+                                               data_desembarque: datetime) -> Optional[AcessoVeiculo]:
+    inicio = data_desembarque
+    fim = inicio + timedelta(hours=HORAS_PERMANENCIA_MOLHADO)
     return (
         session.query(AcessoVeiculo)
         .filter(
-            AcessoVeiculo.codigoRecinto == desembarque.codigoRecinto,
-            AcessoVeiculo.numeroConteiner == desembarque.numeroConteiner,
+            AcessoVeiculo.codigoRecinto == codigoRecinto,
+            AcessoVeiculo.numeroConteiner == numeroConteiner,
+            AcessoVeiculo.direcao == 'S',
+            AcessoVeiculo.dataHoraOcorrencia >= inicio,
+            AcessoVeiculo.dataHoraOcorrencia < fim,
+        )
+        .order_by(AcessoVeiculo.dataHoraOcorrencia.asc())
+        .first()
+    )
+
+
+def busca_escaneamentos_desembarque_conteiner(session, codigoRecinto: str,
+                                              numeroConteiner: str,
+                                              data_desembarque: datetime,
+                                              data_saida: datetime) -> List[InspecaoNaoInvasiva]:
+    return (
+        session.query(InspecaoNaoInvasiva)
+        .filter(
+            InspecaoNaoInvasiva.codigoRecinto == codigoRecinto,
+            InspecaoNaoInvasiva.numeroConteiner == numeroConteiner,
+            InspecaoNaoInvasiva.dataHoraOcorrencia >= data_desembarque,
+            InspecaoNaoInvasiva.dataHoraOcorrencia < data_saida,
+        )
+        .order_by(InspecaoNaoInvasiva.dataHoraOcorrencia.asc())
+        .all()
+    )
+
+
+def busca_escaneamentos_seco(session, codigoRecinto: str, numeroConteiner: str,
+                             data_entrada_seco: datetime) -> List[InspecaoNaoInvasiva]:
+    inicio = data_entrada_seco
+    fim = inicio + timedelta(days=HORAS_ESCANEAMENTO_SECO)
+    return (
+        session.query(InspecaoNaoInvasiva)
+        .filter(
+            InspecaoNaoInvasiva.codigoRecinto == codigoRecinto,
+            InspecaoNaoInvasiva.numeroConteiner == numeroConteiner,
+            InspecaoNaoInvasiva.dataHoraOcorrencia >= inicio,
+            InspecaoNaoInvasiva.dataHoraOcorrencia < fim,
+        )
+        .order_by(InspecaoNaoInvasiva.dataHoraOcorrencia.asc())
+        .all()
+    )
+
+
+def busca_mongo(db, numeroConteiner, data_escaneamento: datetime):
+    # Procura imagens de escaneamentos do contêiner pela data do escaneamento.
+    # Procura até X horas antes ou depois da data do evento
+    # TODO: Mongo está em UTC e MySQL não... ver a conversão correta!
+    data_escaneamento = data_escaneamento.astimezone(
+        timezone.utc) if data_escaneamento.tzinfo else data_escaneamento.replace(tzinfo=timezone.utc)
+    dataminima = data_escaneamento - timedelta(hours=HORAS_IMAGEM_ANTES)
+    datamaxima = data_escaneamento + timedelta(hours=HORAS_IMAGEM_DEPOIS)
+    filtro = {
+        'metadata.numeroinformado': numeroConteiner,
+        'metadata.dataescaneamento': {
+            '$gte': dataminima,
+            '$lte': datamaxima
+        }
+    }
+    grid_data = db['fs.files'].find_one(filtro)
+    if grid_data:
+        return grid_data.get('_id')
+    logger.info(f'Nenhum resultado foi encontrado para os parametros: {numeroConteiner}, {dataminima}, {datamaxima}')
+    pprint(filtro)
+    return None
+
+
+def busca_entrada_seco(session, codigoRecinto: str, numeroConteiner: str,
+                       data_saida: datetime) -> Optional[AcessoVeiculo]:
+    inicio = data_saida
+    fim = inicio + timedelta(hours=HORAS_TRANSIT_TIME)
+    return (
+        session.query(AcessoVeiculo)
+        .filter(
+            AcessoVeiculo.codigoRecinto != codigoRecinto,
+            AcessoVeiculo.numeroConteiner == numeroConteiner,
             AcessoVeiculo.direcao == 'E',
             AcessoVeiculo.dataHoraOcorrencia >= inicio,
             AcessoVeiculo.dataHoraOcorrencia < fim,
@@ -82,33 +162,19 @@ def busca_acesso_veiculo_desembarque_conteiner(session, desembarque: EmbarqueDes
     )
 
 
-def busca_escaneamento_desembarque_conteiner(
-        session,
-        desembarque: EmbarqueDesembarque,
-        saida: AcessoVeiculo
-) -> List[EmbarqueDesembarque]:
-    if saida is None:
-        return []
-
-    inicio = desembarque.dataHoraOcorrencia
-    fim = saida.dataHoraOcorrencia
-
-    if fim <= inicio:
-        return []
-
+def busca_saida_seco(session, codigoRecinto: str, numeroConteiner: str,
+                     data_entrada_seco: datetime) -> Optional[AcessoVeiculo]:
+    inicio = data_entrada_seco
+    fim = inicio + timedelta(days=DIAS_BUSCA_SAIDA_SECO)
     return (
-        session.query(EmbarqueDesembarque)
+        session.query(AcessoVeiculo)
         .filter(
-            EmbarqueDesembarque.codigoRecinto == desembarque.codigoRecinto,
-            EmbarqueDesembarque.numeroConteiner == desembarque.numeroConteiner,
-            EmbarqueDesembarque.dataHoraOcorrencia >= inicio,
-            EmbarqueDesembarque.dataHoraOcorrencia < fim,
+            AcessoVeiculo.codigoRecinto == codigoRecinto,
+            AcessoVeiculo.numeroConteiner == numeroConteiner,
+            AcessoVeiculo.direcao == 'S',
+            AcessoVeiculo.dataHoraOcorrencia >= inicio,
+            AcessoVeiculo.dataHoraOcorrencia < fim,
         )
-        .order_by(EmbarqueDesembarque.dataHoraOcorrencia.asc())
-        .all()
+        .order_by(AcessoVeiculo.dataHoraOcorrencia.asc())
+        .first()
     )
-
-
-if __name__ == '__main__':
-    # Popular
-    print('Escolher um ponto de partida e popular Ciclo de Vida!')
