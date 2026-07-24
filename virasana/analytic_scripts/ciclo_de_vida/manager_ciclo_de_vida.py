@@ -345,7 +345,7 @@ def desembarques_novos(session):
                         )
     desembarques = (desembarques
         .order_by(EmbarqueDesembarque.id.asc())
-        .limit(20) # definir se puxa novos desembarques ou não
+        .limit(200) # definir se puxa novos desembarques ou não
         .all()
     )
     logger.info('%s desembarques encontrados', len(desembarques))
@@ -379,6 +379,6 @@ if __name__ == '__main__':
         logger.info('Iniciando...')
         desembarques_novos(session)
         # Popular ciclos de vida
-        ok, total = processar_ciclos_pendentes(mongodb, session, 10)
+        ok, total = processar_ciclos_pendentes(mongodb, session, 200)
         logger.info(f'Processados com sucesso: {ok}/{total}')
         time.sleep(600)
