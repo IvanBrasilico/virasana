@@ -13,6 +13,22 @@ from ajna_commons.flask.conf import SQL_URI
 from bhadrasana.models.apirecintos import EmbarqueDesembarque, AcessoVeiculo
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        fmt="%(asctime)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+    # logger.addHandler(handler)
+
+logger.setLevel(logging.INFO)
+
 Base = declarative_base()
 metadata = Base.metadata
 
@@ -24,6 +40,7 @@ class CicloDeVidaImportacao(Base):
     codigoRecintoDesembarque = Column(CHAR(7), index=True)
     numeroConteiner = Column(CHAR(11), index=True)
     numeroCEmercante = Column(CHAR(15), index=True)
+    portoDestFinal = Column(CHAR(7), index=True)
     desembarque_id = Column(BigInteger(), unique=True)
     data_desembarque = Column(DateTime(), index=True)
     saida_id = Column(BigInteger(), index=True)
@@ -50,6 +67,7 @@ class CicloDeVidaImportacao(Base):
         if cemercante is None:
             return
         self.numeroCEmercante = cemercante.numeroCEmercante
+        self.portoDestFinal = cemercante.portoDestFinal
 
     def set_desembarque(self, desembarque: EmbarqueDesembarque):
         if desembarque is None:

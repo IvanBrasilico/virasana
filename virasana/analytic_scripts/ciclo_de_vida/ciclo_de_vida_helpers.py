@@ -4,7 +4,7 @@ from pprint import pprint
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
-from ajna_commons.flask.log import logger
+from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import logger
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Escala, EscalaManifesto, Item, Manifesto
 from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva
 
@@ -148,6 +148,7 @@ def busca_entrada_seco(session, codigoRecinto: str, numeroConteiner: str,
                        data_saida: datetime) -> Optional[AcessoVeiculo]:
     inicio = data_saida
     fim = inicio + timedelta(hours=HORAS_TRANSIT_TIME)
+    # logger.info(f'busca_entrada_seco {codigoRecinto}, {numeroConteiner}, {inicio}, {fim}')
     return (
         session.query(AcessoVeiculo)
         .filter(
