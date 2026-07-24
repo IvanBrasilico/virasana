@@ -307,20 +307,7 @@ def processar_ciclos_pendentes(db, session, limite=1000):
     return ok, len(lote)
 
 
-if __name__ == '__main__':
-    # Popular Ciclos de Vida
-    # Escolher um ponto de partida para inicializar os Ciclos de Vida!
-    # Depois, basta ficar populando os ciclos de vida até detetar uma conclusão...
-    from ajna_commons.flask.conf import SQL_URI, MONGODB_URI, DATABASE
-    from sqlalchemy import create_engine, func
-    from sqlalchemy.orm import sessionmaker
-
-    engine = create_engine(SQL_URI)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    conn = MongoClient(host=MONGODB_URI)
-    mongodb = conn[DATABASE]
-
+def desembarques_novos(session):
     # Inicializar ciclos de vida. Pesquisando novos desembarques, poderiam ser novos CEs cadastrados para iniciar
     # o monitoramento mais cedo no ciclo.
     OPERADORES = ('8931356', '8931359', '8931404')
@@ -341,7 +328,7 @@ if __name__ == '__main__':
                         )
     desembarques = (desembarques
         .order_by(EmbarqueDesembarque.id.asc())
-        .limit(0) # definir se puxa novos desembarques ou não
+        .limit(200) # definir se puxa novos desembarques ou não
         .all()
     )
     logger.info('%s desembarques encontrados', len(desembarques))
@@ -355,6 +342,25 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(e)
         session.rollback()
-    # Popular ciclos de vida
-    ok, total = processar_ciclos_pendentes(mongodb, session, limite=1000)
-    logger.info(f'Processados com sucesso: {ok}/{total}')
+
+
+
+if __name__ == '__main__':
+    # Popular Ciclos de Vida
+    # Escolher um ponto de partida para inicializar os Ciclos de Vida!
+    # Depois, basta ficar populando os ciclos de vida até detetar uma conclusão...
+    from ajna_commons.flask.conf import SQL_URI, MONGODB_URI, DATABASE
+    from sqlalchemy import create_engine, func
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine(SQL_URI)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    conn = MongoClient(host=MONGODB_URI)
+    mongodb = conn[DATABASE]
+    while True:
+        logger.info('Iniciando...')
+        desembarques_novos(session)
+        # Popular ciclos de vida
+        ok, total = processar_ciclos_pendentes(mongodb, session, limite=500)
+        logger.info(f'Processados com sucesso: {ok}/{total}')
