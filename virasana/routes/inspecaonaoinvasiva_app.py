@@ -56,7 +56,7 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     file_id = fs.put(arquivo_imagem.stream, filename=filename, metadata=metadata)
 
 
-def configure(app):
+def configure(app, csrf):
     """Configura rotas para evento."""
 
     @app.route('/inspecaonaoinvasiva', methods=['GET', 'POST'])
