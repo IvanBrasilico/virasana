@@ -310,11 +310,8 @@ def processar_ciclos_pendentes(db, session, chunk_size=1000):
                 )
 
             ultimo_id = ciclo.ID
-
-            session.commit()
-            time.sleep(1)
-
         session.commit()
+        time.sleep(1)
 
     duracao = timedelta(seconds=int(time.time() - inicio_geral))
     logger.info(
