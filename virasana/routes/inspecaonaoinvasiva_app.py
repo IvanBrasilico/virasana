@@ -59,6 +59,7 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
 def configure(app, csrf):
     """Configura rotas para evento."""
 
+    @csrf.exempt
     @app.route('/inspecaonaoinvasiva', methods=['GET', 'POST'])
     def inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
@@ -83,6 +84,7 @@ def configure(app, csrf):
         return render_template('inspecaonaoinvasiva.html', oform=form)
 
 
+    @csrf.exempt
     @app.route('/api/inspecaonaoinvasiva', methods=['POST'])
     def api_inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
