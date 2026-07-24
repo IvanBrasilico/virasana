@@ -362,5 +362,5 @@ if __name__ == '__main__':
         logger.info('Iniciando...')
         desembarques_novos(session)
         # Popular ciclos de vida
-        ok, total = processar_ciclos_pendentes(mongodb, session, limite=500)
+        ok, total = processar_ciclos_pendentes(mongodb, session, limite=2000)
         logger.info(f'Processados com sucesso: {ok}/{total}')
