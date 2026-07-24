@@ -277,34 +277,51 @@ def completar_ciclo_de_vida(db, session, ciclo):
         return False
 
 
-def processar_ciclos_pendentes(db, session, limite=1000):
-    lote = (
-        session.query(CicloDeVidaImportacao)
-        .filter(CicloDeVidaImportacao.concluido.isnot(True))
-        .order_by(CicloDeVidaImportacao.ID.asc())
-        .limit(limite)
-        .all()
-    )
-    total = len(lote)
-    logger.info(f'{total} ciclos de vida não concluidos a processar')
-    inicio = time.time()
-    ok = 0
-    concluidos = 0
-    for i, ciclo in enumerate(lote, 1):
-        if completar_ciclo_de_vida(db, session, ciclo):
-            logger.info(f'{i} de {total} concluído. Ciclo ID {ciclo.ID} '
-                        f'desembarque {ciclo.desembarque_id} {ciclo.data_desembarque}.')
-            if ciclo.concluido:
-                concluidos += 1
-            ok += 1
-        duracao = timedelta(seconds=int(time.time() - inicio))
+def processar_ciclos_pendentes(db, session, chunk_size=1000):
+    ultimo_id = 0
+    total_ok = 0
+    total_concluidos = 0
+    inicio_geral = time.time()
+
+    while True:
+        lote = (
+            session.query(CicloDeVidaImportacao)
+            .filter(CicloDeVidaImportacao.concluido.isnot(True))
+            .filter(CicloDeVidaImportacao.ID > ultimo_id)
+            .order_by(CicloDeVidaImportacao.ID.asc())
+            .limit(chunk_size)
+            .all()
+        )
+
+        if not lote:
+            break
+
+        total = len(lote)
+        logger.info(f'Processando chunk com {total} ciclos a partir do ID > {ultimo_id}')
+
+        for i, ciclo in enumerate(lote, 1):
+            if completar_ciclo_de_vida(db, session, ciclo):
+                total_ok += 1
+                if ciclo.concluido:
+                    total_concluidos += 1
+                logger.info(
+                    f'{i} de {total} concluído. Ciclo ID {ciclo.ID} '
+                    f'desembarque {ciclo.desembarque_id} {ciclo.data_desembarque}.'
+                )
+
+            ultimo_id = ciclo.ID
+
+            session.commit()
+            time.sleep(1)
+
+        session.commit()
+
+    duracao = timedelta(seconds=int(time.time() - inicio_geral))
     logger.info(
-        f'{total} processados em {duracao} '
-        f'({(time.time() - inicio) / total:.2f}s por ciclo). '
-        f'{concluidos}/{ok} foram marcados como finalizados.'
-        f'Data final de desembarque: {ciclo.data_desembarque}'
+        f'Finalizado em {duracao}. '
+        f'{total_ok} processados, {total_concluidos} marcados como finalizados.'
     )
-    return ok, len(lote)
+    return total_ok, total_concluidos
 
 
 def desembarques_novos(session):
@@ -328,7 +345,7 @@ def desembarques_novos(session):
                         )
     desembarques = (desembarques
         .order_by(EmbarqueDesembarque.id.asc())
-        .limit(200) # definir se puxa novos desembarques ou não
+        .limit(20) # definir se puxa novos desembarques ou não
         .all()
     )
     logger.info('%s desembarques encontrados', len(desembarques))
@@ -362,5 +379,6 @@ if __name__ == '__main__':
         logger.info('Iniciando...')
         desembarques_novos(session)
         # Popular ciclos de vida
-        ok, total = processar_ciclos_pendentes(mongodb, session, limite=2000)
+        ok, total = processar_ciclos_pendentes(mongodb, session, 10)
         logger.info(f'Processados com sucesso: {ok}/{total}')
+        time.sleep(600)
