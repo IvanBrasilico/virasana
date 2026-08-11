@@ -29,8 +29,11 @@ sys.path.append('../ajna_docs/commons')
 from ajna_commons.flask.log import logger
 from bhadrasana.models.laudo import get_empresa, Empresa
 from virasana.integracao.due.due_manager import (get_conteineres_escaneados_sem_due,
+                                                 get_conteineres_escaneados_com_due,
                                                  set_conteineres_escaneados_sem_due,
-                                                 integra_dues, integra_dues_itens, get_dues_sem_detalhes)
+                                                 integra_dues, 
+                                                 integra_dues_itens, 
+                                                 get_dues_sem_detalhes)
 
 from virasana.views import csrf
 
@@ -70,7 +73,7 @@ def configure(app):
         db_session = app.config['db_session']
         inicio_str = request.args.get('inicio')
         fim_str = request.args.get('fim')
-        codigos_str = request.args.get('codigos_recintos', CODIGOS_RECINTOS)
+        codigos_str = request.args.get('codigos_recintos', ','.join(CODIGOS_RECINTOS))
         if not inicio_str or not fim_str:
             return jsonify({'error': 'Parâmetros "inicio" e "fim" obrigatórios (YYYY-MM-DD)'}), 400
         try:
@@ -97,6 +100,86 @@ def configure(app):
             return jsonify(response), 200
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
+
+
+    @app.route('/integracao/lista_ctrs_com_due', methods=['GET'])
+    # @login_required
+    def integracao_lista_ctrs_com_due_api():
+        """Retorna lista com escaneamentos de contêineres com DUE informada no AcessoVeiculo.
+
+        Parâmetros obrigatórios:
+        inicio, fim: Data ISO de início e fim do filtro.
+
+        Parâmetro opcional:
+        codigos_recintos: lista dos códigos dos recintos a pesquisar.
+
+        Critério:
+        - AcessoVeiculo.tipoDeclaracao == 'DUE'
+        - AcessoVeiculo.numeroDeclaracao preenchido
+
+        Resposta:
+        ID do AcessoVeiculo, ID da InspecaoNaoInvasiva, _id da imagem no Mongo,
+        número do contêiner, data do escaneamento, tipo da declaração, número da DUE
+        e eventual DUE já existente na metadata do Mongo.
+        """
+
+        db_session = app.config['db_session']
+
+        inicio_str = request.args.get('inicio')
+        fim_str = request.args.get('fim')
+        codigos_str = request.args.get('codigos_recintos', ','.join(CODIGOS_RECINTOS))
+
+        if not inicio_str or not fim_str:
+            return jsonify({
+                'success': False,
+                'error': 'Parâmetros "inicio" e "fim" obrigatórios (YYYY-MM-DD ou YYYY-MM-DDTHH:MM:SS)'
+            }), 400
+
+        try:
+            inicio = datetime.fromisoformat(inicio_str)
+            fim = datetime.fromisoformat(fim_str)
+            codigos_recintos = [c.strip() for c in codigos_str.split(',') if c.strip()]
+
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Datas inválidas. Use YYYY-MM-DDTHH:MM:SS ou YYYY-MM-DD'
+            }), 400
+
+        try:
+            lista_final = get_conteineres_escaneados_com_due(
+                db_session,
+                inicio,
+                fim,
+                codigos_recintos
+            )
+
+            df = pd.DataFrame(lista_final[1:], columns=lista_final[0])
+
+            data_json = df.to_json(
+                orient='records',
+                date_format='iso',
+                default_handler=str
+            )
+
+            response = {
+                'success': True,
+                'total_registros': len(df),
+                'periodo': {
+                    'inicio': inicio.isoformat(),
+                    'fim': fim.isoformat()
+                },
+                'codigos_recintos': codigos_recintos,
+                'data': json.loads(data_json)
+            }
+
+            return jsonify(response), 200
+
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
 
     @app.route('/integracao/insere_cnpjs', methods=['POST'])
     # @login_required
@@ -249,7 +332,7 @@ def configure(app):
         db_session = app.config['db_session']
         inicio_str = request.args.get('inicio')
         fim_str = request.args.get('fim')
-        codigos_str = request.args.get('codigos_recintos', CODIGOS_RECINTOS)
+        codigos_str = request.args.get('codigos_recintos', ','.join(CODIGOS_RECINTOS))
         if not inicio_str or not fim_str:
             return jsonify({'error': 'Parâmetros "inicio" e "fim" obrigatórios (YYYY-MM-DD)'}), 400
         try:
