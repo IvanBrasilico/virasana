@@ -6,20 +6,22 @@ from flask import request, jsonify, flash, redirect, url_for, render_template
 
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
 
-
 # Dicionário para traduzir codigoRecinto
 DICT_RA_AJNA = {
     '8931305': 'TRANSBRASA',
     '8931356': 'SBT',
     '8931359': 'BTP1',
-    '8931364': 'BANDEIRANTES',  #
-    '8933206': 'DEICMAR',  #
+    '8931364': 'BANDEIRANTES',
+    '8933206': 'DEICMAR',
     '8931318': 'ECOPORTO',
     '8931404': 'EMBRAPORT',
-    '8931342': 'MARIMEX',  #
+    '8931342': 'MARIMEX',
     '8933001': 'LOCALFRIO',
-    '8933202': 'EUDMARCO',  #
-    '8933201': 'MULTILOG'
+    '8933202': 'EUDMARCO',
+    '8933201': 'MULTILOG',
+    '7921302': 'RIO_ICTSI',
+    '7921303': 'RIO_Mult_Rio_TII8',
+    '7961304': 'ITAGUAI_SEPETIBA_TECON'
 }
 
 # Dicionário reverso
@@ -82,7 +84,6 @@ def configure(app, csrf):
             return redirect(url_for('inspecaonaoinvasiva'))
 
         return render_template('inspecaonaoinvasiva.html', oform=form)
-
 
     @csrf.exempt
     @app.route('/api/inspecaonaoinvasiva', methods=['POST'])
