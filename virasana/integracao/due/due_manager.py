@@ -31,39 +31,54 @@ VIRASANA_URL = "https://ajna1.rfoc.srf/virasana/"
 
 
 def raspa_container(containeres: List[str], datainicio: datetime, datafim: datetime,
-                    virasana_url: str = VIRASANA_URL) -> List[dict]:
+                    virasana_url: str = VIRASANA_URL,
+                    somente_sem_due: bool = True) -> List:
     """Recebe uma lista de siglas de contêineres e pesquisa as imagens no MongoDB.
 
-    Args:
-        containeres: lista de strings de siglas de contêineres, filtra numeroinformado
-        datainicial, datafinal: período da pesquisa, filtra dataescaneamento
+        Args:
+            containeres: lista de strings de siglas de contêineres, filtra numeroinformado
+            datainicio, datafim: período da pesquisa, filtra dataescaneamento
+            virasana_url: URL base do Virasana
+            somente_sem_due: quando True, retorna apenas imagens sem metadata.due
 
-    Returns: [{_id, metadata: [numeroinformado, dataescaneamento, due]}]
-
-    """
+        Returns:
+            [{_id, metadata: [numeroinformado, dataescaneamento, due]}]
+        """
     datainicial = datetime.strftime(datainicio, '%Y-%m-%d %H:%M:%S')
     datafinal = datetime.strftime(datafim, '%Y-%m-%d %H:%M:%S')
+
     logger.debug('Conectando virasana, função raspa_container.')
-    params = {'query':
-                  {'metadata.dataescaneamento': {'$gte': datainicial, '$lte': datafinal},
-                   'metadata.contentType': 'image/jpeg',
-                   "$or": [
-                       {"metadata.due": {"$exists": False}},
-                       {"metadata.due": None},
-                       {"metadata.due": ""}],
-                   'metadata.numeroinformado': {'$in': containeres},
-                   },
-              'projection':
-                  {'metadata.numeroinformado': 1,
-                   'metadata.dataescaneamento': 1,
-                   'metadata.due': 1,
-                   }
-              }
+
+    query = {
+        'metadata.dataescaneamento': {'$gte': datainicial, '$lte': datafinal},
+        'metadata.contentType': 'image/jpeg',
+        'metadata.numeroinformado': {'$in': containeres},
+    }
+
+    if somente_sem_due:
+        query["$or"] = [
+            {"metadata.due": {"$exists": False}},
+            {"metadata.due": None},
+            {"metadata.due": ""}
+        ]
+
+    params = {
+        'query': query,
+        'projection': {
+            'metadata.numeroinformado': 1,
+            'metadata.dataescaneamento': 1,
+            'metadata.due': 1,
+        }
+    }
+
     r = requests.post(virasana_url + "grid_data", json=params, verify=False)
     logger.debug(f'{r}: {r.text}')
+
     lista_containeres = list(r.json())
+
     if lista_containeres and len(lista_containeres) > 0:
         logger.debug(f'GridData: {lista_containeres[0]}')
+
     return lista_containeres
 
 
@@ -198,6 +213,150 @@ def set_conteineres_escaneados_sem_due(db, session, df_escaneamentos_sem_due, df
         logger.debug(f'{conteiner},{_id},{due}, {result}')
         cont_ids_atualizados += 1
         logger.info(f'set_conteineres_escaneados_sem_due: {cont_ids_atualizados} imagens MongoDB atualizadas.')
+
+
+def get_conteineres_escaneados_com_due(session, datainicio: datetime, datafim: datetime,
+                                       codigos_recintos: list = None) -> list:
+    """Retorna lista com escaneamentos de contêineres que já possuem DUE informada no AcessoVeiculo.
+
+    O centro da pesquisa é o número do contêiner, seguindo a mesma lógica de
+    get_conteineres_escaneados_sem_due.
+
+    Diferença principal:
+    - filtra AcessoVeiculo.tipoDeclaracao == 'DUE'
+    - exige AcessoVeiculo.numeroDeclaracao preenchido
+    - retorna AcessoVeiculo.numeroDeclaracao como numero_due e due_acesso
+
+    Returns:
+        lista com cabeçalho na primeira linha.
+    """
+
+    # Passo 1 - Pega acessos veículo com DUE informada.
+    q = session.query(AcessoVeiculo).filter(AcessoVeiculo.operacao == 'C')
+    q = q.filter(AcessoVeiculo.direcao == 'E')
+    q = q.filter(AcessoVeiculo.dataHoraOcorrencia.between(datainicio, datafim))
+
+    if codigos_recintos:
+        q = q.filter(AcessoVeiculo.codigoRecinto.in_(codigos_recintos))
+
+    q = q.filter(AcessoVeiculo.numeroConteiner.isnot(None))
+    q = q.filter(AcessoVeiculo.numeroConteiner != '')
+    q = q.filter(AcessoVeiculo.listaNfe != '')
+
+    q = q.filter(AcessoVeiculo.tipoDeclaracao == 'DUE')
+    q = q.filter(AcessoVeiculo.numeroDeclaracao.isnot(None))
+    q = q.filter(AcessoVeiculo.numeroDeclaracao != '')
+
+    lista_entradas = q.order_by(AcessoVeiculo.dataHoraOcorrencia).all()
+
+    lista_final = [(
+        'AcessoVeiculo',
+        'InspecaoNaoInvasiva',
+        'numero_conteiner',
+        'id_imagem',
+        'dataescaneamento',
+        'tipo_declaracao',
+        'numero_due',
+        'due_acesso',
+        'due_mongo'
+    )]
+
+    conteineres_exportacao_detalhes = {}
+    conteineres_exportacao = set()
+
+    for entrada in lista_entradas:
+        conteineres_exportacao_detalhes[entrada.numeroConteiner] = {
+            'id': entrada.id,
+            'tipoDeclaracao': entrada.tipoDeclaracao,
+            'numeroDeclaracao': entrada.numeroDeclaracao
+        }
+        conteineres_exportacao.add(entrada.numeroConteiner)
+
+    logger.info(
+        f'Acessos com DUE: {list(conteineres_exportacao)[:10]} {len(conteineres_exportacao)}'
+    )
+
+    if not conteineres_exportacao:
+        logger.info('Nenhum AcessoVeiculo com DUE encontrado.')
+        return lista_final
+
+    # Passo 2 - Pega inspeções não invasivas para os contêineres dos acessos.
+    datafim_escaneamento = datafim + timedelta(hours=3)
+
+    q2 = session.query(InspecaoNaoInvasiva)
+    q2 = q2.filter(InspecaoNaoInvasiva.dataHoraOcorrencia.between(datainicio, datafim_escaneamento))
+
+    if codigos_recintos:
+        q2 = q2.filter(InspecaoNaoInvasiva.codigoRecinto.in_(codigos_recintos))
+
+    q2 = q2.filter(InspecaoNaoInvasiva.numeroConteiner.in_(conteineres_exportacao))
+
+    lista_escaneamentos = q2.order_by(InspecaoNaoInvasiva.dataHoraOcorrencia).all()
+
+    conteineres_escaneados_detalhes = {}
+    conteineres_exportacao_escaneados = set()
+
+    for escaneamento in lista_escaneamentos:
+        conteineres_escaneados_detalhes[escaneamento.numeroConteiner] = {
+            'id': escaneamento.id,
+            'dataescaneamento': escaneamento.dataHoraOcorrencia
+        }
+        conteineres_exportacao_escaneados.add(escaneamento.numeroConteiner)
+
+    logger.info(
+        f'Escaneamentos com DUE: {list(conteineres_exportacao_escaneados)[:10]} '
+        f'{len(conteineres_exportacao_escaneados)}'
+    )
+
+    if not conteineres_exportacao_escaneados:
+        logger.info('Nenhum escaneamento encontrado para acessos com DUE.')
+        return lista_final
+
+    # Passo 3 - Recupera imagens no Mongo.
+    # Importante: para o fluxo com DUE, não restringir a imagens sem metadata.due.
+    griddata = raspa_container(
+        list(conteineres_exportacao_escaneados),
+        datainicio,
+        datafim_escaneamento,
+        somente_sem_due=False
+    )
+
+    for dados_imagem in griddata:
+        _id = dados_imagem['_id']
+        metadata = dados_imagem['metadata']
+
+        numero_conteiner = metadata.get('numeroinformado')
+        dataescaneamento = metadata.get('dataescaneamento')
+        due_mongo = metadata.get('due')
+
+        if not numero_conteiner:
+            continue
+
+        dados_acesso = conteineres_exportacao_detalhes.get(numero_conteiner)
+        dados_inspecao = conteineres_escaneados_detalhes.get(numero_conteiner)
+
+        if not dados_acesso or not dados_inspecao:
+            continue
+
+        tipo_declaracao = dados_acesso.get('tipoDeclaracao')
+        numero_due = dados_acesso.get('numeroDeclaracao')
+
+        lista_final.append((
+            dados_acesso['id'],
+            dados_inspecao['id'],
+            numero_conteiner,
+            _id,
+            dataescaneamento,
+            tipo_declaracao,
+            numero_due,
+            numero_due,
+            due_mongo
+        ))
+
+    logger.info(f'Lista final com DUE: {lista_final[:2]}, {len(lista_final)}')
+
+    return lista_final
+
 
 
 def update_instance(model_instance, update_dict):
