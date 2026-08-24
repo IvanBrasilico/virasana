@@ -6,6 +6,7 @@ from flask import request, jsonify, flash, redirect, url_for, render_template
 
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
 
+
 # Dicionário para traduzir codigoRecinto
 DICT_RA_AJNA = {
     '8931305': 'TRANSBRASA',
@@ -24,6 +25,7 @@ DICT_RA_AJNA = {
     '7961304': 'ITAGUAI_SEPETIBA_TECON'
 }
 
+
 # Dicionário reverso
 DICT_AJNA_RA = {v: k for k, v in DICT_RA_AJNA.items()}
 
@@ -33,29 +35,83 @@ DICT_AJNA_RA['RECINTO_NAO_ENCONTRADO'] = '0000000'
 def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
     # 3) Montar metadata
     metadata = {'contentType': 'image/jpeg'}
+
     print(json_original)
+
     filename = arquivo_imagem.filename
+
+    # Data e hora da ocorrência/escaneamento
     data_escaneamento_str = None
+
     try:
         data_escaneamento_str = json_original.get('dataHoraOcorrencia')
-        data_escaneamento = parser.parse(data_escaneamento_str).replace(microsecond=0)
+
+        data_escaneamento = parser.parse(
+            data_escaneamento_str
+        ).replace(microsecond=0)
+
         metadata['dataescaneamento'] = data_escaneamento
+
     except Exception as e:
-        raise Exception(f'Não foi possível parsear data "{data_escaneamento_str}" do arquivo "{filename}": {e}')
-    lista_conteineres = json_original.get('listaConteineresUld', [])
+        raise Exception(
+            f'Não foi possível parsear data "{data_escaneamento_str}" '
+            f'do arquivo "{filename}": {e}'
+        )
+
+    # Data e hora da transmissão
+    data_transmissao_str = json_original.get('dataHoraTransmissao')
+
+    if data_transmissao_str:
+        try:
+            data_transmissao = parser.parse(
+                data_transmissao_str
+            ).replace(microsecond=0)
+
+            metadata['datahoratransmissao'] = data_transmissao
+
+        except Exception as e:
+            raise Exception(
+                f'Não foi possível parsear data de transmissão '
+                f'"{data_transmissao_str}" do arquivo "{filename}": {e}'
+            )
+
+    lista_conteineres = json_original.get(
+        'listaConteineresUld',
+        []
+    )
+
     numeroinformado = None
+
     if lista_conteineres and len(lista_conteineres) > 0:
-        numeroinformado = lista_conteineres[0].get('numeroConteiner') or lista_conteineres[0].get('numero')
+        numeroinformado = (
+            lista_conteineres[0].get('numeroConteiner')
+            or lista_conteineres[0].get('numero')
+        )
+
     metadata['numeroinformado'] = numeroinformado
     metadata['unidade'] = 'ALFSTS'
+
     codigo_recinto = json_original.get('codigoRecinto')
-    recinto = DICT_RA_AJNA.get(codigo_recinto, 'RECINTO_NAO_ENCONTRADO')
+
+    recinto = DICT_RA_AJNA.get(
+        codigo_recinto,
+        'RECINTO_NAO_ENCONTRADO'
+    )
+
     metadata['recinto'] = recinto
 
     # 4) Salvar arquivo no GridFS com metadata
     # arquivo_imagem.stream já é um arquivo-like object (bytes)
     fs = gridfs.GridFS(mongodb)
-    file_id = fs.put(arquivo_imagem.stream, filename=filename, metadata=metadata)
+
+    file_id = fs.put(
+        arquivo_imagem.stream,
+        filename=filename,
+        metadata=metadata
+    )
+
+    # Necessário para devolver o ID na resposta da API
+    return file_id
 
 
 def configure(app, csrf):
@@ -66,48 +122,95 @@ def configure(app, csrf):
     def inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
         form = InspecaoNaoInvasivaForm()
+
         if form.validate_on_submit():
             json_data = {
                 "dataHoraOcorrencia": form.dataHoraOcorrencia.data,
                 "codigoRecinto": form.codigoRecinto.data,
                 "listaConteineresUld": [
-                    {"numeroConteiner": form.numeroConteiner.data}
+                    {
+                        "numeroConteiner": form.numeroConteiner.data
+                    }
                 ]
             }
 
             try:
-                file_id = processar_inspecaonaoinvasiva(mongodb, json_data, form.imagem.data)
-                flash('Evento enviado com sucesso! File ID: ' + str(file_id), 'success')
+                file_id = processar_inspecaonaoinvasiva(
+                    mongodb,
+                    json_data,
+                    form.imagem.data
+                )
+
+                flash(
+                    'Evento enviado com sucesso! File ID: ' + str(file_id),
+                    'success'
+                )
+
             except Exception as e:
-                flash('Erro ao enviar evento: ' + str(e), 'danger')
+                flash(
+                    'Erro ao enviar evento: ' + str(e),
+                    'danger'
+                )
 
-            return redirect(url_for('inspecaonaoinvasiva'))
+            return redirect(
+                url_for('inspecaonaoinvasiva')
+            )
 
-        return render_template('inspecaonaoinvasiva.html', oform=form)
+        return render_template(
+            'inspecaonaoinvasiva.html',
+            oform=form
+        )
 
     @csrf.exempt
     @app.route('/api/inspecaonaoinvasiva', methods=['POST'])
     def api_inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
+
         try:
             # 1) Receber JSON da forma multipart, campo 'json'
             if 'json' not in request.form:
-                return jsonify({"error": "Campo form 'json' obrigatório"}), 400
+                return jsonify({
+                    "error": "Campo form 'json' obrigatório"
+                }), 400
+
             json_str = request.form['json']
-            json_original = json.loads(json_str).get('jsonOriginal')
+            json_recebido = json.loads(json_str)
+            json_original = json_recebido.get('jsonOriginal')
+
+            if not isinstance(json_original, dict):
+                return jsonify({
+                    "error": "Campo 'jsonOriginal' obrigatório ou inválido"
+                }), 400
 
             # 2) Receber arquivo jpeg
             if 'imagem' not in request.files:
-                return jsonify({"error": "Arquivo 'imagem' obrigatório"}), 400
+                return jsonify({
+                    "error": "Arquivo 'imagem' obrigatório"
+                }), 400
+
             arquivo_imagem = request.files['imagem']
 
             # Verificar extensão do arquivo
-            if not arquivo_imagem.filename.lower().endswith('.jpeg') and not arquivo_imagem.filename.lower().endswith(
-                    '.jpg'):
-                return jsonify({"error": "Arquivo deve ser .jpeg ou .jpg"}), 400
+            if (
+                not arquivo_imagem.filename.lower().endswith('.jpeg')
+                and not arquivo_imagem.filename.lower().endswith('.jpg')
+            ):
+                return jsonify({
+                    "error": "Arquivo deve ser .jpeg ou .jpg"
+                }), 400
 
-            file_id = processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem)
-            return jsonify({"message": "Salvo com sucesso", "file_id": str(file_id)}), 201
+            file_id = processar_inspecaonaoinvasiva(
+                mongodb,
+                json_original,
+                arquivo_imagem
+            )
+
+            return jsonify({
+                "message": "Salvo com sucesso",
+                "file_id": str(file_id)
+            }), 201
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({
+                "error": str(e)
+            }), 500
