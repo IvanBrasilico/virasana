@@ -7,31 +7,6 @@ from flask import request, jsonify, flash, redirect, url_for, render_template
 from bhadrasana.models.ovr import Recinto
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
 
-
-# Dicionário para traduzir codigoRecinto
-DICT_RA_AJNA = {
-    '7921302': 'RIO_ICTSI',
-    '7921303': 'RIO_Mult_Rio_TII8',
-    '7961304': 'ITAGUAI_SEPETIBA_TECON',
-    '8931305': 'TRANSBRASA',
-    '8931318': 'ECOPORTO',
-    '8931342': 'MARIMEX',
-    '8931356': 'SBT',
-    '8931359': 'BTP1',
-    '8931364': 'BANDEIRANTES',
-    '8931404': 'EMBRAPORT',
-    '8933001': 'LOCALFRIO',
-    '8933201': 'MULTILOG',
-    '8933202': 'EUDMARCO',
-    '8933206': 'DEICMAR',
-}
-
-# Dicionário reverso
-DICT_AJNA_RA = {v: k for k, v in DICT_RA_AJNA.items()}
-
-DICT_AJNA_RA['RECINTO_NAO_ENCONTRADO'] = '0000000'
-
-
 def processar_inspecaonaoinvasiva(mongodb, session, json_original, arquivo_imagem):
     # 3) Montar metadata
     metadata = {'contentType': 'image/jpeg'}
@@ -66,12 +41,13 @@ def processar_inspecaonaoinvasiva(mongodb, session, json_original, arquivo_image
         metadata['unidade'] = recinto.sigla_unidade
         metadata['cod_unidade'] = recinto.cod_unidade
         metadata['recinto'] = recinto.cod_avatar
-        metadata['recintoid'] = recinto.cod_recinto
+        metadata['recintoid'] = recinto.cod_siscomex
 
     # 4) Salvar arquivo no GridFS com metadata
     # arquivo_imagem.stream já é um arquivo-like object (bytes)
     fs = gridfs.GridFS(mongodb)
     file_id = fs.put(arquivo_imagem.stream, filename=filename, metadata=metadata)
+    return file_id
 
 
 def configure(app, csrf):
