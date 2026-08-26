@@ -4,11 +4,12 @@ from datetime import datetime, timedelta
 
 from pymongo import MongoClient
 
+
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
-from bhadrasana.models.apirecintos import EmbarqueDesembarque
+from bhadrasana.models.apirecintos import EmbarqueDesembarque, AcessoVeiculo
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao, \
     CicloDeVidaImportacaoEscaneamentos, logger
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida_helpers import (
@@ -18,6 +19,8 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida_helpers import (
     busca_entrada_seco,
     busca_saida_seco,
     busca_escaneamentos_seco, HORAS_TRANSIT_TIME, HORAS_PERMANENCIA_MOLHADO)
+
+OPERADORES = ('8931356', '8931359', '8931404')
 
 
 class CicloDeVidaImportacaoManager():
@@ -324,7 +327,6 @@ def processar_ciclos_pendentes(db, session, chunk_size=1000):
 def desembarques_novos(session):
     # Inicializar ciclos de vida. Pesquisando novos desembarques, poderiam ser novos CEs cadastrados para iniciar
     # o monitoramento mais cedo no ciclo.
-    OPERADORES = ('8931356', '8931359', '8931404')
     desembarques = (
         session.query(EmbarqueDesembarque)
         .filter(EmbarqueDesembarque.codigoRecinto.in_(OPERADORES))
@@ -352,11 +354,48 @@ def desembarques_novos(session):
         session.add(ciclo_de_vida)
     try:
         session.commit()
-        logger.info('Desembarques novos incluídos com sucesso no monitoramento de ciclo de vida')
+        logger.info('Desembarques novos incluídos com sucesso no monitoramento de ciclo de vida.')
     except Exception as e:
         logger.error(e)
         session.rollback()
 
+
+def saidas_novas_operadores(session):
+    # Completar ciclos de vida com saídas. Atalho para a pesquisa completa do completar_ciclo
+    max_id_saida_operador = session.query(func.max(CicloDeVidaImportacao.saida_id)).scalar()
+    if max_id_saida_operador is None:
+        return
+    saidas = (
+            session.query(AcessoVeiculo)
+            .filter(AcessoVeiculo.codigoRecinto.in_(OPERADORES))
+            .filter(AcessoVeiculo.direcao == 'S')
+            .filter(AcessoVeiculo.numeroConteiner.isnot(None))
+            .filter(AcessoVeiculo.numeroConteiner != '')
+            .order_by(AcessoVeiculo.id.asc())
+            .limit(200)
+            .all()
+    )
+    logger.info('%s saídas encontradas', len(saidas))
+    for saida in saidas:
+        fim = saida.dataHoraOcorrencia
+        inicio = fim - timedelta(hours=HORAS_PERMANENCIA_MOLHADO)
+        ciclo_de_vida = (
+            session.query(CicloDeVidaImportacao)
+            .filter(CicloDeVidaImportacao.codigoRecinto == saida.codigoRecinto)
+            .filter(CicloDeVidaImportacao.data_desembarque < fim)
+            .filter(CicloDeVidaImportacao.data_desembarque > inicio)
+            .filter(AcessoVeiculo.numeroConteiner == saida.numeroConteiner)
+            .filter(AcessoVeiculo.numeroConteiner != '')
+            .one_or_none()
+        )
+        if ciclo_de_vida:
+            session.add(ciclo_de_vida)
+    try:
+        session.commit()
+        logger.info('Saídas novas incluídas com sucesso no monitoramento de ciclo de vida.')
+    except Exception as e:
+        logger.error(e)
+        session.rollback()
 
 
 if __name__ == '__main__':
@@ -374,7 +413,11 @@ if __name__ == '__main__':
     mongodb = conn[DATABASE]
     while True:
         logger.info('Iniciando...')
+        # As funções acimas são "atalhos" para buscar novos ciclos de vida ou completar existentes
+        # Os atalhos darão um tratamento mais célere ao problema de monitorar o ciclo de vida,
+        # diminuindo custos computacionais e encurtando tempos de busca e atualização
         desembarques_novos(session)
+        saidas_novas_operadores(session)
         # Popular ciclos de vida
         ok, total = processar_ciclos_pendentes(mongodb, session, 200)
         logger.info(f'Processados com sucesso: {ok}/{total}')
