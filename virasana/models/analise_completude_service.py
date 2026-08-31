@@ -86,3 +86,20 @@ def query_completude_detalhe(session, data_inicio, data_fim, cod_recinto):
         .order_by(Ciclo.data_entrada_seco)
         .all()
     )
+
+
+def totais_completude(resultados):
+    total = sum(r['total'] for r in resultados)
+    sem_escaneamento = sum(r['sem_escaneamento'] for r in resultados)
+    sem_imagem = sum(r['sem_imagem'] for r in resultados)
+    total_saidas = sum(r['total_saidas'] for r in resultados)
+    saidas_sem_escaneamento = sum(r['saidas_sem_escaneamento'] for r in resultados)
+    return {
+        'total': total,
+        'sem_escaneamento': sem_escaneamento,
+        'sem_imagem': sem_imagem,
+        'pct_sem_escaneamento': (sem_escaneamento / total) if total else 0,
+        'total_saidas': total_saidas,
+        'saidas_sem_escaneamento': saidas_sem_escaneamento,
+        'pct_saidas_sem_escaneamento': (saidas_sem_escaneamento / total_saidas) if total_saidas else 0,
+    }

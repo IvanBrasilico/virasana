@@ -62,6 +62,18 @@
                 <tr><td colspan="9">Nenhum resultado no período selecionado.</td></tr>
                 {% endfor %}
             </tbody>
+                        <tfoot>
+                <tr class="active">
+                    <td colspan="2"><strong>TOTAL</strong></td>
+                    <td><strong>{{ totais.total }}</strong></td>
+                    <td><strong>{{ totais.sem_escaneamento }}</strong></td>
+                    <td><strong>{{ totais.sem_imagem }}</strong></td>
+                    <td><strong>{{ '%.1f'|format(totais.pct_sem_escaneamento * 100) }}%</strong></td>
+                    <td><strong>{{ totais.total_saidas }}</strong></td>
+                    <td><strong>{{ totais.saidas_sem_escaneamento }}</strong></td>
+                    <td><strong>{{ '%.1f'|format(totais.pct_saidas_sem_escaneamento * 100) }}%</strong></td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 

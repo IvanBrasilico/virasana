@@ -4,7 +4,8 @@ from flask import request, render_template, flash
 
 from bhadrasana.models.ovr import Recinto
 from virasana.forms.analisecompletude_form import AnaliseCompletudeFiltroForm
-from virasana.models.analise_completude_service import query_completude_detalhe, query_completude_agregada
+from virasana.models.analise_completude_service import query_completude_detalhe, query_completude_agregada, \
+    totais_completude
 
 
 def configure(app):
@@ -24,10 +25,12 @@ def configure(app):
 
         data_inicio, data_fim = _intervalo_do_form(form)
         resultados = query_completude_agregada(session, data_inicio, data_fim)
+        totais = totais_completude(resultados)
         return render_template(
             'analise_completude_agregada.html',
             oform=form,
             resultados=resultados,
+            totais=totais,
             data_inicio=form.datainicio.data,
             data_fim=form.datafim.data,
         )
