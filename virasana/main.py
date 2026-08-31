@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path #PARA O .ENV
 from dotenv import load_dotenv #PARA O .ENV
+
+
 load_dotenv()#PARA O .ENV
 
 sys.path.insert(0, '.')
@@ -31,6 +33,7 @@ from virasana.routes.exportacao_parametros_risco import parametros_risco_bp
 from virasana.routes.exportacao_importar_planilhas import importar_planilhas_bp
 from virasana.routes import imagens_app
 from virasana.routes import inspecaonaoinvasiva_app
+from virasana.routes import analisecompletude_app
 from virasana.views import configure_app, csrf
 
 
@@ -64,6 +67,7 @@ api = api_login.configure(app)
 csrf.exempt(api)
 inspecaonaoinvasiva_app.configure(app, csrf)
 integracao_app.configure(app)
+analisecompletude_app.configure(app)
 list_routes()
 log.logger.info('Servidor (re)iniciado!')
 

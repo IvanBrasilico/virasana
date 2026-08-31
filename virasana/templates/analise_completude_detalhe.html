@@ -1,0 +1,54 @@
+{% extends "layout.html" %} {% block content %} {{super()}}
+<div id="main" class="container-fluid">
+    <div id="top" class="row col-sm-12">
+        <h3>Detalhamento — recinto {{ cod_recinto }}</h3>
+        <p>Período: {{ data_inicio.strftime('%d/%m/%Y') }} a {{ data_fim.strftime('%d/%m/%Y') }}</p>
+        <a class="btn btn-default" href="{{ url_for('analise_completude_recintos_secos', datainicio=data_inicio.isoformat(), datafim=data_fim.isoformat()) }}">
+            &laquo; Voltar para a visão agregada
+        </a>
+    </div>
+
+    <div id="resultados" class="row col-sm-12 table">
+        <table class="inlineTable table table-bordered table-hover table-responsive table-striped">
+            <thead>
+                <tr>
+                    <th>Contêiner</th>
+                    <th>Data entrada (seco)</th>
+                    <th>Escaneamento</th>
+                    <th>Imagem</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for numeroConteiner, data_entrada_seco, escaneamento_id, imagem_id in linhas %}
+                <tr>
+                    <td>{{ numeroConteiner }}</td>
+                    <td>{{ data_entrada_seco.strftime('%d/%m/%Y %H:%M') if data_entrada_seco else '' }}</td>
+                    <td>
+                        {% if escaneamento_id %}
+                            <span class="label label-success">OK ({{ escaneamento_id }})</span>
+                        {% else %}
+                            <span class="label label-danger">Sem escaneamento</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if imagem_id %}
+                            <span class="label label-success">OK</span>
+                        {% else %}
+                            <span class="label label-danger">Sem imagem</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">Nenhum registro no período selecionado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2026
+    </div>
+</div>
+{% endblock %} {% block scripts %} {{super()}}
+<script></script>
+{% endblock %}

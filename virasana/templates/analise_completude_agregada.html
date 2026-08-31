@@ -1,0 +1,66 @@
+{% extends "layout.html" %} {% block content %} {{super()}}
+<div id="main" class="container-fluid">
+    <div id="top" class="row col-sm-12">
+        <h3>Análise de completude de escaneamentos — recintos secos</h3>
+        <div class="form-group">
+            <form method="GET" id="filtrocompletude" action="{{ url_for('analise_completude_recintos_secos') }}">
+                <div class="row">
+                    <div class="col-sm-2"><label for="datainicio">Data Início</label></div>
+                    <div class="col-sm-2"><label for="datafim">Data Fim</label></div>
+                    <div class="col-sm-8"></div>
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <div class="col-sm-2">{{ oform.datainicio(class='form-control') }}</div>
+                        <div class="col-sm-2">{{ oform.datafim(class='form-control') }}</div>
+                        <div class="col-sm-8"></div>
+                    </div>
+                </div>
+                <div class="row">
+                    &nbsp;<br>
+                    <div class="col-sm-2">
+                        <button class="btn btn-default btn-info form-control" type="submit">Pesquisar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="resultados" class="row col-sm-12 table table-responsive">
+        <table class="inlineTable table table-bordered table-hover table-responsive">
+            <thead>
+                <tr>
+                    <th>Recinto</th>
+                    <th>Total de entradas</th>
+                    <th>Sem escaneamento</th>
+                    <th>Sem imagem</th>
+                    <th>% sem escaneamento</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in resultados %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('analise_completude_recintos_secos_detalhe', cod_recinto=item.codigo_recinto, datainicio=data_inicio.isoformat(), datafim=data_fim.isoformat()) }}">
+                            {{ item.codigo_recinto }}
+                        </a>
+                    </td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.sem_escaneamento }}</td>
+                    <td>{{ item.sem_imagem }}</td>
+                    <td>{{ '%.1f'|format(item.pct_sem_escaneamento * 100) }}%</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">Nenhum resultado no período selecionado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2026
+    </div>
+</div>
+{% endblock %} {% block scripts %} {{super()}}
+<script></script>
+{% endblock %}
