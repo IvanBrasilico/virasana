@@ -2,6 +2,7 @@ from datetime import time, datetime
 
 from flask import request, render_template, flash
 
+from bhadrasana.models.ovr import Recinto
 from virasana.forms.analisecompletude_form import AnaliseCompletudeFiltroForm
 from virasana.models.analise_completude_service import query_completude_detalhe, query_completude_agregada
 
@@ -42,10 +43,12 @@ def configure(app):
 
         data_inicio, data_fim = _intervalo_do_form(form)
         linhas = query_completude_detalhe(session, data_inicio, data_fim, cod_recinto)
+        recinto = session.query(Recinto).filter(Recinto.cod_siscomex == cod_recinto).one_or_none()
         return render_template(
             'analise_completude_detalhe.html',
             oform=form,
             cod_recinto=cod_recinto,
+            nome_recinto=recinto.nome if recinto else '(recinto não cadastrado)',
             linhas=linhas,
             data_inicio=form.datainicio.data,
             data_fim=form.datafim.data,

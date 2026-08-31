@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, case, exists, and_
-from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (CicloDeVidaImportacao,
-                                                   CicloDeVidaImportacaoEscaneamentos)
+
+from bhadrasana.models.ovr import Recinto
+from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao, \
+    CicloDeVidaImportacaoEscaneamentos
 
 
 def _limite_recente():
@@ -20,27 +22,45 @@ def query_completude_agregada(session, data_inicio, data_fim):
     total = func.count(Ciclo.ID)
     sem_escaneamento = func.sum(case((~tem_escaneamento, 1), else_=0))
     sem_imagem = func.sum(case((~tem_imagem, 1), else_=0))
+    total_saidas = func.sum(case((Ciclo.data_saida_seco.isnot(None), 1), else_=0))
+    saidas_sem_escaneamento = func.sum(
+        case((and_(Ciclo.data_saida_seco.isnot(None), ~tem_escaneamento), 1), else_=0)
+    )
 
     linhas = (
-        session.query(Ciclo.codigoRecintoArmazenagem, total, sem_escaneamento, sem_imagem)
+        session.query(
+            Ciclo.codigoRecintoArmazenagem,
+            Recinto.nome,
+            total,
+            sem_escaneamento,
+            sem_imagem,
+            total_saidas,
+            saidas_sem_escaneamento,
+        )
+        .outerjoin(Recinto, Recinto.cod_siscomex == Ciclo.codigoRecintoArmazenagem)
         .filter(Ciclo.data_entrada_seco.isnot(None))
         .filter(Ciclo.data_entrada_seco.between(data_inicio, data_fim))
         .filter(Ciclo.data_entrada_seco < _limite_recente())
-        .group_by(Ciclo.codigoRecintoArmazenagem)
+        .group_by(Ciclo.codigoRecintoArmazenagem, Recinto.nome)
         .all()
     )
 
     resultados = []
-    for cod_recinto, tot, sem_esc, sem_img in linhas:
+    for cod_recinto, nome_recinto, tot, sem_esc, sem_img, tot_saidas, saidas_sem_esc in linhas:
         sem_esc = sem_esc or 0
         sem_img = sem_img or 0
-        pct = (sem_esc / tot) if tot else 0
+        tot_saidas = tot_saidas or 0
+        saidas_sem_esc = saidas_sem_esc or 0
         resultados.append({
             'codigo_recinto': cod_recinto,
+            'nome_recinto': nome_recinto or '(recinto não cadastrado)',
             'total': tot,
             'sem_escaneamento': sem_esc,
             'sem_imagem': sem_img,
-            'pct_sem_escaneamento': pct,
+            'pct_sem_escaneamento': (sem_esc / tot) if tot else 0,
+            'total_saidas': tot_saidas,
+            'saidas_sem_escaneamento': saidas_sem_esc,
+            'pct_saidas_sem_escaneamento': (saidas_sem_esc / tot_saidas) if tot_saidas else 0,
         })
     resultados.sort(key=lambda r: r['pct_sem_escaneamento'], reverse=True)
     return resultados
@@ -54,6 +74,7 @@ def query_completude_detalhe(session, data_inicio, data_fim, cod_recinto):
         session.query(
             Ciclo.numeroConteiner,
             Ciclo.data_entrada_seco,
+            Ciclo.data_saida_seco,
             Esc.escaneamento_id,
             Esc.imagem_id,
         )
