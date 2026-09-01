@@ -1,13 +1,47 @@
 {% extends "layout.html" %} {% block content %} {{super()}}
 <div id="main" class="container-fluid">
     <div id="top" class="row col-sm-12">
-        <h3>Detalhamento — {{ cod_recinto }} ({{ nome_recinto }})</h3>
+        <h3>Detalhamento — {{ cod_recinto }} ({{ totais.nome_recinto }})</h3>
         <p>Período: {{ data_inicio.strftime('%d/%m/%Y') }} a {{ data_fim.strftime('%d/%m/%Y') }}</p>
         <a class="btn btn-default" href="{{ url_for('analise_completude_recintos_secos', datainicio=data_inicio.isoformat(), datafim=data_fim.isoformat()) }}">
             &laquo; Voltar para a visão agregada
         </a>
     </div>
 
+    <div id="totais" class="row col-sm-12">
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.total }}</h4>
+                    <small>Total de entradas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.sem_escaneamento }} ({{ '%.1f'|format(totais.pct_sem_escaneamento * 100) }}%)</h4>
+                    <small>Sem escaneamento</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.sem_imagem }}</h4>
+                    <small>Sem imagem</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.saidas_sem_escaneamento }} ({{ '%.1f'|format(totais.pct_saidas_sem_escaneamento * 100) }}%)</h4>
+                    <small>Saídas (seco) sem escaneamento — {{ totais.total_saidas }} saídas no período</small>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="resultados" class="row col-sm-12 table">
         <table class="inlineTable table table-bordered table-hover table-responsive sortable">
             <thead>
@@ -38,7 +72,9 @@
                     </td>
                     <td>
                         {% if imagem_id %}
-                            <span class="label label-success">OK</span>
+                            <a href="/virasana/file?_id={{imagem_id}}" target="_BLANK">
+                                <img src="/virasana/mini1/{{imagem_id}}" width="150px"/>
+                            </a>
                         {% else %}
                             <span class="label label-danger">Sem imagem</span>
                         {% endif %}

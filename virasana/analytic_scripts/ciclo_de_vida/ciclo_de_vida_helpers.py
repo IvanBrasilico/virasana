@@ -91,6 +91,9 @@ def busca_escaneamentos_desembarque_conteiner(session, codigoRecinto: str,
                                               numeroConteiner: str,
                                               data_desembarque: datetime,
                                               data_saida: datetime) -> List[InspecaoNaoInvasiva]:
+    # Insere tolerância de erros de informação de datahoraocorrência - 1h antes ou depois
+    data_desembarque = data_desembarque - timedelta(hours=1)
+    data_saida = data_saida + timedelta(hours=1)
     return (
         session.query(InspecaoNaoInvasiva)
         .filter(
@@ -108,6 +111,9 @@ def busca_escaneamentos_seco(session, codigoRecinto: str, numeroConteiner: str,
                              data_entrada_seco: datetime) -> List[InspecaoNaoInvasiva]:
     inicio = data_entrada_seco
     fim = inicio + timedelta(days=HORAS_ESCANEAMENTO_SECO)
+    # Insere tolerância de erros de informação de datahoraocorrência - 1h antes ou depois
+    inicio = inicio - timedelta(hours=1)
+    fim = fim + timedelta(hours=1)
     return (
         session.query(InspecaoNaoInvasiva)
         .filter(

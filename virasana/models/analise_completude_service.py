@@ -11,8 +11,7 @@ def _limite_recente():
     """Entradas há menos de 3h ainda não tiveram tempo hábil de escaneamento."""
     return datetime.now() - timedelta(hours=3)
 
-
-def query_completude_agregada(session, data_inicio, data_fim):
+def query_completude_agregada(session, data_inicio, data_fim, cod_recinto=None):
     Ciclo = CicloDeVidaImportacao
     Esc = CicloDeVidaImportacaoEscaneamentos
 
@@ -27,7 +26,7 @@ def query_completude_agregada(session, data_inicio, data_fim):
         case((and_(Ciclo.data_saida_seco.isnot(None), ~tem_escaneamento), 1), else_=0)
     )
 
-    linhas = (
+    query = (
         session.query(
             Ciclo.codigoRecintoArmazenagem,
             Recinto.nome,
@@ -41,30 +40,42 @@ def query_completude_agregada(session, data_inicio, data_fim):
         .filter(Ciclo.data_entrada_seco.isnot(None))
         .filter(Ciclo.data_entrada_seco.between(data_inicio, data_fim))
         .filter(Ciclo.data_entrada_seco < _limite_recente())
-        .group_by(Ciclo.codigoRecintoArmazenagem, Recinto.nome)
-        .all()
     )
+    if cod_recinto is not None:
+        query = query.filter(Ciclo.codigoRecintoArmazenagem == cod_recinto)
 
-    resultados = []
-    for cod_recinto, nome_recinto, tot, sem_esc, sem_img, tot_saidas, saidas_sem_esc in linhas:
-        sem_esc = sem_esc or 0
-        sem_img = sem_img or 0
-        tot_saidas = tot_saidas or 0
-        saidas_sem_esc = saidas_sem_esc or 0
-        resultados.append({
-            'codigo_recinto': cod_recinto,
-            'nome_recinto': nome_recinto or '(recinto não cadastrado)',
-            'total': tot,
-            'sem_escaneamento': sem_esc,
-            'sem_imagem': sem_img,
-            'pct_sem_escaneamento': (sem_esc / tot) if tot else 0,
-            'total_saidas': tot_saidas,
-            'saidas_sem_escaneamento': saidas_sem_esc,
-            'pct_saidas_sem_escaneamento': (saidas_sem_esc / tot_saidas) if tot_saidas else 0,
-        })
+    linhas = query.group_by(Ciclo.codigoRecintoArmazenagem, Recinto.nome).all()
+
+    resultados = [_monta_item_completude(*linha) for linha in linhas]
     resultados.sort(key=lambda r: r['pct_sem_escaneamento'], reverse=True)
     return resultados
 
+
+def _monta_item_completude(cod_recinto, nome_recinto, tot, sem_esc, sem_img, tot_saidas, saidas_sem_esc):
+    sem_esc = sem_esc or 0
+    sem_img = sem_img or 0
+    tot_saidas = tot_saidas or 0
+    saidas_sem_esc = saidas_sem_esc or 0
+    return {
+        'codigo_recinto': cod_recinto,
+        'nome_recinto': nome_recinto or '(recinto não cadastrado)',
+        'total': tot,
+        'sem_escaneamento': sem_esc,
+        'sem_imagem': sem_img,
+        'pct_sem_escaneamento': (sem_esc / tot) if tot else 0,
+        'total_saidas': tot_saidas,
+        'saidas_sem_escaneamento': saidas_sem_esc,
+        'pct_saidas_sem_escaneamento': (saidas_sem_esc / tot_saidas) if tot_saidas else 0,
+    }
+
+
+def query_completude_totais_recinto(session, data_inicio, data_fim, cod_recinto):
+    """Totais de um único recinto — reaproveita query_completude_agregada filtrada."""
+    resultados = query_completude_agregada(session, data_inicio, data_fim, cod_recinto=cod_recinto)
+    if resultados:
+        return resultados[0]
+    recinto = session.query(Recinto).filter(Recinto.cod_siscomex == cod_recinto).one_or_none()
+    return _monta_item_completude(cod_recinto, recinto.nome if recinto else None, 0, 0, 0, 0, 0)
 
 def query_completude_detalhe(session, data_inicio, data_fim, cod_recinto):
     Ciclo = CicloDeVidaImportacao
