@@ -381,7 +381,7 @@ def saidas_novas_operadores(session):
         inicio = fim - timedelta(hours=HORAS_PERMANENCIA_MOLHADO)
         ciclo_de_vida = (
             session.query(CicloDeVidaImportacao)
-            .filter(CicloDeVidaImportacao.codigoRecinto == saida.codigoRecinto)
+            .filter(CicloDeVidaImportacao.codigoRecintoDesembarque == saida.codigoRecinto)
             .filter(CicloDeVidaImportacao.data_desembarque < fim)
             .filter(CicloDeVidaImportacao.data_desembarque > inicio)
             .filter(AcessoVeiculo.numeroConteiner == saida.numeroConteiner)
