@@ -51,7 +51,12 @@ def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, in
     payload = {'totalLinhas': 0, 'offset': '-03:00', 'passagens': []}
     try:
         acessos = psession.query(AcessoVeiculo).filter(AcessoVeiculo.id > pultimo_id).limit(limit).all()
-        passagens = [acesso.to_sivana() for acesso in acessos]
+        passagens = []
+        for acesso in acessos:
+            try:
+                passagens.append(acesso.to_sivana())
+            except Exception as err:
+                logger.error(err)
         payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
         # print(payload)
         if len(passagens) >0:
