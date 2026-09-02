@@ -35,7 +35,7 @@ def grava_ultimo_id_transmitido(psession, novo_id):
     logger.info(f"Atualizado 'ultimo_id_transmitido' com novo ID: {novo_id}")
 
 
-def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, int]:
+def le_novos_acesssos_veiculo(psession, pultimo_id, limit=5000) -> Tuple[dict, int]:
     """ Pesquisa novos registros na tabela.
     Se retornar payload com passagens vazio, ocorreu erro ou não há registros novos.
 
