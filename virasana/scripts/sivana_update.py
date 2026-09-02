@@ -70,10 +70,10 @@ if __name__ == '__main__':
     counter = 1
     update(connection)
     while True:
-        logger.info('Dormindo 1 segundo... ')
+        logger.info('Dormindo 1 minuto... ')
         logger.info('Tempo decorrido %s segundos.' % (time.time() - s0))
-        time.sleep(1)
-        if time.time() - s0 > 1:
+        time.sleep(20)
+        if time.time() - s0 > 60:
             logger.info('Chamada periódica rodada %s' % counter)
             counter += 1
             update(connection)
