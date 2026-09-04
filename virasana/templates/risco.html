@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análise de risco — CEs mercante</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F1B2D;
+    --panel: #16263D;
+    --panel-border: #24384F;
+    --text: #E7ECF2;
+    --text-muted: #90A2B8;
+    --amber: #E8A33D;
+    --teal: #3FA37F;
+    --danger: #D4645A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 15px;
+  }
+  h1, h2, .label, button, .chip, .toggle button {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.01em;
+  }
+  header .subtitulo {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    margin-top: 2px;
+  }
+
+  .toggle {
+    display: flex;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .toggle button {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toggle button + button { border-left: 1px solid var(--panel-border); }
+  .toggle button.ativo.prevista { background: rgba(232,163,61,0.15); color: var(--amber); }
+  .toggle button.ativo.efetiva { background: rgba(63,163,127,0.15); color: var(--teal); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 0;
+    min-height: calc(100vh - 64px);
+  }
+
+  aside {
+    border-right: 1px solid var(--panel-border);
+    padding: 20px;
+  }
+  aside .label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 18px 0 6px;
+  }
+  aside .label:first-child { margin-top: 0; }
+  aside input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  aside input:focus { outline: 1px solid var(--teal); }
+  aside button.aplicar {
+    width: 100%;
+    margin-top: 20px;
+    padding: 10px;
+    background: var(--teal);
+    color: #08140F;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  aside button.limpar {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  main { padding: 20px 28px; }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    min-height: 26px;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .chip button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .contagem { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--text-muted);
+    border-radius: 4px;
+    padding: 14px 16px;
+  }
+  .card.concluido { border-left-color: var(--teal); }
+  .card.aberto { border-left-color: var(--amber); }
+
+  .card .conteiner {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .card .ce {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .card .linha {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-top: 10px;
+  }
+  .card .linha strong { color: var(--text); font-weight: 500; }
+  .card .rota {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--text);
+  }
+  .card .status {
+    display: inline-block;
+    margin-top: 12px;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-muted);
+  }
+  .card.concluido .status { color: var(--teal); }
+  .card.aberto .status { color: var(--amber); }
+
+  .imagens {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .imagens .miniaturas {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .imagens img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+  }
+
+  .estado {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 0;
+    font-size: 13px;
+  }
+  .estado.erro { color: var(--danger); }
+
+  #sentinela { height: 1px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Análise de risco — CEs mercante</h1>
+    <div class="subtitulo">Janela de atracação cruzada com ciclo de vida e escaneamento</div>
+  </div>
+  <div class="toggle" id="toggle-janela">
+    <button data-valor="prevista" class="prevista">Previsão de atracação</button>
+    <button data-valor="efetiva" class="efetiva ativo efetiva">Desembarque efetivo</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="label">NCM</div>
+    <input type="text" id="f-ncm" placeholder="ex.: 8471">
+
+    <div class="label">Produto</div>
+    <input type="text" id="f-produto" placeholder="descrição do item">
+
+    <div class="label">Porto de origem</div>
+    <input type="text" id="f-porto_origem" placeholder="código do porto">
+
+    <div class="label">Porto de destino</div>
+    <input type="text" id="f-porto_destino" placeholder="código do porto">
+
+    <div class="label">Recinto</div>
+    <input type="text" id="f-recinto" placeholder="código do recinto">
+
+    <div class="label">Empresa</div>
+    <input type="text" id="f-empresa" placeholder="embarcador ou consignatário">
+
+    <button class="aplicar" id="btn-aplicar">Aplicar filtros</button>
+    <button class="limpar" id="btn-limpar">Limpar filtros</button>
+  </aside>
+
+  <main>
+    <div class="chips" id="chips"></div>
+    <div class="contagem" id="contagem"></div>
+    <div class="grid" id="grid"></div>
+    <div id="estado" class="estado"></div>
+    <div id="sentinela"></div>
+  </main>
+</div>
+
+<script>
+const API_URL = {{ url_for('risco.api_ces') | tojson }};
+const IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
+
+const campos = ['ncm', 'produto', 'porto_origem', 'porto_destino', 'recinto', 'empresa'];
+const rotulos = {
+  ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+  porto_destino: 'Destino', recinto: 'Recinto', empresa: 'Empresa',
+};
+
+let estadoBusca = {
+  tipo_janela: 'efetiva',
+  filtros: {},
+  cursor: null,
+  carregando: false,
+  fim: false,
+};
+
+const el = {
+  grid: document.getElementById('grid'),
+  estado: document.getElementById('estado'),
+  chips: document.getElementById('chips'),
+  contagem: document.getElementById('contagem'),
+  sentinela: document.getElementById('sentinela'),
+};
+
+function montaChips() {
+  el.chips.innerHTML = '';
+  Object.entries(estadoBusca.filtros).forEach(([chave, valor]) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `${rotulos[chave] || chave}: ${valor} <button aria-label="remover">×</button>`;
+    chip.querySelector('button').onclick = () => {
+      delete estadoBusca.filtros[chave];
+      document.getElementById('f-' + chave).value = '';
+      reiniciarBusca();
+    };
+    el.chips.appendChild(chip);
+  });
+}
+
+function montaCard(card) {
+  const div = document.createElement('div');
+  div.className = 'card ' + (card.concluido ? 'concluido' : 'aberto');
+
+  const imagens = card.imagens_ids || [];
+  let blocoImagens = '';
+  if (imagens.length > 0) {
+    if (IMAGEM_URL_TEMPLATE) {
+      const miniaturas = imagens.slice(0, 4).map(
+        id => `<img src="${IMAGEM_URL_TEMPLATE.replace('imagem_id', id)}" alt="escaneamento">`
+      ).join('');
+      blocoImagens = `<div class="imagens">${imagens.length} imagem(ns) de escaneamento<div class="miniaturas">${miniaturas}</div></div>`;
+    } else {
+      blocoImagens = `<div class="imagens">${imagens.length} imagem(ns) de escaneamento (rota de imagem não configurada)</div>`;
+    }
+  } else {
+    blocoImagens = `<div class="imagens">Sem escaneamento associado ainda</div>`;
+  }
+
+  div.innerHTML = `
+    <div class="conteiner mono">${card.numeroConteiner || '—'}</div>
+    <div class="ce mono">CE ${card.numeroCEmercante || '—'} · ${card.numConhecimento || 's/n'}</div>
+    <div class="linha"><span>Recinto desembarque</span><strong>${card.codigoRecintoDesembarque || '—'}</strong></div>
+    <div class="linha"><span>Desembarque</span><strong>${card.data_desembarque || '—'}</strong></div>
+    <div class="rota">${card.portoOrigemCarga || '—'} → ${card.portoDestFinal || '—'}</div>
+    <div class="linha"><span>Embarcador</span><strong>${card.embarcador || '—'}</strong></div>
+    <div class="linha"><span>Consignatário</span><strong>${card.consignatario || '—'}</strong></div>
+    ${blocoImagens}
+    <div class="status">${card.concluido ? 'Ciclo concluído' : 'Em monitoramento'}</div>
+  `;
+  return div;
+}
+
+async function carregarPagina() {
+  if (estadoBusca.carregando || estadoBusca.fim) return;
+  estadoBusca.carregando = true;
+  el.estado.textContent = 'Carregando…';
+  el.estado.className = 'estado';
+
+  const params = new URLSearchParams({ tipo_janela: estadoBusca.tipo_janela });
+  Object.entries(estadoBusca.filtros).forEach(([k, v]) => params.set(k, v));
+  if (estadoBusca.cursor) params.set('cursor_id', estadoBusca.cursor);
+
+  try {
+    const resp = await fetch(`${API_URL}?${params.toString()}`);
+    if (!resp.ok) {
+      const erro = await resp.json().catch(() => ({}));
+      throw new Error(erro.erro || `Erro ${resp.status}`);
+    }
+    const dados = await resp.json();
+
+    dados.cards.forEach(card => el.grid.appendChild(montaCard(card)));
+
+    if (dados.cards.length === 0 && el.grid.children.length === 0) {
+      el.estado.textContent = 'Nenhum CE encontrado para esses filtros nessa janela.';
+    } else {
+      el.estado.textContent = '';
+    }
+
+    estadoBusca.cursor = dados.next_cursor;
+    estadoBusca.fim = dados.next_cursor === null;
+    if (estadoBusca.fim && el.grid.children.length > 0) {
+      el.estado.textContent = 'Fim dos resultados.';
+    }
+
+    el.contagem.textContent = `${el.grid.children.length} card(s) carregado(s)`;
+  } catch (e) {
+    el.estado.textContent = 'Falha ao carregar: ' + e.message;
+    el.estado.className = 'estado erro';
+    estadoBusca.fim = true;
+  } finally {
+    estadoBusca.carregando = false;
+  }
+}
+
+function reiniciarBusca() {
+  estadoBusca.cursor = null;
+  estadoBusca.fim = false;
+  el.grid.innerHTML = '';
+  el.estado.textContent = '';
+  el.contagem.textContent = '';
+  montaChips();
+  carregarPagina();
+}
+
+document.getElementById('toggle-janela').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-valor]');
+  if (!btn) return;
+  document.querySelectorAll('#toggle-janela button').forEach(b => b.classList.remove('ativo'));
+  btn.classList.add('ativo');
+  estadoBusca.tipo_janela = btn.dataset.valor;
+  reiniciarBusca();
+});
+
+document.getElementById('btn-aplicar').addEventListener('click', () => {
+  estadoBusca.filtros = {};
+  campos.forEach(campo => {
+    const valor = document.getElementById('f-' + campo).value.trim();
+    if (valor) estadoBusca.filtros[campo] = valor;
+  });
+  reiniciarBusca();
+});
+
+document.getElementById('btn-limpar').addEventListener('click', () => {
+  campos.forEach(campo => { document.getElementById('f-' + campo).value = ''; });
+  estadoBusca.filtros = {};
+  reiniciarBusca();
+});
+
+new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting) carregarPagina();
+}, { rootMargin: '200px' }).observe(el.sentinela);
+
+carregarPagina();
+</script>
+
+</body>
+</html>

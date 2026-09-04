@@ -27,39 +27,45 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 
 # Janelas de atracação (em dias, a partir de hoje)
-JANELA_PREVISTA_MIN_DIAS = 3
-JANELA_PREVISTA_MAX_DIAS = 15
+JANELA_PREVISTA_MIN_DIAS = 0
+JANELA_PREVISTA_MAX_DIAS = 2
 JANELA_EFETIVA_MIN_DIAS = 5
 JANELA_EFETIVA_MAX_DIAS = 15
 
 TIPOS_JANELA_VALIDOS = ('prevista', 'efetiva')
 
 
-def _janela_datas(tipo_janela: str) -> Tuple[str, str]:
-    """Calcula o intervalo de datas (string 'YYYY-MM-DD', como armazenado em Escala)
-    correspondente à janela de risco escolhida.
+def _janela_previsao() -> Tuple[str, str]:
+    """Janela de PREVISÃO de atracação: 3 a 15 dias no futuro.
 
-    - 'prevista': daqui a 3 até 15 dias (cargas que ainda vão atracar)
-    - 'efetiva': de 5 a 15 dias atrás (cargas já atracadas, com tempo de terem sido
-      desembarcadas e escaneadas)
+    Retorna strings 'YYYY-MM-DD' porque `Escala.dataPrevistaAtracacao` é
+    armazenado como VARCHAR(10) nesse formato (não é um DateTime real).
     """
-    if tipo_janela not in TIPOS_JANELA_VALIDOS:
-        raise ValueError(f"tipo_janela inválido: {tipo_janela!r}. Use 'prevista' ou 'efetiva'.")
     hoje = datetime.now()
-    if tipo_janela == 'prevista':
-        inicio = hoje + timedelta(days=JANELA_PREVISTA_MIN_DIAS)
-        fim = hoje + timedelta(days=JANELA_PREVISTA_MAX_DIAS)
-    else:
-        inicio = hoje - timedelta(days=JANELA_EFETIVA_MAX_DIAS)
-        fim = hoje - timedelta(days=JANELA_EFETIVA_MIN_DIAS)
+    inicio = hoje + timedelta(days=JANELA_PREVISTA_MIN_DIAS)
+    fim = hoje + timedelta(days=JANELA_PREVISTA_MAX_DIAS)
     return inicio.strftime('%Y-%m-%d'), fim.strftime('%Y-%m-%d')
+
+
+def _janela_efetiva() -> Tuple[datetime, datetime]:
+    """Janela de desembarque EFETIVO: 5 a 15 dias no passado.
+
+    Retorna datetimes reais para comparar contra
+    `CicloDeVidaImportacao.data_desembarque` (coluna DateTime, populada a
+    partir de `EmbarqueDesembarque.dataHoraOcorrencia` — evento específico do
+    contêiner, não da escala/navio).
+    """
+    hoje = datetime.now()
+    inicio = hoje - timedelta(days=JANELA_EFETIVA_MAX_DIAS)
+    fim = hoje - timedelta(days=JANELA_EFETIVA_MIN_DIAS)
+    return inicio, fim
 
 
 def busca_ces_risco(
     session,
     tipo_janela: str = 'efetiva',
     filtros: Optional[dict] = None,
-    exigir_escaneamento: bool = True,
+    exigir_escaneamento: Optional[bool] = None,
     cursor_id: Optional[int] = None,
     limit: int = 20,
 ) -> List[Tuple[CicloDeVidaImportacao, Conhecimento]]:
@@ -67,15 +73,20 @@ def busca_ces_risco(
 
     Args:
         session: sessão SQLAlchemy.
-        tipo_janela: 'prevista' (3-15 dias no futuro) ou 'efetiva' (5-15 dias no passado).
+        tipo_janela: 'prevista' (3-15 dias no futuro, via Escala.dataPrevistaAtracacao)
+            ou 'efetiva' (5-15 dias no passado, via CicloDeVidaImportacao.data_desembarque).
         filtros: dict opcional com filtros sucessivos:
             - ncm (str): prefixo do código NCM (ex.: '8471')
             - porto_origem / porto_destino (str): código do porto (rota)
             - produto (str): busca textual na descrição do item (NCMItem.descritivo)
             - recinto (str): código do recinto de desembarque OU de armazenagem
             - empresa (str): busca textual em embarcador ou consignatário
-        exigir_escaneamento: se True (padrão), só retorna CEs cujo Ciclo de Vida já
-            tem ao menos um escaneamento com imagem associada ("recém escaneados").
+        exigir_escaneamento: se True, só retorna CEs cujo Ciclo de Vida já tem ao
+            menos um escaneamento com imagem associada ("recém escaneados"). Se
+            None (padrão), o comportamento é condicional à janela: True para
+            'efetiva' (já desembarcou, é razoável já ter sido escaneado) e False
+            para 'prevista' (a carga ainda não chegou, exigir escaneamento
+            devolveria pouco ou nada). Pode ser sobrescrito explicitamente.
         cursor_id: ID do último CicloDeVidaImportacao.ID já exibido na tela, para
             paginação por rolagem infinita (busca sempre ID menor que o cursor).
         limit: tamanho da página.
@@ -85,12 +96,13 @@ def busca_ces_risco(
         CicloDeVidaImportacao.ID decrescente (mais recentes primeiro).
 
     Observação de escopo:
-        A ligação entre "recém escaneados" e a janela de atracação hoje é feita
-        apenas pela EXISTÊNCIA de escaneamento com imagem, não pela data do
-        escaneamento cair dentro da janela informada (o que não faria sentido
-        para tipo_janela='prevista', já que a carga ainda não chegou). Se quiser
-        que, no caso 'efetiva', o escaneamento também precise ter ocorrido dentro
-        da janela de dias, é só avisar para adicionarmos o filtro em
+        Na janela 'efetiva', a data usada é `data_desembarque` do próprio
+        Ciclo de Vida — evento específico do contêiner (EmbarqueDesembarque),
+        não a atracação do navio como um todo (Escala), que é menos precisa e
+        armazenada como string. A ligação com "recém escaneados" continua
+        sendo pela EXISTÊNCIA de escaneamento com imagem, não pela data do
+        escaneamento cair dentro da janela — se quiser exigir isso também, é
+        só avisar para adicionarmos o filtro em
         CicloDeVidaImportacaoEscaneamentos.data_escaneamento.
 
         Filtros "subjetivos" (empresa e sócios cruzados com listas de risco) não
@@ -98,24 +110,35 @@ def busca_ces_risco(
         ainda não existe no modelo atual.
     """
     filtros = filtros or {}
-    inicio, fim = _janela_datas(tipo_janela)
-    campo_atracacao = (
-        Escala.dataPrevistaAtracacao if tipo_janela == 'prevista'
-        else Escala.dataEfetivaPrimeiraAtracacao
-    )
+    if tipo_janela not in TIPOS_JANELA_VALIDOS:
+        raise ValueError(f"tipo_janela inválido: {tipo_janela!r}. Use 'prevista' ou 'efetiva'.")
+    if exigir_escaneamento is None:
+        exigir_escaneamento = (tipo_janela == 'efetiva')
 
     q = (
         session.query(CicloDeVidaImportacao, Conhecimento)
         .join(Conhecimento, Conhecimento.numeroCEmercante == CicloDeVidaImportacao.numeroCEmercante)
-        .join(Manifesto, Manifesto.numero == Conhecimento.manifestoCE)
-        .join(EscalaManifesto, EscalaManifesto.manifesto == Manifesto.numero)
-        .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
-        .filter(
-            campo_atracacao.isnot(None),
-            campo_atracacao >= inicio,
-            campo_atracacao <= fim,
-        )
     )
+
+    if tipo_janela == 'prevista':
+        inicio, fim = _janela_previsao()
+        q = (
+            q.join(Manifesto, Manifesto.numero == Conhecimento.manifestoCE)
+             .join(EscalaManifesto, EscalaManifesto.manifesto == Manifesto.numero)
+             .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
+             .filter(
+                 Escala.dataPrevistaAtracacao.isnot(None),
+                 Escala.dataPrevistaAtracacao >= inicio,
+                 Escala.dataPrevistaAtracacao <= fim,
+             )
+        )
+    else:  # 'efetiva' -> usa data_desembarque (por contêiner, real DateTime)
+        inicio, fim = _janela_efetiva()
+        q = q.filter(
+            CicloDeVidaImportacao.data_desembarque.isnot(None),
+            CicloDeVidaImportacao.data_desembarque >= inicio,
+            CicloDeVidaImportacao.data_desembarque <= fim,
+        )
 
     if exigir_escaneamento:
         q = q.filter(
