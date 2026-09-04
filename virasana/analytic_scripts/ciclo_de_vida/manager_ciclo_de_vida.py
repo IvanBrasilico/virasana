@@ -9,7 +9,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
-from bhadrasana.models.apirecintos import EmbarqueDesembarque, AcessoVeiculo
+from bhadrasana.models.apirecintos import EmbarqueDesembarque, AcessoVeiculo, InspecaoNaoInvasiva
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao, \
     CicloDeVidaImportacaoEscaneamentos, logger
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida_helpers import (
@@ -376,6 +376,7 @@ def saidas_novas_operadores(session):
             .all()
     )
     logger.info('%s saídas encontradas', len(saidas))
+    saidas_incluidas = 0
     for saida in saidas:
         fim = saida.dataHoraOcorrencia
         inicio = fim - timedelta(hours=HORAS_PERMANENCIA_MOLHADO)
@@ -384,15 +385,69 @@ def saidas_novas_operadores(session):
             .filter(CicloDeVidaImportacao.codigoRecintoDesembarque == saida.codigoRecinto)
             .filter(CicloDeVidaImportacao.data_desembarque < fim)
             .filter(CicloDeVidaImportacao.data_desembarque > inicio)
-            .filter(AcessoVeiculo.numeroConteiner == saida.numeroConteiner)
-            .filter(AcessoVeiculo.numeroConteiner != '')
+            .filter(CicloDeVidaImportacao.numeroConteiner == saida.numeroConteiner)
             .one_or_none()
         )
         if ciclo_de_vida:
+            ciclo_de_vida.saida_id = saida.id
             session.add(ciclo_de_vida)
+            saidas_incluidas += 1
     try:
         session.commit()
-        logger.info('Saídas novas incluídas com sucesso no monitoramento de ciclo de vida.')
+        logger.info(f'{saidas_incluidas} saídas novas incluídas com sucesso no monitoramento de ciclo de vida.')
+    except Exception as e:
+        logger.error(e)
+        session.rollback()
+
+
+
+def busca_escaneamentos_novos(session):
+    """Completar ciclos de vida com escaneamentos.
+
+    Há muitas possibilidades, na importação, de escaneamentos fora da regra base, que é:
+    1 - Escaneamento no Operador Portuário: ocorre escaneamento pelo CodigoRecinto do Operador,
+    no período entre desembarque e saída.
+    2 - Escaneamento no TRA: ocorre escaneamento pelo CodigoRecinto do TRA, após uma entrada neste
+    e antes da saída (na verdade, deve ocorrer logo após a entrada neste)
+
+    A taxa de assertividade para estas regras ficou muito baixa para alguns recintos. Pesquisando os
+    dados, viram-se casos como: transmissão com codigoRecinto diferente, escaneamento "terceirizado", etc.
+
+    """
+    max_id_escaneamento = session.query(func.max(CicloDeVidaImportacaoEscaneamentos.escaneamento_id)).scalar()
+    if max_id_escaneamento is None:
+        return
+    escaneamentos_novos = (
+            session.query(InspecaoNaoInvasiva)
+            .filter(InspecaoNaoInvasiva.id > max_id_escaneamento)
+            .filter(InspecaoNaoInvasiva.numeroConhecimento.isnot(None))
+            .filter(InspecaoNaoInvasiva.numeroConhecimento != '')
+            .filter(InspecaoNaoInvasiva.numeroConteiner.isnot(None))
+            .filter(InspecaoNaoInvasiva.numeroConteiner != '')
+            .order_by(InspecaoNaoInvasiva.id.asc())
+            .limit(200)
+            .all()
+    )
+    logger.info('%s novas inspeções não invasivas encontradas', len(escaneamentos_novos))
+    escaneamentos_incluidos = 0
+    for escaneamento in escaneamentos_novos:
+        ciclo_de_vida = (
+            session.query(CicloDeVidaImportacao)
+            .filter(CicloDeVidaImportacao.numeroCEmercante == escaneamento.numeroConhecimento)
+            .filter(CicloDeVidaImportacao.numeroConteiner == escaneamento.numeroConteiner)
+            .one_or_none()
+        )
+        if ciclo_de_vida:
+            ciclo_escaneamento = CicloDeVidaImportacaoEscaneamentos()
+            ciclo_escaneamento.ciclo_de_vida_id = ciclo_de_vida.ID
+            ciclo_escaneamento.escaneamento_id = escaneamento.id
+            ciclo_escaneamento.data_escaneamento = escaneamento.dataHoraOcorrencia
+            session.add(ciclo_escaneamento)
+            escaneamentos_incluidos += 1
+    try:
+        session.commit()
+        logger.info(f'{escaneamentos_incluidos} escaneamentos incluídos com sucesso no '
+                    f'monitoramento de ciclo de vida.')
     except Exception as e:
         logger.error(e)
         session.rollback()
@@ -413,11 +468,12 @@ if __name__ == '__main__':
     mongodb = conn[DATABASE]
     while True:
         logger.info('Iniciando...')
-        # As funções acimas são "atalhos" para buscar novos ciclos de vida ou completar existentes
+        # As funções abaixo são "atalhos" para buscar novos ciclos de vida ou completar existentes
         # Os atalhos darão um tratamento mais célere ao problema de monitorar o ciclo de vida,
         # diminuindo custos computacionais e encurtando tempos de busca e atualização
         desembarques_novos(session)
         saidas_novas_operadores(session)
+        busca_escaneamentos_novos(session)
         # Popular ciclos de vida
         ok, total = processar_ciclos_pendentes(mongodb, session, 200)
         logger.info(f'Processados com sucesso: {ok}/{total}')
