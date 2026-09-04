@@ -21,26 +21,64 @@ TABELA_DESTINO = 'dbmercante.narcos_exportadores'
 
 def exporta_ni_declarantes_due(con):
     """
-    Exporta todos os ni_declarante distintos da tabela dbmercante.pucomex_due
-    cujo createdate esteja entre hoje e 30 dias atrás.
-    """
+    Exporta, em uma unica coluna chamada ni_declarante:
+    - os ni_declarante distintos de dbmercante.pucomex_due;
+    - os cnpjTransportador distintos de dbmercante.apirecintos_acessosveiculo.
 
+    Considera os ultimos 30 dias e normaliza os identificadores para conter
+    somente digitos, evitando duplicidades causadas por pontuacao.
+    """
     data_inicial = date.today() - timedelta(days=30)
     data_final_exclusiva = date.today() + timedelta(days=1)
 
     sql = text("""
-        SELECT DISTINCT ni_declarante
-        FROM dbmercante.pucomex_due
-        WHERE createdate >= :data_inicial
-          AND createdate < :data_final_exclusiva
-          AND ni_declarante IS NOT NULL
-          AND ni_declarante <> ''
-        ORDER BY ni_declarante;
+        SELECT DISTINCT fontes.ni_declarante
+        FROM (
+            SELECT
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(TRIM(CAST(ni_declarante AS CHAR)), '.', ''),
+                            '/', ''
+                        ),
+                        '-', ''
+                    ),
+                    ' ', ''
+                ) AS ni_declarante
+            FROM dbmercante.pucomex_due
+            WHERE createdate >= :data_inicial
+              AND createdate < :data_final_exclusiva
+              AND ni_declarante IS NOT NULL
+              AND TRIM(CAST(ni_declarante AS CHAR)) <> ''
+
+            UNION
+
+            SELECT
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(TRIM(CAST(cnpjTransportador AS CHAR)), '.', ''),
+                            '/', ''
+                        ),
+                        '-', ''
+                    ),
+                    ' ', ''
+                ) AS ni_declarante
+            FROM dbmercante.apirecintos_acessosveiculo
+            WHERE dataHoraTransmissao >= :data_inicial
+              AND dataHoraTransmissao < :data_final_exclusiva
+              AND cnpjTransportador IS NOT NULL
+              AND TRIM(CAST(cnpjTransportador AS CHAR)) <> ''
+        ) AS fontes
+        WHERE fontes.ni_declarante IS NOT NULL
+          AND fontes.ni_declarante <> ''
+        ORDER BY fontes.ni_declarante;
     """)
 
-    print("Executando consulta de exportação...")
+    print("Executando consulta de exportacao...")
     print(f"Data inicial: {data_inicial}")
     print(f"Data final exclusiva: {data_final_exclusiva}")
+    print("Fontes: ni_declarante da DUE e cnpjTransportador dos acessos de veiculo")
 
     df = pd.read_sql(
         sql,
@@ -51,6 +89,13 @@ def exporta_ni_declarantes_due(con):
         }
     )
 
+    # Reforca a normalizacao e preserva CNPJs com zeros a esquerda.
+    df['ni_declarante'] = df['ni_declarante'].apply(ajusta_cnpj)
+    df = df[df['ni_declarante'].notna()].drop_duplicates(
+        subset=['ni_declarante'],
+        keep='last'
+    ).sort_values('ni_declarante')
+
     df.to_csv(
         ARQUIVO_NI_DECLARANTES,
         index=False,
@@ -58,11 +103,9 @@ def exporta_ni_declarantes_due(con):
     )
 
     print(f"Arquivo gerado: {ARQUIVO_NI_DECLARANTES}")
-    print(f"Total de declarantes distintos encontrados: {len(df)}")
-
+    print(f"Total de CNPJs distintos encontrados: {len(df)}")
     if not df.empty:
         print(df.head())
-
 
 def limpa_texto(valor):
     """
@@ -491,6 +534,6 @@ if __name__ == '__main__':
 
     else:
         print()
-        print("Exportando ni_declarante distintos de DUEs dos últimos 30 dias...")
+        print("Exportando CNPJs de DUEs e transportadores dos últimos 30 dias...")
         exporta_ni_declarantes_due(engine)
         print("Finalizado.")
