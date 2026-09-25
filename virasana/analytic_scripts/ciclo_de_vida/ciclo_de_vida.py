@@ -109,9 +109,11 @@ class CicloDeVidaImportacaoEscaneamentos(Base):
         index=True,
         nullable=False
     )
-    escaneamento_id = Column(BigInteger(), unique=True, nullable=False)
+    escaneamento_id = Column(BigInteger(), index=True, nullable=False)
     data_escaneamento = Column(DateTime(), index=True, nullable=False)
-    imagem_id = Column(CHAR(24), unique=True)
+    imagem_id = Column(CHAR(24), index=True)
+    # Foi retirado unique de escaneamento_id e imagem_id porque alguns casos o mesmo contêiner
+    # tem vários desembarques informados... ????
 
     ciclo_de_vida = relationship(
         "CicloDeVidaImportacao",

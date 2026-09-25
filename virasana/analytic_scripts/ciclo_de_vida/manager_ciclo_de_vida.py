@@ -452,6 +452,58 @@ def busca_escaneamentos_novos(session):
         logger.error(e)
         session.rollback()
 
+def busca_escaneamentos_faltantes_por_ce(session):
+    """Completar ciclos de vida com escaneamentos, por número do CE.
+
+    Há muitas possibilidades, na importação, de escaneamentos fora da regra base, que é:
+    1 - Escaneamento no Operador Portuário: ocorre escaneamento pelo CodigoRecinto do Operador,
+    no período entre desembarque e saída.
+    2 - Escaneamento no TRA: ocorre escaneamento pelo CodigoRecinto do TRA, após uma entrada neste
+    e antes da saída (na verdade, deve ocorrer logo após a entrada neste)
+
+    A taxa de assertividade para estas regras ficou muito baixa para alguns recintos. Pesquisando os
+    dados, viram-se casos como: transmissão com codigoRecinto diferente, escaneamento "terceirizado", etc.
+
+    """
+    # Limite de 90 dias atrás
+    data_limite = datetime.now() - timedelta(days=90)
+
+    query = (
+        session.query(CicloDeVidaImportacao)
+        .outerjoin(CicloDeVidaImportacao.escaneamentos)  # ou .outerjoin(CicloDeVidaImportacaoEscaneamentos)
+        .filter(
+            CicloDeVidaImportacao.data_desembarque.isnot(None),
+            CicloDeVidaImportacao.numeroCEmercante.isnot(None),
+            CicloDeVidaImportacao.numeroCEmercante != '',
+            CicloDeVidaImportacao.data_desembarque >= data_limite,
+            CicloDeVidaImportacaoEscaneamentos.ID.is_(None)  # sem escaneamentos
+        )
+        .order_by(CicloDeVidaImportacao.data_desembarque.desc())
+        .limit(1000)
+    )
+
+    ciclos_sem_escaneamento = query.all()
+    logger.info('%s ciclos sem escaneamento encontrados', len(ciclos_sem_escaneamento))
+    escaneamentos_incluidos = 0
+    for ciclo_de_vida in ciclos_sem_escaneamento:
+        escaneamentos = (session.query(InspecaoNaoInvasiva)
+                        .filter(InspecaoNaoInvasiva.numeroConhecimento == ciclo_de_vida.numeroCEmercante)
+                        .filter(InspecaoNaoInvasiva.numeroConteiner == ciclo_de_vida.numeroConteiner)
+                        ).all()
+        for escaneamento in escaneamentos:
+            ciclo_escaneamento = CicloDeVidaImportacaoEscaneamentos()
+            ciclo_escaneamento.ciclo_de_vida_id = ciclo_de_vida.ID
+            ciclo_escaneamento.escaneamento_id = escaneamento.id
+            ciclo_escaneamento.data_escaneamento = escaneamento.dataHoraOcorrencia
+            session.merge(ciclo_escaneamento)
+            escaneamentos_incluidos += 1
+    try:
+        session.commit()
+        logger.info(f'{escaneamentos_incluidos} escaneamentos incluídos com sucesso no '
+                    f'monitoramento de ciclo de vida.')
+    except Exception as e:
+        logger.error(e)
+        session.rollback()
 
 if __name__ == '__main__':
     # Popular Ciclos de Vida
@@ -471,10 +523,11 @@ if __name__ == '__main__':
         # As funções abaixo são "atalhos" para buscar novos ciclos de vida ou completar existentes
         # Os atalhos darão um tratamento mais célere ao problema de monitorar o ciclo de vida,
         # diminuindo custos computacionais e encurtando tempos de busca e atualização
-        desembarques_novos(session)
-        saidas_novas_operadores(session)
-        busca_escaneamentos_novos(session)
+        #desembarques_novos(session)
+        #saidas_novas_operadores(session)
+        #busca_escaneamentos_novos(session)
         # Popular ciclos de vida
-        ok, total = processar_ciclos_pendentes(mongodb, session, 200)
+        #ok, total = processar_ciclos_pendentes(mongodb, session, 200)
+        busca_escaneamentos_faltantes_por_ce(session)
         logger.info(f'Processados com sucesso: {ok}/{total}')
         time.sleep(600)
