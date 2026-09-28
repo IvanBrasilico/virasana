@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NAVI-I — Análise de risco na importação</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        body { background: #F8F8F8; }
+
+        .page-subtitle { color: #666; }
+        .rotulo-mini {
+            display: block; font-size: .625rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .04em; color: #666;
+        }
+        .valor-mini { font-size: .8125rem; font-weight: 600; color: #1c1c1c; }
+        .texto-mono { font-family: monospace; word-break: break-all; }
+
+        /* ---------- Layout: filtros + resultados ---------- */
+        .layout-navii { display: flex; gap: 1.5rem; align-items: flex-start; }
+        .painel-filtros {
+            flex: 0 0 17rem;
+            background: #fff;
+            border: 1px solid #E6E6E6;
+            border-radius: 4px;
+            padding: 1rem;
+            position: sticky;
+            top: 1rem;
+        }
+        .painel-filtros .br-input,
+        .painel-filtros .campo { margin-bottom: 1rem; }
+        .painel-resultados { flex: 1 1 auto; min-width: 0; }
+
+        .toggle-janela { display: flex; border: 1px solid #CCC; border-radius: 4px; overflow: hidden; margin-bottom: 1rem; }
+        .toggle-janela button {
+            flex: 1; background: #fff; border: none; padding: .5rem .75rem;
+            font-size: .8125rem; font-weight: 600; color: #555; cursor: pointer;
+        }
+        .toggle-janela button + button { border-left: 1px solid #CCC; }
+        .toggle-janela button.ativo { background: #1351B4; color: #fff; }
+
+        /* ---------- Chips de filtros ativos ---------- */
+        .chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; min-height: 1.5rem; }
+        .chips .br-tag { display: flex; align-items: center; gap: .375rem; }
+        .chips .br-tag button {
+            background: none; border: none; color: inherit; cursor: pointer;
+            font-size: .875rem; line-height: 1; padding: 0;
+        }
+
+        .contagem { color: #666; font-size: .8125rem; margin-bottom: .75rem; }
+
+        /* ---------- Grid de cards ---------- */
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+            gap: 1rem;
+        }
+
+        .card-navii { border-left-width: 4px; border-left-style: solid; border-left-color: #ADB3B8; }
+        .card-navii.concluido { border-left-color: #168821; }
+        .card-navii.aberto { border-left-color: #E8A33D; }
+
+        .card-navii .card-content { display: grid; grid-template-columns: 6.5rem 1fr; gap: .75rem; padding: .875rem; }
+
+        .painel-imagem {
+            background: #1c1c1c; border-radius: 4px; height: 6.5rem; width: 6.5rem;
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+            flex-wrap: wrap;
+        }
+        .painel-imagem img { max-height: 3.1rem; max-width: 3.1rem; object-fit: cover; }
+        .sem-imagens { color: #999; text-align: center; font-size: .5625rem; text-transform: uppercase; font-weight: 700; padding: 0 .25rem; }
+
+        .conteiner-titulo { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.1; }
+        .ce-subtitulo { color: #666; font-size: .6875rem; margin-top: .125rem; }
+
+        .bloco-dados .item { margin-top: .5rem; }
+        .rota-navii { font-size: .8125rem; color: #1c1c1c; margin-top: .5rem; }
+
+        .status-navii {
+            display: inline-block; margin-top: .5rem; font-size: .6875rem; font-weight: 700;
+            padding: .125rem .5rem; border-radius: 999px; background: rgba(0,0,0,.05); color: #555;
+        }
+        .card-navii.concluido .status-navii { color: #168821; background: rgba(22,136,33,.1); }
+        .card-navii.aberto .status-navii { color: #E8A33D; background: rgba(232,163,61,.15); }
+
+        /* ---------- Estados ---------- */
+        .estado-vazio {
+            text-align: center; padding: 3rem 1.5rem; background: #fff;
+            border: 2px dashed #DDDEE0; border-radius: 8px;
+        }
+        .estado-vazio .icone { font-size: 2.5rem; color: #B3B3B3; margin-bottom: .75rem; }
+        .estado-carregando { text-align: center; padding: 1.5rem; color: #666; }
+        #sentinela { height: 1px; }
+    </style>
+</head>
+<body>
+
+<div class="container-lg py-4">
+
+    <div class="mb-4">
+        <h1 class="mb-0">NAVI-I — Análise de risco na importação</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            CEs mercante recém escaneados na janela de atracação selecionada, cruzados com o
+            ciclo de vida (API Recintos). Aplique filtros sucessivos para refinar a busca.
+        </p>
+    </div>
+
+    <div class="layout-navii">
+        <aside class="painel-filtros">
+            <div class="toggle-janela" id="toggle-janela">
+                <button data-valor="prevista" class="prevista">Previsão de atracação</button>
+                <button data-valor="efetiva" class="efetiva ativo">Desembarque efetivo</button>
+            </div>
+
+            <div class="campo br-input">
+                <label for="f-ncm">NCM</label>
+                <input id="f-ncm" type="text" placeholder="ex.: 8471" />
+            </div>
+            <div class="campo br-input">
+                <label for="f-produto">Produto</label>
+                <input id="f-produto" type="text" placeholder="descrição do item" />
+            </div>
+            <div class="campo br-input">
+                <label for="f-porto_origem">Porto de origem</label>
+                <input id="f-porto_origem" type="text" placeholder="código do porto" />
+            </div>
+            <div class="campo br-input">
+                <label for="f-porto_destino">Porto de destino</label>
+                <input id="f-porto_destino" type="text" placeholder="código do porto" />
+            </div>
+            <div class="campo br-input">
+                <label for="f-recinto">Recinto</label>
+                <input id="f-recinto" type="text" placeholder="código do recinto" />
+            </div>
+            <div class="campo br-input">
+                <label for="f-empresa">Empresa</label>
+                <input id="f-empresa" type="text" placeholder="embarcador ou consignatário" />
+            </div>
+
+            <button class="br-button primary block mb-2" id="btn-aplicar" type="button">
+                <i class="fas fa-filter mr-1" aria-hidden="true"></i> Aplicar filtros
+            </button>
+            <button class="br-button secondary block" id="btn-limpar" type="button">Limpar filtros</button>
+        </aside>
+
+        <main class="painel-resultados">
+            <div class="chips" id="chips"></div>
+            <div class="contagem" id="contagem"></div>
+            <div class="grid-cards" id="grid"></div>
+
+            <div id="estado" class="estado-carregando"></div>
+
+            <div id="estado-vazio" class="estado-vazio" hidden>
+                <div class="icone"><i class="fas fa-box-open" aria-hidden="true"></i></div>
+                <h3 class="mb-1">Nenhum CE encontrado</h3>
+                <p class="page-subtitle">Ajuste os filtros ou a janela de atracação e tente novamente.</p>
+            </div>
+
+            <div id="sentinela"></div>
+        </main>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var API_URL = {{ url_for('navii.api_ces') | tojson }};
+    var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
+
+    var campos = ['ncm', 'produto', 'porto_origem', 'porto_destino', 'recinto', 'empresa'];
+    var rotulos = {
+        ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+        porto_destino: 'Destino', recinto: 'Recinto', empresa: 'Empresa'
+    };
+
+    var estadoBusca = {
+        tipo_janela: 'efetiva',
+        filtros: {},
+        cursor: null,
+        carregando: false,
+        fim: false
+    };
+
+    var el = {
+        grid: document.getElementById('grid'),
+        estado: document.getElementById('estado'),
+        estadoVazio: document.getElementById('estado-vazio'),
+        chips: document.getElementById('chips'),
+        contagem: document.getElementById('contagem'),
+        sentinela: document.getElementById('sentinela')
+    };
+
+    function escapeHtml(texto) {
+        var div = document.createElement('div');
+        div.textContent = texto === null || texto === undefined ? '' : texto;
+        return div.innerHTML;
+    }
+
+    function formatarDataHora(valor) {
+        if (!valor) { return '--'; }
+        var data = new Date(valor.replace(' ', 'T'));
+        if (isNaN(data.getTime())) { return escapeHtml(valor); }
+        return data.toLocaleString('pt-BR');
+    }
+
+    function montaChips() {
+        el.chips.innerHTML = '';
+        Object.keys(estadoBusca.filtros).forEach(function (chave) {
+            var valor = estadoBusca.filtros[chave];
+            var chip = document.createElement('span');
+            chip.className = 'br-tag tag-neutra';
+            chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(valor) +
+                ' <button type="button" aria-label="remover">×</button>';
+            chip.querySelector('button').addEventListener('click', function () {
+                delete estadoBusca.filtros[chave];
+                document.getElementById('f-' + chave).value = '';
+                reiniciarBusca();
+            });
+            el.chips.appendChild(chip);
+        });
+    }
+
+    function montaCard(card) {
+        var div = document.createElement('div');
+        div.className = 'br-card card-navii ' + (card.concluido ? 'concluido' : 'aberto');
+
+        var imagens = card.imagens_ids || [];
+        var blocoImagem;
+        if (imagens.length > 0 && IMAGEM_URL_TEMPLATE) {
+            blocoImagem = '<img src="' + IMAGEM_URL_TEMPLATE.replace('imagem_id', encodeURIComponent(imagens[0])) +
+                '" alt="Imagem de escaneamento" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'sem-imagens\',textContent:\'Sem imagem\'}))">';
+        } else {
+            blocoImagem = '<span class="sem-imagens">' + (imagens.length ? imagens.length + ' imagem(ns)' : 'Sem imagem') + '</span>';
+        }
+
+        div.innerHTML =
+            '<div class="card-content">' +
+                '<div class="painel-imagem">' + blocoImagem + '</div>' +
+                '<div class="bloco-dados">' +
+                    '<h3 class="conteiner-titulo texto-mono">' + escapeHtml(card.numeroConteiner || '--') + '</h3>' +
+                    '<div class="ce-subtitulo texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</div>' +
+                    '<div class="item"><span class="rotulo-mini">Recinto de desembarque</span><span class="valor-mini">' + escapeHtml(card.codigoRecintoDesembarque || '--') + '</span></div>' +
+                    '<div class="item"><span class="rotulo-mini">Desembarque</span><span class="valor-mini">' + formatarDataHora(card.data_desembarque) + '</span></div>' +
+                    '<div class="item"><span class="rotulo-mini">Embarcador</span><span class="valor-mini">' + escapeHtml(card.embarcador || '--') + '</span></div>' +
+                    '<div class="item"><span class="rotulo-mini">Consignatário</span><span class="valor-mini">' + escapeHtml(card.consignatario || '--') + '</span></div>' +
+                    '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') + '</div>' +
+                    '<span class="status-navii">' + (card.concluido ? 'Ciclo concluído' : 'Em monitoramento') + '</span>' +
+                '</div>' +
+            '</div>';
+        return div;
+    }
+
+    function carregarPagina() {
+        if (estadoBusca.carregando || estadoBusca.fim) { return; }
+        estadoBusca.carregando = true;
+        el.estado.textContent = 'Carregando…';
+        el.estado.className = 'estado-carregando';
+        el.estadoVazio.hidden = true;
+
+        var params = new URLSearchParams({ tipo_janela: estadoBusca.tipo_janela });
+        Object.keys(estadoBusca.filtros).forEach(function (k) { params.set(k, estadoBusca.filtros[k]); });
+        if (estadoBusca.cursor) { params.set('cursor_id', estadoBusca.cursor); }
+
+        fetch(API_URL + '?' + params.toString())
+            .then(function (resp) {
+                if (!resp.ok) {
+                    return resp.json().catch(function () { return {}; }).then(function (erro) {
+                        throw new Error(erro.erro || ('Erro ' + resp.status));
+                    });
+                }
+                return resp.json();
+            })
+            .then(function (dados) {
+                dados.cards.forEach(function (card) { el.grid.appendChild(montaCard(card)); });
+
+                if (dados.cards.length === 0 && el.grid.children.length === 0) {
+                    el.estadoVazio.hidden = false;
+                    el.estado.textContent = '';
+                } else {
+                    el.estado.textContent = '';
+                }
+
+                estadoBusca.cursor = dados.next_cursor;
+                estadoBusca.fim = dados.next_cursor === null;
+                if (estadoBusca.fim && el.grid.children.length > 0) {
+                    el.estado.textContent = 'Fim dos resultados.';
+                }
+
+                el.contagem.textContent = el.grid.children.length + ' card(s) carregado(s)';
+            })
+            .catch(function (e) {
+                el.estado.textContent = 'Falha ao carregar: ' + e.message;
+                el.estado.className = 'estado-carregando text-danger';
+                estadoBusca.fim = true;
+            })
+            .finally(function () {
+                estadoBusca.carregando = false;
+            });
+    }
+
+    function reiniciarBusca() {
+        estadoBusca.cursor = null;
+        estadoBusca.fim = false;
+        el.grid.innerHTML = '';
+        el.estado.textContent = '';
+        el.estadoVazio.hidden = true;
+        el.contagem.textContent = '';
+        montaChips();
+        carregarPagina();
+    }
+
+    document.getElementById('toggle-janela').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-valor]');
+        if (!btn) { return; }
+        document.querySelectorAll('#toggle-janela button').forEach(function (b) { b.classList.remove('ativo'); });
+        btn.classList.add('ativo');
+        estadoBusca.tipo_janela = btn.dataset.valor;
+        reiniciarBusca();
+    });
+
+    document.getElementById('btn-aplicar').addEventListener('click', function () {
+        estadoBusca.filtros = {};
+        campos.forEach(function (campo) {
+            var valor = document.getElementById('f-' + campo).value.trim();
+            if (valor) { estadoBusca.filtros[campo] = valor; }
+        });
+        reiniciarBusca();
+    });
+
+    document.getElementById('btn-limpar').addEventListener('click', function () {
+        campos.forEach(function (campo) { document.getElementById('f-' + campo).value = ''; });
+        estadoBusca.filtros = {};
+        reiniciarBusca();
+    });
+
+    new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) { carregarPagina(); }
+    }, { rootMargin: '200px' }).observe(el.sentinela);
+
+    carregarPagina();
+})();
+</script>
+
+</body>
+</html>

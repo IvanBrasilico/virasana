@@ -39,6 +39,7 @@ Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados vi
 - `virasana/integracao/` — integrações com bases externas, organizadas por domínio: `mercante/`, `carga2/`, `due/`, `bagagens/`, `risco/`, `sivana/`, `transito/`.
 - `virasana/models/` — modelos SQLAlchemy/Mongo (`models.py`, `image_search.py`, `auditoria.py`, `anomalia_lote.py`).
 - `virasana/usecases/` — regras de negócio (`apirecintos_manager.py`, `auditoria.py`, `bagagens_manager.py`).
+- `virasana/navii/` — **NAVI-I**, produto de análise de risco na importação para analistas (não é um projeto/repo separado — é um módulo deste repo). Blueprint `bp_navii` em `/navii`, template gov.br em `virasana/templates/navii.html`. Reaproveita as entidades de `analytic_scripts/ciclo_de_vida/ciclo_de_vida.py` (`CicloDeVidaImportacao`) e `integracao/mercante/mercantealchemy.py` (`Conhecimento`) como fonte de dados — não duplicar esses models. Ainda sem fonte de dados de sócios (filtros subjetivos automáticos ficam para um próximo incremento).
 - `virasana/workers/` — tarefas Celery e monitoramento de diretórios.
 - `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
 - `virasana/forms/`, `virasana/exportacao/`, `virasana/analises/` — WTForms, exportação de dados, análises pontuais.

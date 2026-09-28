@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-Camada de dados (SQLAlchemy) para a tela de Análise de Risco.
+Camada de dados (SQLAlchemy) do NAVI-I — Análise de risco na importação.
 
 Busca CEs mercante dentro de uma janela de atracação (prevista ou efetiva),
 cruza com o Ciclo de Vida (API Recintos) e exige que já existam escaneamentos
@@ -8,6 +8,11 @@ com imagem associada, para alimentar os cards em rolagem infinita.
 
 Suporta filtros sucessivos (NCM, rota, produto, recinto, empresa) e
 paginação por cursor (ID decrescente).
+
+Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
+  - Filtros em linguagem natural (hoje são campos estruturados sucessivos).
+  - Filtros subjetivos automáticos por empresa e sócios — não há fonte de
+    dados de sócios no modelo atual.
 """
 import sys
 from datetime import datetime, timedelta
@@ -27,8 +32,8 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 
 # Janelas de atracação (em dias, a partir de hoje)
-JANELA_PREVISTA_MIN_DIAS = 0
-JANELA_PREVISTA_MAX_DIAS = 2
+JANELA_PREVISTA_MIN_DIAS = 3
+JANELA_PREVISTA_MAX_DIAS = 15
 JANELA_EFETIVA_MIN_DIAS = 5
 JANELA_EFETIVA_MAX_DIAS = 15
 
@@ -61,7 +66,7 @@ def _janela_efetiva() -> Tuple[datetime, datetime]:
     return inicio, fim
 
 
-def busca_ces_risco(
+def busca_ces_navii(
     session,
     tipo_janela: str = 'efetiva',
     filtros: Optional[dict] = None,
@@ -69,7 +74,7 @@ def busca_ces_risco(
     cursor_id: Optional[int] = None,
     limit: int = 20,
 ) -> List[Tuple[CicloDeVidaImportacao, Conhecimento]]:
-    """Busca CEs mercante na janela de atracação informada, para a tela de risco.
+    """Busca CEs mercante na janela de atracação informada, para a tela do NAVI-I.
 
     Args:
         session: sessão SQLAlchemy.
@@ -192,13 +197,13 @@ def busca_ces_risco(
 
     resultado = q.all()
     logger.info(
-        f'busca_ces_risco: janela={tipo_janela} [{inicio}..{fim}] filtros={filtros} '
+        f'busca_ces_navii: janela={tipo_janela} [{inicio}..{fim}] filtros={filtros} '
         f'-> {len(resultado)} CEs retornados'
     )
     return resultado
 
 
-def monta_card(ciclo: CicloDeVidaImportacao, conhecimento: Conhecimento) -> dict:
+def monta_card_navii(ciclo: CicloDeVidaImportacao, conhecimento: Conhecimento) -> dict:
     """Monta o dicionário de dados de um card para a tela: dados do mercante,
     do ciclo de vida (API Recintos) e as referências às imagens de escaneamento
     (já carregadas via `ciclo.escaneamentos`, lazy='selectin').
@@ -232,11 +237,11 @@ if __name__ == '__main__':  # pragma: no-cover
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    resultados = busca_ces_risco(
+    resultados = busca_ces_navii(
         session,
         tipo_janela='efetiva',
         filtros={'recinto': '8931356'},
         limit=10,
     )
     for ciclo, ce in resultados:
-        print(monta_card(ciclo, ce))
+        print(monta_card_navii(ciclo, ce))
