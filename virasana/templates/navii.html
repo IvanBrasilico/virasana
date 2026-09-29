@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
 
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
         body { background: #F8F8F8; }
 
         .page-subtitle { color: #666; }
@@ -17,31 +18,77 @@
             display: block; font-size: .625rem; font-weight: 700;
             text-transform: uppercase; letter-spacing: .04em; color: #666;
         }
-        .valor-mini { font-size: .8125rem; font-weight: 600; color: #1c1c1c; }
+        .valor-mini { font-size: .875rem; font-weight: 600; color: #1c1c1c; }
         .texto-mono { font-family: monospace; word-break: break-all; }
 
-        /* ---------- Layout: filtros + resultados ---------- */
+        /* ---------- Cabeçalho da página ---------- */
+        .container-navii { max-width: 100%; padding: 0 1.5rem; }
+        .cabecalho-pagina {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            gap: 1rem; margin-bottom: 1.25rem;
+        }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem;
+        }
+        .cabecalho-pagina h1 .marca-navii {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+
+        /* ---------- Layout geral: sidebar recolhível + resultados ---------- */
         .layout-navii { display: flex; gap: 1.5rem; align-items: flex-start; }
         .painel-filtros {
-            flex: 0 0 17rem;
-            background: #fff;
-            border: 1px solid #E6E6E6;
-            border-radius: 4px;
-            padding: 1rem;
-            position: sticky;
-            top: 1rem;
+            flex: 0 0 18rem; width: 18rem; background: #fff;
+            border: 1px solid #E6E6E6; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+            padding: 1.25rem; position: sticky; top: 1rem;
+            max-height: calc(100vh - 2rem); overflow-y: auto; overflow-x: hidden;
+            transition: flex-basis .25s ease, width .25s ease, opacity .2s ease,
+                        padding .25s ease, border-color .25s ease, margin .25s ease;
+        }
+        .layout-navii.filtros-recolhidos .painel-filtros {
+            flex-basis: 0; width: 0; padding: 1.25rem 0; opacity: 0;
+            border-color: transparent; box-shadow: none; pointer-events: none;
+            overflow: hidden;
+        }
+        .painel-filtros .titulo-filtros {
+            display: flex; align-items: center; gap: .5rem; font-size: .9375rem; font-weight: 700;
+            color: #1c1c1c; margin-bottom: 1rem;
         }
         .painel-filtros .br-input,
         .painel-filtros .campo { margin-bottom: 1rem; }
+        .painel-filtros input, .painel-filtros select { width: 100%; }
         .painel-resultados { flex: 1 1 auto; min-width: 0; }
+
+        .barra-ferramentas {
+            display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem;
+        }
+        .btn-toggle-filtros {
+            flex: 0 0 auto; width: 2.25rem; height: 2.25rem; border-radius: 6px;
+            border: 1px solid #CCC; background: #fff; color: #1351B4; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 1rem;
+        }
+        .btn-toggle-filtros:hover { background: #F0F4FC; }
+
+        .campo-datas { display: flex; gap: .5rem; }
+        .campo-datas .br-input { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
+        .campo-datas input[type="date"] { min-width: 0; }
+        .periodo-ativo { color: #1351B4; font-size: .8125rem; font-weight: 600; }
 
         .toggle-janela { display: flex; border: 1px solid #CCC; border-radius: 4px; overflow: hidden; margin-bottom: 1rem; }
         .toggle-janela button {
             flex: 1; background: #fff; border: none; padding: .5rem .75rem;
-            font-size: .8125rem; font-weight: 600; color: #555; cursor: pointer;
+            font-size: .8125rem; font-weight: 600; color: #555; cursor: pointer; white-space: normal;
         }
         .toggle-janela button + button { border-left: 1px solid #CCC; }
         .toggle-janela button.ativo { background: #1351B4; color: #fff; }
+
+        .campo-checkbox { display: flex; align-items: center; gap: .5rem; }
+        .campo-checkbox input { width: 1.1rem; height: 1.1rem; }
+        .campo-checkbox label { font-size: .8125rem; color: #1c1c1c; margin: 0; }
+
+        .campo-slider .valor-slider { float: right; font-weight: 700; color: #1351B4; }
+        .campo-slider input[type="range"] { width: 100%; margin-top: .375rem; accent-color: #1351B4; }
 
         /* ---------- Chips de filtros ativos ---------- */
         .chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; min-height: 1.5rem; }
@@ -53,39 +100,138 @@
 
         .contagem { color: #666; font-size: .8125rem; margin-bottom: .75rem; }
 
-        /* ---------- Grid de cards ---------- */
-        .grid-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
-            gap: 1rem;
-        }
+        /* ---------- Lista de cards: um por linha, tela inteira ---------- */
+        .lista-cards { display: flex; flex-direction: column; gap: 1.25rem; }
 
-        .card-navii { border-left-width: 4px; border-left-style: solid; border-left-color: #ADB3B8; }
+        .card-navii {
+            border-left-width: 5px; border-left-style: solid; border-left-color: #ADB3B8;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08); border-radius: 8px; overflow: hidden;
+        }
         .card-navii.concluido { border-left-color: #168821; }
         .card-navii.aberto { border-left-color: #E8A33D; }
 
-        .card-navii .card-content { display: grid; grid-template-columns: 6.5rem 1fr; gap: .75rem; padding: .875rem; }
-
-        .painel-imagem {
-            background: #1c1c1c; border-radius: 4px; height: 6.5rem; width: 6.5rem;
-            display: flex; align-items: center; justify-content: center; overflow: hidden;
-            flex-wrap: wrap;
+        .card-navii .card-content {
+            display: grid; grid-template-columns: 20rem 1fr; gap: 1.75rem; padding: 1.5rem 1.75rem;
         }
-        .painel-imagem img { max-height: 3.1rem; max-width: 3.1rem; object-fit: cover; }
-        .sem-imagens { color: #999; text-align: center; font-size: .5625rem; text-transform: uppercase; font-weight: 700; padding: 0 .25rem; }
+        @media (max-width: 960px) {
+            .card-navii .card-content { grid-template-columns: 1fr; }
+        }
 
-        .conteiner-titulo { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.1; }
-        .ce-subtitulo { color: #666; font-size: .6875rem; margin-top: .125rem; }
+        /* ---------- Painel de imagens: maior, em destaque, com lupa/expansão ---------- */
+        .painel-imagens { background: #1c1c1c; border-radius: 6px; overflow: hidden; }
+        .imagem-principal {
+            width: 100%; height: 20rem; display: flex; align-items: center; justify-content: center;
+            overflow: hidden; background: #000; position: relative; cursor: zoom-in;
+        }
+        .imagem-principal img { width: 100%; height: 100%; object-fit: contain; transition: transform .2s ease; }
+        .imagem-principal:hover img { transform: scale(1.06); }
+        .imagem-principal .dica-zoom {
+            position: absolute; right: .625rem; bottom: .625rem; background: rgba(0,0,0,.6); color: #fff;
+            font-size: .6875rem; padding: .25rem .5rem; border-radius: 999px; pointer-events: none;
+            opacity: 0; transition: opacity .15s ease;
+        }
+        .imagem-principal:hover .dica-zoom { opacity: 1; }
+        .miniaturas-secundarias {
+            display: flex; gap: .3125rem; padding: .5rem; background: #111; flex-wrap: wrap;
+        }
+        .miniaturas-secundarias img {
+            width: 3.5rem; height: 3.5rem; object-fit: cover; border-radius: 3px; cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .miniaturas-secundarias img:hover { border-color: #4B85E8; }
+        .sem-imagens {
+            color: #999; text-align: center; font-size: .75rem; text-transform: uppercase;
+            font-weight: 700; padding: 2rem 1rem; height: 20rem; display: flex; align-items: center; justify-content: center;
+        }
 
-        .bloco-dados .item { margin-top: .5rem; }
-        .rota-navii { font-size: .8125rem; color: #1c1c1c; margin-top: .5rem; }
+        /* ---------- Cabeçalho de dados do card ---------- */
+        .cabecalho-card { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem; align-items: flex-start; }
+        .conteiner-titulo { font-size: 1.375rem; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.1; }
+        .ce-subtitulo { color: #666; font-size: .8125rem; margin-top: .25rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+        .tag-master {
+            background: #FFF4E5; color: #A15C00; font-size: .625rem; font-weight: 700;
+            padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
+        }
 
         .status-navii {
-            display: inline-block; margin-top: .5rem; font-size: .6875rem; font-weight: 700;
-            padding: .125rem .5rem; border-radius: 999px; background: rgba(0,0,0,.05); color: #555;
+            display: inline-block; font-size: .75rem; font-weight: 700;
+            padding: .25rem .75rem; border-radius: 999px; background: rgba(0,0,0,.05); color: #555;
+            white-space: nowrap;
         }
         .card-navii.concluido .status-navii { color: #168821; background: rgba(22,136,33,.1); }
         .card-navii.aberto .status-navii { color: #E8A33D; background: rgba(232,163,61,.15); }
+
+        .grid-dados {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+            gap: 1rem; margin: 1.125rem 0; padding: .875rem 0; border-top: 1px solid #F0F0F0; border-bottom: 1px solid #F0F0F0;
+        }
+        .grid-dados .rotulo-mini i { margin-right: .25rem; color: #A6A6A6; }
+        .rota-navii { font-size: .9375rem; color: #1c1c1c; font-weight: 600; margin: .75rem 0 0; }
+
+        /* ---------- Linha do tempo do ciclo de vida ---------- */
+        .timeline-navii { display: flex; margin-top: 1.25rem; }
+        .etapa-timeline { flex: 1; position: relative; padding-top: 1.25rem; text-align: left; }
+        .etapa-timeline::before {
+            content: ''; position: absolute; top: .3125rem; left: 0; right: 0; height: 2px; background: #DDD;
+        }
+        .etapa-timeline:first-child::before { left: 50%; }
+        .etapa-timeline:last-child::before { right: 50%; }
+        .etapa-timeline .ponto {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: .625rem; height: .625rem; border-radius: 50%; background: #DDD; border: 2px solid #fff;
+        }
+        .etapa-timeline.ocorrida .ponto { background: #1351B4; }
+        .etapa-timeline.ocorrida::before { background: #1351B4; }
+        .etapa-timeline .rotulo-etapa { font-size: .6875rem; font-weight: 700; text-transform: uppercase; color: #666; text-align: center; }
+        .etapa-timeline .data-etapa { font-size: .75rem; font-weight: 600; color: #1c1c1c; text-align: center; margin-top: .125rem; }
+        .etapa-timeline .recinto-etapa { font-size: .6875rem; color: #888; text-align: center; }
+        .etapa-timeline.pendente .data-etapa,
+        .etapa-timeline.pendente .recinto-etapa { color: #BBB; }
+
+        /* ---------- Contêineres e NCMs declarados ---------- */
+        .secao-conteineres { margin-top: 1.25rem; border-top: 1px solid #F0F0F0; padding-top: .875rem; }
+        .secao-conteineres .titulo-secao {
+            font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; margin-bottom: .625rem;
+        }
+        .lista-conteineres { display: flex; flex-direction: column; gap: .5rem; }
+        .conteiner-item { background: #FAFBFC; border: 1px solid #EDEDED; border-radius: 6px; padding: .625rem .75rem; }
+        .conteiner-cabecalho { display: flex; flex-wrap: wrap; gap: .375rem 1rem; align-items: baseline; }
+        .conteiner-cabecalho .codigo { font-family: monospace; font-weight: 700; font-size: .875rem; color: #1c1c1c; }
+        .conteiner-cabecalho .detalhe { font-size: .75rem; color: #666; }
+        .conteiner-cabecalho .detalhe strong { color: #1c1c1c; font-weight: 600; }
+        .lista-ncms-conteiner { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .5rem; }
+        .ncm-tag {
+            background: #E8EEF9; color: #0C326F; font-size: .6875rem; padding: .1875rem .5625rem;
+            border-radius: 999px; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .sem-conteineres { color: #999; font-size: .75rem; font-style: italic; }
+
+        /* ---------- Lightbox de imagem (lupa/expansão) ---------- */
+        .lightbox-navii {
+            position: fixed; inset: 0; background: rgba(10,10,10,.94); z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .lightbox-navii[hidden] { display: none; }
+        .lightbox-navii img { max-width: 88vw; max-height: 84vh; object-fit: contain; }
+        .lightbox-navii button {
+            position: absolute; background: rgba(255,255,255,.1); color: #fff; border: none;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .lightbox-fechar {
+            top: 1.25rem; right: 1.5rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; font-size: 1.25rem;
+        }
+        .lightbox-fechar:hover { background: rgba(255,255,255,.2); }
+        .lightbox-anterior, .lightbox-proximo {
+            top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; font-size: 1.5rem;
+        }
+        .lightbox-anterior:hover, .lightbox-proximo:hover { background: rgba(255,255,255,.2); }
+        .lightbox-anterior { left: 1rem; }
+        .lightbox-proximo { right: 1rem; }
+        .lightbox-contador {
+            position: absolute; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
+            color: #fff; font-size: .8125rem; background: rgba(255,255,255,.1); padding: .25rem .75rem; border-radius: 999px;
+        }
 
         /* ---------- Estados ---------- */
         .estado-vazio {
@@ -99,21 +245,39 @@
 </head>
 <body>
 
-<div class="container-lg py-4">
+<div class="container-navii py-4">
 
-    <div class="mb-4">
-        <h1 class="mb-0">NAVI-I — Análise de risco na importação</h1>
-        <p class="page-subtitle text-down-01 mb-0 mt-1">
-            CEs mercante recém escaneados na janela de atracação selecionada, cruzados com o
-            ciclo de vida (API Recintos). Aplique filtros sucessivos para refinar a busca.
-        </p>
+    <div class="cabecalho-pagina">
+        <div>
+            <h1><span class="marca-navii">NAVI-I</span> Análise de risco na importação</h1>
+            <p class="page-subtitle text-down-01 mb-0 mt-1">
+                CEs mercante recém escaneados no período selecionado, cruzados com o ciclo de vida
+                (API Recintos), dados do Mercante e contêineres/NCMs declarados.
+            </p>
+        </div>
     </div>
 
-    <div class="layout-navii">
-        <aside class="painel-filtros">
+    <div class="layout-navii" id="layout-navii">
+        <aside class="painel-filtros" id="painel-filtros">
+            <div class="titulo-filtros"><i class="fas fa-sliders-h" aria-hidden="true"></i> Filtros</div>
+
             <div class="toggle-janela" id="toggle-janela">
                 <button data-valor="prevista" class="prevista">Previsão de atracação</button>
                 <button data-valor="efetiva" class="efetiva ativo">Desembarque efetivo</button>
+            </div>
+
+            <div class="campo">
+                <label class="rotulo-mini mb-1">Período (sugestão pré-preenchida, ajustável)</label>
+                <div class="campo-datas">
+                    <div class="br-input">
+                        <label for="f-data-inicio">De</label>
+                        <input id="f-data-inicio" type="date" />
+                    </div>
+                    <div class="br-input">
+                        <label for="f-data-fim">Até</label>
+                        <input id="f-data-fim" type="date" />
+                    </div>
+                </div>
             </div>
 
             <div class="campo br-input">
@@ -141,28 +305,55 @@
                 <input id="f-empresa" type="text" placeholder="embarcador ou consignatário" />
             </div>
 
-            <button class="br-button primary block mb-2" id="btn-aplicar" type="button">
+            <div class="campo campo-slider">
+                <label for="f-ncms_max">Qtde. máxima de NCMs distintos</label>
+                <span class="valor-slider" id="valor-ncms_max">Sem limite</span>
+                <input id="f-ncms_max" type="range" min="0" max="20" step="1" value="0" />
+            </div>
+
+            <div class="campo campo-checkbox">
+                <input id="f-concluido" type="checkbox" />
+                <label for="f-concluido">Somente entregues ao importador</label>
+            </div>
+
+            <button class="br-button primary block mb-2 mt-3" id="btn-aplicar" type="button">
                 <i class="fas fa-filter mr-1" aria-hidden="true"></i> Aplicar filtros
             </button>
             <button class="br-button secondary block" id="btn-limpar" type="button">Limpar filtros</button>
         </aside>
 
         <main class="painel-resultados">
+            <div class="barra-ferramentas">
+                <button class="btn-toggle-filtros" id="btn-toggle-filtros" type="button"
+                        title="Mostrar/ocultar filtros" aria-label="Mostrar/ocultar filtros">
+                    <i class="fas fa-bars" aria-hidden="true"></i>
+                </button>
+                <span class="periodo-ativo" id="periodo-ativo"></span>
+            </div>
+
             <div class="chips" id="chips"></div>
             <div class="contagem" id="contagem"></div>
-            <div class="grid-cards" id="grid"></div>
+            <div class="lista-cards" id="grid"></div>
 
             <div id="estado" class="estado-carregando"></div>
 
             <div id="estado-vazio" class="estado-vazio" hidden>
                 <div class="icone"><i class="fas fa-box-open" aria-hidden="true"></i></div>
                 <h3 class="mb-1">Nenhum CE encontrado</h3>
-                <p class="page-subtitle">Ajuste os filtros ou a janela de atracação e tente novamente.</p>
+                <p class="page-subtitle">Ajuste os filtros ou o período e tente novamente.</p>
             </div>
 
             <div id="sentinela"></div>
         </main>
     </div>
+</div>
+
+<div class="lightbox-navii" id="lightbox" hidden>
+    <button class="lightbox-fechar" id="lightbox-fechar" type="button" aria-label="Fechar"><i class="fas fa-times" aria-hidden="true"></i></button>
+    <button class="lightbox-anterior" id="lightbox-anterior" type="button" aria-label="Imagem anterior"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+    <img id="lightbox-img" alt="Imagem de escaneamento ampliada" />
+    <button class="lightbox-proximo" id="lightbox-proximo" type="button" aria-label="Próxima imagem"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+    <div class="lightbox-contador" id="lightbox-contador"></div>
 </div>
 
 <script>
@@ -171,27 +362,39 @@
 
     var API_URL = {{ url_for('navii.api_ces') | tojson }};
     var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
+    var DEFAULTS_PERIODO = {{ defaults_periodo | tojson }};
 
     var campos = ['ncm', 'produto', 'porto_origem', 'porto_destino', 'recinto', 'empresa'];
     var rotulos = {
         ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
-        porto_destino: 'Destino', recinto: 'Recinto', empresa: 'Empresa'
+        porto_destino: 'Destino', recinto: 'Recinto', empresa: 'Empresa',
+        ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador'
     };
+
+    var ETAPAS_TIMELINE = [
+        { chave: 'desembarque', rotulo: 'Desembarque' },
+        { chave: 'saida', rotulo: 'Saída do caís' },
+        { chave: 'entradaRecintoSeco', rotulo: 'Entrada recinto seco' },
+        { chave: 'saidaRecintoSeco', rotulo: 'Saída recinto seco' }
+    ];
 
     var estadoBusca = {
         tipo_janela: 'efetiva',
         filtros: {},
+        periodo: { inicio: DEFAULTS_PERIODO.efetiva.inicio, fim: DEFAULTS_PERIODO.efetiva.fim },
         cursor: null,
         carregando: false,
         fim: false
     };
 
     var el = {
+        layout: document.getElementById('layout-navii'),
         grid: document.getElementById('grid'),
         estado: document.getElementById('estado'),
         estadoVazio: document.getElementById('estado-vazio'),
         chips: document.getElementById('chips'),
         contagem: document.getElementById('contagem'),
+        periodoAtivo: document.getElementById('periodo-ativo'),
         sentinela: document.getElementById('sentinela')
     };
 
@@ -202,57 +405,248 @@
     }
 
     function formatarDataHora(valor) {
-        if (!valor) { return '--'; }
+        if (!valor) { return null; }
         var data = new Date(valor.replace(' ', 'T'));
         if (isNaN(data.getTime())) { return escapeHtml(valor); }
         return data.toLocaleString('pt-BR');
+    }
+
+    function formatarDataBR(isoDate) {
+        if (!isoDate) { return '--'; }
+        var partes = isoDate.split('-');
+        if (partes.length !== 3) { return isoDate; }
+        return partes[2] + '/' + partes[1] + '/' + partes[0];
+    }
+
+    function formatarPeso(valor) {
+        if (valor === null || valor === undefined) { return '--'; }
+        return Number(valor).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg';
+    }
+
+    /* ---------------- Sidebar recolhível ---------------- */
+    document.getElementById('btn-toggle-filtros').addEventListener('click', function () {
+        el.layout.classList.toggle('filtros-recolhidos');
+    });
+
+    /* ---------------- Lightbox de imagem ---------------- */
+    var lightbox = {
+        el: document.getElementById('lightbox'),
+        img: document.getElementById('lightbox-img'),
+        contador: document.getElementById('lightbox-contador'),
+        imagens: [],
+        indice: 0
+    };
+
+    function renderLightbox() {
+        lightbox.img.src = lightbox.imagens[lightbox.indice];
+        lightbox.contador.textContent = (lightbox.indice + 1) + ' / ' + lightbox.imagens.length;
+    }
+
+    function abrirLightbox(imagens, indiceInicial) {
+        if (!imagens || imagens.length === 0) { return; }
+        lightbox.imagens = imagens;
+        lightbox.indice = indiceInicial || 0;
+        renderLightbox();
+        lightbox.el.hidden = false;
+    }
+
+    function fecharLightbox() {
+        lightbox.el.hidden = true;
+        lightbox.img.src = '';
+    }
+
+    function navegarLightbox(delta) {
+        lightbox.indice = (lightbox.indice + delta + lightbox.imagens.length) % lightbox.imagens.length;
+        renderLightbox();
+    }
+
+    document.getElementById('lightbox-fechar').addEventListener('click', fecharLightbox);
+    document.getElementById('lightbox-anterior').addEventListener('click', function () { navegarLightbox(-1); });
+    document.getElementById('lightbox-proximo').addEventListener('click', function () { navegarLightbox(1); });
+    lightbox.el.addEventListener('click', function (e) { if (e.target === lightbox.el) { fecharLightbox(); } });
+    document.addEventListener('keydown', function (e) {
+        if (lightbox.el.hidden) { return; }
+        if (e.key === 'Escape') { fecharLightbox(); }
+        if (e.key === 'ArrowLeft') { navegarLightbox(-1); }
+        if (e.key === 'ArrowRight') { navegarLightbox(1); }
+    });
+
+    document.getElementById('f-ncms_max').addEventListener('input', function (e) {
+        var valor = parseInt(e.target.value, 10);
+        document.getElementById('valor-ncms_max').textContent = valor > 0 ? valor : 'Sem limite';
+    });
+
+    function aplicarDatasDefault(tipoJanela) {
+        var defaults = DEFAULTS_PERIODO[tipoJanela];
+        document.getElementById('f-data-inicio').value = defaults.inicio;
+        document.getElementById('f-data-fim').value = defaults.fim;
+        estadoBusca.periodo = { inicio: defaults.inicio, fim: defaults.fim };
     }
 
     function montaChips() {
         el.chips.innerHTML = '';
         Object.keys(estadoBusca.filtros).forEach(function (chave) {
             var valor = estadoBusca.filtros[chave];
+            var texto = (chave === 'concluido') ? 'sim' : valor;
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
-            chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(valor) +
+            chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
                 ' <button type="button" aria-label="remover">×</button>';
             chip.querySelector('button').addEventListener('click', function () {
                 delete estadoBusca.filtros[chave];
-                document.getElementById('f-' + chave).value = '';
+                if (chave === 'concluido') {
+                    document.getElementById('f-concluido').checked = false;
+                } else if (chave === 'ncms_max') {
+                    document.getElementById('f-ncms_max').value = 0;
+                    document.getElementById('valor-ncms_max').textContent = 'Sem limite';
+                } else {
+                    document.getElementById('f-' + chave).value = '';
+                }
                 reiniciarBusca();
             });
             el.chips.appendChild(chip);
         });
     }
 
+    function montaPainelImagens(card) {
+        var imagens = card.imagens_ids || [];
+        if (imagens.length === 0 || !IMAGEM_URL_TEMPLATE) {
+            return '<div class="painel-imagens"><div class="sem-imagens">Sem imagem de escaneamento</div></div>';
+        }
+
+        var urlImagem = function (id) { return IMAGEM_URL_TEMPLATE.replace('imagem_id', encodeURIComponent(id)); };
+        var urls = imagens.map(urlImagem);
+
+        var miniaturas = imagens.slice(1, 8).map(function (id, i) {
+            return '<img src="' + urlImagem(id) + '" alt="Miniatura de escaneamento" data-indice="' + (i + 1) + '">';
+        }).join('');
+
+        var html =
+            '<div class="painel-imagens">' +
+                '<div class="imagem-principal" data-indice="0">' +
+                    '<img src="' + urls[0] + '" alt="Imagem de escaneamento em destaque">' +
+                    '<span class="dica-zoom"><i class="fas fa-search-plus" aria-hidden="true"></i> Clique para ampliar</span>' +
+                '</div>' +
+                (imagens.length > 1 ? '<div class="miniaturas-secundarias">' + miniaturas + '</div>' : '') +
+            '</div>';
+
+        return { html: html, urls: urls };
+    }
+
+    function montaEtapaTimeline(etapa, dados) {
+        var ocorrida = !!(dados && dados.data);
+        var dataFormatada = dados ? formatarDataHora(dados.data) : null;
+        return (
+            '<div class="etapa-timeline ' + (ocorrida ? 'ocorrida' : 'pendente') + '">' +
+                '<span class="ponto"></span>' +
+                '<div class="rotulo-etapa">' + etapa.rotulo + '</div>' +
+                '<div class="data-etapa">' + (dataFormatada || 'Não ocorrido') + '</div>' +
+                '<div class="recinto-etapa">' + (dados && dados.recinto ? escapeHtml(dados.recinto) : '') + '</div>' +
+            '</div>'
+        );
+    }
+
+    function montaTimeline(card) {
+        var linha = card.linhaDoTempo || {};
+        var etapas = ETAPAS_TIMELINE.map(function (etapa) {
+            return montaEtapaTimeline(etapa, linha[etapa.chave]);
+        }).join('');
+        return '<div class="timeline-navii">' + etapas + '</div>';
+    }
+
+    function montaConteineres(card) {
+        var conteineres = card.conteineres || [];
+        if (conteineres.length === 0) {
+            return (
+                '<div class="secao-conteineres">' +
+                    '<div class="titulo-secao">Contêineres e NCMs declarados</div>' +
+                    '<div class="sem-conteineres">Sem dados de contêiner/NCM carregados para este CE.</div>' +
+                '</div>'
+            );
+        }
+
+        var itens = conteineres.map(function (c) {
+            var ncms = (c.ncms || []).map(function (n) {
+                var texto = escapeHtml(n.identificacaoNCM || '--') + (n.descritivo ? ' — ' + escapeHtml(n.descritivo) : '');
+                return '<span class="ncm-tag" title="' + texto + '">' + texto + '</span>';
+            }).join('');
+
+            return (
+                '<div class="conteiner-item">' +
+                    '<div class="conteiner-cabecalho">' +
+                        '<span class="codigo">' + escapeHtml(c.codigoConteiner || '--') + '</span>' +
+                        (c.isoCode ? '<span class="detalhe">Tipo <strong>' + escapeHtml(c.isoCode) + '</strong></span>' : '') +
+                        '<span class="detalhe">Peso <strong>' + formatarPeso(c.pesoBruto) + '</strong></span>' +
+                        (c.tara !== null && c.tara !== undefined ? '<span class="detalhe">Tara <strong>' + formatarPeso(c.tara) + '</strong></span>' : '') +
+                        (c.lacre ? '<span class="detalhe">Lacre <strong>' + escapeHtml(c.lacre) + '</strong></span>' : '') +
+                    '</div>' +
+                    (ncms ? '<div class="lista-ncms-conteiner">' + ncms + '</div>' : '') +
+                '</div>'
+            );
+        }).join('');
+
+        return (
+            '<div class="secao-conteineres">' +
+                '<div class="titulo-secao">Contêineres e NCMs declarados (' + conteineres.length + ')</div>' +
+                '<div class="lista-conteineres">' + itens + '</div>' +
+            '</div>'
+        );
+    }
+
     function montaCard(card) {
         var div = document.createElement('div');
         div.className = 'br-card card-navii ' + (card.concluido ? 'concluido' : 'aberto');
 
-        var imagens = card.imagens_ids || [];
-        var blocoImagem;
-        if (imagens.length > 0 && IMAGEM_URL_TEMPLATE) {
-            blocoImagem = '<img src="' + IMAGEM_URL_TEMPLATE.replace('imagem_id', encodeURIComponent(imagens[0])) +
-                '" alt="Imagem de escaneamento" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'sem-imagens\',textContent:\'Sem imagem\'}))">';
-        } else {
-            blocoImagem = '<span class="sem-imagens">' + (imagens.length ? imagens.length + ' imagem(ns)' : 'Sem imagem') + '</span>';
-        }
+        var painelImagens = montaPainelImagens(card);
+        var htmlImagens = typeof painelImagens === 'string' ? painelImagens : painelImagens.html;
 
         div.innerHTML =
             '<div class="card-content">' +
-                '<div class="painel-imagem">' + blocoImagem + '</div>' +
+                htmlImagens +
                 '<div class="bloco-dados">' +
-                    '<h3 class="conteiner-titulo texto-mono">' + escapeHtml(card.numeroConteiner || '--') + '</h3>' +
-                    '<div class="ce-subtitulo texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</div>' +
-                    '<div class="item"><span class="rotulo-mini">Recinto de desembarque</span><span class="valor-mini">' + escapeHtml(card.codigoRecintoDesembarque || '--') + '</span></div>' +
-                    '<div class="item"><span class="rotulo-mini">Desembarque</span><span class="valor-mini">' + formatarDataHora(card.data_desembarque) + '</span></div>' +
-                    '<div class="item"><span class="rotulo-mini">Embarcador</span><span class="valor-mini">' + escapeHtml(card.embarcador || '--') + '</span></div>' +
-                    '<div class="item"><span class="rotulo-mini">Consignatário</span><span class="valor-mini">' + escapeHtml(card.consignatario || '--') + '</span></div>' +
-                    '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') + '</div>' +
-                    '<span class="status-navii">' + (card.concluido ? 'Ciclo concluído' : 'Em monitoramento') + '</span>' +
+                    '<div class="cabecalho-card">' +
+                        '<div>' +
+                            '<h3 class="conteiner-titulo texto-mono">' + escapeHtml(card.numeroConteiner || '--') + '</h3>' +
+                            '<div class="ce-subtitulo">' +
+                                '<span class="texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
+                                (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
+                            '</div>' +
+                        '</div>' +
+                        '<span class="status-navii">' + (card.concluido ? 'Entregue ao importador' : 'Em monitoramento') + '</span>' +
+                    '</div>' +
+
+                    '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') +
+                        (card.embarcacao ? ' · ' + escapeHtml(card.embarcacao) : '') + '</div>' +
+
+                    '<div class="grid-dados">' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-building" aria-hidden="true"></i>Embarcador</span><span class="valor-mini">' + escapeHtml(card.embarcador || '--') + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-warehouse" aria-hidden="true"></i>Consignatário</span><span class="valor-mini">' + escapeHtml(card.consignatario || '--') + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-weight-hanging" aria-hidden="true"></i>Peso bruto total</span><span class="valor-mini">' + formatarPeso(card.pesoBrutoTotal) + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-tags" aria-hidden="true"></i>NCMs distintos</span><span class="valor-mini">' + (card.qtdNcmsDistintos || 0) + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-route" aria-hidden="true"></i>Tráfego</span><span class="valor-mini">' + escapeHtml(card.tipoTrafego || '--') + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-file-alt" aria-hidden="true"></i>Tipo BL</span><span class="valor-mini">' + escapeHtml(card.tipoBL || '--') + '</span></div>' +
+                    '</div>' +
+
+                    montaTimeline(card) +
+                    montaConteineres(card) +
                 '</div>' +
             '</div>';
+
+        if (typeof painelImagens !== 'string') {
+            var urls = painelImagens.urls;
+            div.querySelectorAll('.imagem-principal, .miniaturas-secundarias img').forEach(function (elemento) {
+                elemento.addEventListener('click', function () {
+                    var indice = parseInt(elemento.dataset.indice, 10) || 0;
+                    abrirLightbox(urls, indice);
+                });
+            });
+        }
+
         return div;
+    }
+
+    function atualizaPeriodoAtivo() {
+        el.periodoAtivo.textContent = 'Período: ' + formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
     }
 
     function carregarPagina() {
@@ -262,7 +656,11 @@
         el.estado.className = 'estado-carregando';
         el.estadoVazio.hidden = true;
 
-        var params = new URLSearchParams({ tipo_janela: estadoBusca.tipo_janela });
+        var params = new URLSearchParams({
+            tipo_janela: estadoBusca.tipo_janela,
+            data_inicio: estadoBusca.periodo.inicio,
+            data_fim: estadoBusca.periodo.fim
+        });
         Object.keys(estadoBusca.filtros).forEach(function (k) { params.set(k, estadoBusca.filtros[k]); });
         if (estadoBusca.cursor) { params.set('cursor_id', estadoBusca.cursor); }
 
@@ -311,6 +709,7 @@
         el.estadoVazio.hidden = true;
         el.contagem.textContent = '';
         montaChips();
+        atualizaPeriodoAtivo();
         carregarPagina();
     }
 
@@ -320,6 +719,7 @@
         document.querySelectorAll('#toggle-janela button').forEach(function (b) { b.classList.remove('ativo'); });
         btn.classList.add('ativo');
         estadoBusca.tipo_janela = btn.dataset.valor;
+        aplicarDatasDefault(estadoBusca.tipo_janela);
         reiniciarBusca();
     });
 
@@ -329,12 +729,24 @@
             var valor = document.getElementById('f-' + campo).value.trim();
             if (valor) { estadoBusca.filtros[campo] = valor; }
         });
+        var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
+        if (ncmsMax > 0) { estadoBusca.filtros.ncms_max = ncmsMax; }
+        if (document.getElementById('f-concluido').checked) { estadoBusca.filtros.concluido = 1; }
+
+        var dataInicio = document.getElementById('f-data-inicio').value;
+        var dataFim = document.getElementById('f-data-fim').value;
+        if (dataInicio && dataFim) { estadoBusca.periodo = { inicio: dataInicio, fim: dataFim }; }
+
         reiniciarBusca();
     });
 
     document.getElementById('btn-limpar').addEventListener('click', function () {
         campos.forEach(function (campo) { document.getElementById('f-' + campo).value = ''; });
+        document.getElementById('f-ncms_max').value = 0;
+        document.getElementById('valor-ncms_max').textContent = 'Sem limite';
+        document.getElementById('f-concluido').checked = false;
         estadoBusca.filtros = {};
+        aplicarDatasDefault(estadoBusca.tipo_janela);
         reiniciarBusca();
     });
 
@@ -342,6 +754,8 @@
         if (entries[0].isIntersecting) { carregarPagina(); }
     }, { rootMargin: '200px' }).observe(el.sentinela);
 
+    aplicarDatasDefault(estadoBusca.tipo_janela);
+    atualizaPeriodoAtivo();
     carregarPagina();
 })();
 </script>

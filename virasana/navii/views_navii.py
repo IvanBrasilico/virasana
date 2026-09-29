@@ -6,15 +6,18 @@ Expõe:
   GET /navii/            -> página HTML (filtros + cards com rolagem infinita)
   GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página)
 
-Depende de `busca_ces_navii` e `monta_card_navii`, definidos em
-`busca_navii.py`.
+Depende de `busca_ces_navii`, `busca_itens_navii` e `monta_card_navii`,
+definidos em `busca_navii.py`.
 """
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import login_required
 
-from virasana.navii.busca_navii import busca_ces_navii, monta_card_navii
+from virasana.navii.busca_navii import (
+    busca_ces_navii, busca_itens_navii, monta_card_navii,
+    _janela_efetiva, _janela_previsao,
+)
 
 bp_navii = Blueprint(
     'navii', __name__,
@@ -27,19 +30,37 @@ bp_navii = Blueprint(
 IMAGEM_URL_TEMPLATE = '/virasana/mini1/imagem_id'
 
 
+def _serializa_valor(v):
+    if isinstance(v, datetime):
+        return v.strftime('%Y-%m-%d %H:%M:%S')
+    if isinstance(v, dict):
+        return {k: _serializa_valor(sub) for k, sub in v.items()}
+    return v
+
+
 def _serializa_card(card: dict) -> dict:
-    """Converte datetimes para string, para virar JSON."""
-    out = dict(card)
-    for k, v in out.items():
-        if isinstance(v, datetime):
-            out[k] = v.strftime('%Y-%m-%d %H:%M:%S')
-    return out
+    """Converte datetimes (inclusive dentro da linha do tempo) para string, para virar JSON."""
+    return {k: _serializa_valor(v) for k, v in card.items()}
+
+
+def _defaults_periodo():
+    """Sugestão de período inicial (pré-preenchida na tela) para cada janela."""
+    inicio_prevista, fim_prevista = _janela_previsao()
+    inicio_efetiva, fim_efetiva = _janela_efetiva()
+    return {
+        'prevista': {'inicio': inicio_prevista, 'fim': fim_prevista},
+        'efetiva': {'inicio': inicio_efetiva.strftime('%Y-%m-%d'), 'fim': fim_efetiva.strftime('%Y-%m-%d')},
+    }
 
 
 @bp_navii.route('/')
 @login_required
 def index():
-    return render_template('navii.html', imagem_url_template=IMAGEM_URL_TEMPLATE)
+    return render_template(
+        'navii.html',
+        imagem_url_template=IMAGEM_URL_TEMPLATE,
+        defaults_periodo=_defaults_periodo(),
+    )
 
 
 @bp_navii.route('/api/ces')
@@ -57,6 +78,16 @@ def api_ces():
         valor = request.args.get(campo)
         if valor:
             filtros[campo] = valor.strip()
+    if request.args.get('concluido') in ('1', 'true', 'True'):
+        filtros['concluido'] = True
+    ncms_max = request.args.get('ncms_max', type=int)
+    if ncms_max:
+        filtros['ncms_max'] = ncms_max
+    data_inicio = request.args.get('data_inicio')
+    data_fim = request.args.get('data_fim')
+    if data_inicio and data_fim:
+        filtros['data_inicio'] = data_inicio
+        filtros['data_fim'] = data_fim
 
     try:
         resultados = busca_ces_navii(
@@ -69,7 +100,13 @@ def api_ces():
     except ValueError as err:
         return jsonify({'erro': str(err)}), 400
 
-    cards = [_serializa_card(monta_card_navii(ciclo, ce)) for ciclo, ce in resultados]
+    numeros_ce = [ce.numeroCEmercante for _, ce, _ in resultados]
+    itens_por_ce = busca_itens_navii(session, numeros_ce)
+
+    cards = [
+        _serializa_card(monta_card_navii(ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante)))
+        for ciclo, ce, embarcacao in resultados
+    ]
     next_cursor = cards[-1]['ciclo_de_vida_id'] if len(cards) == limit else None
 
     return jsonify({
