@@ -523,11 +523,11 @@ if __name__ == '__main__':
         # As funções abaixo são "atalhos" para buscar novos ciclos de vida ou completar existentes
         # Os atalhos darão um tratamento mais célere ao problema de monitorar o ciclo de vida,
         # diminuindo custos computacionais e encurtando tempos de busca e atualização
-        #desembarques_novos(session)
-        #saidas_novas_operadores(session)
-        #busca_escaneamentos_novos(session)
+        desembarques_novos(session)
+        saidas_novas_operadores(session)
+        busca_escaneamentos_novos(session)
         # Popular ciclos de vida
-        #ok, total = processar_ciclos_pendentes(mongodb, session, 200)
+        ok, total = processar_ciclos_pendentes(mongodb, session, 200)
         busca_escaneamentos_faltantes_por_ce(session)
         logger.info(f'Processados com sucesso: {ok}/{total}')
         time.sleep(600)
