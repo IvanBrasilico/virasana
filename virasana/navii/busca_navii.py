@@ -6,16 +6,23 @@ Busca CEs mercante dentro de uma janela de atracação (prevista ou efetiva),
 cruza com o Ciclo de Vida (API Recintos) e exige que já existam escaneamentos
 com imagem associada, para alimentar os cards em rolagem infinita.
 
-Suporta filtros sucessivos (NCM, rota, produto, recinto, empresa, ciclo
-concluído/"entregue ao importador", quantidade máxima de NCMs distintos) e
-paginação por cursor (ID decrescente). A janela de dias (`_janela_previsao`/
-`_janela_efetiva`) é apenas a *sugestão* de período inicial — `data_inicio`/
-`data_fim` em `filtros` sobrescrevem essa sugestão.
+Suporta filtros sucessivos (NCM, rota, porto de baldeação do manifesto,
+produto, recinto, empresa, ciclo concluído/"entregue ao importador",
+quantidade máxima de NCMs distintos) e paginação por cursor (ID decrescente).
+A janela de dias (`_janela_previsao`/`_janela_efetiva`) é apenas a *sugestão*
+de período inicial — `data_inicio`/`data_fim` em `filtros` sobrescrevem essa
+sugestão.
+
+Enriquecimento cruza também com dados do repo irmão bhadrasana2
+(`bhadrasana.models.laudo`, tabelas `laudo_empresas`/`laudo_ncm`) para
+resolver CNPJ→nome de empresa e código NCM→descrição oficial.
 
 Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
   - Filtros em linguagem natural (hoje são campos estruturados sucessivos).
   - Filtros subjetivos automáticos por empresa e sócios — não há fonte de
     dados de sócios no modelo atual.
+  - Resolução de CPF (bagagens_pessoas) — embarcador/consignatário do
+    Conhecimento só guardam CNPJ ou nome estrangeiro, nunca CPF.
 """
 import sys
 from datetime import datetime, timedelta
@@ -28,11 +35,13 @@ sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
 from virasana.integracao.mercante.mercantealchemy import (
-    Conhecimento, Escala, EscalaManifesto, Item, Manifesto, NCMItem,
+    Conhecimento, Enumerado, Escala, EscalaManifesto, Item, Manifesto, NCMItem,
 )
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, logger,
 )
+from bhadrasana.models.laudo import Empresa
+from bhadrasana.models.laudo import NCM as LaudoNCM
 
 # Janelas de atracação (em dias, a partir de hoje) — usadas só como SUGESTÃO
 # de período inicial na tela; o usuário pode escolher outro intervalo.
@@ -81,7 +90,7 @@ def busca_ces_navii(
     exigir_escaneamento: Optional[bool] = None,
     cursor_id: Optional[int] = None,
     limit: int = 20,
-) -> List[Tuple[CicloDeVidaImportacao, Conhecimento, Optional[str]]]:
+) -> List[Tuple[CicloDeVidaImportacao, Conhecimento, Optional[str], Optional[Manifesto]]]:
     """Busca CEs mercante na janela de atracação informada, para a tela do NAVI-I.
 
     Args:
@@ -90,7 +99,11 @@ def busca_ces_navii(
             ou 'efetiva' (via CicloDeVidaImportacao.data_desembarque).
         filtros: dict opcional com filtros sucessivos:
             - ncm (str): prefixo do código NCM (ex.: '8471')
-            - porto_origem / porto_destino (str): código do porto (rota)
+            - porto_origem / porto_destino (str): código do porto de origem/destino
+              da carga (Conhecimento — o que o embarcador declarou)
+            - porto_baldeacao (str): código do porto de CARREGAMENTO do Manifesto
+              (Manifesto.portoCarregamento) — quando difere do porto de origem do
+              Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
             - produto (str): busca textual na descrição do item (NCMItem.descritivo)
             - recinto (str): código do recinto de desembarque OU de armazenagem
             - empresa (str): busca textual em embarcador ou consignatário
@@ -112,10 +125,10 @@ def busca_ces_navii(
         limit: tamanho da página.
 
     Returns:
-        Lista de tuplas (CicloDeVidaImportacao, Conhecimento, nome_embarcacao),
-        ordenada por CicloDeVidaImportacao.ID decrescente (mais recentes primeiro).
-        `nome_embarcacao` pode ser None quando a Escala do CE ainda não foi
-        recebida/casada (LEFT JOIN).
+        Lista de tuplas (CicloDeVidaImportacao, Conhecimento, nome_embarcacao,
+        Manifesto), ordenada por CicloDeVidaImportacao.ID decrescente (mais
+        recentes primeiro). `nome_embarcacao` e `Manifesto` podem ser None
+        quando a Escala/Manifesto do CE ainda não foi recebida/casada (LEFT JOIN).
 
     Observação de escopo:
         Na janela 'efetiva', a data usada é `data_desembarque` do próprio
@@ -137,11 +150,12 @@ def busca_ces_navii(
     if exigir_escaneamento is None:
         exigir_escaneamento = (tipo_janela == 'efetiva')
 
-    # Escala (para o nome da embarcação/navio, exibido na linha do tempo) é sempre
-    # trazida via LEFT JOIN, independente da janela — em 'prevista' ela também é
-    # usada para filtrar a data prevista de atracação.
+    # Manifesto/Escala (nome da embarcação, dados de manifesto e porto de
+    # baldeação, exibidos no card) são sempre trazidos via LEFT JOIN,
+    # independente da janela — em 'prevista' também são usados para filtrar a
+    # data prevista de atracação.
     q = (
-        session.query(CicloDeVidaImportacao, Conhecimento, Escala.embarcacao)
+        session.query(CicloDeVidaImportacao, Conhecimento, Escala.embarcacao, Manifesto)
         .join(Conhecimento, Conhecimento.numeroCEmercante == CicloDeVidaImportacao.numeroCEmercante)
         .outerjoin(Manifesto, Manifesto.numero == Conhecimento.manifestoCE)
         .outerjoin(EscalaManifesto, EscalaManifesto.manifesto == Manifesto.numero)
@@ -204,6 +218,9 @@ def busca_ces_navii(
     if filtros.get('porto_destino'):
         q = q.filter(Conhecimento.portoDestFinal == filtros['porto_destino'])
 
+    if filtros.get('porto_baldeacao'):
+        q = q.filter(Manifesto.portoCarregamento == filtros['porto_baldeacao'])
+
     if filtros.get('recinto'):
         recinto = filtros['recinto']
         q = q.filter(or_(
@@ -261,10 +278,16 @@ def _texto_para_float(valor: Optional[str]) -> Optional[float]:
 
 
 def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
-    """Enriquecimento em lote (duas queries, independente da quantidade de CEs
-    da página) com os contêineres e NCMs declarados de cada CE — para a seção
-    "Contêineres" do card e para o peso bruto total / contagem de NCMs
-    distintos exibidos no cabeçalho do card.
+    """Enriquecimento em lote com os contêineres e NCMs declarados de cada CE
+    — para a seção "Contêineres" do card e para o peso bruto total / contagem
+    de NCMs distintos exibidos no cabeçalho do card.
+
+    Além de Item/NCMItem, cruza em mais duas queries em lote:
+      - `laudo_ncm` (repo bhadrasana2): descrição oficial do NCM, usada no
+        lugar de `NCMItem.descritivo` (texto livre declarado no manifesto,
+        muitas vezes incompleto) quando existe uma correspondência.
+      - `Enumerado.tipoItemCarga`: decodifica o tipo de carga do contêiner
+        (`Item.tipoItemCarga`), hoje não decodificado em nenhum outro lugar.
 
     Feito à parte da busca principal (que filtra/pagina) para não repetir os
     joins com Item/NCMItem em toda consulta — só roda para os CEs da página
@@ -278,6 +301,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
               'conteineres': [
                   {'codigoConteiner': str, 'isoCode': str,
                    'pesoBruto': float | None, 'tara': float | None, 'lacre': str,
+                   'tipoCarga': str | None,
                    'ncms': [{'identificacaoNCM': str, 'descritivo': str}, ...]},
                   ...
               ],
@@ -295,6 +319,17 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
         .filter(Item.numeroCEmercante.in_(numeros_ce))
         .all()
     )
+    codigos_tipo_carga = {item.tipoItemCarga for item in itens if item.tipoItemCarga}
+    tipos_carga: Dict[str, str] = {}
+    if codigos_tipo_carga:
+        for enumerado in (
+            session.query(Enumerado)
+            .filter(Enumerado.id.in_(codigos_tipo_carga))
+            .all()
+        ):
+            if enumerado.tipoItemCarga:
+                tipos_carga[enumerado.id] = enumerado.tipoItemCarga
+
     for item in itens:
         conteineres = por_ce.setdefault(item.numeroCEmercante, {})
         conteineres[item.codigoConteiner] = {
@@ -303,6 +338,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
             'pesoBruto': _texto_para_float(item.pesoBruto),
             'tara': _texto_para_float(item.tara),
             'lacre': item.lacre,
+            'tipoCarga': tipos_carga.get(item.tipoItemCarga),
             'ncms': [],
         }
 
@@ -311,6 +347,17 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
         .filter(NCMItem.numeroCEMercante.in_(numeros_ce))
         .all()
     )
+    codigos_ncm = {ncm_item.identificacaoNCM for ncm_item in ncm_itens if ncm_item.identificacaoNCM}
+    descricoes_laudo: Dict[str, str] = {}
+    if codigos_ncm:
+        for laudo_ncm in (
+            session.query(LaudoNCM)
+            .filter(LaudoNCM.title.in_(codigos_ncm))
+            .all()
+        ):
+            if laudo_ncm.contents:
+                descricoes_laudo[laudo_ncm.title] = laudo_ncm.contents
+
     for ncm_item in ncm_itens:
         conteineres = por_ce.setdefault(ncm_item.numeroCEMercante, {})
         conteiner = conteineres.get(ncm_item.codigoConteiner)
@@ -320,11 +367,14 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
             conteiner = conteineres.setdefault(ncm_item.codigoConteiner, {
                 'codigoConteiner': ncm_item.codigoConteiner,
                 'isoCode': None, 'pesoBruto': None, 'tara': None, 'lacre': None,
-                'ncms': [],
+                'tipoCarga': None, 'ncms': [],
             })
+        # Prioridade: descrição oficial do laudo_ncm; se não houver, cai para o
+        # texto livre declarado no manifesto (NCMItem.descritivo).
+        descricao = descricoes_laudo.get(ncm_item.identificacaoNCM) or ncm_item.descritivo
         conteiner['ncms'].append({
             'identificacaoNCM': ncm_item.identificacaoNCM,
-            'descritivo': ncm_item.descritivo,
+            'descritivo': descricao,
         })
 
     resultado: Dict[str, dict] = {}
@@ -340,25 +390,65 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
     return resultado
 
 
+def busca_nomes_empresas(session, valores: List[str]) -> Dict[str, str]:
+    """Resolve CNPJ -> nome de empresa em lote, cruzando com `laudo_empresas`
+    (repo bhadrasana2, `bhadrasana.models.laudo.Empresa`).
+
+    `valores` é a lista de `Conhecimento.embarcador`/`.consignatario` da
+    página atual — esses campos guardam o CNPJ (empresa BR) ou um nome
+    estrangeiro (ver `virasana.integracao.mercante.mercante.Embarcador`/
+    `Consignatario`, cujo `__repr__` prioriza o CNPJ). Valores que não forem
+    CNPJs conhecidos simplesmente não aparecem no dict de retorno — quem
+    chama deve manter o valor original nesse caso.
+
+    É um match exato (sem normalização de máscara): tanto o CNPJ gravado no
+    Conhecimento quanto `Empresa.cnpj` vêm da mesma cadeia de dados da
+    Receita, sempre sem pontuação.
+    """
+    valores = [v for v in valores if v]
+    if not valores:
+        return {}
+
+    return {
+        empresa.cnpj: empresa.nome
+        for empresa in session.query(Empresa).filter(Empresa.cnpj.in_(valores)).all()
+        if empresa.nome
+    }
+
+
 def monta_card_navii(
     ciclo: CicloDeVidaImportacao,
     conhecimento: Conhecimento,
     embarcacao: Optional[str] = None,
     itens: Optional[dict] = None,
+    manifesto: Optional[Manifesto] = None,
+    nome_embarcador: Optional[str] = None,
+    nome_consignatario: Optional[str] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
-    vínculo Master/House e contêineres/NCMs declarados), a linha do tempo do
-    ciclo de vida (API Recintos) e as referências às imagens de escaneamento
-    (já carregadas via `ciclo.escaneamentos`, lazy='selectin').
+    vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
+    tempo do ciclo de vida (API Recintos) e as referências às imagens de
+    escaneamento (já carregadas via `ciclo.escaneamentos`, lazy='selectin').
 
     `itens` é o dict retornado por `busca_itens_navii` para este CE (ou None
-    quando não há Item/NCMItem carregados para ele).
+    quando não há Item/NCMItem carregados para ele). `nome_embarcador`/
+    `nome_consignatario` vêm de `busca_nomes_empresas` (ou None se o valor
+    guardado não bateu com nenhum CNPJ conhecido).
     """
     imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None]
     itens = itens or {'pesoBrutoTotal': None, 'qtdNcmsDistintos': 0, 'conteineres': []}
     numero_ce_master = conhecimento.numeroCEMaster
     if numero_ce_master == conhecimento.numeroCEmercante:
         numero_ce_master = None  # CE único costuma repetir o próprio número; não é um vínculo real
+
+    dados_manifesto = None
+    if manifesto is not None:
+        dados_manifesto = {
+            'numero': manifesto.numero,
+            'portoCarregamento': manifesto.portoCarregamento,
+            'portoDescarregamento': manifesto.portoDescarregamento,
+            'numeroViagem': manifesto.numeroViagem,
+        }
 
     return {
         'ciclo_de_vida_id': ciclo.ID,
@@ -367,13 +457,17 @@ def monta_card_navii(
         'numeroCEMaster': numero_ce_master,
         'imagens_ids': imagens,
         'embarcador': conhecimento.embarcador,
+        'nomeEmbarcador': nome_embarcador,
         'consignatario': conhecimento.consignatario,
+        'nomeConsignatario': nome_consignatario,
+        'descricaoMercadoria': conhecimento.descricao,
         'portoOrigemCarga': conhecimento.portoOrigemCarga,
         'portoDestFinal': conhecimento.portoDestFinal,
         'tipoTrafego': conhecimento.get_tipoTrafego(),
         'tipoBL': conhecimento.get_tipoBL(),
         'numConhecimento': conhecimento.numConhecimento,
         'embarcacao': embarcacao,
+        'manifesto': dados_manifesto,
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
         'conteineres': itens['conteineres'],
@@ -416,7 +510,14 @@ if __name__ == '__main__':  # pragma: no-cover
         filtros={'recinto': '8931356'},
         limit=10,
     )
-    numeros = [ce.numeroCEmercante for _, ce, _ in resultados]
+    numeros = [ce.numeroCEmercante for _, ce, _, _ in resultados]
     itens_por_ce = busca_itens_navii(session, numeros)
-    for ciclo, ce, embarcacao in resultados:
-        print(monta_card_navii(ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante)))
+    nomes = busca_nomes_empresas(
+        session,
+        [v for ciclo, ce, _, _ in resultados for v in (ce.embarcador, ce.consignatario)],
+    )
+    for ciclo, ce, embarcacao, manifesto in resultados:
+        print(monta_card_navii(
+            ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante), manifesto,
+            nomes.get(ce.embarcador), nomes.get(ce.consignatario),
+        ))

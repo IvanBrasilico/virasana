@@ -15,7 +15,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import login_required
 
 from virasana.navii.busca_navii import (
-    busca_ces_navii, busca_itens_navii, monta_card_navii,
+    busca_ces_navii, busca_itens_navii, busca_nomes_empresas, monta_card_navii,
     _janela_efetiva, _janela_previsao,
 )
 
@@ -74,7 +74,7 @@ def api_ces():
     limit = max(1, min(limit, 50))
 
     filtros = {}
-    for campo in ('ncm', 'produto', 'porto_origem', 'porto_destino', 'recinto', 'empresa'):
+    for campo in ('ncm', 'produto', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto', 'empresa'):
         valor = request.args.get(campo)
         if valor:
             filtros[campo] = valor.strip()
@@ -100,12 +100,18 @@ def api_ces():
     except ValueError as err:
         return jsonify({'erro': str(err)}), 400
 
-    numeros_ce = [ce.numeroCEmercante for _, ce, _ in resultados]
+    numeros_ce = [ce.numeroCEmercante for _, ce, _, _ in resultados]
     itens_por_ce = busca_itens_navii(session, numeros_ce)
 
+    valores_empresas = [v for _, ce, _, _ in resultados for v in (ce.embarcador, ce.consignatario)]
+    nomes_empresas = busca_nomes_empresas(session, valores_empresas)
+
     cards = [
-        _serializa_card(monta_card_navii(ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante)))
-        for ciclo, ce, embarcacao in resultados
+        _serializa_card(monta_card_navii(
+            ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante), manifesto,
+            nomes_empresas.get(ce.embarcador), nomes_empresas.get(ce.consignatario),
+        ))
+        for ciclo, ce, embarcacao, manifesto in resultados
     ]
     next_cursor = cards[-1]['ciclo_de_vida_id'] if len(cards) == limit else None
 
