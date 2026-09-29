@@ -1,9 +1,9 @@
+import random
 import sys
 import time
 from datetime import datetime, timedelta
 
 from pymongo import MongoClient
-
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -280,27 +280,68 @@ def completar_ciclo_de_vida(db, session, ciclo):
         return False
 
 
-def processar_ciclos_pendentes(db, session, chunk_size=1000):
+def processar_ciclos_pendentes(db, session, chunk_size=1000, chance_pulo=0.9, fator_pulo_min=1.0, fator_pulo_max=4.0):
+    """
+    Processa ciclos pendentes com saltos probabilísticos.
+
+    A cada iteração:
+      - 90% de chance de pular entre 1x e 4x o chunk_size
+      - 10% de chance de avançar apenas chunk_size
+    """
+    # Obtém o último ID dos ciclos não concluídos
+    max_id_result = (
+        session.query(func.max(CicloDeVidaImportacao.ID))
+        .filter(CicloDeVidaImportacao.concluido.isnot(True))
+        .scalar()
+    )
+
+    if max_id_result is None:
+        logger.info("Nenhum ciclo pendente encontrado.")
+        return 0, 0
+
+    max_id_pendentes = max_id_result
     ultimo_id = 0
     total_ok = 0
     total_concluidos = 0
     inicio_geral = time.time()
 
-    while True:
+    logger.info(f"Iniciando processamento. Último ID pendente: {max_id_pendentes}")
+
+    while ultimo_id < max_id_pendentes:
+        # Decide o tamanho do salto
+        if random.random() < chance_pulo:
+            fator = random.uniform(fator_pulo_min, fator_pulo_max)
+        else:
+            fator = 1.0
+
+        salto = int(chunk_size * fator)
+        proximo_alvo = ultimo_id + salto
+
+        # Garante que não ultrapasse o max_id_pendentes
+        if proximo_alvo > max_id_pendentes:
+            proximo_alvo = max_id_pendentes + 1
+
+        # Busca o lote entre ultimo_id (exclusivo) e proximo_alvo (inclusivo)
         lote = (
             session.query(CicloDeVidaImportacao)
             .filter(CicloDeVidaImportacao.concluido.isnot(True))
             .filter(CicloDeVidaImportacao.ID > ultimo_id)
+            .filter(CicloDeVidaImportacao.ID <= proximo_alvo)
             .order_by(CicloDeVidaImportacao.ID.asc())
-            .limit(chunk_size)
             .all()
         )
 
         if not lote:
-            break
+            # Não há mais registros neste intervalo, avança
+            ultimo_id = proximo_alvo
+            continue
 
         total = len(lote)
-        logger.info(f'Processando chunk com {total} ciclos a partir do ID > {ultimo_id}')
+        logger.info(
+            f'Processando chunk com {total} ciclos. '
+            f'ID de {lote[0].ID} a {lote[-1].ID}. '
+            f'Salto aplicado: {salto} (fator {fator:.2f}x)'
+        )
 
         for i, ciclo in enumerate(lote, 1):
             if completar_ciclo_de_vida(db, session, ciclo):
@@ -313,6 +354,7 @@ def processar_ciclos_pendentes(db, session, chunk_size=1000):
                 )
 
             ultimo_id = ciclo.ID
+
         session.commit()
         time.sleep(1)
 
@@ -333,20 +375,20 @@ def desembarques_novos(session):
         .filter(EmbarqueDesembarque.embarqueDesembarque == 'D')
     )
     max_id_desembarque = session.query(func.max(CicloDeVidaImportacao.desembarque_id)).scalar()
-    if max_id_desembarque is None:   # Ciclo de vida zerado, inicializar 7 dias atrás
+    if max_id_desembarque is None:  # Ciclo de vida zerado, inicializar 7 dias atrás
         data_inicial = datetime.now() - timedelta(days=7)
         desembarques = (desembarques
                         .filter(EmbarqueDesembarque.dataHoraOcorrencia >= data_inicial)
                         )
-    else: # Ciclo de vida inicializado, continuar puxando desembarques novos
+    else:  # Ciclo de vida inicializado, continuar puxando desembarques novos
         desembarques = (desembarques
                         .filter(EmbarqueDesembarque.id > max_id_desembarque)
                         )
     desembarques = (desembarques
-        .order_by(EmbarqueDesembarque.id.asc())
-        .limit(200) # definir se puxa novos desembarques ou não
-        .all()
-    )
+                    .order_by(EmbarqueDesembarque.id.asc())
+                    .limit(200)  # definir se puxa novos desembarques ou não
+                    .all()
+                    )
     logger.info('%s desembarques encontrados', len(desembarques))
     for desembarque in desembarques:
         ciclo_de_vida = CicloDeVidaImportacao()
@@ -366,14 +408,14 @@ def saidas_novas_operadores(session):
     if max_id_saida_operador is None:
         return
     saidas = (
-            session.query(AcessoVeiculo)
-            .filter(AcessoVeiculo.codigoRecinto.in_(OPERADORES))
-            .filter(AcessoVeiculo.direcao == 'S')
-            .filter(AcessoVeiculo.numeroConteiner.isnot(None))
-            .filter(AcessoVeiculo.numeroConteiner != '')
-            .order_by(AcessoVeiculo.id.asc())
-            .limit(200)
-            .all()
+        session.query(AcessoVeiculo)
+        .filter(AcessoVeiculo.codigoRecinto.in_(OPERADORES))
+        .filter(AcessoVeiculo.direcao == 'S')
+        .filter(AcessoVeiculo.numeroConteiner.isnot(None))
+        .filter(AcessoVeiculo.numeroConteiner != '')
+        .order_by(AcessoVeiculo.id.asc())
+        .limit(200)
+        .all()
     )
     logger.info('%s saídas encontradas', len(saidas))
     saidas_incluidas = 0
@@ -400,7 +442,6 @@ def saidas_novas_operadores(session):
         session.rollback()
 
 
-
 def busca_escaneamentos_novos(session):
     """Completar ciclos de vida com escaneamentos.
 
@@ -418,15 +459,15 @@ def busca_escaneamentos_novos(session):
     if max_id_escaneamento is None:
         return
     escaneamentos_novos = (
-            session.query(InspecaoNaoInvasiva)
-            .filter(InspecaoNaoInvasiva.id > max_id_escaneamento)
-            .filter(InspecaoNaoInvasiva.numeroConhecimento.isnot(None))
-            .filter(InspecaoNaoInvasiva.numeroConhecimento != '')
-            .filter(InspecaoNaoInvasiva.numeroConteiner.isnot(None))
-            .filter(InspecaoNaoInvasiva.numeroConteiner != '')
-            .order_by(InspecaoNaoInvasiva.id.asc())
-            .limit(200)
-            .all()
+        session.query(InspecaoNaoInvasiva)
+        .filter(InspecaoNaoInvasiva.id > max_id_escaneamento)
+        .filter(InspecaoNaoInvasiva.numeroConhecimento.isnot(None))
+        .filter(InspecaoNaoInvasiva.numeroConhecimento != '')
+        .filter(InspecaoNaoInvasiva.numeroConteiner.isnot(None))
+        .filter(InspecaoNaoInvasiva.numeroConteiner != '')
+        .order_by(InspecaoNaoInvasiva.id.asc())
+        .limit(200)
+        .all()
     )
     logger.info('%s novas inspeções não invasivas encontradas', len(escaneamentos_novos))
     escaneamentos_incluidos = 0
@@ -451,6 +492,7 @@ def busca_escaneamentos_novos(session):
     except Exception as e:
         logger.error(e)
         session.rollback()
+
 
 def busca_escaneamentos_faltantes_por_ce(session):
     """Completar ciclos de vida com escaneamentos, por número do CE.
@@ -487,9 +529,9 @@ def busca_escaneamentos_faltantes_por_ce(session):
     escaneamentos_incluidos = 0
     for ciclo_de_vida in ciclos_sem_escaneamento:
         escaneamentos = (session.query(InspecaoNaoInvasiva)
-                        .filter(InspecaoNaoInvasiva.numeroConhecimento == ciclo_de_vida.numeroCEmercante)
-                        .filter(InspecaoNaoInvasiva.numeroConteiner == ciclo_de_vida.numeroConteiner)
-                        ).all()
+                         .filter(InspecaoNaoInvasiva.numeroConhecimento == ciclo_de_vida.numeroCEmercante)
+                         .filter(InspecaoNaoInvasiva.numeroConteiner == ciclo_de_vida.numeroConteiner)
+                         ).all()
         for escaneamento in escaneamentos:
             ciclo_escaneamento = CicloDeVidaImportacaoEscaneamentos()
             ciclo_escaneamento.ciclo_de_vida_id = ciclo_de_vida.ID
@@ -504,6 +546,7 @@ def busca_escaneamentos_faltantes_por_ce(session):
     except Exception as e:
         logger.error(e)
         session.rollback()
+
 
 if __name__ == '__main__':
     # Popular Ciclos de Vida
@@ -527,7 +570,7 @@ if __name__ == '__main__':
         saidas_novas_operadores(session)
         busca_escaneamentos_novos(session)
         # Popular ciclos de vida
-        ok, total = processar_ciclos_pendentes(mongodb, session, 200)
+        ok, total = processar_ciclos_pendentes(mongodb, session, 1000)
         busca_escaneamentos_faltantes_por_ce(session)
         logger.info(f'Processados com sucesso: {ok}/{total}')
         time.sleep(600)
