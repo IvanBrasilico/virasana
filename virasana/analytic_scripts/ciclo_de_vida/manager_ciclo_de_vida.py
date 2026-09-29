@@ -282,11 +282,13 @@ def completar_ciclo_de_vida(db, session, ciclo):
 
 def processar_ciclos_pendentes(db, session, chunk_size=1000, chance_pulo=0.9, fator_pulo_min=1.0, fator_pulo_max=4.0):
     """
-    Processa ciclos pendentes com saltos probabilísticos.
+    Processa ciclos pendentes com saltos probabilísticos de IDs.
 
     A cada iteração:
       - 90% de chance de pular entre 1x e 4x o chunk_size
-      - 10% de chance de avançar apenas chunk_size
+      - 10% de chance de avançar apenas chunk_size (sem pulo extra)
+
+    O pulo é feito sobre os IDs, não apenas no tamanho do lote.
     """
     # Obtém o último ID dos ciclos não concluídos
     max_id_result = (
@@ -308,41 +310,44 @@ def processar_ciclos_pendentes(db, session, chunk_size=1000, chance_pulo=0.9, fa
     logger.info(f"Iniciando processamento. Último ID pendente: {max_id_pendentes}")
 
     while ultimo_id < max_id_pendentes:
-        # Decide o tamanho do salto
+        # === SORTEIO DO PULO ===
         if random.random() < chance_pulo:
+            # 90%: pula entre 1x e 4x o chunk_size
             fator = random.uniform(fator_pulo_min, fator_pulo_max)
         else:
+            # 10%: sem pulo extra, avança apenas chunk_size
             fator = 1.0
 
         salto = int(chunk_size * fator)
-        proximo_alvo = ultimo_id + salto
+        proximo_id_alvo = ultimo_id + salto
 
         # Garante que não ultrapasse o max_id_pendentes
-        if proximo_alvo > max_id_pendentes:
-            proximo_alvo = max_id_pendentes + 1
+        if proximo_id_alvo > max_id_pendentes:
+            proximo_id_alvo = max_id_pendentes + 1
 
-        # Busca o lote entre ultimo_id (exclusivo) e proximo_alvo (inclusivo)
+        # === BUSCA DO LOTE A PARTIR DO ID SORTEADO ===
         lote = (
             session.query(CicloDeVidaImportacao)
             .filter(CicloDeVidaImportacao.concluido.isnot(True))
-            .filter(CicloDeVidaImportacao.ID > ultimo_id)
-            .filter(CicloDeVidaImportacao.ID <= proximo_alvo)
+            .filter(CicloDeVidaImportacao.ID >= proximo_id_alvo)
             .order_by(CicloDeVidaImportacao.ID.asc())
+            .limit(chunk_size)
             .all()
         )
 
         if not lote:
-            # Não há mais registros neste intervalo, avança
-            ultimo_id = proximo_alvo
-            continue
+            # Não há mais registros a partir deste ponto
+            break
 
         total = len(lote)
         logger.info(
             f'Processando chunk com {total} ciclos. '
             f'ID de {lote[0].ID} a {lote[-1].ID}. '
-            f'Salto aplicado: {salto} (fator {fator:.2f}x)'
+            f'Pulo aplicado: {salto} IDs (fator {fator:.2f}x). '
+            f'Origem: ID {ultimo_id} -> Alvo: ID {proximo_id_alvo}'
         )
 
+        # === PROCESSAMENTO DO LOTE ===
         for i, ciclo in enumerate(lote, 1):
             if completar_ciclo_de_vida(db, session, ciclo):
                 total_ok += 1
@@ -353,6 +358,7 @@ def processar_ciclos_pendentes(db, session, chunk_size=1000, chance_pulo=0.9, fa
                     f'desembarque {ciclo.desembarque_id} {ciclo.data_desembarque}.'
                 )
 
+            # Atualiza ultimo_id para o último ID processado neste lote
             ultimo_id = ciclo.ID
 
         session.commit()
