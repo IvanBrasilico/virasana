@@ -59,14 +59,14 @@
         <h1><span class="marca">ENTREGAS</span> Entregas por CNPJ</h1>
         <p class="page-subtitle text-down-01 mb-0 mt-1">
             Saídas pelos gates dos recintos (API Recintos) de contêineres carregados dos CEs de importação
-            do CNPJ consignatário, no período informado.
+            em que o CNPJ é consignatário ou notify, no período informado.
         </p>
     </div>
 
     <form class="painel" method="get" action="{{ url_for('entregas.index') }}">
         <div class="form-linha">
             <div class="br-input cnpj">
-                <label for="cnpj">CNPJ do importador (14 dígitos) ou raiz (8 dígitos)</label>
+                <label for="cnpj">CNPJ (consignatário ou notify) — 14 dígitos ou raiz de 8</label>
                 <input id="cnpj" name="cnpj" type="text" value="{{ cnpj }}" placeholder="00.000.000/0000-00" required />
             </div>
             <div class="br-input">
@@ -120,7 +120,8 @@
                         <td class="mono">{{ linha.placa or '' }}
                             {% if linha.placa_semirreboque %}<span class="secundario">semirreboque {{ linha.placa_semirreboque }}</span>{% endif %}</td>
                         <td>{{ linha.recinto or '' }}<span class="secundario">{{ linha.nome_recinto or '' }}</span></td>
-                        <td class="mono">{{ linha.ce }}<span class="secundario">{{ linha.cnpj }}</span></td>
+                        <td class="mono">{{ linha.ce }}<span class="secundario">{{ linha.cnpj }}
+                            {% if linha.papel %}({{ linha.papel }}){% endif %}</span></td>
                         <td class="mercadoria">{{ linha.mercadoria or '' }}
                             {% if linha.ncms %}<span class="secundario">{{ linha.ncms }}</span>{% endif %}</td>
                         <td class="mono">{{ linha.cnpj_transportador or '' }}

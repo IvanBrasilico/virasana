@@ -18,7 +18,8 @@ INICIO, FIM = date(2026, 5, 1), date(2026, 5, 31)
 
 DDL = [
     'CREATE TABLE conhecimentosresumo (ID INTEGER PRIMARY KEY, numeroCEmercante VARCHAR(15), '
-    'consignatario VARCHAR(200), descricao VARCHAR(800), manifestoCE VARCHAR(15), tipoTrafego VARCHAR(10))',
+    'consignatario VARCHAR(200), cnpjNotify VARCHAR(45), descricao VARCHAR(800), manifestoCE VARCHAR(15), '
+    'tipoTrafego VARCHAR(10))',
     'CREATE TABLE manifestosresumo (ID INTEGER PRIMARY KEY, numero VARCHAR(15), dataInicioOperacaoDate DATE)',
     'CREATE TABLE itensresumo (ID INTEGER PRIMARY KEY, numeroCEmercante VARCHAR(15), codigoConteiner VARCHAR(11))',
     'CREATE TABLE ncmitemresumo (ID INTEGER PRIMARY KEY, numeroCEMercante CHAR(15), codigoConteiner CHAR(11), '
@@ -34,7 +35,7 @@ DDL = [
 
 
 def insere(con, tabela, linhas):
-    colunas = list(linhas[0])
+    colunas = list(dict.fromkeys(c for linha in linhas for c in linha))
     con.execute(text(f'INSERT INTO {tabela} ({", ".join(colunas)}) VALUES ({", ".join(":" + c for c in colunas)})'),
                 [{c: linha.get(c) for c in colunas} for linha in linhas])
 
@@ -66,6 +67,9 @@ def monta_banco(engine):
              'tipoTrafego': '5'},
             {'numeroCEmercante': 'CE4', 'consignatario': '44555666000177', 'descricao': 'outro importador',
              'manifestoCE': 'M1', 'tipoTrafego': '5'},
+            # o CNPJ pesquisado só como notify (consignatário "à ordem")
+            {'numeroCEmercante': 'CE5', 'consignatario': 'TO ORDER', 'cnpjNotify': CNPJ,
+             'descricao': 'PECAS', 'manifestoCE': 'M1', 'tipoTrafego': '5'},
         ])
         insere(con, 'itensresumo', [
             {'numeroCEmercante': 'CE0', 'codigoConteiner': 'CTRA'},
@@ -76,6 +80,7 @@ def monta_banco(engine):
             {'numeroCEmercante': 'CE2', 'codigoConteiner': 'CTRX'},
             {'numeroCEmercante': 'CE3', 'codigoConteiner': 'CTRA'},   # mesmo contêiner, outra viagem
             {'numeroCEmercante': 'CE4', 'codigoConteiner': 'CTRY'},
+            {'numeroCEmercante': 'CE5', 'codigoConteiner': 'CTRN'},
         ])
         insere(con, 'ncmitemresumo', [
             {'numeroCEMercante': 'CE1', 'codigoConteiner': 'CTRA', 'identificacaoNCM': '8471.30.12'},
@@ -92,6 +97,7 @@ def monta_banco(engine):
             saida(8, 'CTRA', datetime(2026, 6, 15)),                                        # fora do período
             saida(9, 'CTRX', datetime(2026, 5, 5)),                                         # CE de exportação
             saida(10, 'CTRY', datetime(2026, 5, 5)),                                        # outro importador
+            saida(11, 'CTRN', datetime(2026, 5, 15)),                                       # CE5: notify
         ])
         insere(con, 'ovr_recintos', [{'id': '70', 'nome': 'SANTOS BRASIL', 'cod_siscomex': '8931356'}])
         insere(con, 'laudo_empresas', [{'cnpj': CNPJ, 'nome': 'IMPORTADORA ALFA LTDA'}])
@@ -115,13 +121,20 @@ class TestBuscaEntregas(EntregasTestCase):
         self.assertEqual(linhas, [
             ('CTRA', 'CE1', 'ABC0001', 'contêiner e data'),
             ('CTRB', 'CE1', 'RET1234', 'confirmada pelo CE'),   # a retificação prevalece
+            ('CTRN', 'CE5', 'ABC0011', 'contêiner e data'),     # CNPJ só como notify
             ('CTRA', 'CE3', 'ABC0002', 'contêiner e data'),     # mesmo contêiner, CE mais recente
         ])
 
+    def test_papel_do_cnpj(self):
+        papeis = {lin['ce']: (lin['papel'], lin['cnpj'])
+                  for lin in busca_entregas(self.conexao, CNPJ, INICIO, FIM)['linhas']}
+        self.assertEqual(papeis['CE1'], ('consignatário', CNPJ))
+        self.assertEqual(papeis['CE5'], ('notify', CNPJ))
+
     def test_resumo_e_enriquecimento(self):
         resultado = busca_entregas(self.conexao, CNPJ, INICIO, FIM)
-        self.assertEqual(resultado['qtd_ces'], 2)             # CE1 e CE3 (CE0 antigo, CE2 exportação)
-        self.assertEqual(resultado['qtd_conteineres'], 3)     # CTRA, CTRB, CTRC
+        self.assertEqual(resultado['qtd_ces'], 3)             # CE1, CE3, CE5 (CE0 antigo, CE2 exportação)
+        self.assertEqual(resultado['qtd_conteineres'], 4)     # CTRA, CTRB, CTRC, CTRN
         self.assertEqual(resultado['conteineres_sem_saida'], ['CTRC'])
         self.assertEqual(resultado['empresa'], 'IMPORTADORA ALFA LTDA')
         primeira = resultado['linhas'][0]
@@ -133,7 +146,7 @@ class TestBuscaEntregas(EntregasTestCase):
 
     def test_raiz_do_cnpj(self):
         resultado = busca_entregas(self.conexao, '11222333', INICIO, FIM)
-        self.assertEqual(len(resultado['linhas']), 3)
+        self.assertEqual(len(resultado['linhas']), 4)
         self.assertIsNone(resultado['empresa'])
 
     def test_parametros_invalidos(self):
@@ -147,7 +160,8 @@ class TestBuscaEntregas(EntregasTestCase):
         resultado = busca_entregas(self.conexao, CNPJ, INICIO, FIM)
         abas = pd.read_excel(io.BytesIO(planilha_xlsx(resultado)), sheet_name=None, engine='openpyxl')
         self.assertEqual(list(abas), ['Entregas', 'Sem saída'])
-        self.assertEqual(len(abas['Entregas']), 3)
+        self.assertEqual(len(abas['Entregas']), 4)
+        self.assertIn('Papel do CNPJ', abas['Entregas'].columns)
         self.assertIn('Data de saída', abas['Entregas'].columns)
         self.assertEqual(list(abas['Sem saída']['Contêiner']), ['CTRC'])
 

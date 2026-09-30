@@ -78,14 +78,23 @@ def monta_banco(engine):
             {'id': 2, 'rvf_id': 10, 'tipo_id': 2, 'descricao': 'na porta', 'peso': 3},
             {'id': 3, 'rvf_id': 20, 'tipo_id': 1, 'descricao': None, 'peso': None},
         ])
+        motorista_joao = dict(placa='ABC1D23', cpfMotorista=CPF, nomeMotorista='JOAO',
+                              cnpjTransportador='11222333000181')
         insere('apirecintos_acessosveiculo', [
-            # contêiner da RVF + placa + CPF do texto: uma linha só, três formas de ligação
-            acesso(101, datetime(2026, 3, 1, 8), numeroConteiner=CTR_RVF, placa='ABC1D23', cpfMotorista=CPF,
-                   nomeMotorista='JOAO', cnpjTransportador='11222333000181'),
+            # contêiner apreendido + placa + CPF do texto: três formas de ligação
+            acesso(101, datetime(2026, 3, 1, 8), numeroConteiner=CTR_RVF, **motorista_joao),
+            acesso(108, datetime(2026, 3, 1, 8), numeroConteiner=CTR_RVF, tipoOperacao='R',
+                   **motorista_joao),                                               # retificação do 101
+            acesso(109, datetime(2026, 2, 28, 20), numeroConteiner=CTR_RVF, operacao='G',
+                   **motorista_joao),                                               # agendamento
+            acesso(110, datetime(2026, 3, 10), numeroConteiner='OUTRO0000001',
+                   **motorista_joao),                                               # outra viagem do JOAO
             acesso(102, datetime(2026, 3, 20), direcao='S', numeroConteiner=CTR_RVF, numeroConhecimento=CE,
                    placa='DEF4G56'),
             acesso(103, datetime(2026, 3, 5), numeroConteiner=CTR_TEXTO, placa='GHI7J89'),
             acesso(104, datetime(2026, 3, 15), placa='KLM1N23', placaSemirreboque='XYZ9876'),
+            acesso(107, datetime(2026, 3, 11), numeroConteiner='OUTRO0000002', numeroConhecimento=CE,
+                   placa='PQR1S23'),                                                # outro contêiner do CE
             acesso(105, datetime(2025, 1, 1), numeroConteiner=CTR_RVF),        # fora da janela
             acesso(106, datetime(2026, 3, 2), placa='NCM8471'),                  # "placa" falsa do texto
         ])
@@ -131,16 +140,32 @@ class TestRelaciona(unittest.TestCase):
         self.assertEqual(rvf10['apreensao_tipos'], 'Cocaína; Maconha')
         self.assertAlmostEqual(rvf10['apreensao_peso_total'], 28.5)
 
-    def test_formas_de_ligacao(self):
-        por_acesso = {linha['acesso_id']: linha for linha in self.linhas() if linha['rvf_id'] == 10}
-        self.assertEqual(sorted(por_acesso), [101, 102, 103, 104])
-        self.assertEqual(por_acesso[101]['forma_ligacao'], 'conteiner_rvf+placa_texto+cpf_texto')
-        self.assertEqual(por_acesso[101]['nomeMotorista'], 'JOAO')
-        self.assertEqual(por_acesso[102]['forma_ligacao'], 'conteiner_rvf+ce_mercante')
-        self.assertEqual(por_acesso[103]['forma_ligacao'], 'conteiner_texto')
-        self.assertEqual(por_acesso[104]['forma_ligacao'], 'placa_texto')  # pelo semirreboque
-        self.assertEqual(por_acesso[104]['valor_ligacao'], 'XYZ9876')
-        self.assertEqual(por_acesso[101]['dias_da_rvf'], -11.1)
+    def rvf10(self, **kwargs):
+        return {linha['placa']: linha for linha in self.linhas(**kwargs) if linha['rvf_id'] == 10}
+
+    def test_padrao_so_conteiner_apreendido_agrupado_por_motorista_veiculo(self):
+        por_placa = self.rvf10()
+        self.assertEqual(sorted(por_placa), ['ABC1D23', 'DEF4G56', 'GHI7J89'])
+        joao = por_placa['ABC1D23']
+        self.assertEqual(joao['forma_ligacao'], 'conteiner_rvf+placa_texto+cpf_texto')
+        self.assertEqual(joao['nomeMotorista'], 'JOAO')
+        self.assertEqual(joao['qtd_ocorrencias'], 2)  # acesso + agendamento; a retificação não conta
+        self.assertEqual(joao['movimentos'], 'acesso entrada: 1, agendamento entrada: 1')
+        self.assertEqual(joao['conteineres'], CTR_RVF)
+        self.assertEqual(joao['dias_da_rvf_mais_proximo'], -11.1)
+        self.assertEqual(por_placa['DEF4G56']['forma_ligacao'], 'conteiner_rvf+ce_mercante')
+        self.assertEqual(por_placa['GHI7J89']['forma_ligacao'], 'conteiner_texto')
+
+    def test_ce_sozinho_nao_traz_outros_conteineres_do_ce(self):
+        self.assertNotIn('PQR1S23', self.rvf10())
+
+    def test_incluir_outras_viagens(self):
+        linhas = [linha for linha in self.linhas(incluir_outras_viagens=True) if linha['rvf_id'] == 10]
+        por_forma = {(linha['placa'], linha['forma_ligacao']): linha for linha in linhas}
+        self.assertEqual(len(linhas), 6)
+        self.assertIn(('ABC1D23', 'placa_texto+cpf_texto'), por_forma)      # a outra viagem do JOAO
+        self.assertEqual(por_forma[('KLM1N23', 'placa_texto')]['valor_ligacao'], 'XYZ9876')  # semirreboque
+        self.assertEqual(por_forma[('PQR1S23', 'ce_mercante')]['conteineres'], 'OUTRO0000002')
 
     def test_rvf_sem_acesso_sai_como_nenhuma(self):
         linhas = [linha for linha in self.linhas() if linha['rvf_id'] == 20]
@@ -148,8 +173,12 @@ class TestRelaciona(unittest.TestCase):
         self.assertEqual(linhas[0]['forma_ligacao'], 'nenhuma')
 
     def test_janela_de_dias(self):
-        acessos = {linha.get('acesso_id') for linha in self.linhas(dias_antes=5, dias_depois=5)}
-        self.assertEqual(acessos, {104, None})  # só o de 15/03 (e a linha "nenhuma" da RVF 20)
+        # ±5 dias da RVF (12/03): nada do contêiner apreendido; com outras viagens, 110 e 104
+        self.assertEqual({linha['forma_ligacao'] for linha in self.linhas(dias_antes=5, dias_depois=5)},
+                         {'nenhuma'})
+        placas = {linha.get('placa') for linha in self.linhas(dias_antes=5, dias_depois=5,
+                                                              incluir_outras_viagens=True)}
+        self.assertEqual(placas, {'ABC1D23', 'KLM1N23', 'PQR1S23', None})
 
     def test_campo_fora_da_lista_e_recusado(self):
         with self.assertRaises(ValueError):
@@ -166,7 +195,7 @@ class TestRelaciona(unittest.TestCase):
                 dta.main()
             df = pd.read_csv(saida, sep=';', encoding='utf-8-sig')
         self.assertEqual(list(df.columns), dta.COLUNAS_CSV)
-        self.assertEqual(len(df), 5)  # 4 acessos da RVF 10 + "nenhuma" da RVF 20
+        self.assertEqual(len(df), 4)  # 3 conjuntos da RVF 10 + "nenhuma" da RVF 20
         self.assertEqual(set(df['rvf_id']), {10, 20})
 
 

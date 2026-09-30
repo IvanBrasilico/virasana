@@ -15,30 +15,38 @@ Formas de ligação (coluna `forma_ligacao` do CSV), da mais para a menos forte:
   - cpf_texto: CPF (dígitos verificadores válidos) citado nesses textos,
     contra o CPF do motorista.
 Todas limitadas a uma janela de datas em torno da RVF (padrão: 30 dias antes
-e 30 depois). Ligações por placa e CPF encontram OUTRAS viagens do mesmo
-veículo/motorista no período — úteis para a análise, mas mais fracas; por
-isso a forma de ligação vai em cada linha. Um acesso achado por mais de uma
-forma sai numa linha só, com as formas separadas por "+".
+e 30 depois).
 
-Não se liga por CNPJ citado no texto: quase sempre é o do importador/
-exportador, e casar com o CNPJ da transportadora traria milhares de acessos.
+Escopo (padrão: só o contêiner apreendido): ficam apenas os acessos do(s)
+contêiner(es) da apreensão — o da RVF e os citados nos textos. A ligação por
+CE, sozinha, traria os acessos de TODOS os contêineres do CE; e placa/CPF
+trariam as outras viagens do motorista. Com esse escopo, CE, placa e CPF só
+reforçam (entram em `forma_ligacao`) acessos do contêiner apreendido. Se a RVF
+não identifica nenhum contêiner, vale o CE (todos os contêineres dele).
+`--incluir-outras-viagens` desliga a restrição: aparecem também as outras
+viagens do mesmo veículo/motorista e os demais contêineres do CE.
 
 Saída: CSV (separador ";", UTF-8 com BOM para abrir no Excel), uma linha por
-(RVF, acesso encontrado). Apreensões da mesma RVF são agregadas (tipos, peso
-total, descrições). RVFs sem nenhum acesso encontrado também saem, com
-`forma_ligacao` = "nenhuma", para medir a cobertura.
+(RVF, forma de ligação, conjunto motorista + veículo + transportadora), com a
+quantidade de ocorrências (eventos distintos de gate: retificações do mesmo
+evento contam uma vez), os movimentos (entrada/saída, acesso/agendamento),
+primeira e última data, recintos, contêineres e CEs. Apreensões da mesma RVF
+são agregadas (tipos, peso total, descrições). RVFs sem nenhum acesso
+encontrado também saem, com `forma_ligacao` = "nenhuma", para medir a
+cobertura.
 
 Somente leitura. Uso (a partir da raiz do repo virasana):
 
     python virasana/analytic_scripts/dados_transporte_apreensoes.py
     python virasana/analytic_scripts/dados_transporte_apreensoes.py --inicio 2025-01-01 --saida apreensoes.csv
     python virasana/analytic_scripts/dados_transporte_apreensoes.py --dias-antes 15 --dias-depois 15
+    python virasana/analytic_scripts/dados_transporte_apreensoes.py --incluir-outras-viagens
 """
 import argparse
 import re
 import sys
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -75,13 +83,15 @@ CAMPOS_POR_FORMA = {
     'cpf_texto': ('cpfMotorista',),
 }
 
+ORDEM_FORMAS = ['conteiner_rvf', 'ce_mercante', 'conteiner_texto', 'placa_texto', 'cpf_texto']
+
 COLUNAS_CSV = [
     'ovr_id', 'ovr_numero', 'ovr_datahora', 'rvf_id', 'rvf_datahora', 'numeroCEmercante', 'rvf_numerolote',
     'apreensao_tipos', 'apreensao_peso_total', 'apreensao_descricoes',
     'forma_ligacao', 'valor_ligacao',
-    'acesso_id', 'acesso_recinto', 'acesso_datahora', 'dias_da_rvf', 'acesso_operacao', 'acesso_direcao',
-    'acesso_tipoOperacao', 'placa', 'placaSemirreboque', 'numeroConteiner', 'numeroConhecimento',
-    'cnpjTransportador', 'cpfMotorista', 'nomeMotorista',
+    'cpfMotorista', 'nomeMotorista', 'placa', 'placaSemirreboque', 'cnpjTransportador',
+    'qtd_ocorrencias', 'movimentos', 'primeira_datahora', 'ultima_datahora', 'dias_da_rvf_mais_proximo',
+    'recintos', 'conteineres', 'conhecimentos',
 ]
 
 RE_CONTEINER = re.compile(r'\b([A-Z]{3}[UJZ])\s?-?\s?(\d{6})\s?-?\s?(\d)\b')
@@ -198,8 +208,65 @@ def _como_datetime(valor):
     return pd.Timestamp(valor).to_pydatetime()
 
 
-def relaciona(conexao, apreensoes: pd.DataFrame, dias_antes: int = 30, dias_depois: int = 30) -> List[dict]:
-    """Linhas do CSV: cada RVF com cada acesso encontrado (ou uma linha "nenhuma")."""
+def _chave_evento(acesso: dict) -> tuple:
+    """Identifica o evento de gate: retificações (tipoOperacao R) do mesmo
+    evento repetem estes campos e contam uma vez só."""
+    return (acesso['codigoRecinto'], str(acesso['dataHoraOcorrencia']), acesso['operacao'], acesso['direcao'],
+            acesso['placa'], acesso['numeroConteiner'])
+
+
+def _movimento(acesso: dict) -> str:
+    tipo = {'C': 'acesso', 'G': 'agendamento'}.get(acesso['operacao'], acesso['operacao'] or '?')
+    sentido = {'E': 'entrada', 'S': 'saída'}.get(acesso['direcao'], acesso['direcao'] or '?')
+    return f'{tipo} {sentido}'
+
+
+def _junta(valores: Iterable) -> str:
+    return ', '.join(sorted({str(v) for v in valores if v}))
+
+
+def agrupa(acessos: List[dict], referencia: datetime) -> List[dict]:
+    """Uma linha por (forma de ligação, motorista, veículo, transportadora),
+    com a quantidade de eventos distintos e o resumo dos movimentos."""
+    grupos: Dict[tuple, dict] = {}
+    for acesso in acessos:
+        chave = (acesso['forma_ligacao'], acesso['cpfMotorista'], acesso['nomeMotorista'], acesso['placa'],
+                 acesso['placaSemirreboque'], acesso['cnpjTransportador'])
+        grupo = grupos.setdefault(chave, {'eventos': {}, 'valores': set()})
+        grupo['eventos'].setdefault(_chave_evento(acesso), acesso)
+        grupo['valores'].update(acesso['valor_ligacao'].split('+'))
+    linhas = []
+    for (forma, cpf, nome, placa, semirreboque, transportadora), grupo in grupos.items():
+        eventos = list(grupo['eventos'].values())
+        datas = sorted(_como_datetime(e['dataHoraOcorrencia']) for e in eventos)
+        contagem = {}
+        for evento in eventos:
+            contagem[_movimento(evento)] = contagem.get(_movimento(evento), 0) + 1
+        linhas.append({
+            'forma_ligacao': forma, 'valor_ligacao': '+'.join(sorted(grupo['valores'])),
+            'cpfMotorista': cpf, 'nomeMotorista': nome, 'placa': placa, 'placaSemirreboque': semirreboque,
+            'cnpjTransportador': transportadora,
+            'qtd_ocorrencias': len(eventos),
+            'movimentos': ', '.join(f'{m}: {n}' for m, n in sorted(contagem.items())),
+            'primeira_datahora': datas[0], 'ultima_datahora': datas[-1],
+            'dias_da_rvf_mais_proximo': round(min(((d - referencia).total_seconds() / 86400 for d in datas),
+                                                  key=abs), 1),
+            'recintos': _junta(e['codigoRecinto'] for e in eventos),
+            'conteineres': _junta(e['numeroConteiner'] for e in eventos),
+            'conhecimentos': _junta(e['numeroConhecimento'] for e in eventos),
+        })
+    return sorted(linhas, key=lambda linha: (ORDEM_FORMAS.index(linha['forma_ligacao'].split('+')[0]),
+                                             linha['primeira_datahora']))
+
+
+def conteineres_apreendidos(ligacoes_rvf: List[Tuple[str, str]]) -> Set[str]:
+    return {valor for forma, valor in ligacoes_rvf if forma in ('conteiner_rvf', 'conteiner_texto')}
+
+
+def relaciona(conexao, apreensoes: pd.DataFrame, dias_antes: int = 30, dias_depois: int = 30,
+              incluir_outras_viagens: bool = False) -> List[dict]:
+    """Linhas do CSV: cada RVF com cada conjunto motorista/veículo/transportadora
+    encontrado (ou uma linha "nenhuma"). Ver o escopo na docstring do módulo."""
     linhas = []
     for registro in apreensoes.to_dict('records'):
         referencia = _como_datetime(registro.get('rvf_datahora')) or _como_datetime(registro.get('ovr_datahora'))
@@ -213,31 +280,25 @@ def relaciona(conexao, apreensoes: pd.DataFrame, dias_antes: int = 30, dias_depo
             'apreensao_peso_total': registro.get('apreensao_peso_total'),
             'apreensao_descricoes': registro.get('apreensao_descricoes'),
         }
-        achados: Dict[object, dict] = {}  # id do acesso -> linha (junta formas de ligação)
+        achados: Dict[object, dict] = {}  # id do acesso -> acesso (junta formas de ligação)
         if referencia is not None:
             inicio, fim = referencia - timedelta(days=dias_antes), referencia + timedelta(days=dias_depois)
-            for forma, valor in ligacoes(registro):
+            ligacoes_rvf = ligacoes(registro)
+            apreendidos = conteineres_apreendidos(ligacoes_rvf)
+            for forma, valor in ligacoes_rvf:
                 for campo in CAMPOS_POR_FORMA[forma]:
                     for acesso in busca_acessos(conexao, campo, valor, inicio, fim):
-                        linha = achados.get(acesso['id'])
-                        if linha is None:
-                            data_acesso = _como_datetime(acesso['dataHoraOcorrencia'])
-                            linha = achados[acesso['id']] = {
-                                **base, 'forma_ligacao': forma, 'valor_ligacao': valor,
-                                'acesso_id': acesso['id'], 'acesso_recinto': acesso['codigoRecinto'],
-                                'acesso_datahora': acesso['dataHoraOcorrencia'],
-                                'dias_da_rvf': round((data_acesso - referencia).total_seconds() / 86400, 1),
-                                'acesso_operacao': acesso['operacao'], 'acesso_direcao': acesso['direcao'],
-                                'acesso_tipoOperacao': acesso['tipoOperacao'],
-                                **{c: acesso[c] for c in ('placa', 'placaSemirreboque', 'numeroConteiner',
-                                                          'numeroConhecimento', 'cnpjTransportador',
-                                                          'cpfMotorista', 'nomeMotorista')},
-                            }
-                        elif forma not in linha['forma_ligacao'].split('+'):
-                            linha['forma_ligacao'] += '+' + forma
-                            linha['valor_ligacao'] += '+' + valor
+                        if (not incluir_outras_viagens and apreendidos
+                                and acesso['numeroConteiner'] not in apreendidos):
+                            continue  # outra viagem / outro contêiner do CE
+                        existente = achados.get(acesso['id'])
+                        if existente is None:
+                            achados[acesso['id']] = {**acesso, 'forma_ligacao': forma, 'valor_ligacao': valor}
+                        elif forma not in existente['forma_ligacao'].split('+'):
+                            existente['forma_ligacao'] += '+' + forma
+                            existente['valor_ligacao'] += '+' + valor
         if achados:
-            linhas += sorted(achados.values(), key=lambda linha: str(linha['acesso_datahora']))
+            linhas += [{**base, **grupo} for grupo in agrupa(list(achados.values()), referencia)]
         else:
             linhas.append({**base, 'forma_ligacao': 'nenhuma' if referencia else 'sem data de referência'})
     return linhas
@@ -248,10 +309,13 @@ def resumo(linhas: Iterable[dict]) -> str:
     if df.empty:
         return 'Nenhuma RVF com apreensão no período.'
     rvfs = df['rvf_id'].nunique()
-    com_acesso = df.loc[df['acesso_id'].notna(), 'rvf_id'].nunique()
-    formas = df.loc[df['acesso_id'].notna(), 'forma_ligacao'].str.split('+').explode().value_counts()
-    return (f'{rvfs} RVFs com apreensão; {com_acesso} com ao menos um acesso encontrado '
-            f'({df["acesso_id"].notna().sum()} acessos).\nAcessos por forma de ligação:\n{formas.to_string()}')
+    achados = df[df['qtd_ocorrencias'].notna()]
+    formas = achados.groupby('forma_ligacao')['qtd_ocorrencias'].agg(['count', 'sum'])
+    formas.columns = ['linhas (conjuntos)', 'ocorrências']
+    return (f'{rvfs} RVFs com apreensão; {achados["rvf_id"].nunique()} com ao menos um acesso encontrado '
+            f'({len(achados)} conjuntos motorista/veículo/transportadora, '
+            f'{int(achados["qtd_ocorrencias"].sum())} ocorrências).\n'
+            f'Por forma de ligação:\n{formas.to_string()}')
 
 
 def main():
@@ -261,6 +325,9 @@ def main():
     parser.add_argument('--fim', default=None, help="data final da OVR, exclusiva ('YYYY-MM-DD'; padrão: amanhã)")
     parser.add_argument('--dias-antes', type=int, default=30, help='janela de busca antes da RVF (dias)')
     parser.add_argument('--dias-depois', type=int, default=30, help='janela de busca depois da RVF (dias)')
+    parser.add_argument('--incluir-outras-viagens', action='store_true',
+                        help='não restringe ao contêiner apreendido: traz também outras viagens do '
+                             'veículo/motorista e os demais contêineres do CE')
     parser.add_argument('--saida', default=datetime.now().strftime('dados_transporte_apreensoes_%Y%m%d_%H%M.csv'))
     args = parser.parse_args()
 
@@ -273,7 +340,7 @@ def main():
     with create_engine(uri).connect() as conexao:
         apreensoes = busca_apreensoes(conexao, inicio, fim)
         print(f'{len(apreensoes)} RVFs com apreensão entre {inicio:%Y-%m-%d} e {fim:%Y-%m-%d}; buscando acessos...')
-        linhas = relaciona(conexao, apreensoes, args.dias_antes, args.dias_depois)
+        linhas = relaciona(conexao, apreensoes, args.dias_antes, args.dias_depois, args.incluir_outras_viagens)
     pd.DataFrame(linhas, columns=COLUNAS_CSV).to_csv(args.saida, sep=';', index=False, encoding='utf-8-sig')
     print(resumo(linhas))
     print(f'CSV gravado em {args.saida}')

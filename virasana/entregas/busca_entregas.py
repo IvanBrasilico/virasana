@@ -4,12 +4,15 @@ Entregas de contêineres importados por um CNPJ.
 
 Dado um CNPJ (ou a raiz de 8 dígitos) e um período, lista as SAÍDAS de
 contêineres carregados pelos gates dos recintos (Acesso Veículo da API
-Recintos) que correspondem a CEs de importação desse consignatário:
+Recintos) que correspondem a CEs de importação em que ele é consignatário
+ou notify:
 CNPJ, mercadoria, contêiner, data de saída, recinto, placa (e semirreboque,
 transportadora, motorista).
 
 Como se liga a saída ao CE:
-  1. CEs de importação (tipoTrafego 5) com o CNPJ no consignatário, cujo
+  1. CEs de importação (tipoTrafego 5) com o CNPJ no consignatário OU no
+     notify (a parte a ser notificada — muitas vezes o importador de fato
+     quando o consignatário é "à ordem" ou um agente; coluna "Papel"), cujo
      manifesto começou a operar entre (início - `dias_antes_do_manifesto`) e
      o fim do período — a carga chega antes de sair do recinto.
   2. Contêineres desses CEs (Item com código de contêiner).
@@ -42,12 +45,12 @@ MAXIMO_DIAS_PERIODO = 366
 TAMANHO_LOTE = 500
 
 SQL_CONTEINERES_DOS_CES = text('''
-SELECT c.numeroCEmercante AS ce, c.consignatario AS cnpj, c.descricao AS mercadoria,
-       m.dataInicioOperacaoDate AS data_manifesto, i.codigoConteiner AS conteiner
+SELECT c.numeroCEmercante AS ce, c.consignatario AS consignatario, c.cnpjNotify AS notify,
+       c.descricao AS mercadoria, m.dataInicioOperacaoDate AS data_manifesto, i.codigoConteiner AS conteiner
 FROM conhecimentosresumo c
 JOIN manifestosresumo m ON m.numero = c.manifestoCE
 JOIN itensresumo i ON i.numeroCEmercante = c.numeroCEmercante
-WHERE c.consignatario LIKE :cnpj_prefixo
+WHERE (c.consignatario LIKE :cnpj_prefixo OR c.cnpjNotify LIKE :cnpj_prefixo)
   AND c.tipoTrafego = :trafego
   AND m.dataInicioOperacaoDate BETWEEN :inicio_manifesto AND :fim_manifesto
   AND i.codigoConteiner IS NOT NULL AND i.codigoConteiner <> ''
@@ -75,7 +78,8 @@ SQL_RECINTOS = text('SELECT cod_siscomex, nome FROM ovr_recintos WHERE cod_sisco
 SQL_EMPRESA = text('SELECT nome FROM laudo_empresas WHERE cnpj = :cnpj')
 
 COLUNAS = [
-    ('cnpj', 'CNPJ'), ('empresa', 'Empresa'), ('ce', 'CE Mercante'), ('mercadoria', 'Mercadoria'),
+    ('cnpj', 'CNPJ'), ('papel', 'Papel do CNPJ'), ('empresa', 'Empresa'), ('ce', 'CE Mercante'),
+    ('mercadoria', 'Mercadoria'),
     ('ncms', 'NCMs do contêiner'), ('conteiner', 'Contêiner'), ('data_saida', 'Data de saída'),
     ('recinto', 'Recinto'), ('nome_recinto', 'Nome do recinto'), ('placa', 'Placa'),
     ('placa_semirreboque', 'Semirreboque'), ('cnpj_transportador', 'CNPJ transportador'),
@@ -112,6 +116,19 @@ def _como_datetime(valor) -> Optional[datetime]:
     return pd.Timestamp(valor).to_pydatetime()
 
 
+def _papel(linha, cnpj: str) -> dict:
+    """Em que papel o CNPJ pesquisado aparece no CE (e qual CNPJ exibir)."""
+    consignatario = (linha['consignatario'] or '').strip()
+    notify = re.sub(r'\D', '', linha['notify'] or '')
+    papeis = []
+    if consignatario.startswith(cnpj):
+        papeis.append('consignatário')
+    if notify.startswith(cnpj):
+        papeis.append('notify')
+    return {'cnpj': consignatario if papeis and papeis[0] == 'consignatário' else notify,
+            'papel': ' e '.join(papeis)}
+
+
 def _escolhe_ce(saida: dict, candidatos: List[dict]) -> Optional[dict]:
     """CE da saída: o informado pelo gate, se for um dos candidatos; senão o de
     manifesto mais recente que não seja posterior à saída."""
@@ -144,7 +161,8 @@ def busca_entregas(conexao, cnpj: str, inicio: date, fim: date,
     ces_por_conteiner: Dict[str, List[dict]] = {}
     for linha in conexao.execute(SQL_CONTEINERES_DOS_CES, parametros_ces).mappings():
         conteiner = linha['conteiner'].strip().upper()
-        ces_por_conteiner.setdefault(conteiner, []).append({**dict(linha), 'conteiner': conteiner})
+        ces_por_conteiner.setdefault(conteiner, []).append(
+            {**dict(linha), 'conteiner': conteiner, **_papel(linha, cnpj)})
 
     saidas = {}  # (contêiner, recinto, data/hora) -> saída (retificação sobrescreve)
     periodo = {'inicio': datetime.combine(inicio, time.min), 'fim': datetime.combine(fim, time.max)}
@@ -161,7 +179,8 @@ def busca_entregas(conexao, cnpj: str, inicio: date, fim: date,
             continue
         conteineres_com_saida.add(saida['numeroConteiner'])
         linhas.append({
-            'cnpj': ce['cnpj'], 'ce': ce['ce'], 'mercadoria': ce['mercadoria'], 'conteiner': ce['conteiner'],
+            'cnpj': ce['cnpj'], 'papel': ce['papel'], 'ce': ce['ce'], 'mercadoria': ce['mercadoria'],
+            'conteiner': ce['conteiner'],
             'data_saida': _como_datetime(saida['dataHoraOcorrencia']), 'recinto': saida['codigoRecinto'],
             'placa': saida['placa'], 'placa_semirreboque': saida['placaSemirreboque'],
             'cnpj_transportador': saida['cnpjTransportador'], 'cpf_motorista': saida['cpfMotorista'],
