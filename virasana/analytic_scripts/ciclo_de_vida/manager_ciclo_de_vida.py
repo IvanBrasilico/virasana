@@ -392,7 +392,7 @@ def desembarques_novos(session):
                         )
     desembarques = (desembarques
                     .order_by(EmbarqueDesembarque.id.asc())
-                    .limit(200)  # definir se puxa novos desembarques ou não
+                    .limit(2000)  # definir se puxa novos desembarques ou não
                     .all()
                     )
     logger.info('%s desembarques encontrados', len(desembarques))
@@ -406,7 +406,6 @@ def desembarques_novos(session):
     except Exception as e:
         logger.error(e)
         session.rollback()
-
 
 def saidas_novas_operadores(session):
     # Completar ciclos de vida com saídas. Atalho para a pesquisa completa do completar_ciclo
