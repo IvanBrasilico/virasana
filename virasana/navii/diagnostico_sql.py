@@ -57,7 +57,10 @@ TABELAS = [
 # Os valores são ilustrativos — ajuste para códigos que existam na base para
 # que o otimizador estime cardinalidades realistas.
 CENARIOS = [
-    ('sem filtros', {}),
+    ('sem filtros (todos os portos)', {}),
+    ('porto de atracação (padrão da tela)', {'porto_escala': 'BRSSZ'}),
+    ('porto de atracação + NCM', {'porto_escala': 'BRSSZ', 'ncm': '8471'}),
+    ('porto de atracação + recinto + com imagem', {'porto_escala': 'BRSSZ', 'recinto': '8931356', 'com_imagem': True}),
     ('somente com imagem de escaneamento', {'com_imagem': True}),
     ('somente entregues ao importador', {'concluido': True}),
     ('NCM por prefixo (capítulo)', {'ncm': '8471'}),
@@ -239,11 +242,28 @@ class Diagnostico:
     def secao_amostras(self):
         self.titulo('3. AMOSTRAS DE FORMATO DOS DADOS (opcional: --amostras)')
         self.escreve('Formato das datas da escala (VARCHAR) — a busca compara como texto YYYY-MM-DD:')
-        self.executa('SELECT numeroDaEscala, dataPrevistaAtracacao, dataEfetivaPrimeiraAtracacao, embarcacao '
-                     'FROM escalasresumo ORDER BY ID DESC LIMIT 5')
+        self.executa('SELECT numeroDaEscala, portoDaEscala, dataPrevistaAtracacao, dataEfetivaPrimeiraAtracacao, '
+                     'tipoOperacaoPrevista, embarcacao FROM escalasresumo ORDER BY ID DESC LIMIT 10')
+        self.escreve()
+        self.escreve('Escalas de alguns manifestos recentes (uma por porto? qual casa com o porto do manifesto?):')
+        self.executa('SELECT m.numero, m.tipoTrafego, m.portoCarregamento, m.portoDescarregamento, '
+                     'm.codigoTerminalDescarregamento, e.numeroDaEscala, e.portoDaEscala, e.dataPrevistaAtracacao '
+                     'FROM (SELECT * FROM manifestosresumo ORDER BY ID DESC LIMIT 8) m '
+                     'JOIN escalamanifestoresumo em ON em.manifesto = m.numero '
+                     'JOIN escalasresumo e ON e.numeroDaEscala = em.escala ORDER BY m.numero, e.dataPrevistaAtracacao')
+        self.escreve()
+        self.escreve('O ciclo de vida está atualizado? (último desembarque e volume por mês)')
+        self.executa("SELECT LEFT(data_desembarque, 7) AS mes, COUNT(*) AS ciclos, "
+                     'SUM(concluido = 1) AS concluidos, MAX(data_desembarque) AS ultimo_desembarque '
+                     'FROM ciclodevida_ciclo_de_vida_importacao GROUP BY mes ORDER BY mes DESC LIMIT 6')
+        self.escreve()
+        self.escreve('Tipos de tráfego dos CEs recentes (o NAVI-I exclui só o 7 = exportação):')
+        self.executa('SELECT tipoTrafego, COUNT(*) AS ces FROM (SELECT tipoTrafego FROM conhecimentosresumo '
+                     'ORDER BY ID DESC LIMIT 20000) c GROUP BY tipoTrafego')
         self.escreve()
         self.escreve('Códigos de recinto (qual coluna casa com o ciclo de vida / com o terminal do manifesto):')
-        self.executa('SELECT id, nome, cod_siscomex, cod_carga, cod_dte FROM ovr_recintos LIMIT 40')
+        self.executa('SELECT id, nome, cod_siscomex, cod_carga, cod_dte, cod_unidade, sigla_unidade '
+                     'FROM ovr_recintos LIMIT 100')
         self.escreve()
         self.executa('SELECT codigoRecintoDesembarque, codigoRecintoArmazenagem, numeroCEmercante, numeroConteiner, '
                      'data_desembarque, concluido FROM ciclodevida_ciclo_de_vida_importacao ORDER BY ID DESC LIMIT 5')

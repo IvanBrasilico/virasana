@@ -18,7 +18,7 @@ from flask_login import login_required
 
 from virasana.navii.busca_navii import (
     busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
-    _janela_efetiva, _janela_previsao,
+    PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao,
 )
 
 bp_navii = Blueprint(
@@ -62,6 +62,7 @@ def index():
         'navii.html',
         imagem_url_template=IMAGEM_URL_TEMPLATE,
         defaults_periodo=_defaults_periodo(),
+        porto_escala_padrao=PORTO_ESCALA_PADRAO,
     )
 
 
@@ -76,7 +77,8 @@ def api_ces():
     limit = max(1, min(limit, 50))
 
     filtros = {}
-    for campo in ('ncm', 'produto', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto', 'empresa'):
+    for campo in ('ncm', 'produto', 'porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao',
+                  'recinto', 'empresa'):
         valor = request.args.get(campo)
         if valor:
             filtros[campo] = valor.strip()

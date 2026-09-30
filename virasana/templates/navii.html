@@ -281,7 +281,7 @@
         <div>
             <h1><span class="marca-navii">NAVI-I</span> Análise de risco na importação</h1>
             <p class="page-subtitle text-down-01 mb-0 mt-1">
-                Contêineres declarados em CEs mercante no período selecionado, com dados do Mercante e
+                Contêineres declarados em CEs mercante (exceto exportação) no período selecionado, com dados do Mercante e
                 contêineres/NCMs declarados. Ciclo de vida (API Recintos) e imagens de escaneamento são
                 exibidos quando localizados — não são obrigatórios.
             </p>
@@ -312,6 +312,11 @@
                 <div class="dica-periodo" id="dica-periodo"></div>
             </div>
 
+            <div class="campo br-input">
+                <label for="f-porto_escala">Porto de atracação (escala)</label>
+                <input id="f-porto_escala" type="text" value="{{ porto_escala_padrao }}"
+                       placeholder="ex.: BRSSZ — vazio = todos os portos" />
+            </div>
             <div class="campo br-input">
                 <label for="f-ncm">NCM</label>
                 <input id="f-ncm" type="text" placeholder="ex.: 8471" />
@@ -405,9 +410,9 @@
     var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
     var DEFAULTS_PERIODO = {{ defaults_periodo | tojson }};
 
-    var campos = ['ncm', 'produto', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto', 'empresa'];
+    var campos = ['porto_escala', 'ncm', 'produto', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto', 'empresa'];
     var rotulos = {
-        ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+        porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador',
         com_imagem: 'Com imagem de escaneamento'
@@ -728,7 +733,7 @@
                     '</div>' +
 
                     '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') +
-                        (card.embarcacao ? ' · ' + escapeHtml(card.embarcacao) : '') + '</div>' +
+                        (card.embarcacao ? ' · Embarcação ' + escapeHtml(card.embarcacao) : '') + '</div>' +
 
                     montaBadgeBaldeacao(card) +
                     montaDescricaoMercadoria(card) +
@@ -860,7 +865,7 @@
         reiniciarBusca();
     });
 
-    document.getElementById('btn-aplicar').addEventListener('click', function () {
+    function leFiltrosDaTela() {
         estadoBusca.filtros = {};
         campos.forEach(function (campo) {
             var valor = document.getElementById('f-' + campo).value.trim();
@@ -871,6 +876,10 @@
         CHECKBOXES.forEach(function (campo) {
             if (document.getElementById('f-' + campo).checked) { estadoBusca.filtros[campo] = 1; }
         });
+    }
+
+    document.getElementById('btn-aplicar').addEventListener('click', function () {
+        leFiltrosDaTela();
 
         var dataInicio = document.getElementById('f-data-inicio').value;
         var dataFim = document.getElementById('f-data-fim').value;
@@ -880,11 +889,15 @@
     });
 
     document.getElementById('btn-limpar').addEventListener('click', function () {
-        campos.forEach(function (campo) { document.getElementById('f-' + campo).value = ''; });
+        // defaultValue: volta ao valor inicial do campo (vazio, ou o porto de atracação padrão)
+        campos.forEach(function (campo) {
+            var input = document.getElementById('f-' + campo);
+            input.value = input.defaultValue;
+        });
         document.getElementById('f-ncms_max').value = 0;
         document.getElementById('valor-ncms_max').textContent = 'Sem limite';
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = false; });
-        estadoBusca.filtros = {};
+        leFiltrosDaTela();
         aplicarDatasDefault(estadoBusca.tipo_janela);
         reiniciarBusca();
     });
@@ -894,6 +907,8 @@
     }, { rootMargin: '200px' }).observe(el.sentinela);
 
     aplicarDatasDefault(estadoBusca.tipo_janela);
+    leFiltrosDaTela();
+    montaChips();
     atualizaPeriodoAtivo();
     carregarPagina();
 })();

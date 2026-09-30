@@ -61,13 +61,14 @@ def cria_sessao():
 
 
 def cria_ce(session, numero, manifesto, conteineres, embarcador='EMBARCADOR QUALQUER',
-            consignatario='00000000000000', porto_origem='CNSHA', porto_destino='BRSSZ'):
+            consignatario='00000000000000', porto_origem='CNSHA', porto_destino='BRSSZ',
+            tipo_trafego='5'):
     """conteineres: {codigo: [(ncm, descritivo), ...]}"""
     session.add(Conhecimento(
         numeroCEmercante=numero, manifestoCE=manifesto, embarcador=embarcador,
         consignatario=consignatario, portoOrigemCarga=porto_origem,
         portoDestFinal=porto_destino, descricao=f'mercadoria do {numero}',
-        tipoTrafego='5', tipoBLConhecimento='12',
+        tipoTrafego=tipo_trafego, tipoBLConhecimento='12',
     ))
     for codigo, ncms in conteineres.items():
         session.add(Item(numeroCEmercante=numero, codigoConteiner=codigo,
@@ -95,8 +96,10 @@ def cria_ciclo(session, ce, conteiner, data_desembarque=None, recinto_desembarqu
 
 def monta_cenario(session):
     session.add_all([
-        Escala(numeroDaEscala='E1', dataPrevistaAtracacao='2026-01-10', embarcacao='NAVIO A'),
-        Escala(numeroDaEscala='E2', dataPrevistaAtracacao='2026-02-20', embarcacao='NAVIO B'),
+        Escala(numeroDaEscala='E1', dataPrevistaAtracacao='2026-01-10', embarcacao='NAVIO A',
+               portoDaEscala='BRSSZ'),
+        Escala(numeroDaEscala='E2', dataPrevistaAtracacao='2026-02-20', embarcacao='NAVIO B',
+               portoDaEscala='BRSSZ'),
         # BIGINT PK no SQLite não é autoincremento -> ID explícito
         EscalaManifesto(ID=1, manifesto='M1', escala='E1'),
         EscalaManifesto(ID=2, manifesto='M2', escala='E2'),
@@ -201,6 +204,52 @@ class TestJanelas(NaviiSqliteTestCase):
             busca_ces_navii(self.session, 'efetiva', {'data_inicio': '2026-13-01', 'data_fim': '2026-13-31'})
 
 
+class TestTrafegoEPorto(NaviiSqliteTestCase):
+    """Só exportação é excluída; a escala que vale é a do porto de atracação escolhido."""
+
+    def test_exportacao_nunca_aparece_cabotagem_passagem_e_sem_trafego_aparecem(self):
+        cria_ce(self.session, 'CEX', 'M1', {'CEXP': []}, tipo_trafego='7')
+        cria_ce(self.session, 'CCB', 'M1', {'CCAB': []}, tipo_trafego='3')
+        cria_ce(self.session, 'CPS', 'M1', {'CPAS': []}, tipo_trafego='9')
+        cria_ce(self.session, 'CNL', 'M1', {'CNUL': []}, tipo_trafego=None)
+        self.session.commit()
+        for tipo_janela in ('prevista', 'efetiva'):
+            with self.subTest(tipo_janela=tipo_janela):
+                conteineres = self.conteineres(tipo_janela)
+                self.assertNotIn('CEXP', conteineres)
+                self.assertTrue({'CCAB', 'CPAS', 'CNUL'} <= conteineres)
+                self.assertEqual(self.total(tipo_janela), len(conteineres))
+
+    def _navio_b_atraca_em_paranagua_no_periodo(self):
+        # M2 (C4, C5): em Santos só em 02-20 (fora); em Paranaguá em 01-08 (dentro do período)
+        self.session.add_all([
+            Escala(numeroDaEscala='E4', dataPrevistaAtracacao='2026-01-08', embarcacao='NAVIO B',
+                   portoDaEscala='BRPNG'),
+            EscalaManifesto(ID=4, manifesto='M2', escala='E4'),
+        ])
+        self.session.commit()
+
+    def test_sem_porto_qualquer_escala_do_manifesto_conta(self):
+        self._navio_b_atraca_em_paranagua_no_periodo()
+        self.assertEqual(self.conteineres('prevista'), {'C1', 'C2', 'C3', 'C6', 'C4', 'C5'})
+
+    def test_com_porto_so_conta_a_escala_naquele_porto(self):
+        self._navio_b_atraca_em_paranagua_no_periodo()
+        self.assertEqual(self.conteineres('prevista', porto_escala='BRSSZ'), {'C1', 'C2', 'C3', 'C6'})
+        self.assertEqual(self.conteineres('prevista', porto_escala='BRPNG'), {'C4', 'C5'})
+        # efetiva: C1 e C4 entram pelo desembarque (ciclo, independe do porto); C5, sem ciclo, só pela escala
+        self.assertEqual(self.conteineres('efetiva', porto_escala='BRSSZ'), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres('efetiva', porto_escala='BRPNG'), {'C1', 'C4', 'C5'})
+
+    def test_card_mostra_a_escala_do_porto_escolhido(self):
+        self._navio_b_atraca_em_paranagua_no_periodo()
+        r = next(r for r in busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'porto_escala': 'BRPNG'}, limit=50)
+                 if r.item.codigoConteiner == 'C5')
+        self.assertEqual(r.data_prevista_atracacao, '2026-01-08')
+        dados = busca_manifestos_navii(self.session, ['M2'], 'BRSSZ')['M2']
+        self.assertEqual(dados['dataPrevistaAtracacao'], '2026-02-20')
+
+
 class TestFiltros(NaviiSqliteTestCase):
 
     def test_somente_com_imagem(self):
@@ -234,6 +283,20 @@ class TestFiltros(NaviiSqliteTestCase):
         # C1 pelo ciclo; C2/C6 (M1) pelo terminal T01 mapeado em ovr_recintos
         # (cod_siscomex 8931356 -> cod_carga T01); C4 desembarcou no 8931356
         self.assertEqual(self.conteineres(recinto='8931356'), {'C1', 'C2', 'C4', 'C6'})
+
+    def test_recinto_com_cod_carga_vazio_nao_casa_com_manifesto_sem_terminal(self):
+        # como na base real: EMBRAPORT tem cod_carga '' e manifestos de passagem têm terminal ''
+        self.session.execute(tabela_recintos.insert(), [
+            {'id': 3, 'nome': 'EMBRAPORT', 'cod_siscomex': '8931404', 'cod_carga': ''},
+        ])
+        self.session.add_all([
+            Manifesto(numero='M4', portoCarregamento='HKHKG', codigoTerminalDescarregamento=''),
+            EscalaManifesto(ID=5, manifesto='M4', escala='E1'),
+        ])
+        cria_ce(self.session, 'CE8', 'M4', {'C9': []}, tipo_trafego='9')
+        self.session.commit()
+        self.assertIn('C9', self.conteineres())
+        self.assertEqual(self.conteineres(recinto='8931404'), set())
 
     def test_recinto_de_armazenagem(self):
         self.assertEqual(self.conteineres(recinto='8932000'), {'C4'})
@@ -398,6 +461,10 @@ class TestApiCes(NaviiSqliteTestCase):
         self.assertEqual(dados['total'], 1)
         self.assertEqual(dados['cards'][0]['numeroConteiner'], 'C1')
         self.assertEqual(dados['cards'][0]['linhaDoTempo']['desembarque']['data'], '2026-01-11 08:00:00')
+
+    def test_filtro_porto_escala(self):
+        self.assertEqual(self.get(porto_escala='BRSSZ').get_json()['total'], 4)
+        self.assertEqual(self.get(porto_escala='BRPNG').get_json()['total'], 2)  # C1 e C4, pelo desembarque
 
     def test_janela_invalida_400(self):
         self.assertEqual(self.get(tipo_janela='xyz').status_code, 400)

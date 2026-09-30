@@ -77,6 +77,16 @@ JANELA_EFETIVA_MAX_DIAS = 15
 
 TIPOS_JANELA_VALIDOS = ('prevista', 'efetiva')
 
+# Conhecimento.tipoTrafego (tabela Enumerado): 1=Interior, 3=Cabotagem,
+# 5=lci (longo curso importação), 7=lce (longo curso exportação), 9=Passagem.
+# O NAVI-I exclui APENAS a exportação: cabotagem e passagem interessam à
+# análise de risco (pode-se mandar descer e escanear), mesmo sem imagem.
+TIPO_TRAFEGO_EXPORTACAO = '7'
+
+# Porto de atracação sugerido na tela (filtro `porto_escala`). Provisório: no
+# futuro virá da unidade/equipe de trabalho do usuário logado.
+PORTO_ESCALA_PADRAO = 'BRSSZ'
+
 
 def _janela_previsao() -> Tuple[str, str]:
     """Sugestão de janela de PREVISÃO de atracação: 3 a 15 dias no futuro.
@@ -136,9 +146,13 @@ def _ciclos_onde(*criterios):
     ).where(*criterios)
 
 
-def _manifestos_com_atracacao_prevista(inicio: str, fim: str):
+def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto: Optional[str] = None):
     """Subquery dos manifestos com escala de data PREVISTA de atracação no
     período (VARCHAR 'YYYY-MM-DD', comparação textual).
+
+    Com `porto`, só valem as escalas NAQUELE porto (Escala.portoDaEscala): um
+    manifesto tem uma escala por porto em que o navio atraca, e a data que
+    interessa é a da atracação no porto do usuário — não em outro porto.
 
     Usada sempre como `Conhecimento.manifestoCE.in_(...)` (semijoin) e nunca
     como JOIN: um manifesto costuma ter várias escalas, e o JOIN repetiria o
@@ -150,6 +164,7 @@ def _manifestos_com_atracacao_prevista(inicio: str, fim: str):
         .where(
             Escala.dataPrevistaAtracacao >= inicio,
             Escala.dataPrevistaAtracacao <= fim,
+            *([Escala.portoDaEscala == porto] if porto else []),
         )
     )
 
@@ -164,7 +179,7 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime):
     )
 
 
-def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str):
+def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto: Optional[str] = None):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -175,9 +190,13 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str):
       As duas origens são unidas (UNION, sem repetição) em uma tabela derivada
       de Item.ID — um OR entre elas impediria o banco de partir dos índices
       de data.
+
+    `porto` (filtro `porto_escala`) restringe as escalas ao porto de
+    atracação. Não se aplica ao desembarque efetivo: o ciclo de vida não
+    guarda o porto, só o recinto onde o contêiner desembarcou.
     """
     if tipo_janela == 'prevista':
-        return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim)))
+        return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)))
     inicio_dt = _parse_data(inicio)
     fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
     sem_desembarque_localizado = ~exists().where(
@@ -189,7 +208,7 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str):
         .select_from(Item)
         .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
         .where(
-            Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim)),
+            Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)),
             sem_desembarque_localizado,
         )
     )
@@ -223,6 +242,9 @@ def monta_query_navii(
               (NCMItem.descritivo) — ncm e produto valem para o mesmo NCMItem
             - porto_origem / porto_destino (str): código do porto de origem/destino
               da carga (Conhecimento — o que o embarcador declarou)
+            - porto_escala (str): porto de ATRACAÇÃO do navio (Escala.portoDaEscala)
+              — só as escalas nesse porto contam para a data prevista de
+              atracação. A tela sugere PORTO_ESCALA_PADRAO; vazio = qualquer porto.
             - porto_baldeacao (str): código do porto de CARREGAMENTO do Manifesto
               (Manifesto.portoCarregamento) — quando difere do porto de origem do
               Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
@@ -246,6 +268,9 @@ def monta_query_navii(
     Filtros que dependem de outras tabelas são subqueries `IN (...)` (e não
     JOINs) para não multiplicar linhas: dispensa DISTINCT e deixa a contagem
     exata.
+
+    CEs de exportação (tipoTrafego 7) são sempre excluídos; importação,
+    cabotagem, passagem e tráfego não informado são exibidos.
     """
     filtros = filtros or {}
     if tipo_janela not in TIPOS_JANELA_VALIDOS:
@@ -256,7 +281,11 @@ def monta_query_navii(
         session.query(Item, Conhecimento)
         .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
     )
-    q = _filtra_janela(q, tipo_janela, inicio, fim)
+    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'))
+    q = q.filter(or_(
+        Conhecimento.tipoTrafego != TIPO_TRAFEGO_EXPORTACAO,
+        Conhecimento.tipoTrafego.is_(None),
+    ))
     conteiner_do_item = tuple_(Item.numeroCEmercante, Item.codigoConteiner)
 
     if exigir_escaneamento or filtros.get('com_imagem'):
@@ -298,6 +327,9 @@ def monta_query_navii(
                     tabela_recintos.c.cod_siscomex == recinto, tabela_recintos.c.cod_carga.isnot(None),
                 )
             ).all()
+            # na base real há cod_carga '' (vazio, não NULL): sem este filtro o
+            # recinto casaria com todo manifesto de terminal em branco
+            if cod_carga and cod_carga.strip()
         }
         q = q.filter(or_(
             conteiner_do_item.in_(_ciclos_onde(or_(
@@ -374,7 +406,9 @@ def busca_ces_navii(
     linhas = q.order_by(Item.ID.desc()).limit(limit).all()
 
     ciclos = busca_ciclos_navii(session, [item for item, _ in linhas])
-    manifestos = busca_manifestos_navii(session, [ce.manifestoCE for _, ce in linhas])
+    manifestos = busca_manifestos_navii(
+        session, [ce.manifestoCE for _, ce in linhas], (filtros or {}).get('porto_escala'),
+    )
     resultado = []
     for item, ce in linhas:
         dados_manifesto = manifestos.get(ce.manifestoCE, {})
@@ -424,9 +458,12 @@ def busca_ciclos_navii(session, itens: List[Item]) -> Dict[Tuple[str, str], Cicl
     return {(ciclo.numeroCEmercante, ciclo.numeroConteiner): ciclo for ciclo in ciclos}
 
 
-def busca_manifestos_navii(session, numeros_manifesto: Iterable[str]) -> Dict[str, dict]:
+def busca_manifestos_navii(
+    session, numeros_manifesto: Iterable[str], porto: Optional[str] = None,
+) -> Dict[str, dict]:
     """Manifesto + dados da escala (embarcação, data prevista de atracação) dos
-    CEs da página, em lote, por número do manifesto.
+    CEs da página, em lote, por número do manifesto. Com `porto`, considera só
+    as escalas naquele porto de atracação (mesmo critério da janela).
 
     Returns:
         {numero: {'manifesto': Manifesto | None, 'embarcacao': str | None,
@@ -441,12 +478,14 @@ def busca_manifestos_navii(session, numeros_manifesto: Iterable[str]) -> Dict[st
                  for n in numeros}
     for manifesto in session.query(Manifesto).filter(Manifesto.numero.in_(numeros)).all():
         resultado[manifesto.numero]['manifesto'] = manifesto
-    escalas = (
+    q_escalas = (
         session.query(EscalaManifesto.manifesto, Escala.embarcacao, Escala.dataPrevistaAtracacao)
         .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
         .filter(EscalaManifesto.manifesto.in_(numeros))
-        .all()
     )
+    if porto:
+        q_escalas = q_escalas.filter(Escala.portoDaEscala == porto)
+    escalas = q_escalas.all()
     for numero, embarcacao, data_prevista in escalas:
         dados = resultado.get(numero)
         if dados is None:
