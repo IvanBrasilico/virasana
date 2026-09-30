@@ -118,7 +118,8 @@
         }
 
         /* ---------- Painel de imagens: maior, em destaque, com lupa/expansão ---------- */
-        .painel-imagens { background: #1c1c1c; border-radius: 6px; overflow: hidden; }
+        /* align-self: o painel não estica até a altura do card (virava uma coluna preta) */
+        .painel-imagens { background: #1c1c1c; border-radius: 6px; overflow: hidden; align-self: start; }
         .imagem-principal {
             width: 100%; height: 20rem; display: flex; align-items: center; justify-content: center;
             overflow: hidden; background: #000; position: relative; cursor: zoom-in;
