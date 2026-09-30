@@ -24,8 +24,9 @@ A montagem da query (`monta_query_navii`) é separada da execução para que o
 script `diagnostico_sql.py` rode EXPLAIN exatamente sobre as queries da tela.
 
 Enriquecimento cruza também com dados do repo irmão bhadrasana2
-(`bhadrasana.models.laudo`, tabelas `laudo_empresas`/`laudo_ncm`) para
-resolver CNPJ→nome de empresa e código NCM→descrição oficial.
+(`bhadrasana.models.laudo`, tabela `laudo_empresas`) para resolver CNPJ→nome
+de empresa, e com as tabelas locais de `virasana/navii/referencias` (posição
+NCM, porto, país, navio — geradas de fontes públicas).
 
 Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
   - Filtros em linguagem natural (hoje são campos estruturados sucessivos).
@@ -34,12 +35,13 @@ Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
   - Resolução de CPF (bagagens_pessoas) — embarcador/consignatário do
     Conhecimento só guardam CNPJ ou nome estrangeiro, nunca CPF.
 """
+import re
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from sqlalchemy import (
-    BigInteger, Column, MetaData, Table, VARCHAR, and_, exists, func, or_, select, tuple_, union,
+    BigInteger, Column, MetaData, Table, VARCHAR, and_, func, join, literal, not_, or_, select, union,
 )
 
 sys.path.append('.')
@@ -53,7 +55,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, logger,
 )
 from bhadrasana.models.laudo import Empresa
-from bhadrasana.models.laudo import NCM as LaudoNCM
+from virasana.navii import referencias
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
 # declarada aqui só com as colunas lidas pelo NAVI-I. Importar o model de lá
@@ -138,12 +140,46 @@ def _mesmo_conteiner_do_ciclo():
     )
 
 
-def _ciclos_onde(*criterios):
-    """Subquery (CE, contêiner) dos ciclos de vida que atendem aos critérios,
-    para usar com `tuple_(Item.numeroCEmercante, Item.codigoConteiner).in_()`."""
-    return select(
-        CicloDeVidaImportacao.numeroCEmercante, CicloDeVidaImportacao.numeroConteiner,
-    ).where(*criterios)
+def _existe(origem, *criterios):
+    """Condição "existe ao menos uma linha em `origem` para este contêiner",
+    verificada POR CANDIDATO da janela.
+
+    É uma subquery escalar correlacionada com LIMIT 1 de propósito. Com
+    `IN (subquery)`/`EXISTS` o MariaDB pode converter em semijoin e passar a
+    DIRIGIR a busca pela subquery — e daí chegar em `itensresumo` só pelo
+    índice do código do contêiner. Como há milhões de itens com contêiner
+    vazio (carga solta, granel), isso foi medido em produção em até 16 minutos
+    (filtro por NCM completo). Com LIMIT o banco não faz essa conversão: a
+    janela dirige, e cada filtro é um acesso indexado por candidato.
+    """
+    return select(literal(1)).select_from(origem).where(*criterios).limit(1).scalar_subquery().isnot(None)
+
+
+def _existe_ciclo(*criterios, origem=CicloDeVidaImportacao):
+    """`_existe` para o ciclo de vida do contêiner (mesmo CE e contêiner)."""
+    return _existe(origem, _mesmo_conteiner_do_ciclo(), *criterios)
+
+
+def normaliza_filtros(filtros: Optional[dict]) -> dict:
+    """Padroniza o que o usuário digitou: códigos de porto em maiúsculas e NCM
+    só com dígitos (a base guarda '84713012'; o usuário pode digitar
+    '8471.30.12'). Sem isso, 'brssz' ou '8471.30' não achariam nada."""
+    filtros = dict(filtros or {})
+    for campo in ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao'):
+        if filtros.get(campo):
+            filtros[campo] = str(filtros[campo]).strip().upper()
+    if filtros.get('ncm'):
+        filtros['ncm'] = re.sub(r'\D', '', str(filtros['ncm']))
+    return filtros
+
+
+def _porto_ou_pais(coluna, valor: str):
+    """Filtro de porto que aceita código parcial: com menos de 5 caracteres
+    ('CN', 'US', 'BRS') casa pelo prefixo — na prática, filtro por país."""
+    valor = valor.strip().upper()
+    if len(valor) < 5:
+        return coluna.like(valor.replace('%', '').replace('_', '') + '%')
+    return coluna == valor
 
 
 def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto: Optional[str] = None):
@@ -179,7 +215,8 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime):
     )
 
 
-def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto: Optional[str] = None):
+def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto: Optional[str] = None,
+                   criterios_ce=()):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -192,23 +229,30 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto: Optional[s
       de data.
 
     `porto` (filtro `porto_escala`) restringe as escalas ao porto de
-    atracação. Não se aplica ao desembarque efetivo: o ciclo de vida não
-    guarda o porto, só o recinto onde o contêiner desembarcou.
+    atracação. Não se aplica ao desembarque efetivo, por decisão do usuário:
+    o ciclo de vida é o desembarque real, e em análise de risco é melhor
+    exibir a mais (ex.: contêiner previsto para outro porto que desceu aqui,
+    ou o contrário) do que deixar casos de fora.
+
+    `criterios_ce` são os filtros que só dependem do Conhecimento (tráfego,
+    portos, empresa). Quem chama os aplica na query principal; aqui eles são
+    repetidos DENTRO do ramo da atracação prevista, para que CEs descartados
+    (ex.: exportação, ~1/3 dos manifestos) não custem a leitura dos seus itens
+    nem a verificação do ciclo de vida — a tabela derivada é recalculada a
+    cada página, e em Santos são ~200 mil contêineres por janela de 11 dias.
     """
     if tipo_janela == 'prevista':
         return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)))
     inicio_dt = _parse_data(inicio)
     fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
-    sem_desembarque_localizado = ~exists().where(
-        _mesmo_conteiner_do_ciclo(),
-        CicloDeVidaImportacao.data_desembarque.isnot(None),
-    )
+    sem_desembarque_localizado = not_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None)))
     itens_pela_atracacao_prevista = (
         select(Item.ID.label('item_id'))
         .select_from(Item)
         .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
         .where(
             Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)),
+            *criterios_ce,
             sem_desembarque_localizado,
         )
     )
@@ -226,9 +270,7 @@ def monta_query_navii(
     exigir_escaneamento: bool = False,
 ):
     """Monta (sem executar, sem ordenar/paginar) a query (Item, Conhecimento)
-    dos contêineres declarados que atendem à janela e aos filtros. A única
-    consulta feita aqui é a resolução do filtro `recinto` em `ovr_recintos`
-    (tabela minúscula), para passar os terminais como lista literal.
+    dos contêineres declarados que atendem à janela e aos filtros.
 
     Args:
         session: sessão SQLAlchemy.
@@ -241,17 +283,19 @@ def monta_query_navii(
             - produto (str): busca textual na descrição do NCM do contêiner
               (NCMItem.descritivo) — ncm e produto valem para o mesmo NCMItem
             - porto_origem / porto_destino (str): código do porto de origem/destino
-              da carga (Conhecimento — o que o embarcador declarou)
+              da carga (Conhecimento — o que o embarcador declarou). Os filtros
+              de porto aceitam código parcial: 'CN' ou 'US' filtram pelo PAÍS
+              (os 2 primeiros caracteres do código do porto são a sigla do país)
             - porto_escala (str): porto de ATRACAÇÃO do navio (Escala.portoDaEscala)
               — só as escalas nesse porto contam para a data prevista de
               atracação. A tela sugere PORTO_ESCALA_PADRAO; vazio = qualquer porto.
             - porto_baldeacao (str): código do porto de CARREGAMENTO do Manifesto
               (Manifesto.portoCarregamento) — quando difere do porto de origem do
               Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
-            - recinto (str): código do recinto de desembarque OU de armazenagem
-              do ciclo de vida, OU o terminal de descarregamento do Manifesto
-              (direto ou mapeado via ovr_recintos.cod_siscomex -> cod_carga),
-              para que contêineres sem ciclo de vida também sejam encontrados
+            - recinto (str): código (cod_siscomex) do recinto de desembarque OU
+              de armazenagem do ciclo de vida — exige ciclo de vida. Filtro
+              secundário: o terminal do Manifesto (cod_carga) não é usado, só
+              existe para operadores portuários e deixaria recintos de fora.
             - empresa (str): busca textual em embarcador ou consignatário
             - concluido (bool): só contêineres com ciclo de vida concluído
               ("entregue ao importador") — exige ciclo de vida
@@ -265,14 +309,14 @@ def monta_query_navii(
             ao menos um escaneamento com imagem associada. Padrão False: o
             ciclo de vida/imagem são opcionais.
 
-    Filtros que dependem de outras tabelas são subqueries `IN (...)` (e não
-    JOINs) para não multiplicar linhas: dispensa DISTINCT e deixa a contagem
-    exata.
+    Filtros que dependem de outras tabelas nunca são JOINs (multiplicariam
+    linhas): são verificados por candidato com `_existe`, o que dispensa
+    DISTINCT, deixa a contagem exata e mantém o plano de execução previsível.
 
     CEs de exportação (tipoTrafego 7) são sempre excluídos; importação,
     cabotagem, passagem e tráfego não informado são exibidos.
     """
-    filtros = filtros or {}
+    filtros = normaliza_filtros(filtros)
     if tipo_janela not in TIPOS_JANELA_VALIDOS:
         raise ValueError(f"tipo_janela inválido: {tipo_janela!r}. Use 'prevista' ou 'efetiva'.")
     inicio, fim = _periodo_navii(tipo_janela, filtros)
@@ -281,18 +325,36 @@ def monta_query_navii(
         session.query(Item, Conhecimento)
         .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
     )
-    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'))
-    q = q.filter(or_(
+    # Filtros que só dependem do Conhecimento: valem para a query principal e
+    # também dentro da janela (ver `_filtra_janela`).
+    criterios_ce = [or_(
         Conhecimento.tipoTrafego != TIPO_TRAFEGO_EXPORTACAO,
         Conhecimento.tipoTrafego.is_(None),
-    ))
-    conteiner_do_item = tuple_(Item.numeroCEmercante, Item.codigoConteiner)
+    )]
+    if filtros.get('porto_origem'):
+        criterios_ce.append(_porto_ou_pais(Conhecimento.portoOrigemCarga, filtros['porto_origem']))
+    if filtros.get('porto_destino'):
+        criterios_ce.append(_porto_ou_pais(Conhecimento.portoDestFinal, filtros['porto_destino']))
+    if filtros.get('porto_baldeacao'):
+        criterios_ce.append(Conhecimento.manifestoCE.in_(
+            select(Manifesto.numero).where(_porto_ou_pais(Manifesto.portoCarregamento, filtros['porto_baldeacao']))
+        ))
+    if filtros.get('empresa'):
+        termo = f"%{filtros['empresa']}%"
+        criterios_ce.append(or_(
+            Conhecimento.embarcador.ilike(termo),
+            Conhecimento.consignatario.ilike(termo),
+        ))
+    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce)
+    q = q.filter(*criterios_ce)
 
     if exigir_escaneamento or filtros.get('com_imagem'):
-        q = q.filter(conteiner_do_item.in_(
-            _ciclos_onde(CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None))
-            .join(CicloDeVidaImportacaoEscaneamentos,
-                  CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
+        q = q.filter(_existe_ciclo(
+            CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None),
+            origem=join(
+                CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
+                CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID,
+            ),
         ))
 
     criterios_ncm = []
@@ -301,57 +363,22 @@ def monta_query_navii(
     if filtros.get('produto'):
         criterios_ncm.append(NCMItem.descritivo.ilike(f"%{filtros['produto']}%"))
     if criterios_ncm:
-        q = q.filter(conteiner_do_item.in_(
-            select(NCMItem.numeroCEMercante, NCMItem.codigoConteiner).where(*criterios_ncm)
-        ))
-
-    if filtros.get('porto_origem'):
-        q = q.filter(Conhecimento.portoOrigemCarga == filtros['porto_origem'])
-
-    if filtros.get('porto_destino'):
-        q = q.filter(Conhecimento.portoDestFinal == filtros['porto_destino'])
-
-    if filtros.get('porto_baldeacao'):
-        q = q.filter(Conhecimento.manifestoCE.in_(
-            select(Manifesto.numero).where(Manifesto.portoCarregamento == filtros['porto_baldeacao'])
+        q = q.filter(_existe(
+            NCMItem,
+            NCMItem.numeroCEMercante == Item.numeroCEmercante,
+            NCMItem.codigoConteiner == Item.codigoConteiner,
+            *criterios_ncm,
         ))
 
     if filtros.get('recinto'):
         recinto = filtros['recinto']
-        # Terminais resolvidos antes (ovr_recintos tem dezenas de linhas) e
-        # passados como lista literal: com subquery aninhada o banco varria
-        # manifestosresumo inteira em vez de usar o índice do terminal.
-        terminais_do_recinto = {recinto} | {
-            cod_carga for (cod_carga,) in session.execute(
-                select(tabela_recintos.c.cod_carga).where(
-                    tabela_recintos.c.cod_siscomex == recinto, tabela_recintos.c.cod_carga.isnot(None),
-                )
-            ).all()
-            # na base real há cod_carga '' (vazio, não NULL): sem este filtro o
-            # recinto casaria com todo manifesto de terminal em branco
-            if cod_carga and cod_carga.strip()
-        }
-        q = q.filter(or_(
-            conteiner_do_item.in_(_ciclos_onde(or_(
-                CicloDeVidaImportacao.codigoRecintoDesembarque == recinto,
-                CicloDeVidaImportacao.codigoRecintoArmazenagem == recinto,
-            ))),
-            Conhecimento.manifestoCE.in_(select(Manifesto.numero).where(
-                Manifesto.codigoTerminalDescarregamento.in_(terminais_do_recinto),
-            )),
-        ))
-
-    if filtros.get('empresa'):
-        termo = f"%{filtros['empresa']}%"
-        q = q.filter(or_(
-            Conhecimento.embarcador.ilike(termo),
-            Conhecimento.consignatario.ilike(termo),
-        ))
+        q = q.filter(_existe_ciclo(or_(
+            CicloDeVidaImportacao.codigoRecintoDesembarque == recinto,
+            CicloDeVidaImportacao.codigoRecintoArmazenagem == recinto,
+        )))
 
     if filtros.get('concluido'):
-        q = q.filter(conteiner_do_item.in_(
-            _ciclos_onde(CicloDeVidaImportacao.concluido.is_(True))
-        ))
+        q = q.filter(_existe_ciclo(CicloDeVidaImportacao.concluido.is_(True)))
 
     if filtros.get('ncms_max'):
         # Subquery correlacionada por CE (usa ix_ncmitem_chave) — em vez de
@@ -407,7 +434,7 @@ def busca_ces_navii(
 
     ciclos = busca_ciclos_navii(session, [item for item, _ in linhas])
     manifestos = busca_manifestos_navii(
-        session, [ce.manifestoCE for _, ce in linhas], (filtros or {}).get('porto_escala'),
+        session, [ce.manifestoCE for _, ce in linhas], normaliza_filtros(filtros).get('porto_escala'),
     )
     resultado = []
     for item, ce in linhas:
@@ -534,10 +561,11 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
     — para a seção "Contêineres" do card e para o peso bruto total / contagem
     de NCMs distintos exibidos no cabeçalho do card.
 
-    Além de Item/NCMItem, cruza em mais duas queries em lote:
-      - `laudo_ncm` (repo bhadrasana2): descrição oficial do NCM, usada no
-        lugar de `NCMItem.descritivo` (texto livre declarado no manifesto,
-        muitas vezes incompleto) quando existe uma correspondência.
+    Além de Item/NCMItem:
+      - cada NCM leva a descrição oficial da sua POSIÇÃO (4 dígitos), das
+        tabelas locais de referência, ao lado do texto livre declarado no
+        manifesto (`NCMItem.descritivo`) — os dois interessam à análise. A
+        tabela `laudo_ncm` deixou de ser usada (descrições ruins).
       - `Enumerado.tipoItemCarga`: decodifica o tipo de carga do contêiner
         (`Item.tipoItemCarga`), hoje não decodificado em nenhum outro lugar.
 
@@ -554,7 +582,8 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
                   {'codigoConteiner': str, 'isoCode': str,
                    'pesoBruto': float | None, 'tara': float | None, 'lacre': str,
                    'tipoCarga': str | None,
-                   'ncms': [{'identificacaoNCM': str, 'descritivo': str}, ...]},
+                   'ncms': [{'identificacaoNCM': str, 'descritivo': str,
+                             'descricaoPosicao': str | None}, ...]},
                   ...
               ],
             }
@@ -599,16 +628,6 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
         .filter(NCMItem.numeroCEMercante.in_(numeros_ce))
         .all()
     )
-    codigos_ncm = {ncm_item.identificacaoNCM for ncm_item in ncm_itens if ncm_item.identificacaoNCM}
-    descricoes_laudo: Dict[str, str] = {}
-    if codigos_ncm:
-        for laudo_ncm in (
-            session.query(LaudoNCM)
-            .filter(LaudoNCM.title.in_(codigos_ncm))
-            .all()
-        ):
-            if laudo_ncm.contents:
-                descricoes_laudo[laudo_ncm.title] = laudo_ncm.contents
 
     for ncm_item in ncm_itens:
         conteineres = por_ce.setdefault(ncm_item.numeroCEMercante, {})
@@ -621,12 +640,10 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
                 'isoCode': None, 'pesoBruto': None, 'tara': None, 'lacre': None,
                 'tipoCarga': None, 'ncms': [],
             })
-        # Prioridade: descrição oficial do laudo_ncm; se não houver, cai para o
-        # texto livre declarado no manifesto (NCMItem.descritivo).
-        descricao = descricoes_laudo.get(ncm_item.identificacaoNCM) or ncm_item.descritivo
         conteiner['ncms'].append({
             'identificacaoNCM': ncm_item.identificacaoNCM,
-            'descritivo': descricao,
+            'descritivo': ncm_item.descritivo,  # texto livre declarado no manifesto
+            'descricaoPosicao': referencias.descricao_posicao_ncm(ncm_item.identificacaoNCM),
         })
 
     resultado: Dict[str, dict] = {}
@@ -710,7 +727,9 @@ def monta_card_navii(
         dados_manifesto = {
             'numero': manifesto.numero,
             'portoCarregamento': manifesto.portoCarregamento,
+            'nomePortoCarregamento': referencias.descreve_porto(manifesto.portoCarregamento),
             'portoDescarregamento': manifesto.portoDescarregamento,
+            'nomePortoDescarregamento': referencias.descreve_porto(manifesto.portoDescarregamento),
             'numeroViagem': manifesto.numeroViagem,
         }
 
@@ -741,11 +760,14 @@ def monta_card_navii(
         'nomeConsignatario': nome_consignatario,
         'descricaoMercadoria': conhecimento.descricao,
         'portoOrigemCarga': conhecimento.portoOrigemCarga,
+        'nomePortoOrigemCarga': referencias.descreve_porto(conhecimento.portoOrigemCarga),
         'portoDestFinal': conhecimento.portoDestFinal,
+        'nomePortoDestFinal': referencias.descreve_porto(conhecimento.portoDestFinal),
         'tipoTrafego': conhecimento.get_tipoTrafego(),
         'tipoBL': conhecimento.get_tipoBL(),
         'numConhecimento': conhecimento.numConhecimento,
-        'embarcacao': embarcacao,
+        'embarcacao': embarcacao,  # número IMO (ou inscrição nacional), não o nome
+        'nomeEmbarcacao': referencias.nome_navio(embarcacao),
         'manifesto': dados_manifesto,
         'dataPrevistaAtracacao': data_prevista_atracacao,
         'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,

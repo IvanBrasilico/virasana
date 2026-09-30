@@ -16,13 +16,15 @@ NAVI-I é a tela de **análise de risco na importação** para analistas da Vigi
 | `virasana/navii/views_navii.py` | Blueprint `bp_navii` (`/navii/` e `/navii/api/ces`) |
 | `virasana/templates/navii.html` | Tela (design system gov.br, JS puro, rolagem infinita) |
 | `virasana/navii/diagnostico_sql.py` | Script: SHOW CREATE TABLE + EXPLAIN/ANALYZE das buscas da tela |
+| `virasana/navii/referencias/` | Tabelas locais código→nome (NCM, portos, países, navios) + script que as gera |
 | `virasana/tests/test_navii.py` | Testes unitários (sessão fake) |
+| `virasana/tests/test_navii_referencias.py` | Testes das tabelas de referência e dos geradores |
 | `virasana/tests/test_navii_busca_sqlite.py` | Testes de integração: queries reais em SQLite, cenário simulado |
 
 Rodar os testes (a partir da raiz do `virasana`, venv `virasana-venv`, Python 3.9):
 
 ```bash
-python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py --disable-warnings
+python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py --disable-warnings
 ```
 
 Os demais arquivos de `virasana/tests` falham neste ambiente por motivos alheios ao NAVI-I
@@ -78,11 +80,11 @@ Amostras fornecidas pelo usuário: 1000 escalas e 1000 manifestos mais recentes,
   (nome "OP - ...", com `cod_carga`, ex.: `997 OP - SANTOS/BRASIL ... BRSSZ016`). Só 4 linhas têm
   `cod_carga`: BRSSZ009 (Embraport), BRSSZ016 (Santos Brasil), BRSSZ057 (Ecoporto), BRSSZ058 (BTP).
   Consequência: a ponte `cod_siscomex -> cod_carga` **na mesma linha não devolve nada** na base
-  real. Hoje o filtro Recinto alcança contêineres sem ciclo só se o usuário digitar o código do
-  terminal (`BRSSZ016`). O nome do terminal no card (busca por `cod_carga`) funciona.
-  Pares prováveis (por nome, **a confirmar com o usuário**): 8931404↔BRSSZ009, 8931356↔BRSSZ016,
+  real. Por isso (e por decisão do usuário) o filtro Recinto usa só o ciclo de vida. O nome do
+  terminal no aviso do card sem ciclo (busca por `cod_carga`) funciona para esses 4 operadores.
+  Pares prováveis, por nome, nunca confirmados: 8931404↔BRSSZ009, 8931356↔BRSSZ016,
   8931318↔BRSSZ057, 8931359↔BRSSZ058.
-- Há `cod_carga = ''` (vazio) em `ovr_recintos` — tratado no código (senão o recinto casaria com
+- Há `cod_carga = ''` (vazio, não NULL) em `ovr_recintos` — cuidado ao usar a coluna (casaria com
   todo manifesto de terminal em branco).
 - `Escala.embarcacao` é o **número IMO/inscrição** do navio (numérico em 94%), não o nome. O card
   mostra "Embarcação <número>". Não há nome de navio nas tabelas conhecidas.
@@ -95,6 +97,50 @@ Amostras fornecidas pelo usuário: 1000 escalas e 1000 manifestos mais recentes,
 - Dados a revisar em `ovr_recintos`: `8931333 TEAG` e `8931354 TEG` têm o mesmo `cod_dte` (8931354);
   5 recintos recentes (FASSINA, DINAMO 1/2, REDEX III, SERRA E MARQUES) estão sem `cod_unidade`.
 
+## Tabelas de referência locais (`virasana/navii/referencias/`)
+
+O sistema não tem boas tabelas de posições NCM, portos, países e navios (`laudo_ncm` é ruim e
+**deixou de ser usada**). A pedido do usuário há um "BD" provisório em JSON, só para EXIBIR nomes,
+carregado sob demanda por `referencias/__init__.py` e gerado por `atualiza_referencias.py`
+(baixa das fontes; `--brutos DIR` regenera sem internet). Gerado em 30/09/2026:
+
+| Arquivo | Fonte | Conteúdo |
+|---|---|---|
+| `ncm.json` | API pública do Portal Único Siscomex (oficial, vigente) | 96 capítulos, 1.228 posições (4 dígitos) |
+| `portos.json` | UN/LOCODE (UNECE), espelho `datasets/un-locode` | 17.520 localidades **com função de porto** |
+| `portos_ajustes.json` | **mantido à mão**, tem precedência | códigos do Mercante que divergem do LOCODE |
+| `paises.json` | IBGE + Wikidata (territórios fora do IBGE: HK, TW, PR...) | 256 siglas ISO, em português |
+| `navios.json` | Wikidata (não oficial) | 89 mil números IMO → nome |
+
+**Filtro de uso (pedido do usuário em 30/09/2026):** só interessam navios que operam contêineres
+(porta-contêineres, Ro-Ro/ConRo) e portos das rotas com o Brasil; as tabelas completas (89 mil
+navios, 17,5 mil portos) assustaram pelo tamanho. As fontes públicas **não permitem** esse filtro:
+na Wikidata 60% dos navios têm tipo genérico "ship" (só 20 dos 359 navios da amostra de escalas
+estão marcados como porta-contêiner) e o UN/LOCODE não marca porto de contêiner. A solução é
+filtrar pelo uso real na base: `atualiza_referencias.py --banco [--desde AAAA-MM-DD]` consulta o
+Mercante (somente leitura, padrão últimos 12 meses), grava `usados.json` (navios de escalas cujos
+manifestos têm contêiner; portos dessas escalas, dos manifestos e dos CEs do período) e gera
+`portos.json`/`navios.json` só com esses códigos. **Pendente: o usuário rodar `--banco` uma vez**
+(precisa do banco; até lá as tabelas estão completas). O script também lista os portos usados
+que ficaram sem nome — candidatos a `portos_ajustes.json`.
+
+Regras e limitações (importantes):
+- **Nunca mostrar nome errado**: código sem nome confiável aparece só como código (+ país). Por isso
+  só entram portos com função de porto no LOCODE — o Mercante usa códigos que no LOCODE são outra
+  coisa (CNSHA/CNNGB/CNTAO são aeroportos; BRITA seria Itabuna/BA; CNZZZ, uma estação de trem).
+  Os casos certos vão em `portos_ajustes.json` (hoje: 8 portos chineses e Itaguaí).
+- Códigos **sem nome** que aparecem muito e o usuário pode ajudar a identificar: `BRITA` (214 das
+  1000 escalas mais recentes), `BR400`, `BRSAS`, `BRQNS`, `BRAMW`, `BROUT`, `BR015`, `BR147`.
+  `xxZZZ` = porto não especificado do país (mostra só o país).
+- **Navios**: não existe fonte pública oficial e completa (IMO GISIS e Equasis exigem login e não
+  permitem extração em lote). A Wikidata cobriu 74% dos IMOs de uma amostra de escalas e o nome
+  pode estar desatualizado (navio rebatizado). `Escala.embarcacao` com 10 dígitos é inscrição
+  nacional (navegação interior): sem fonte.
+- Os filtros de porto (`porto_origem`, `porto_destino`, `porto_baldeacao`) aceitam código parcial:
+  menos de 5 caracteres casa por prefixo — `CN`, `US` filtram pelo país.
+- Nesta rede o download exige `curl --ssl-no-revoke` (checagem de revogação indisponível); o
+  script tenta `urllib` e cai para o `curl`.
+
 ## Decisões do usuário (não reabrir sem motivo)
 
 1. **Ciclo de vida é opcional.** O ciclo falha com frequência em localizar os eventos e, na
@@ -104,15 +150,22 @@ Amostras fornecidas pelo usuário: 1000 escalas e 1000 manifestos mais recentes,
 3. **Janela "Desembarque efetivo"**: usa `ciclo.data_desembarque`; se o contêiner não tem
    desembarque localizado, cai para `Escala.dataPrevistaAtracacao` (foi escolha explícita do
    usuário; a alternativa `dataEfetivaPrimeiraAtracacao` foi descartada).
-4. **Filtro Recinto** casa com o recinto do ciclo (desembarque/armazenagem) **ou** com o terminal
-   de descarregamento do Manifesto (direto, ou via `ovr_recintos.cod_siscomex -> cod_carga`).
+4. **Filtro Recinto** casa só com o recinto do ciclo de vida (desembarque/armazenagem), pelo
+   `cod_siscomex`. O terminal do Manifesto (`cod_carga`) **não** é usado: só existe para operadores
+   portuários e deixaria recintos de fora. É um filtro secundário ("nem é primordial, poderia até
+   ficar de fora") — não investir nele.
 5. **Imagem não é exigida por padrão**; há o checkbox "Somente com imagem de escaneamento".
 6. **Tráfego: excluir apenas exportação** (`tipoTrafego = '7'`). Cabotagem e passagem devem
    aparecer, mesmo sem imagem: interessa analisar o risco e, se for o caso, mandar descer e escanear.
 7. **Porto**: a escala que vale é a do porto do usuário. Por ora é um campo na tela
    ("Porto de atracação (escala)", filtro `porto_escala`, padrão `BRSSZ`; vazio = todos).
 8. **Contagem total** do filtro exibida junto com os cards carregados.
-9. **Forma de trabalhar**: mudanças pequenas e incrementais sobre o código existente ("tidy"),
+9. **Na dúvida, exibir a mais.** É um sistema de análise de risco: melhor mostrar mais e deixar o
+   analista decidir do que deixar casos de fora. Por isso **não** se restringe o ciclo de vida por
+   porto/unidade — um contêiner previsto para outro porto que desceu em Santos, ou previsto para
+   Santos que desceu em outro lugar, interessa à equipe de Santos. O ciclo de vida é o desembarque
+   real, e o CE continua trazendo o porto de destino final.
+10. **Forma de trabalhar**: mudanças pequenas e incrementais sobre o código existente ("tidy"),
    sem reescrever do zero; mexer o mínimo na tela, que o usuário considera boa; muitos testes com
    dados simulados; plano antes de mudanças não triviais. Produção não pode quebrar.
 
@@ -125,8 +178,12 @@ Amostras fornecidas pelo usuário: 1000 escalas e 1000 manifestos mais recentes,
 - Janela prevista: `Conhecimento.manifestoCE IN (manifestos com escala no período [e no porto])`.
 - Janela efetiva: `UNION` de (itens com desembarque no período) e (itens pela escala prevista
   **sem** desembarque localizado), como tabela derivada de `Item.ID`.
-- Filtros em outras tabelas são sempre `IN (subquery)`, nunca `JOIN`: não multiplicam linhas,
-  dispensam `DISTINCT` e mantêm a contagem exata.
+- **A janela dirige; os filtros são verificados por candidato.** Filtros em outras tabelas
+  (NCM/produto, imagem, entregue, recinto, e o "sem desembarque" da janela efetiva) usam `_existe`:
+  subquery escalar correlacionada com `LIMIT 1`. Nunca `JOIN` (multiplica linhas) e **nunca
+  `IN (subquery)`/`EXISTS`** para esses filtros: o MariaDB os converte em semijoin e pode passar a
+  dirigir a busca pela subquery (ver "Tempos medidos"). Exceções deliberadas, que devem mesmo
+  dirigir: o semijoin dos manifestos com escala no período e o de `porto_baldeacao`.
 - `ovr_recintos` é lida por `tabela_recintos` (uma `Table` leve local). **Não** importar
   `bhadrasana.models.ovr.Recinto` para consultar: o registry do OVR não configura sozinho
   (relationship com RVF) e quebra na primeira query.
@@ -134,50 +191,116 @@ Amostras fornecidas pelo usuário: 1000 escalas e 1000 manifestos mais recentes,
 Armadilhas já encontradas (têm teste de regressão):
 - JOIN com escalas duplica o contêiner (um manifesto tem várias escalas) → inflava a contagem e
   encurtava as páginas. Por isso o semijoin.
-- `NOT IN`/`IN` com subquery aninhada em `manifestosresumo` fazia varredura completa (994 mil
-  linhas); os terminais agora vão como lista literal.
+- `IN (subquery)` como filtro deixou o banco dirigir a busca pela subquery e explodir em itens sem
+  contêiner (16 min medidos). Por isso `_existe` com `LIMIT 1` (ver "Tempos medidos").
+- Item com `codigoConteiner` vazio existe aos milhões: nunca chegar em `itensresumo` só pelo contêiner.
 - SQLite: `BIGINT PRIMARY KEY` não autoincrementa (`EscalaManifesto` precisa de `ID` explícito nos testes).
 - SQLAlchemy 1.4 não renderiza `datetime` com `literal_binds` no dialeto MySQL; o diagnóstico
   compila com parâmetros e monta o SQL legível à parte.
 
 ## Estado atual
 
-Feito e testado (64 testes passando) — commit `8b5e140` + alterações posteriores ainda **não
-commitadas** em 30/09/2026 (semijoin da janela, terminais literais, exclusão de exportação,
-filtro `porto_escala`, `--analyze` para MariaDB, amostras extras no diagnóstico, este arquivo):
+Revisado em 30/09/2026 (fim do dia). Último commit: `bfc564d`. **Não commitado ainda** (tudo
+testado — 102 testes passando nos arquivos de teste do NAVI-I, Entregas e apreensões):
+semijoin da janela, exclusão de exportação, filtro `porto_escala`, filtros por candidato com
+`_existe`, filtros de Conhecimento dentro da janela (`criterios_ce`), recinto só pelo ciclo,
+normalização da entrada (porto em maiúsculas, NCM só dígitos), `--analyze` para MariaDB com resumo
+de tempos, tabelas de referência filtradas pelo uso (`usados.json` desde 30/09/2025), filtro de
+porto por país, leitura tolerante (gzip/codificação) no gerador de referências; e, fora do NAVI-I,
+a tela **Entregas por CNPJ** (`virasana/entregas/`) e o script `dados_transporte_apreensoes.py`.
 
-- ciclo de vida opcional + selo/aviso na tela + nome do recinto na linha do tempo;
-- contagem total; checkbox de imagem; filtro de porto de atracação (padrão BRSSZ);
-- exclusão de exportação;
-- script de diagnóstico rodado uma vez em produção (só EXPLAIN, sem `--amostras`/`--analyze`).
+Na tela: ciclo de vida opcional com selo/aviso; nome do recinto na linha do tempo; contagem
+total; checkbox de imagem; porto de atracação (padrão BRSSZ); nomes de portos/países/navios e
+descrição oficial da posição NCM ao lado do texto declarado.
 
-O que o EXPLAIN de produção mostrou:
-- Janela prevista: bom plano (parte do índice de `dataPrevistaAtracacao`).
-- Janela efetiva: ~97 mil candidatos em 11 dias (todos os portos, todos os tráfegos), tabela
-  derivada + filesort refeitos a cada página e na contagem. O filtro de porto e a exclusão de
-  exportação devem reduzir muito — **ainda não medido**.
-- Estimativa de 1 linha de ciclo com desembarque entre 15 e 25/09/2026: suspeita de que o ciclo
-  de vida não está populado para datas recentes — **não confirmado**.
+Ainda não medido em produção: o efeito de `criterios_ce` no piso de ~1,6 s da janela efetiva.
+
+## Tempos medidos em produção (`--analyze`, 30/09/2026, versão ANTERIOR ao `_existe`)
+
+Rodada de 128 queries, 46 minutos no total. Janela efetiva 15–25/09, prevista 03–15/10.
+
+| Cenário | Página | Contagem |
+|---|---|---|
+| prevista, porto BRSSZ | 0,3 s | 0,1 s |
+| prevista, todos os portos | 0,7 s (9 s com cache frio) | 0,3 s |
+| efetiva, porto BRSSZ | 1,5–1,9 s | 2,4 s |
+| efetiva, todos os portos (375 mil candidatos) | 2,6 s (63 s com cache frio) | 4,4 s |
+| efetiva + produto (texto livre), todos os portos | 32–109 s | 31 s |
+| efetiva + NCM completo, todos os portos | **995 s** | 135 s |
+| efetiva + porto + recinto + com imagem | **694 s** na 1ª, 4 s na 2ª | 3,4 s |
+
+Causas encontradas no `ANALYZE FORMAT=JSON`:
+- **Itens sem contêiner**: o semijoin do NCM passou a dirigir a busca e entrou em `itensresumo`
+  pelo índice de `codigoConteiner`; como existem **~2,2 milhões de itens com `codigoConteiner`
+  vazio** (carga solta, granel, veículos), cada NCM sem contêiner trouxe 2,2 M linhas (31 × 2,2 M).
+  Corrigido com `_existe` (a janela sempre dirige). **Reavaliar com nova medição.**
+- O `NOT EXISTS` do "sem desembarque" era materializado varrendo o ciclo inteiro (281 mil linhas,
+  3,4 s por query). Também virou `_existe` (acesso indexado por candidato).
+- O ramo do terminal do Manifesto no filtro Recinto (removido).
+- **Cache frio**: a primeira leitura de cada região das tabelas grandes custa dezenas de segundos.
+- As estimativas do otimizador erram muito (estimou 97 mil candidatos, eram 375 mil; 31 linhas de
+  NCM viraram 69 milhões). Não confiar em `EXPLAIN` sem `ANALYZE`.
+
+### Segunda medição (30/09/2026, já com `_existe` e com o índice `ix_ciclo_ce_conteiner` criado)
+
+140 queries, 9 minutos no total (antes: 46 min); a mais lenta caiu de 995 s para 44 s.
+
+| Cenário | Efetiva (página) | Prevista (página) |
+|---|---|---|
+| porto BRSSZ, sem outros filtros | 1,7 s (contagem 2,5 s) | 0,3 s |
+| porto BRSSZ + NCM | 1,8–2,4 s | 0,5 s |
+| porto BRSSZ + NCM completo | 3,9 s | 0,5 s |
+| porto BRSSZ + produto (texto livre) | 9,1 s | 1,4 s |
+| porto BRSSZ + recinto + com imagem | 2,8 s | 0,3 s |
+| todos os portos, sem filtros | 3,1 s | 0,7 s |
+| todos os portos + produto (texto livre) | 44 s | 17,5 s |
+
+O que o `ANALYZE` mostrou nesta rodada:
+- **Volume real**: em 11 dias, Santos tem 175 escalas, 4.340 manifestos, 112 mil CEs e **209 mil
+  contêineres candidatos** (o país todo: 375 mil). Esse conjunto é recalculado e ordenado a cada
+  página e na contagem — é o piso de ~1,6 s da janela efetiva (leitura de CEs 0,3 s, itens 0,6 s,
+  verificação do ciclo 0,45 s).
+- Depois desta medição os filtros de Conhecimento (exportação, portos, empresa) passaram a ser
+  aplicados também DENTRO da janela (`criterios_ce`), para não ler itens/ciclo de CEs descartados.
+  **Ganho ainda não medido.**
+- **Produto (texto livre)** é o filtro caro: lê em média 40 linhas de `ncmitemresumo` por
+  contêiner (15 milhões de linhas no país todo). Só um índice FULLTEXT em `descritivo` (152 M
+  linhas) resolveria; combinar com NCM ou porto reduz muito.
+- Se o piso de ~1,6 s por página incomodar: o caminho é guardar o resultado da janela (cache por
+  filtro) em vez de recalcular a cada rolagem — não feito.
+
+Outros fatos do diagnóstico com amostras:
+- Código de recinto no ciclo de vida = `ovr_recintos.cod_siscomex` (confirmado: `8931404`).
+- **Ciclo de vida atrasado**: último desembarque em 14/09/2026 (16 dias antes). Na janela efetiva
+  sugerida (15 a 5 dias atrás) não havia nenhum ciclo — tudo veio pelo fallback da escala.
+- **Os ciclos mais recentes estão com `numeroCEmercante` vazio** (só o contêiner): não casam com
+  `Item` e ficam invisíveis até o CE ser preenchido pelo processo de completar o ciclo.
+- Um manifesto de passagem (HKHKG→ARBUE) tem uma escala por porto brasileiro onde o navio atraca
+  (BRSSZ, BRIOA, BRRIG) — confirma o critério de usar a escala do porto do usuário.
+- CEs recentes por tráfego: 5 (48%), 7 exportação (21%), 3 (15%), 9 (14%), 1 (2%).
 
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
 `--analyze` em homologação/fora do pico):
 
-1. ~~Formato de `portoDaEscala` e das datas da escala~~ — confirmados pelas amostras.
-2. **Ponte recinto (cod_siscomex) ↔ terminal (cod_carga)** — não existe na base (ver "O que as
-   amostras reais mostraram"). Decidir com o usuário: preencher `cod_carga` nas linhas de recinto
-   (atenção: `conformidade_manager.get_completude_mercante` faz JOIN por `cod_carga` e passaria a
-   duplicar), criar uma coluna/tabela de vínculo, ou um mapa fixo no NAVI-I.
-3. **Código do recinto no ciclo de vida = `cod_siscomex`?** Compatível com as amostras (7 dígitos,
-   `89xxxxx`), mas ainda não vimos linhas do ciclo de vida. Conferir no diagnóstico `--amostras`.
-4. **Frescor do ciclo de vida** e **tempos reais** das buscas (`ANALYZE FORMAT=JSON`).
-5. **Filtrar o ramo "desembarque efetivo" pelo porto/unidade** (recintos da unidade do usuário),
-   já que a API Recintos cobre outros portos.
+1. **Medir de novo** com `--analyze` depois do `_existe` (o script agora termina com um resumo
+   dos tempos). É a única forma de saber se a janela efetiva com porto ficou abaixo de ~1 s.
+2. **Itens sem contêiner** (carga solta/granel/veículos, ~2,2 M de 51 M = 4%): aparecem como card
+   com título "--". O usuário aceita excluí-los **se** isso melhorar muito o desempenho (o foco é
+   carga conteinerizada). Análise: depois do `_existe` o ganho esperado é pequeno (~4% menos
+   candidatos; o desastre de 16 min vinha do plano de execução, não da quantidade). Mantidos por
+   ora; decidir com a nova medição. Se excluir: `Item.codigoConteiner != ''` em `monta_query_navii`.
+3. **Ciclos sem CE**: avaliar se vale casar ciclo e Item só pelo contêiner + proximidade de data
+   quando o CE do ciclo está vazio (não feito: risco de casar contêiner reutilizado).
+4. **Ponte recinto ↔ terminal do manifesto**: abandonada por decisão do usuário (decisão 4). As
+   duas linhas por terminal em `ovr_recintos` continuam sem vínculo; só importa se um dia o filtro
+   de recinto precisar alcançar contêineres sem ciclo.
 
 Índices sugeridos, **não criados** (decisão do usuário/DBA, medir antes):
 
 ```sql
+-- ajuda todos os _existe do ciclo (hoje entram por numeroCEmercante e filtram o contêiner)
 ALTER TABLE ciclodevida_ciclo_de_vida_importacao
   ADD INDEX ix_ciclo_ce_conteiner (numeroCEmercante, numeroConteiner, data_desembarque);
 ALTER TABLE itensresumo
@@ -189,7 +312,7 @@ ALTER TABLE itensresumo
 
 Limitações conhecidas e aceitas por enquanto:
 - CE sem `Item` carregado não aparece (a base é o contêiner declarado).
-- O filtro de porto não se aplica ao ramo "desembarque efetivo": o ciclo não guarda porto, só recinto.
+- O filtro de porto não se aplica ao ramo "desembarque efetivo" — é decisão do usuário (decisão 9).
 - Seção "Contêineres" do card lista todos os contêineres do CE, não só o do card.
 - Sem fonte de dados de sócios/CPF (filtros "subjetivos" por empresa e sócios ficam para depois).
 
@@ -201,6 +324,5 @@ Limitações conhecidas e aceitas por enquanto:
    do seu porto e os recintos da sua unidade. Hoje isso é o campo `porto_escala` com padrão fixo
    (`PORTO_ESCALA_PADRAO`); `ovr_recintos` já tem `cod_unidade`/`sigla_unidade`/`id_equipe`, e os
    usuários ficam em `ovr_usuarios`/`ovr_setores` (bhadrasana2).
-3. Medir com `--analyze` e decidir índices; se a janela efetiva continuar cara, avaliar limitar o
-   ramo do ciclo aos recintos da unidade.
+3. Medir com `--analyze` e decidir índices. (Não limitar o ciclo aos recintos da unidade: decisão 9.)
 4. Backlog antigo: filtros em linguagem natural; filtros subjetivos por empresa/sócios.

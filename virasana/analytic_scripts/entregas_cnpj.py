@@ -1,76 +1,65 @@
 #!/usr/bin/env python3
 """
-Pesquisa CEs de importação para o CNPJ. Destes CEs, localiza as entregas para ter as placas e
-possibilitar a localização das entregas
+Pesquisa CEs de importação para o CNPJ. Destes CEs, localiza as saídas dos
+contêineres carregados pelos gates dos recintos (Acesso Veículo), para ter as
+placas e possibilitar a localização das entregas. Grava uma planilha Excel.
 
-Uso:
-    python entregas_cnpj.py 2026-05-01 2026-05-31 0000000001
+A mesma consulta está na tela /entregas_cnpj/ (virasana/entregas); a lógica
+fica em `virasana/entregas/busca_entregas.py`.
+
+Uso (a partir da raiz do repo virasana):
+    python virasana/analytic_scripts/entregas_cnpj.py <cnpj ou raiz> [<inicio> <fim>]
+    python virasana/analytic_scripts/entregas_cnpj.py 12345678000190 2026-05-01 2026-05-31
+
+Sem datas, usa os últimos 30 dias.
 """
-
 import sys
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 
-import pandas as pd
-
-sys.path.append('../scripts')
+sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
-sys.path.append('../ajna_docs/commons')
+
+from virasana.entregas.busca_entregas import ParametrosInvalidos, busca_entregas, planilha_xlsx  # noqa: E402
 
 
-def df_ces(engine, cnpj, inicio, fim) -> pd.DataFrame:
-    # Formata as datas para o formato do MySQL/MariaDB
-    inicio_str = inicio.strftime('%Y-%m-%d %H:%M:%S')
-    fim_str = fim.strftime('%Y-%m-%d %H:%M:%S')
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        print(__doc__)
+        return 1
+    cnpj = argv[0]
+    try:
+        inicio = datetime.strptime(argv[1], '%Y-%m-%d').date()
+        fim = datetime.strptime(argv[2], '%Y-%m-%d').date()
+    except (IndexError, ValueError):
+        fim = datetime.now().date()
+        inicio = fim - timedelta(days=30)
+        print(f'Datas não informadas ou inválidas: usando {inicio} a {fim}.')
 
-    query = f"""
-           SELECT *  FROM conhecimentos_resumo 
-           WHERE  BETWEEN '{inicio_str}' AND '{fim_str}'
-       """
+    from ajna_commons.flask.conf import SQL_URI
+    from sqlalchemy import create_engine
 
-    # Usa pandas para executar o SQL
-    df = pd.read_sql_query(query, con=engine)
+    print(f'CNPJ: {cnpj}  Período de saída: {inicio} a {fim}')
+    engine = create_engine(SQL_URI)
+    try:
+        with engine.connect() as conexao:
+            resultado = busca_entregas(conexao, cnpj, inicio, fim)
+    except ParametrosInvalidos as err:
+        print(f'[ERRO] {err}')
+        return 1
+    finally:
+        engine.dispose()
 
-    return df
+    saida = f"entregas_{resultado['cnpj']}_{inicio}_{fim}.xlsx"
+    with open(saida, 'wb') as arquivo:
+        arquivo.write(planilha_xlsx(resultado))
+    print(f"{resultado['qtd_ces']} CEs de importação, {resultado['qtd_conteineres']} contêineres; "
+          f"{len(resultado['linhas'])} saídas localizadas; "
+          f"{len(resultado['conteineres_sem_saida'])} contêineres sem saída no período.")
+    print(f'Planilha gravada em {saida}')
+    return 0
 
 
 if __name__ == '__main__':  # pragma: no-cover
-    from ajna_commons.flask.conf import SQL_URI
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    engine = create_engine(SQL_URI)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    print('Uso: python entregas_cnpj.py <cnpj>0000000001 <inicio>(2026-06-01) <fim>(2026-05-31) ')
-    # Obtém CNPJ
-    try:
-        cnpj = sys.argv[1]
-    except:
-        print('Obrigatório informar CNPJ. Saindo...')
-        sys.exit(0)
-    # Obtém datas
-    try:
-        inicio = datetime.strptime(sys.argv[2], '%Y-%m-%d')
-        fim = datetime.strptime(sys.argv[3], '%Y-%m-%d')
-    except Exception as err:
-        print(err)
-        print('Erro ao puxar datas, usando hoje e 30 dias atrás.')
-        # Define o fim às 00h de hoje e inicio 30 dias antes
-        fim = datetime.combine(datetime.now(), time.min)
-        inicio = fim - timedelta(days=30)
-    # Executa a consulta
-    print(f"\n[INFO] Executando consulta...")
-    print(f"CNPJ:{cnpj}  Período: {inicio.strftime('%Y-%m-%d')} até {fim.strftime('%Y-%m-%d')}")
-    try:
-        ces = consultar_ces(engine, cnpj, inicio, fim)
-        print(f"\n[RESULTADO] Quantidade de registros: {contagem}")
-        print("\n[INFO] Consulta realizada com sucesso.")
-    except Exception as e:
-        print(f"\n[ERRO] Falha na consulta SQL: {e}")
-        session.close()
-        engine.dispose()
-        sys.exit(1)
-    finally:
-        session.close()
-        engine.dispose()
+    sys.exit(main())

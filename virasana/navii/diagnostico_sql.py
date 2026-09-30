@@ -28,6 +28,7 @@ Uso (a partir da raiz do repo virasana):
     python virasana/navii/diagnostico_sql.py --amostras   # inclui amostras de formato de dados
 """
 import argparse
+import json
 import sys
 from datetime import datetime
 
@@ -70,11 +71,13 @@ CENARIOS = [
     ('porto de origem', {'porto_origem': 'CNSHA'}),
     ('porto de destino', {'porto_destino': 'BRSSZ'}),
     ('porto de baldeação', {'porto_baldeacao': 'SGSIN'}),
-    ('recinto', {'recinto': '8931356'}),
+    ('recinto (ciclo de vida)', {'recinto': '8931404'}),
     ('empresa (texto livre)', {'empresa': 'comercio'}),
     ('empresa por CNPJ', {'empresa': '40260836000140'}),
     ('até 1 NCM distinto', {'ncms_max': 1}),
-    ('recinto + com imagem', {'recinto': '8931356', 'com_imagem': True}),
+    ('porto + produto (texto livre)', {'porto_escala': 'BRSSZ', 'produto': 'brinquedo'}),
+    ('porto + NCM completo', {'porto_escala': 'BRSSZ', 'ncm': '84713012'}),
+    ('recinto + com imagem', {'recinto': '8931404', 'com_imagem': True}),
     ('origem + NCM + até 3 NCMs', {'porto_origem': 'CNSHA', 'ncm': '8471', 'ncms_max': 3}),
     ('recinto + empresa + entregue', {'recinto': '8931356', 'empresa': 'comercio', 'concluido': True}),
 ]
@@ -131,6 +134,8 @@ class Diagnostico:
         self.saida = saida
         self.analyze = analyze
         self.comando_analyze = 'EXPLAIN ANALYZE '
+        self.cenario = ''
+        self.tempos = []  # (cenário, query, segundos | None) — só com --analyze
 
     def escreve(self, texto=''):
         self.saida.write(texto + '\n')
@@ -206,7 +211,43 @@ class Diagnostico:
         if self.analyze:
             self.escreve()
             self.escreve(self.comando_analyze.strip() + ' (executa a consulta):')
-            self.executa(self.comando_analyze + sql, params)
+            self.tempos.append((self.cenario, descricao, self.mede(self.comando_analyze + sql, params)))
+
+    def mede(self, sql, params):
+        """Executa o ANALYZE, grava a saída e devolve o tempo total em segundos
+        (só o MariaDB devolve JSON com `r_total_time_ms`; senão, None)."""
+        try:
+            resultado = self.conn.exec_driver_sql(sql, params) if params else self.conn.exec_driver_sql(sql)
+            linhas = [str(linha[0]) for linha in resultado]
+        except Exception as err:  # noqa
+            self.escreve(f'!! ERRO executando [{sql[:80]}...]: {err}')
+            return None
+        saida = '\n'.join(linhas)
+        self.escreve(saida)
+        try:
+            return json.loads(saida)['query_block']['r_total_time_ms'] / 1000
+        except Exception:  # noqa
+            return None
+
+    def secao_resumo(self):
+        self.titulo('6. RESUMO DOS TEMPOS MEDIDOS (segundos; a 1ª execução de cada tabela paga o cache frio)')
+        if not self.tempos:
+            self.escreve('Sem medições: rode com --analyze.')
+            return
+        largura = max(len(cenario) for cenario, _, _ in self.tempos)
+        atual, linha = None, ''
+        for cenario, query, segundos in self.tempos:
+            if cenario != atual:
+                if linha:
+                    self.escreve(linha)
+                atual, linha = cenario, cenario.ljust(largura)
+            tempo = 'ERRO' if segundos is None else f'{segundos:.1f}s'
+            linha += '  ' + f"{query.split(' (')[0][:22]}={tempo}".ljust(30)
+        self.escreve(linha)
+        medidos = [segundos for _, _, segundos in self.tempos if segundos is not None]
+        self.escreve()
+        self.escreve(f'{len(medidos)} queries medidas, {sum(medidos):.0f}s no total; '
+                     f'mais lenta: {max(medidos, default=0):.1f}s.')
 
     # ---------------------------------------------------------------- seções
 
@@ -283,7 +324,8 @@ class Diagnostico:
                 if inicio and fim:
                     filtros.update(data_inicio=inicio, data_fim=fim)
                 periodo = _periodo_navii(tipo_janela, filtros)
-                self.titulo(f'[{tipo_janela}] {descricao} — período {periodo[0]} a {periodo[1]} — filtros={filtros}')
+                self.cenario = f'[{tipo_janela}] {descricao}'
+                self.titulo(f'{self.cenario} — período {periodo[0]} a {periodo[1]} — filtros={filtros}')
                 q = monta_query_navii(session, tipo_janela, filtros)
                 self.explain('PÁGINA (20 cards, ORDER BY Item.ID DESC)',
                              q.order_by(Item.ID.desc()).limit(20).statement)
@@ -293,6 +335,7 @@ class Diagnostico:
                              q.with_entities(func.count(Item.ID)).statement)
 
     def secao_enriquecimento(self, session):
+        self.cenario = 'enriquecimento dos cards'
         self.titulo('5. QUERIES DE ENRIQUECIMENTO DOS CARDS (por página, valores fictícios)')
         capturadora = SessaoCapturadora(session)
         itens_ficticios = [Item(numeroCEmercante=ce, codigoConteiner='ABCD1234567') for ce in CES_FICTICIOS]
@@ -351,6 +394,7 @@ def main():
             diag.secao_amostras()
         diag.secao_buscas(session, {'efetiva': periodo, 'prevista': periodo})
         diag.secao_enriquecimento(session)
+        diag.secao_resumo()
     print(f'Diagnóstico gravado em {args.saida}')
 
 

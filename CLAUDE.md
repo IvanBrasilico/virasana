@@ -39,7 +39,9 @@ Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados vi
 - `virasana/integracao/` — integrações com bases externas, organizadas por domínio: `mercante/`, `carga2/`, `due/`, `bagagens/`, `risco/`, `sivana/`, `transito/`.
 - `virasana/models/` — modelos SQLAlchemy/Mongo (`models.py`, `image_search.py`, `auditoria.py`, `anomalia_lote.py`).
 - `virasana/usecases/` — regras de negócio (`apirecintos_manager.py`, `auditoria.py`, `bagagens_manager.py`).
-- `virasana/navii/` — **NAVI-I** (antes de mexer, ler [virasana/navii/CONTEXTO.md](virasana/navii/CONTEXTO.md): decisões do usuário, modelo de dados, medições do banco e pendências), produto de análise de risco na importação para analistas (não é um projeto/repo separado — é um módulo deste repo). Blueprint `bp_navii` em `/navii`, template gov.br em `virasana/templates/navii.html`. Reaproveita as entidades de `analytic_scripts/ciclo_de_vida/ciclo_de_vida.py` (`CicloDeVidaImportacao`), `integracao/mercante/mercantealchemy.py` (`Conhecimento`, `Manifesto`, `Enumerado`) e, do bhadrasana2, `bhadrasana.models.laudo` (`Empresa`/CNPJ→nome, `NCM`/descrição oficial) como fonte de dados — não duplicar esses models. A busca parte do contêiner declarado (`Item`) e o Ciclo de Vida é **opcional** (card aparece mesmo sem desembarque/imagem); `ovr_recintos` é lida por uma `Table` leve local (`tabela_recintos`), porque importar `bhadrasana.models.ovr` sozinho quebra o mapeamento do OVR. Testes: `tests/test_navii.py` (unitários) e `tests/test_navii_busca_sqlite.py` (queries reais em SQLite com cenário simulado). `navii/diagnostico_sql.py` grava SHOW CREATE TABLE + EXPLAIN das buscas da tela em um log, para avaliar índices. Ainda sem fonte de dados de sócios/CPF (filtros subjetivos automáticos ficam para um próximo incremento).
+- `virasana/navii/` — **NAVI-I**, tela de análise de risco na importação (`/navii`, blueprint `bp_navii`, template gov.br `templates/navii.html`). **Antes de mexer, ler [virasana/navii/CONTEXTO.md](virasana/navii/CONTEXTO.md)**: decisões do usuário, modelo de dados, medições do banco, armadilhas e pendências. Em resumo: a busca parte do contêiner declarado (`Item`), o Ciclo de Vida é opcional, filtros em outras tabelas usam `_existe` (subquery com `LIMIT 1`, nunca `IN`/`JOIN`), `ovr_recintos` é lida por `tabela_recintos` (não importar `bhadrasana.models.ovr`). `navii/referencias/` tem tabelas locais código→nome (NCM, portos, países, navios) geradas de fontes públicas e filtradas pelo uso real na base (`atualiza_referencias.py --banco`); `navii/diagnostico_sql.py` mede as queries da tela (`--analyze`).
+- `virasana/entregas/` — **Entregas por CNPJ** (`/entregas_cnpj/`, blueprint `bp_entregas`, template `templates/entregas_cnpj.html`): saídas pelos gates (AcessoVeiculo) dos contêineres dos CEs de importação de um CNPJ; tela + planilha. Lógica em `busca_entregas.py`, reusada pelo script `analytic_scripts/entregas_cnpj.py`.
+- `virasana/analytic_scripts/` — scripts de análise rodados à mão (não por cron): `dados_transporte_apreensoes.py` (apreensões de drogas do Fichas → acessos de veículo: placa, motorista, transportadora; CSV), `entregas_cnpj.py`, `ciclo_de_vida/` (tabelas do Ciclo de Vida usadas pelo NAVI-I).
 - `virasana/workers/` — tarefas Celery e monitoramento de diretórios.
 - `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
 - `virasana/forms/`, `virasana/exportacao/`, `virasana/analises/` — WTForms, exportação de dados, análises pontuais.
@@ -52,6 +54,12 @@ python -m pytest --cov=virasana virasana/tests
 ```
 
 (equivalente ao `testenv` do [tox.ini](tox.ini); `testenv:check` roda `flake8`/`bandit`/`isort`).
+
+A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
+
+```bash
+python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py --disable-warnings
+```
 
 ## Restrição principal: não arriscar produção
 

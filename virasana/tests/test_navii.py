@@ -12,7 +12,6 @@ from virasana.navii.busca_navii import (
 # irmão bhadrasana2/ajna_commons (ver virasana/navii/busca_navii.py).
 from virasana.integracao.mercante.mercantealchemy import Enumerado, Item, NCMItem
 from bhadrasana.models.laudo import Empresa
-from bhadrasana.models.laudo import NCM as LaudoNCM
 
 
 class SessaoFake:
@@ -117,7 +116,7 @@ class TestBuscaItensNavii(unittest.TestCase):
             NCMItem(numeroCEMercante='CE1', codigoConteiner='CONT2',
                     identificacaoNCM='8471.30', descritivo='Notebook'),
         ]
-        sessao = SessaoFake({Item: itens, NCMItem: ncm_itens, LaudoNCM: []})
+        sessao = SessaoFake({Item: itens, NCMItem: ncm_itens})
 
         resultado = busca_itens_navii(sessao, ['CE1'])
 
@@ -130,28 +129,29 @@ class TestBuscaItensNavii(unittest.TestCase):
         self.assertEqual(cont1['pesoBruto'], 1000.5)
         self.assertEqual(len(cont1['ncms']), 2)
 
-    def test_descricao_ncm_prioriza_laudo_mas_cai_para_manifesto(self):
+    def test_ncm_traz_texto_declarado_e_descricao_oficial_da_posicao(self):
         itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1')]
         ncm_itens = [
             NCMItem(numeroCEMercante='CE1', codigoConteiner='CONT1',
-                    identificacaoNCM='8471.30', descritivo='descrição do manifesto'),
+                    identificacaoNCM='84713012', descritivo='NOTEBOOK 14 POL'),
             NCMItem(numeroCEMercante='CE1', codigoConteiner='CONT1',
-                    identificacaoNCM='9999.99', descritivo='só existe no manifesto'),
+                    identificacaoNCM='0000', descritivo='posição inexistente'),
         ]
-        laudo_ncms = [LaudoNCM(title='8471.30', contents='descrição oficial do laudo')]
-        sessao = SessaoFake({Item: itens, NCMItem: ncm_itens, LaudoNCM: laudo_ncms})
+        sessao = SessaoFake({Item: itens, NCMItem: ncm_itens})
 
         resultado = busca_itens_navii(sessao, ['CE1'])
-        ncms = {n['identificacaoNCM']: n['descritivo'] for n in resultado['CE1']['conteineres'][0]['ncms']}
+        ncms = {n['identificacaoNCM']: n for n in resultado['CE1']['conteineres'][0]['ncms']}
 
-        self.assertEqual(ncms['8471.30'], 'descrição oficial do laudo')
-        self.assertEqual(ncms['9999.99'], 'só existe no manifesto')
+        self.assertEqual(ncms['84713012']['descritivo'], 'NOTEBOOK 14 POL')
+        self.assertIn('processamento de dados', ncms['84713012']['descricaoPosicao'])
+        self.assertEqual(ncms['0000']['descritivo'], 'posição inexistente')
+        self.assertIsNone(ncms['0000']['descricaoPosicao'])
 
     def test_tipo_carga_decodificado_via_enumerado(self):
         # Valores reais da tabela Enumerado: tipoItemCarga 1=Conteiner, 2=Carga Solta, 3=Granel, 4=Veiculos
         itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1', tipoItemCarga='2')]
         enumerados = [Enumerado(id='2', tipoItemCarga='Carga Solta')]
-        sessao = SessaoFake({Item: itens, NCMItem: [], LaudoNCM: [], Enumerado: enumerados})
+        sessao = SessaoFake({Item: itens, NCMItem: [], Enumerado: enumerados})
 
         resultado = busca_itens_navii(sessao, ['CE1'])
 
@@ -159,7 +159,7 @@ class TestBuscaItensNavii(unittest.TestCase):
 
     def test_tipo_carga_ausente_no_enumerado_fica_none(self):
         itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1', tipoItemCarga='999')]
-        sessao = SessaoFake({Item: itens, NCMItem: [], LaudoNCM: [], Enumerado: []})
+        sessao = SessaoFake({Item: itens, NCMItem: [], Enumerado: []})
 
         resultado = busca_itens_navii(sessao, ['CE1'])
 

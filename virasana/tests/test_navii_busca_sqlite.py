@@ -41,14 +41,13 @@ from virasana.integracao.mercante.mercantealchemy import (
 )
 from virasana.navii.views_navii import bp_navii
 from bhadrasana.models.laudo import Empresa
-from bhadrasana.models.laudo import NCM as LaudoNCM
 
 PERIODO = {'data_inicio': '2026-01-05', 'data_fim': '2026-01-15'}
 
 TABELAS = [
     Enumerado, Escala, EscalaManifesto, Manifesto, Conhecimento, Item, NCMItem,
     CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
-    Empresa, LaudoNCM,
+    Empresa,
 ]
 
 
@@ -113,13 +112,13 @@ def monta_cenario(session):
         {'id': 2, 'nome': 'EADI SANTOS', 'cod_siscomex': '8932000', 'cod_carga': 'T99'},
     ])
     cria_ce(session, 'CE1', 'M1', {
-        'C1': [('8471.30', 'Notebook'), ('8471.60', 'Teclado')],
-        'C2': [('9503.00', 'Brinquedo de plastico')],
+        'C1': [('84713000', 'Notebook'), ('84716000', 'Teclado')],
+        'C2': [('95030000', 'Brinquedo de plastico')],
     }, embarcador='ACME EXPORT CO', consignatario='11222333000181')
-    cria_ce(session, 'CE2', 'M1', {'C3': [('8471.30', 'Notebook')]})
-    cria_ce(session, 'CE3', 'M2', {'C4': [('6109.10', 'Camiseta')]},
+    cria_ce(session, 'CE2', 'M1', {'C3': [('84713000', 'Notebook')]})
+    cria_ce(session, 'CE3', 'M2', {'C4': [('61091000', 'Camiseta')]},
             consignatario='LOJA X LTDA', porto_origem='CNNGB')
-    cria_ce(session, 'CE4', 'M2', {'C5': [('6109.10', 'Camiseta')]})
+    cria_ce(session, 'CE4', 'M2', {'C5': [('61091000', 'Camiseta')]})
     cria_ce(session, 'CE5', 'M3', {'C7': []})
     cria_ce(session, 'CE6', 'M1', {'C6': []}, porto_destino='BRRIG')
 
@@ -265,6 +264,12 @@ class TestFiltros(NaviiSqliteTestCase):
         # 9503 está só no C2, não "vaza" para o C1 do mesmo CE
         self.assertEqual(self.conteineres(ncm='9503'), {'C2'})
 
+    def test_entrada_do_usuario_normalizada(self):
+        # NCM digitado com pontos e porto em minúsculas
+        self.assertEqual(self.conteineres(ncm='8471.30'), {'C1'})
+        self.assertEqual(self.conteineres(porto_escala='brssz'), self.conteineres(porto_escala='BRSSZ'))
+        self.assertEqual(self.conteineres(porto_origem=' cnngb '), {'C4'})
+
     def test_produto_sem_diferenciar_maiusculas(self):
         self.assertEqual(self.conteineres(produto='BRINQ'), {'C2'})
 
@@ -279,30 +284,37 @@ class TestFiltros(NaviiSqliteTestCase):
     def test_porto_baldeacao_pelo_manifesto(self):
         self.assertEqual(self.conteineres(porto_baldeacao='SGSIN'), {'C4'})
 
-    def test_recinto_pelo_ciclo_ou_pelo_terminal_do_manifesto(self):
-        # C1 pelo ciclo; C2/C6 (M1) pelo terminal T01 mapeado em ovr_recintos
-        # (cod_siscomex 8931356 -> cod_carga T01); C4 desembarcou no 8931356
-        self.assertEqual(self.conteineres(recinto='8931356'), {'C1', 'C2', 'C4', 'C6'})
+    def test_porto_parcial_filtra_por_pais(self):
+        # 2 primeiras letras do código do porto = país
+        self.assertEqual(self.conteineres(porto_origem='CN'), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(porto_origem='cn'), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(porto_origem='CNN'), {'C4'})
+        self.assertEqual(self.conteineres(porto_origem='US'), set())
+        self.assertEqual(self.conteineres(porto_destino='BR'), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(porto_baldeacao='SG'), {'C4'})
+        self.assertEqual(self.total(porto_origem='CN'), 4)
 
-    def test_recinto_com_cod_carga_vazio_nao_casa_com_manifesto_sem_terminal(self):
-        # como na base real: EMBRAPORT tem cod_carga '' e manifestos de passagem têm terminal ''
-        self.session.execute(tabela_recintos.insert(), [
-            {'id': 3, 'nome': 'EMBRAPORT', 'cod_siscomex': '8931404', 'cod_carga': ''},
-        ])
-        self.session.add_all([
-            Manifesto(numero='M4', portoCarregamento='HKHKG', codigoTerminalDescarregamento=''),
-            EscalaManifesto(ID=5, manifesto='M4', escala='E1'),
-        ])
-        cria_ce(self.session, 'CE8', 'M4', {'C9': []}, tipo_trafego='9')
-        self.session.commit()
-        self.assertIn('C9', self.conteineres())
-        self.assertEqual(self.conteineres(recinto='8931404'), set())
+    def test_porto_parcial_nao_aceita_curinga(self):
+        self.assertEqual(self.conteineres(porto_origem='%'), {'C1', 'C2', 'C4', 'C6'})  # vira prefixo vazio
+        self.assertEqual(self.conteineres(porto_origem='_NN'), set())
+
+    def test_recinto_de_desembarque_do_ciclo(self):
+        # só pelo ciclo de vida (cod_siscomex): C2/C6, sem desembarque, ficam de fora
+        self.assertEqual(self.conteineres(recinto='8931356'), {'C1', 'C4'})
 
     def test_recinto_de_armazenagem(self):
         self.assertEqual(self.conteineres(recinto='8932000'), {'C4'})
 
-    def test_recinto_pelo_codigo_direto_do_terminal(self):
-        self.assertEqual(self.conteineres(recinto='T01'), {'C1', 'C2', 'C6'})
+    def test_recinto_nao_usa_o_terminal_do_manifesto(self):
+        self.assertEqual(self.conteineres(recinto='T01'), set())
+
+    def test_item_sem_conteiner_carga_solta(self):
+        # carga solta/granel: Item com codigoConteiner vazio e NCM declarado sem contêiner
+        cria_ce(self.session, 'CES', 'M1', {'': [('10019900', 'Trigo a granel')]})
+        self.session.commit()
+        self.assertIn('', self.conteineres())
+        self.assertEqual(self.conteineres(ncm='1001'), {''})
+        self.assertNotIn('', self.conteineres(com_imagem=True))
 
     def test_empresa_embarcador_ou_consignatario(self):
         self.assertEqual(self.conteineres(empresa='acme'), {'C1', 'C2'})
@@ -374,6 +386,16 @@ class TestEnriquecimento(NaviiSqliteTestCase):
         self.assertEqual(card['terminalDescarregamento'], {'codigo': 'T01', 'nome': 'BTP'})
         self.assertEqual(card['dataPrevistaAtracacao'], '2026-01-10')
         self.assertIsNotNone(card['item_id'])
+
+    def test_card_traz_nomes_de_portos_navio_e_posicao_ncm(self):
+        card = self.card('C4')  # CE3: origem CNNGB, destino BRSSZ, manifesto M2 carregado em SGSIN
+        self.assertEqual(card['nomePortoOrigemCarga'], 'Ningbo, China')
+        self.assertEqual(card['nomePortoDestFinal'], 'Santos, Brasil')
+        self.assertIn('Singap', card['manifesto']['nomePortoCarregamento'])
+        self.assertIsNone(card['nomeEmbarcacao'])  # 'NAVIO B' não é um IMO conhecido
+        ncm = card['conteineres'][0]['ncms'][0]
+        self.assertEqual(ncm['descritivo'], 'Camiseta')
+        self.assertIn('camisetas', ncm['descricaoPosicao'].lower())
 
     def test_card_com_ciclo_traz_nome_do_recinto_e_imagens(self):
         card = self.card('C1')

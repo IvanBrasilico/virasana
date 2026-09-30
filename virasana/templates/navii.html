@@ -217,6 +217,9 @@
         }
         .ncm-linha .codigo-ncm { flex: 0 0 auto; font-family: monospace; font-weight: 700; color: #1c1c1c; }
         .ncm-linha .descricao-ncm { color: #444; }
+        .ncm-linha .posicao-ncm { display: block; }
+        .ncm-linha .declarado-ncm { display: block; color: #777; font-style: italic; }
+        .nome-ref { font-weight: 400; color: #666; font-size: .8125rem; }
         .sem-conteineres { color: #999; font-size: .75rem; font-style: italic; }
 
         /* ---------- Descrição da mercadoria ---------- */
@@ -327,15 +330,15 @@
             </div>
             <div class="campo br-input">
                 <label for="f-porto_origem">Porto de origem</label>
-                <input id="f-porto_origem" type="text" placeholder="código do porto" />
+                <input id="f-porto_origem" type="text" placeholder="porto (CNSHA) ou país (CN)" />
             </div>
             <div class="campo br-input">
                 <label for="f-porto_destino">Porto de destino</label>
-                <input id="f-porto_destino" type="text" placeholder="código do porto" />
+                <input id="f-porto_destino" type="text" placeholder="porto (BRSSZ) ou país (BR)" />
             </div>
             <div class="campo br-input">
                 <label for="f-porto_baldeacao">Porto de baldeação (manifesto)</label>
-                <input id="f-porto_baldeacao" type="text" placeholder="código do porto de carregamento" />
+                <input id="f-porto_baldeacao" type="text" placeholder="porto de carregamento ou país" />
             </div>
             <div class="campo br-input">
                 <label for="f-recinto">Recinto</label>
@@ -652,7 +655,10 @@
                     '<div class="ncm-linha">' +
                         '<span class="rotulo-ncm">NCM</span>' +
                         '<span class="codigo-ncm">' + escapeHtml(n.identificacaoNCM || '--') + '</span>' +
-                        (n.descritivo ? '<span class="descricao-ncm">' + escapeHtml(n.descritivo) + '</span>' : '') +
+                        '<span class="descricao-ncm">' +
+                            (n.descricaoPosicao ? '<span class="posicao-ncm">' + escapeHtml(n.descricaoPosicao) + '</span>' : '') +
+                            (n.descritivo ? '<span class="declarado-ncm">Declarado: ' + escapeHtml(n.descritivo) + '</span>' : '') +
+                        '</span>' +
                     '</div>'
                 );
             }).join('');
@@ -690,13 +696,19 @@
         return '<span class="valor-mini">' + escapeHtml(valorCru || '--') + '</span>';
     }
 
+    function montaPorto(codigo, nome) {
+        if (!codigo) { return '--'; }
+        return escapeHtml(codigo) + (nome ? ' <span class="nome-ref">' + escapeHtml(nome) + '</span>' : '');
+    }
+
     function montaBadgeBaldeacao(card) {
         var manifesto = card.manifesto;
         if (!manifesto || !manifesto.portoCarregamento) { return ''; }
         if (manifesto.portoCarregamento === card.portoOrigemCarga) { return ''; }
         return (
             '<div class="badge-baldeacao"><i class="fas fa-random" aria-hidden="true"></i> Baldeação em ' +
-            escapeHtml(manifesto.portoCarregamento) + '</div>'
+            escapeHtml(manifesto.portoCarregamento) +
+            (manifesto.nomePortoCarregamento ? ' (' + escapeHtml(manifesto.nomePortoCarregamento) + ')' : '') + '</div>'
         );
     }
 
@@ -732,8 +744,11 @@
                         '<span class="status-navii">' + textoStatus + '</span>' +
                     '</div>' +
 
-                    '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') +
-                        (card.embarcacao ? ' · Embarcação ' + escapeHtml(card.embarcacao) : '') + '</div>' +
+                    '<div class="rota-navii">' + montaPorto(card.portoOrigemCarga, card.nomePortoOrigemCarga) + ' → ' +
+                        montaPorto(card.portoDestFinal, card.nomePortoDestFinal) +
+                        (card.embarcacao ? ' · Embarcação ' + escapeHtml(card.nomeEmbarcacao || '') +
+                            ' <span class="nome-ref">' + (card.nomeEmbarcacao ? 'IMO ' : '') + escapeHtml(card.embarcacao) + '</span>' : '') +
+                    '</div>' +
 
                     montaBadgeBaldeacao(card) +
                     montaDescricaoMercadoria(card) +
