@@ -148,8 +148,9 @@ class TestBuscaItensNavii(unittest.TestCase):
         self.assertEqual(ncms['9999.99'], 'só existe no manifesto')
 
     def test_tipo_carga_decodificado_via_enumerado(self):
-        itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1', tipoItemCarga='5')]
-        enumerados = [Enumerado(id='5', tipoItemCarga='Carga Solta')]
+        # Valores reais da tabela Enumerado: tipoItemCarga 1=Conteiner, 2=Carga Solta, 3=Granel, 4=Veiculos
+        itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1', tipoItemCarga='2')]
+        enumerados = [Enumerado(id='2', tipoItemCarga='Carga Solta')]
         sessao = SessaoFake({Item: itens, NCMItem: [], LaudoNCM: [], Enumerado: enumerados})
 
         resultado = busca_itens_navii(sessao, ['CE1'])

@@ -4,9 +4,11 @@ Blueprint Flask do NAVI-I — Análise de risco na importação.
 
 Expõe:
   GET /navii/            -> página HTML (filtros + cards com rolagem infinita)
-  GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página)
+  GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página); na
+                             primeira página (sem cursor) traz também `total`
+                             de contêineres que o filtro encontrou na base
 
-Depende de `busca_ces_navii`, `busca_itens_navii` e `monta_card_navii`,
+Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
 """
 from datetime import datetime
@@ -15,7 +17,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import login_required
 
 from virasana.navii.busca_navii import (
-    busca_ces_navii, busca_itens_navii, busca_nomes_empresas, monta_card_navii,
+    busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
     _janela_efetiva, _janela_previsao,
 )
 
@@ -78,8 +80,9 @@ def api_ces():
         valor = request.args.get(campo)
         if valor:
             filtros[campo] = valor.strip()
-    if request.args.get('concluido') in ('1', 'true', 'True'):
-        filtros['concluido'] = True
+    for campo in ('concluido', 'com_imagem'):
+        if request.args.get(campo) in ('1', 'true', 'True'):
+            filtros[campo] = True
     ncms_max = request.args.get('ncms_max', type=int)
     if ncms_max:
         filtros['ncms_max'] = ncms_max
@@ -97,27 +100,18 @@ def api_ces():
             cursor_id=cursor_id,
             limit=limit,
         )
+        # Contagem só na primeira página: nas seguintes a tela já tem o total.
+        total = None if cursor_id else conta_conteineres_navii(session, tipo_janela, filtros)
     except ValueError as err:
         return jsonify({'erro': str(err)}), 400
 
-    numeros_ce = [ce.numeroCEmercante for _, ce, _, _ in resultados]
-    itens_por_ce = busca_itens_navii(session, numeros_ce)
-
-    valores_empresas = [v for _, ce, _, _ in resultados for v in (ce.embarcador, ce.consignatario)]
-    nomes_empresas = busca_nomes_empresas(session, valores_empresas)
-
-    cards = [
-        _serializa_card(monta_card_navii(
-            ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante), manifesto,
-            nomes_empresas.get(ce.embarcador), nomes_empresas.get(ce.consignatario),
-        ))
-        for ciclo, ce, embarcacao, manifesto in resultados
-    ]
-    next_cursor = cards[-1]['ciclo_de_vida_id'] if len(cards) == limit else None
+    cards = [_serializa_card(card) for card in monta_cards_navii(session, resultados)]
+    next_cursor = cards[-1]['item_id'] if len(cards) == limit else None
 
     return jsonify({
         'cards': cards,
         'next_cursor': next_cursor,
+        'total': total,
         'tipo_janela': tipo_janela,
         'filtros': filtros,
     })

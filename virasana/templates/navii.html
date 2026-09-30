@@ -160,6 +160,14 @@
         }
         .card-navii.concluido .status-navii { color: #168821; background: rgba(22,136,33,.1); }
         .card-navii.aberto .status-navii { color: #E8A33D; background: rgba(232,163,61,.15); }
+        .card-navii.sem-ciclo .status-navii { color: #555; background: #EDEDED; }
+
+        .aviso-sem-ciclo {
+            margin-top: 1.25rem; padding: .625rem .875rem; border-radius: 6px;
+            background: #F3F5F7; border: 1px dashed #C5CBD1; color: #444; font-size: .75rem; line-height: 1.45;
+        }
+        .aviso-sem-ciclo strong { color: #1c1c1c; }
+        .dica-periodo { font-size: .6875rem; color: #777; margin-top: .375rem; line-height: 1.35; }
 
         .grid-dados {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
@@ -185,6 +193,7 @@
         .etapa-timeline .rotulo-etapa { font-size: .6875rem; font-weight: 700; text-transform: uppercase; color: #666; text-align: center; }
         .etapa-timeline .data-etapa { font-size: .75rem; font-weight: 600; color: #1c1c1c; text-align: center; margin-top: .125rem; }
         .etapa-timeline .recinto-etapa { font-size: .6875rem; color: #888; text-align: center; }
+        .etapa-timeline .recinto-etapa .nome-recinto { display: block; color: #555; }
         .etapa-timeline.pendente .data-etapa,
         .etapa-timeline.pendente .recinto-etapa { color: #BBB; }
 
@@ -272,8 +281,9 @@
         <div>
             <h1><span class="marca-navii">NAVI-I</span> Análise de risco na importação</h1>
             <p class="page-subtitle text-down-01 mb-0 mt-1">
-                CEs mercante recém escaneados no período selecionado, cruzados com o ciclo de vida
-                (API Recintos), dados do Mercante e contêineres/NCMs declarados.
+                Contêineres declarados em CEs mercante no período selecionado, com dados do Mercante e
+                contêineres/NCMs declarados. Ciclo de vida (API Recintos) e imagens de escaneamento são
+                exibidos quando localizados — não são obrigatórios.
             </p>
         </div>
     </div>
@@ -299,6 +309,7 @@
                         <input id="f-data-fim" type="date" />
                     </div>
                 </div>
+                <div class="dica-periodo" id="dica-periodo"></div>
             </div>
 
             <div class="campo br-input">
@@ -337,6 +348,11 @@
             </div>
 
             <div class="campo campo-checkbox">
+                <input id="f-com_imagem" type="checkbox" />
+                <label for="f-com_imagem">Somente com imagem de escaneamento</label>
+            </div>
+
+            <div class="campo campo-checkbox">
                 <input id="f-concluido" type="checkbox" />
                 <label for="f-concluido">Somente entregues ao importador</label>
             </div>
@@ -364,7 +380,7 @@
 
             <div id="estado-vazio" class="estado-vazio" hidden>
                 <div class="icone"><i class="fas fa-box-open" aria-hidden="true"></i></div>
-                <h3 class="mb-1">Nenhum CE encontrado</h3>
+                <h3 class="mb-1">Nenhum contêiner encontrado</h3>
                 <p class="page-subtitle">Ajuste os filtros ou o período e tente novamente.</p>
             </div>
 
@@ -393,7 +409,15 @@
     var rotulos = {
         ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
-        ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador'
+        ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador',
+        com_imagem: 'Com imagem de escaneamento'
+    };
+    var CHECKBOXES = ['concluido', 'com_imagem'];
+
+    var DICAS_PERIODO = {
+        prevista: 'Data prevista de atracação do navio (escala do manifesto do CE).',
+        efetiva: 'Data de desembarque do contêiner (ciclo de vida). Sem ciclo de vida localizado, ' +
+                 'usa a data prevista de atracação do navio.'
     };
 
     var ETAPAS_TIMELINE = [
@@ -408,6 +432,7 @@
         filtros: {},
         periodo: { inicio: DEFAULTS_PERIODO.efetiva.inicio, fim: DEFAULTS_PERIODO.efetiva.fim },
         cursor: null,
+        total: null,
         carregando: false,
         fim: false
     };
@@ -503,6 +528,7 @@
 
     function aplicarDatasDefault(tipoJanela) {
         var defaults = DEFAULTS_PERIODO[tipoJanela];
+        document.getElementById('dica-periodo').textContent = DICAS_PERIODO[tipoJanela];
         document.getElementById('f-data-inicio').value = defaults.inicio;
         document.getElementById('f-data-fim').value = defaults.fim;
         estadoBusca.periodo = { inicio: defaults.inicio, fim: defaults.fim };
@@ -512,15 +538,15 @@
         el.chips.innerHTML = '';
         Object.keys(estadoBusca.filtros).forEach(function (chave) {
             var valor = estadoBusca.filtros[chave];
-            var texto = (chave === 'concluido') ? 'sim' : valor;
+            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : valor;
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
                 ' <button type="button" aria-label="remover">×</button>';
             chip.querySelector('button').addEventListener('click', function () {
                 delete estadoBusca.filtros[chave];
-                if (chave === 'concluido') {
-                    document.getElementById('f-concluido').checked = false;
+                if (CHECKBOXES.indexOf(chave) >= 0) {
+                    document.getElementById('f-' + chave).checked = false;
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
@@ -566,12 +592,37 @@
                 '<span class="ponto"></span>' +
                 '<div class="rotulo-etapa">' + etapa.rotulo + '</div>' +
                 '<div class="data-etapa">' + (dataFormatada || 'Não ocorrido') + '</div>' +
-                '<div class="recinto-etapa">' + (dados && dados.recinto ? escapeHtml(dados.recinto) : '') + '</div>' +
+                '<div class="recinto-etapa">' + montaRecinto(dados) + '</div>' +
+            '</div>'
+        );
+    }
+
+    function montaRecinto(dados) {
+        if (!dados || !dados.recinto) { return ''; }
+        return escapeHtml(dados.recinto) +
+            (dados.nomeRecinto ? '<span class="nome-recinto">' + escapeHtml(dados.nomeRecinto) + '</span>' : '');
+    }
+
+    function montaAvisoSemCiclo(card) {
+        var terminal = card.terminalDescarregamento;
+        var textoTerminal = terminal
+            ? ' Terminal de descarregamento (manifesto): <strong>' + escapeHtml(terminal.codigo) +
+              (terminal.nome ? ' — ' + escapeHtml(terminal.nome) : '') + '</strong>.'
+            : '';
+        var textoAtracacao = card.dataPrevistaAtracacao
+            ? ' Atracação prevista: <strong>' + formatarDataBR(card.dataPrevistaAtracacao) + '</strong>.'
+            : '';
+        return (
+            '<div class="aviso-sem-ciclo"><i class="fas fa-info-circle" aria-hidden="true"></i> ' +
+                '<strong>Ciclo de vida não localizado.</strong> O contêiner consta no CE declarado, mas ainda não ' +
+                'há eventos da API Recintos (desembarque, pesagem, escaneamento, saída) para ele — a carga pode ' +
+                'não ter desembarcado ainda ou os eventos não foram encontrados.' + textoAtracacao + textoTerminal +
             '</div>'
         );
     }
 
     function montaTimeline(card) {
+        if (card.cicloDeVidaLocalizado === false) { return montaAvisoSemCiclo(card); }
         var linha = card.linhaDoTempo || {};
         var etapas = ETAPAS_TIMELINE.map(function (etapa) {
             return montaEtapaTimeline(etapa, linha[etapa.chave]);
@@ -654,7 +705,9 @@
 
     function montaCard(card) {
         var div = document.createElement('div');
-        div.className = 'br-card card-navii ' + (card.concluido ? 'concluido' : 'aberto');
+        var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
+        var textoStatus = { 'sem-ciclo': 'Sem ciclo de vida', concluido: 'Entregue ao importador', aberto: 'Em monitoramento' }[classeStatus];
+        div.className = 'br-card card-navii ' + classeStatus;
 
         var painelImagens = montaPainelImagens(card);
         var htmlImagens = typeof painelImagens === 'string' ? painelImagens : painelImagens.html;
@@ -671,7 +724,7 @@
                                 (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
                             '</div>' +
                         '</div>' +
-                        '<span class="status-navii">' + (card.concluido ? 'Entregue ao importador' : 'Em monitoramento') + '</span>' +
+                        '<span class="status-navii">' + textoStatus + '</span>' +
                     '</div>' +
 
                     '<div class="rota-navii">' + escapeHtml(card.portoOrigemCarga || '--') + ' → ' + escapeHtml(card.portoDestFinal || '--') +
@@ -715,6 +768,16 @@
         }
 
         return div;
+    }
+
+    function atualizaContagem() {
+        var carregados = el.grid.children.length;
+        var partes = [];
+        if (estadoBusca.total !== null) {
+            partes.push(estadoBusca.total.toLocaleString('pt-BR') + ' contêiner(es) encontrado(s) com este filtro');
+        }
+        partes.push(carregados + ' card(s) carregado(s)');
+        el.contagem.textContent = partes.join(' · ');
     }
 
     function atualizaPeriodoAtivo() {
@@ -761,7 +824,8 @@
                     el.estado.textContent = 'Fim dos resultados.';
                 }
 
-                el.contagem.textContent = el.grid.children.length + ' card(s) carregado(s)';
+                if (dados.total !== null && dados.total !== undefined) { estadoBusca.total = dados.total; }
+                atualizaContagem();
             })
             .catch(function (e) {
                 el.estado.textContent = 'Falha ao carregar: ' + e.message;
@@ -775,6 +839,7 @@
 
     function reiniciarBusca() {
         estadoBusca.cursor = null;
+        estadoBusca.total = null;
         estadoBusca.fim = false;
         el.grid.innerHTML = '';
         el.estado.textContent = '';
@@ -803,7 +868,9 @@
         });
         var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
         if (ncmsMax > 0) { estadoBusca.filtros.ncms_max = ncmsMax; }
-        if (document.getElementById('f-concluido').checked) { estadoBusca.filtros.concluido = 1; }
+        CHECKBOXES.forEach(function (campo) {
+            if (document.getElementById('f-' + campo).checked) { estadoBusca.filtros[campo] = 1; }
+        });
 
         var dataInicio = document.getElementById('f-data-inicio').value;
         var dataFim = document.getElementById('f-data-fim').value;
@@ -816,7 +883,7 @@
         campos.forEach(function (campo) { document.getElementById('f-' + campo).value = ''; });
         document.getElementById('f-ncms_max').value = 0;
         document.getElementById('valor-ncms_max').textContent = 'Sem limite';
-        document.getElementById('f-concluido').checked = false;
+        CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = false; });
         estadoBusca.filtros = {};
         aplicarDatasDefault(estadoBusca.tipo_janela);
         reiniciarBusca();

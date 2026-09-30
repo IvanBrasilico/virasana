@@ -2,16 +2,26 @@
 """
 Camada de dados (SQLAlchemy) do NAVI-I — Análise de risco na importação.
 
-Busca CEs mercante dentro de uma janela de atracação (prevista ou efetiva),
-cruza com o Ciclo de Vida (API Recintos) e exige que já existam escaneamentos
-com imagem associada, para alimentar os cards em rolagem infinita.
+Busca os contêineres declarados em CEs mercante (`Item`) dentro de uma janela
+de atracação (prevista ou efetiva), para alimentar os cards em rolagem
+infinita. Cada card = um contêiner declarado (CE + contêiner).
+
+O Ciclo de Vida (API Recintos) é OPCIONAL: muitas vezes ele não localiza os
+eventos (desembarque, saída, escaneamento...) e, na previsão de atracação, a
+carga ainda nem desembarcou. Por isso a busca parte do CE declarado e o ciclo
+é apenas cruzado quando existir — filtros que dependem dele ("somente com
+imagem", "entregue ao importador") restringem aos contêineres que o têm.
 
 Suporta filtros sucessivos (NCM, rota, porto de baldeação do manifesto,
 produto, recinto, empresa, ciclo concluído/"entregue ao importador",
-quantidade máxima de NCMs distintos) e paginação por cursor (ID decrescente).
+quantidade máxima de NCMs distintos, somente com imagem de escaneamento),
+contagem total do filtro e paginação por cursor (Item.ID decrescente).
 A janela de dias (`_janela_previsao`/`_janela_efetiva`) é apenas a *sugestão*
 de período inicial — `data_inicio`/`data_fim` em `filtros` sobrescrevem essa
 sugestão.
+
+A montagem da query (`monta_query_navii`) é separada da execução para que o
+script `diagnostico_sql.py` rode EXPLAIN exatamente sobre as queries da tela.
 
 Enriquecimento cruza também com dados do repo irmão bhadrasana2
 (`bhadrasana.models.laudo`, tabelas `laudo_empresas`/`laudo_ncm`) para
@@ -26,9 +36,11 @@ Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
 """
 import sys
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import (
+    BigInteger, Column, MetaData, Table, VARCHAR, and_, exists, func, or_, select, tuple_, union,
+)
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -42,6 +54,19 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.laudo import NCM as LaudoNCM
+
+# Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
+# declarada aqui só com as colunas lidas pelo NAVI-I. Importar o model de lá
+# carregaria o registry inteiro do OVR (relationship com RVF etc.), que não
+# configura sem os demais models do bhadrasana — e só lemos código -> nome.
+# `test_navii_busca_sqlite.TestTabelaRecintos` garante que as colunas batem.
+tabela_recintos = Table(
+    'ovr_recintos', MetaData(),
+    Column('id', BigInteger, primary_key=True),
+    Column('nome', VARCHAR(50)),
+    Column('cod_siscomex', VARCHAR(20)),
+    Column('cod_carga', VARCHAR(20)),
+)
 
 # Janelas de atracação (em dias, a partir de hoje) — usadas só como SUGESTÃO
 # de período inicial na tela; o usuário pode escolher outro intervalo.
@@ -83,134 +108,173 @@ def _parse_data(valor: str) -> datetime:
     return datetime.strptime(valor, '%Y-%m-%d')
 
 
-def busca_ces_navii(
+def _periodo_navii(tipo_janela: str, filtros: dict) -> Tuple[str, str]:
+    """Período ('YYYY-MM-DD', 'YYYY-MM-DD') efetivamente usado na busca:
+    `data_inicio`/`data_fim` dos filtros (se vierem os dois) ou a sugestão da
+    janela."""
+    if filtros.get('data_inicio') and filtros.get('data_fim'):
+        return filtros['data_inicio'], filtros['data_fim']
+    if tipo_janela == 'prevista':
+        return _janela_previsao()
+    inicio, fim = _janela_efetiva()
+    return inicio.strftime('%Y-%m-%d'), fim.strftime('%Y-%m-%d')
+
+
+def _mesmo_conteiner_do_ciclo():
+    """Critério de ligação Item (contêiner declarado) <-> CicloDeVidaImportacao."""
+    return and_(
+        CicloDeVidaImportacao.numeroCEmercante == Item.numeroCEmercante,
+        CicloDeVidaImportacao.numeroConteiner == Item.codigoConteiner,
+    )
+
+
+def _ciclos_onde(*criterios):
+    """Subquery (CE, contêiner) dos ciclos de vida que atendem aos critérios,
+    para usar com `tuple_(Item.numeroCEmercante, Item.codigoConteiner).in_()`."""
+    return select(
+        CicloDeVidaImportacao.numeroCEmercante, CicloDeVidaImportacao.numeroConteiner,
+    ).where(*criterios)
+
+
+def _manifestos_com_atracacao_prevista(inicio: str, fim: str):
+    """Subquery dos manifestos com escala de data PREVISTA de atracação no
+    período (VARCHAR 'YYYY-MM-DD', comparação textual).
+
+    Usada sempre como `Conhecimento.manifestoCE.in_(...)` (semijoin) e nunca
+    como JOIN: um manifesto costuma ter várias escalas, e o JOIN repetiria o
+    contêiner uma vez por escala dentro do período.
+    """
+    return (
+        select(EscalaManifesto.manifesto)
+        .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
+        .where(
+            Escala.dataPrevistaAtracacao >= inicio,
+            Escala.dataPrevistaAtracacao <= fim,
+        )
+    )
+
+
+def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime):
+    """IDs de Item cujo ciclo de vida registra desembarque do contêiner no período."""
+    return (
+        select(Item.ID.label('item_id'))
+        .select_from(CicloDeVidaImportacao)
+        .join(Item, _mesmo_conteiner_do_ciclo())
+        .where(CicloDeVidaImportacao.data_desembarque.between(inicio, fim))
+    )
+
+
+def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str):
+    """Restringe a query (Item, Conhecimento) aos contêineres da janela.
+
+    - 'prevista': manifesto do CE com escala de data prevista de atracação no
+      período.
+    - 'efetiva': desembarque do contêiner (ciclo de vida) no período; para os
+      contêineres SEM desembarque localizado pelo ciclo de vida, cai para a
+      data prevista de atracação da escala (fallback combinado com o usuário).
+      As duas origens são unidas (UNION, sem repetição) em uma tabela derivada
+      de Item.ID — um OR entre elas impediria o banco de partir dos índices
+      de data.
+    """
+    if tipo_janela == 'prevista':
+        return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim)))
+    inicio_dt = _parse_data(inicio)
+    fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
+    sem_desembarque_localizado = ~exists().where(
+        _mesmo_conteiner_do_ciclo(),
+        CicloDeVidaImportacao.data_desembarque.isnot(None),
+    )
+    itens_pela_atracacao_prevista = (
+        select(Item.ID.label('item_id'))
+        .select_from(Item)
+        .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
+        .where(
+            Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim)),
+            sem_desembarque_localizado,
+        )
+    )
+    janela = union(
+        _itens_com_desembarque_efetivo(inicio_dt, fim_dt),
+        itens_pela_atracacao_prevista,
+    ).subquery('janela')
+    return q.join(janela, janela.c.item_id == Item.ID)
+
+
+def monta_query_navii(
     session,
     tipo_janela: str = 'efetiva',
     filtros: Optional[dict] = None,
-    exigir_escaneamento: Optional[bool] = None,
-    cursor_id: Optional[int] = None,
-    limit: int = 20,
-) -> List[Tuple[CicloDeVidaImportacao, Conhecimento, Optional[str], Optional[Manifesto]]]:
-    """Busca CEs mercante na janela de atracação informada, para a tela do NAVI-I.
+    exigir_escaneamento: bool = False,
+):
+    """Monta (sem executar, sem ordenar/paginar) a query (Item, Conhecimento)
+    dos contêineres declarados que atendem à janela e aos filtros. A única
+    consulta feita aqui é a resolução do filtro `recinto` em `ovr_recintos`
+    (tabela minúscula), para passar os terminais como lista literal.
 
     Args:
         session: sessão SQLAlchemy.
-        tipo_janela: 'prevista' (via Escala.dataPrevistaAtracacao)
-            ou 'efetiva' (via CicloDeVidaImportacao.data_desembarque).
+        tipo_janela: 'prevista' (Escala.dataPrevistaAtracacao) ou 'efetiva'
+            (CicloDeVidaImportacao.data_desembarque, com fallback para
+            Escala.dataPrevistaAtracacao quando o ciclo não localizou o
+            desembarque — ver `_filtra_janela`).
         filtros: dict opcional com filtros sucessivos:
-            - ncm (str): prefixo do código NCM (ex.: '8471')
+            - ncm (str): prefixo do código NCM declarado NO CONTÊINER (ex.: '8471')
+            - produto (str): busca textual na descrição do NCM do contêiner
+              (NCMItem.descritivo) — ncm e produto valem para o mesmo NCMItem
             - porto_origem / porto_destino (str): código do porto de origem/destino
               da carga (Conhecimento — o que o embarcador declarou)
             - porto_baldeacao (str): código do porto de CARREGAMENTO do Manifesto
               (Manifesto.portoCarregamento) — quando difere do porto de origem do
               Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
-            - produto (str): busca textual na descrição do item (NCMItem.descritivo)
             - recinto (str): código do recinto de desembarque OU de armazenagem
+              do ciclo de vida, OU o terminal de descarregamento do Manifesto
+              (direto ou mapeado via ovr_recintos.cod_siscomex -> cod_carga),
+              para que contêineres sem ciclo de vida também sejam encontrados
             - empresa (str): busca textual em embarcador ou consignatário
-            - concluido (bool): se True, só CEs com ciclo de vida concluído
-              ("entregue ao importador")
+            - concluido (bool): só contêineres com ciclo de vida concluído
+              ("entregue ao importador") — exige ciclo de vida
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
-              ("até N NCMs distintos")
+              ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
+            - com_imagem (bool): equivalente a `exigir_escaneamento=True`
             - data_inicio / data_fim (str 'YYYY-MM-DD'): sobrescrevem a janela
               sugerida por `_janela_previsao`/`_janela_efetiva` para esse
               `tipo_janela`. Os dois precisam vir juntos.
-        exigir_escaneamento: se True, só retorna CEs cujo Ciclo de Vida já tem ao
-            menos um escaneamento com imagem associada ("recém escaneados"). Se
-            None (padrão), o comportamento é condicional à janela: True para
-            'efetiva' (já desembarcou, é razoável já ter sido escaneado) e False
-            para 'prevista' (a carga ainda não chegou, exigir escaneamento
-            devolveria pouco ou nada). Pode ser sobrescrito explicitamente.
-        cursor_id: ID do último CicloDeVidaImportacao.ID já exibido na tela, para
-            paginação por rolagem infinita (busca sempre ID menor que o cursor).
-        limit: tamanho da página.
+        exigir_escaneamento: se True, só contêineres cujo ciclo de vida já tem
+            ao menos um escaneamento com imagem associada. Padrão False: o
+            ciclo de vida/imagem são opcionais.
 
-    Returns:
-        Lista de tuplas (CicloDeVidaImportacao, Conhecimento, nome_embarcacao,
-        Manifesto), ordenada por CicloDeVidaImportacao.ID decrescente (mais
-        recentes primeiro). `nome_embarcacao` e `Manifesto` podem ser None
-        quando a Escala/Manifesto do CE ainda não foi recebida/casada (LEFT JOIN).
-
-    Observação de escopo:
-        Na janela 'efetiva', a data usada é `data_desembarque` do próprio
-        Ciclo de Vida — evento específico do contêiner (EmbarqueDesembarque),
-        não a atracação do navio como um todo (Escala), que é menos precisa e
-        armazenada como string. A ligação com "recém escaneados" continua
-        sendo pela EXISTÊNCIA de escaneamento com imagem, não pela data do
-        escaneamento cair dentro da janela — se quiser exigir isso também, é
-        só avisar para adicionarmos o filtro em
-        CicloDeVidaImportacaoEscaneamentos.data_escaneamento.
-
-        Filtros "subjetivos" (empresa e sócios cruzados com listas de risco) não
-        estão implementados aqui — dependem de uma fonte de dados de sócios que
-        ainda não existe no modelo atual.
+    Filtros que dependem de outras tabelas são subqueries `IN (...)` (e não
+    JOINs) para não multiplicar linhas: dispensa DISTINCT e deixa a contagem
+    exata.
     """
     filtros = filtros or {}
     if tipo_janela not in TIPOS_JANELA_VALIDOS:
         raise ValueError(f"tipo_janela inválido: {tipo_janela!r}. Use 'prevista' ou 'efetiva'.")
-    if exigir_escaneamento is None:
-        exigir_escaneamento = (tipo_janela == 'efetiva')
+    inicio, fim = _periodo_navii(tipo_janela, filtros)
 
-    # Manifesto/Escala (nome da embarcação, dados de manifesto e porto de
-    # baldeação, exibidos no card) são sempre trazidos via LEFT JOIN,
-    # independente da janela — em 'prevista' também são usados para filtrar a
-    # data prevista de atracação.
     q = (
-        session.query(CicloDeVidaImportacao, Conhecimento, Escala.embarcacao, Manifesto)
-        .join(Conhecimento, Conhecimento.numeroCEmercante == CicloDeVidaImportacao.numeroCEmercante)
-        .outerjoin(Manifesto, Manifesto.numero == Conhecimento.manifestoCE)
-        .outerjoin(EscalaManifesto, EscalaManifesto.manifesto == Manifesto.numero)
-        .outerjoin(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
+        session.query(Item, Conhecimento)
+        .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
     )
+    q = _filtra_janela(q, tipo_janela, inicio, fim)
+    conteiner_do_item = tuple_(Item.numeroCEmercante, Item.codigoConteiner)
 
-    data_inicio_str = filtros.get('data_inicio')
-    data_fim_str = filtros.get('data_fim')
-    tem_intervalo_customizado = bool(data_inicio_str and data_fim_str)
+    if exigir_escaneamento or filtros.get('com_imagem'):
+        q = q.filter(conteiner_do_item.in_(
+            _ciclos_onde(CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None))
+            .join(CicloDeVidaImportacaoEscaneamentos,
+                  CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
+        ))
 
-    if tipo_janela == 'prevista':
-        if tem_intervalo_customizado:
-            inicio, fim = data_inicio_str, data_fim_str
-        else:
-            inicio, fim = _janela_previsao()
-        q = q.filter(
-            Escala.dataPrevistaAtracacao.isnot(None),
-            Escala.dataPrevistaAtracacao >= inicio,
-            Escala.dataPrevistaAtracacao <= fim,
-        )
-    else:  # 'efetiva' -> usa data_desembarque (por contêiner, real DateTime)
-        if tem_intervalo_customizado:
-            inicio = _parse_data(data_inicio_str)
-            # inclui o dia final inteiro (até 23:59:59)
-            fim = _parse_data(data_fim_str) + timedelta(days=1, seconds=-1)
-        else:
-            inicio, fim = _janela_efetiva()
-        q = q.filter(
-            CicloDeVidaImportacao.data_desembarque.isnot(None),
-            CicloDeVidaImportacao.data_desembarque >= inicio,
-            CicloDeVidaImportacao.data_desembarque <= fim,
-        )
-
-    if exigir_escaneamento:
-        q = q.filter(
-            CicloDeVidaImportacao.escaneamentos.any(
-                CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None)
-            )
-        )
-
-    # Filtros que dependem de Item / NCMItem (join único, sob demanda)
-    precisa_item = bool(filtros.get('ncm') or filtros.get('produto'))
-    if precisa_item:
-        q = q.join(Item, Item.numeroCEmercante == Conhecimento.numeroCEmercante)
-        q = q.join(
-            NCMItem,
-            and_(
-                NCMItem.numeroCEMercante == Item.numeroCEmercante,
-                NCMItem.codigoConteiner == Item.codigoConteiner,
-            ),
-        )
-        if filtros.get('ncm'):
-            q = q.filter(NCMItem.identificacaoNCM.like(f"{filtros['ncm']}%"))
-        if filtros.get('produto'):
-            q = q.filter(NCMItem.descritivo.ilike(f"%{filtros['produto']}%"))
+    criterios_ncm = []
+    if filtros.get('ncm'):
+        criterios_ncm.append(NCMItem.identificacaoNCM.like(f"{filtros['ncm']}%"))
+    if filtros.get('produto'):
+        criterios_ncm.append(NCMItem.descritivo.ilike(f"%{filtros['produto']}%"))
+    if criterios_ncm:
+        q = q.filter(conteiner_do_item.in_(
+            select(NCMItem.numeroCEMercante, NCMItem.codigoConteiner).where(*criterios_ncm)
+        ))
 
     if filtros.get('porto_origem'):
         q = q.filter(Conhecimento.portoOrigemCarga == filtros['porto_origem'])
@@ -219,13 +283,30 @@ def busca_ces_navii(
         q = q.filter(Conhecimento.portoDestFinal == filtros['porto_destino'])
 
     if filtros.get('porto_baldeacao'):
-        q = q.filter(Manifesto.portoCarregamento == filtros['porto_baldeacao'])
+        q = q.filter(Conhecimento.manifestoCE.in_(
+            select(Manifesto.numero).where(Manifesto.portoCarregamento == filtros['porto_baldeacao'])
+        ))
 
     if filtros.get('recinto'):
         recinto = filtros['recinto']
+        # Terminais resolvidos antes (ovr_recintos tem dezenas de linhas) e
+        # passados como lista literal: com subquery aninhada o banco varria
+        # manifestosresumo inteira em vez de usar o índice do terminal.
+        terminais_do_recinto = {recinto} | {
+            cod_carga for (cod_carga,) in session.execute(
+                select(tabela_recintos.c.cod_carga).where(
+                    tabela_recintos.c.cod_siscomex == recinto, tabela_recintos.c.cod_carga.isnot(None),
+                )
+            ).all()
+        }
         q = q.filter(or_(
-            CicloDeVidaImportacao.codigoRecintoDesembarque == recinto,
-            CicloDeVidaImportacao.codigoRecintoArmazenagem == recinto,
+            conteiner_do_item.in_(_ciclos_onde(or_(
+                CicloDeVidaImportacao.codigoRecintoDesembarque == recinto,
+                CicloDeVidaImportacao.codigoRecintoArmazenagem == recinto,
+            ))),
+            Conhecimento.manifestoCE.in_(select(Manifesto.numero).where(
+                Manifesto.codigoTerminalDescarregamento.in_(terminais_do_recinto),
+            )),
         ))
 
     if filtros.get('empresa'):
@@ -236,33 +317,165 @@ def busca_ces_navii(
         ))
 
     if filtros.get('concluido'):
-        q = q.filter(CicloDeVidaImportacao.concluido.is_(True))
+        q = q.filter(conteiner_do_item.in_(
+            _ciclos_onde(CicloDeVidaImportacao.concluido.is_(True))
+        ))
 
     if filtros.get('ncms_max'):
-        subq_ncms = (
-            session.query(
-                NCMItem.numeroCEMercante.label('ce'),
-                func.count(func.distinct(NCMItem.identificacaoNCM)).label('qtd_ncms'),
-            )
-            .group_by(NCMItem.numeroCEMercante)
-            .subquery()
+        # Subquery correlacionada por CE (usa ix_ncmitem_chave) — em vez de
+        # agrupar a tabela ncmitemresumo inteira a cada busca.
+        qtd_ncms = (
+            select(func.count(func.distinct(NCMItem.identificacaoNCM)))
+            .where(NCMItem.numeroCEMercante == Conhecimento.numeroCEmercante)
+            .scalar_subquery()
         )
-        q = (
-            q.join(subq_ncms, subq_ncms.c.ce == Conhecimento.numeroCEmercante)
-             .filter(subq_ncms.c.qtd_ncms <= int(filtros['ncms_max']))
-        )
+        q = q.filter(qtd_ncms <= int(filtros['ncms_max']))
 
+    return q
+
+
+class ResultadoNavii(NamedTuple):
+    """Uma linha da busca: o contêiner declarado e o que foi possível cruzar."""
+    item: Item
+    conhecimento: Conhecimento
+    ciclo: Optional[CicloDeVidaImportacao]
+    manifesto: Optional[Manifesto]
+    embarcacao: Optional[str]
+    data_prevista_atracacao: Optional[str]
+
+
+def busca_ces_navii(
+    session,
+    tipo_janela: str = 'efetiva',
+    filtros: Optional[dict] = None,
+    exigir_escaneamento: bool = False,
+    cursor_id: Optional[int] = None,
+    limit: int = 20,
+) -> List[ResultadoNavii]:
+    """Busca uma página de contêineres declarados para a tela do NAVI-I.
+
+    Janela/filtros: ver `monta_query_navii`. `cursor_id` é o último Item.ID já
+    exibido (rolagem infinita: busca sempre ID menor que o cursor).
+
+    Returns:
+        Lista de `ResultadoNavii`, ordenada por Item.ID decrescente (mais
+        recentes primeiro). `ciclo`, `manifesto`, `embarcacao` e
+        `data_prevista_atracacao` podem ser None — o ciclo de vida é opcional
+        e Manifesto/Escala podem ainda não ter sido recebidos.
+
+    Observação de escopo:
+        Filtros "subjetivos" (empresa e sócios cruzados com listas de risco) não
+        estão implementados aqui — dependem de uma fonte de dados de sócios que
+        ainda não existe no modelo atual.
+    """
+    q = monta_query_navii(session, tipo_janela, filtros, exigir_escaneamento)
     if cursor_id:
-        q = q.filter(CicloDeVidaImportacao.ID < cursor_id)
+        q = q.filter(Item.ID < cursor_id)
+    linhas = q.order_by(Item.ID.desc()).limit(limit).all()
 
-    q = q.distinct().order_by(CicloDeVidaImportacao.ID.desc()).limit(limit)
-
-    resultado = q.all()
+    ciclos = busca_ciclos_navii(session, [item for item, _ in linhas])
+    manifestos = busca_manifestos_navii(session, [ce.manifestoCE for _, ce in linhas])
+    resultado = []
+    for item, ce in linhas:
+        dados_manifesto = manifestos.get(ce.manifestoCE, {})
+        resultado.append(ResultadoNavii(
+            item=item,
+            conhecimento=ce,
+            ciclo=ciclos.get((item.numeroCEmercante, item.codigoConteiner)),
+            manifesto=dados_manifesto.get('manifesto'),
+            embarcacao=dados_manifesto.get('embarcacao'),
+            data_prevista_atracacao=dados_manifesto.get('dataPrevistaAtracacao'),
+        ))
     logger.info(
-        f'busca_ces_navii: janela={tipo_janela} [{inicio}..{fim}] filtros={filtros} '
-        f'-> {len(resultado)} CEs retornados'
+        f'busca_ces_navii: janela={tipo_janela} filtros={filtros} '
+        f'cursor={cursor_id} -> {len(resultado)} contêineres retornados'
     )
     return resultado
+
+
+def conta_conteineres_navii(
+    session,
+    tipo_janela: str = 'efetiva',
+    filtros: Optional[dict] = None,
+    exigir_escaneamento: bool = False,
+) -> int:
+    """Total de contêineres declarados que atendem à janela/filtros (todas as
+    páginas) — exibido na tela junto com os cards já carregados."""
+    q = monta_query_navii(session, tipo_janela, filtros, exigir_escaneamento)
+    return q.with_entities(func.count(Item.ID)).scalar() or 0
+
+
+def busca_ciclos_navii(session, itens: List[Item]) -> Dict[Tuple[str, str], CicloDeVidaImportacao]:
+    """Ciclos de vida dos contêineres da página, em lote, por (CE, contêiner).
+
+    Quando há mais de um ciclo para o mesmo contêiner/CE (ex.: vários
+    desembarques informados), prevalece o mais recente (maior ID).
+    Contêiner sem ciclo simplesmente não aparece no dict.
+    """
+    numeros_ce = {item.numeroCEmercante for item in itens if item.numeroCEmercante}
+    if not numeros_ce:
+        return {}
+    ciclos = (
+        session.query(CicloDeVidaImportacao)
+        .filter(CicloDeVidaImportacao.numeroCEmercante.in_(numeros_ce))
+        .order_by(CicloDeVidaImportacao.ID)
+        .all()
+    )
+    return {(ciclo.numeroCEmercante, ciclo.numeroConteiner): ciclo for ciclo in ciclos}
+
+
+def busca_manifestos_navii(session, numeros_manifesto: Iterable[str]) -> Dict[str, dict]:
+    """Manifesto + dados da escala (embarcação, data prevista de atracação) dos
+    CEs da página, em lote, por número do manifesto.
+
+    Returns:
+        {numero: {'manifesto': Manifesto | None, 'embarcacao': str | None,
+                  'dataPrevistaAtracacao': str | None}}
+        Com mais de uma escala para o mesmo manifesto, usa a de maior data
+        prevista de atracação.
+    """
+    numeros = {n for n in numeros_manifesto if n}
+    if not numeros:
+        return {}
+    resultado = {n: {'manifesto': None, 'embarcacao': None, 'dataPrevistaAtracacao': None}
+                 for n in numeros}
+    for manifesto in session.query(Manifesto).filter(Manifesto.numero.in_(numeros)).all():
+        resultado[manifesto.numero]['manifesto'] = manifesto
+    escalas = (
+        session.query(EscalaManifesto.manifesto, Escala.embarcacao, Escala.dataPrevistaAtracacao)
+        .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
+        .filter(EscalaManifesto.manifesto.in_(numeros))
+        .all()
+    )
+    for numero, embarcacao, data_prevista in escalas:
+        dados = resultado.get(numero)
+        if dados is None:
+            continue
+        if data_prevista and (dados['dataPrevistaAtracacao'] or '') < data_prevista:
+            dados['dataPrevistaAtracacao'] = data_prevista
+            dados['embarcacao'] = embarcacao or dados['embarcacao']
+        elif not dados['embarcacao']:
+            dados['embarcacao'] = embarcacao
+    return resultado
+
+
+def busca_nomes_recintos(session, codigos: Iterable[str], campo: str = 'cod_siscomex') -> Dict[str, str]:
+    """Resolve código de recinto -> nome em lote via `ovr_recintos` (repo
+    bhadrasana2, `bhadrasana.models.ovr.Recinto`).
+
+    `campo='cod_siscomex'` para os códigos da API Recintos (ciclo de vida);
+    `campo='cod_carga'` para o terminal de descarregamento do Manifesto
+    (mesmo mapeamento usado em `integracao/risco/conformidade_manager.py`).
+    Códigos sem correspondência não aparecem no dict.
+    """
+    codigos = {c for c in codigos if c}
+    if not codigos:
+        return {}
+    coluna = tabela_recintos.c[campo]
+    linhas = session.execute(
+        select(coluna, tabela_recintos.c.nome).where(coluna.in_(codigos))
+    ).all()
+    return {codigo: nome for codigo, nome in linhas if nome}
 
 
 def _texto_para_float(valor: Optional[str]) -> Optional[float]:
@@ -417,25 +630,37 @@ def busca_nomes_empresas(session, valores: List[str]) -> Dict[str, str]:
 
 
 def monta_card_navii(
-    ciclo: CicloDeVidaImportacao,
+    ciclo: Optional[CicloDeVidaImportacao],
     conhecimento: Conhecimento,
     embarcacao: Optional[str] = None,
     itens: Optional[dict] = None,
     manifesto: Optional[Manifesto] = None,
     nome_embarcador: Optional[str] = None,
     nome_consignatario: Optional[str] = None,
+    item: Optional[Item] = None,
+    data_prevista_atracacao: Optional[str] = None,
+    nomes_recintos: Optional[Dict[str, str]] = None,
+    nomes_terminais: Optional[Dict[str, str]] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
     tempo do ciclo de vida (API Recintos) e as referências às imagens de
     escaneamento (já carregadas via `ciclo.escaneamentos`, lazy='selectin').
 
+    `ciclo` pode ser None: o contêiner foi declarado no CE mas o ciclo de vida
+    não foi localizado (ainda não desembarcou, ou a API Recintos não trouxe os
+    eventos) — o card sai com `cicloDeVidaLocalizado=False`, linha do tempo
+    vazia e sem imagens. `item` é o contêiner declarado que originou o card.
+
     `itens` é o dict retornado por `busca_itens_navii` para este CE (ou None
     quando não há Item/NCMItem carregados para ele). `nome_embarcador`/
     `nome_consignatario` vêm de `busca_nomes_empresas` (ou None se o valor
-    guardado não bateu com nenhum CNPJ conhecido).
+    guardado não bateu com nenhum CNPJ conhecido). `nomes_recintos`/
+    `nomes_terminais` vêm de `busca_nomes_recintos` (por cod_siscomex/cod_carga).
     """
-    imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None]
+    nomes_recintos = nomes_recintos or {}
+    nomes_terminais = nomes_terminais or {}
+    imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None] if ciclo else []
     itens = itens or {'pesoBrutoTotal': None, 'qtdNcmsDistintos': 0, 'conteineres': []}
     numero_ce_master = conhecimento.numeroCEMaster
     if numero_ce_master == conhecimento.numeroCEmercante:
@@ -450,10 +675,25 @@ def monta_card_navii(
             'numeroViagem': manifesto.numeroViagem,
         }
 
+    def etapa(data_attr: str, recinto_attr: str) -> dict:
+        codigo = getattr(ciclo, recinto_attr) if ciclo else None
+        return {
+            'data': getattr(ciclo, data_attr) if ciclo else None,
+            'recinto': codigo,
+            'nomeRecinto': nomes_recintos.get(codigo),
+        }
+
+    terminal = manifesto.codigoTerminalDescarregamento if manifesto is not None else None
+    numero_conteiner = (ciclo.numeroConteiner if ciclo else None) or (item.codigoConteiner if item else None)
+
     return {
-        'ciclo_de_vida_id': ciclo.ID,
-        'numeroConteiner': ciclo.numeroConteiner,
-        'numeroCEmercante': ciclo.numeroCEmercante,
+        'item_id': item.ID if item is not None else None,
+        'ciclo_de_vida_id': ciclo.ID if ciclo else None,
+        # False = contêiner declarado no CE, mas sem ciclo de vida localizado
+        # (ainda não desembarcou ou a API Recintos não trouxe os eventos).
+        'cicloDeVidaLocalizado': ciclo is not None,
+        'numeroConteiner': numero_conteiner,
+        'numeroCEmercante': conhecimento.numeroCEmercante,
         'numeroCEMaster': numero_ce_master,
         'imagens_ids': imagens,
         'embarcador': conhecimento.embarcador,
@@ -468,31 +708,56 @@ def monta_card_navii(
         'numConhecimento': conhecimento.numConhecimento,
         'embarcacao': embarcacao,
         'manifesto': dados_manifesto,
+        'dataPrevistaAtracacao': data_prevista_atracacao,
+        'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
         'conteineres': itens['conteineres'],
-        'concluido': ciclo.concluido,
+        'concluido': bool(ciclo and ciclo.concluido),
         # Linha do tempo do ciclo de vida (API Recintos) — cada etapa pode ser
-        # None quando o evento ainda não ocorreu ("se houver").
+        # None quando o evento ainda não ocorreu ("se houver") ou quando não
+        # há ciclo de vida para o contêiner.
         'linhaDoTempo': {
-            'desembarque': {
-                'data': ciclo.data_desembarque,
-                'recinto': ciclo.codigoRecintoDesembarque,
-            },
-            'saida': {
-                'data': ciclo.data_saida,
-                'recinto': ciclo.codigoRecintoDesembarque,
-            },
-            'entradaRecintoSeco': {
-                'data': ciclo.data_entrada_seco,
-                'recinto': ciclo.codigoRecintoArmazenagem,
-            },
-            'saidaRecintoSeco': {
-                'data': ciclo.data_saida_seco,
-                'recinto': ciclo.codigoRecintoArmazenagem,
-            },
+            'desembarque': etapa('data_desembarque', 'codigoRecintoDesembarque'),
+            'saida': etapa('data_saida', 'codigoRecintoDesembarque'),
+            'entradaRecintoSeco': etapa('data_entrada_seco', 'codigoRecintoArmazenagem'),
+            'saidaRecintoSeco': etapa('data_saida_seco', 'codigoRecintoArmazenagem'),
         },
     }
+
+
+def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
+    """Enriquece em lote (itens/NCMs, nomes de empresas e de recintos) uma
+    página de `busca_ces_navii` e monta os cards — uma query por tipo de
+    dado, só para os contêineres da página."""
+    itens_por_ce = busca_itens_navii(session, [r.conhecimento.numeroCEmercante for r in resultados])
+    nomes_empresas = busca_nomes_empresas(
+        session,
+        [v for r in resultados for v in (r.conhecimento.embarcador, r.conhecimento.consignatario)],
+    )
+    nomes_recintos = busca_nomes_recintos(
+        session,
+        [c for r in resultados if r.ciclo
+         for c in (r.ciclo.codigoRecintoDesembarque, r.ciclo.codigoRecintoArmazenagem)],
+    )
+    nomes_terminais = busca_nomes_recintos(
+        session,
+        [r.manifesto.codigoTerminalDescarregamento for r in resultados if r.manifesto is not None],
+        campo='cod_carga',
+    )
+    return [
+        monta_card_navii(
+            r.ciclo, r.conhecimento, r.embarcacao,
+            itens_por_ce.get(r.conhecimento.numeroCEmercante), r.manifesto,
+            nomes_empresas.get(r.conhecimento.embarcador),
+            nomes_empresas.get(r.conhecimento.consignatario),
+            item=r.item,
+            data_prevista_atracacao=r.data_prevista_atracacao,
+            nomes_recintos=nomes_recintos,
+            nomes_terminais=nomes_terminais,
+        )
+        for r in resultados
+    ]
 
 
 if __name__ == '__main__':  # pragma: no-cover
@@ -504,20 +769,7 @@ if __name__ == '__main__':  # pragma: no-cover
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    resultados = busca_ces_navii(
-        session,
-        tipo_janela='efetiva',
-        filtros={'recinto': '8931356'},
-        limit=10,
-    )
-    numeros = [ce.numeroCEmercante for _, ce, _, _ in resultados]
-    itens_por_ce = busca_itens_navii(session, numeros)
-    nomes = busca_nomes_empresas(
-        session,
-        [v for ciclo, ce, _, _ in resultados for v in (ce.embarcador, ce.consignatario)],
-    )
-    for ciclo, ce, embarcacao, manifesto in resultados:
-        print(monta_card_navii(
-            ciclo, ce, embarcacao, itens_por_ce.get(ce.numeroCEmercante), manifesto,
-            nomes.get(ce.embarcador), nomes.get(ce.consignatario),
-        ))
+    filtros_exemplo = {'recinto': '8931356'}
+    print('Total:', conta_conteineres_navii(session, 'efetiva', filtros_exemplo))
+    for card in monta_cards_navii(session, busca_ces_navii(session, 'efetiva', filtros_exemplo, limit=10)):
+        print(card)
