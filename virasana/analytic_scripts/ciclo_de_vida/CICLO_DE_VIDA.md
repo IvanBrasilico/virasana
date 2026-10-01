@@ -168,6 +168,40 @@ Log: `virasana/ciclo_de_vida_diagnostico_20261001_152637.log`.
 - **Fuso confirmado**: imagem (Mongo) = inspeção (API) **+3 h** em 291 de 300 (8 com +0 h — ver por
   recinto). O Mongo está em UTC e a API em hora local.
 
+## Segunda medição — CEs e operadores (01/10/2026, `diagnostico_ces_ciclo_de_vida.py`)
+
+Log: `virasana/ciclo_de_vida_ces_20261001_160742.log` (desembarques de 02/08 a 01/10, amostras de 20 mil).
+
+- **Hipótese do usuário confirmada — os eventos informam master e house**: nas 13,7 mil inspeções já
+  ligadas, 75% declaram o mesmo CE do ciclo; das que declaram OUTRO CE, **~88% são da família**
+  (filhote 1.594, master 345, irmãos 31); sem parentesco são poucas (12 sem relação, 33 do mesmo
+  manifesto, 186 fora do Mercante). Não é, em geral, bug do algoritmo antigo.
+- **Por que o filhote aparece tanto**: o contêiner consta nos itens do master E do filhote (6,8 mil dos
+  20 mil); o `get_conhecimento` ordena por emissão e fica com o **master** (36% dos ciclos com CE), e o
+  recinto declara o **house** na inspeção.
+- **Impacto no NAVI-I**: o card é um `Item` (CE + contêiner) e o NAVI-I liga o ciclo pelo CE **exato**
+  (`_mesmo_conteiner_do_ciclo`). Quando o ciclo guarda o master, o card do **filhote** — o do
+  consignatário/importador real — não acha o ciclo nem a imagem (e vice-versa).
+- **CE declarado nos eventos** (3 mil ciclos, 10 dias após o desembarque): ausente em ~50% dos
+  desembarques e saídas e em ~9% das inspeções; quando presente, quase sempre igual ao do ciclo. Por
+  ciclo: 66% só o CE do ciclo, 25% nenhum declarado, **5% trocam master x house**, 3% declaram CE sem
+  parentesco/inexistente (os casos a desconfiar).
+- **`vazio` sozinho não indica outra operação**: 322 inspeções ligadas com o MESMO CE e 186 com o
+  filhote estão marcadas vazio (desunitização no recinto, ou flag errada) — sinal fraco.
+- **Tráfego do CE do ciclo**: 6,4% são de **exportação** (1.289 de 20 mil) — escolha errada do
+  algoritmo; 8,5% passagem; 5,9% cabotagem.
+- **Ciclos sem CE (20 mil)**: 55% sem CE declarado no desembarque (só o Mercante por contêiner resolve);
+  **~45% têm CE declarado que existe no Mercante com o contêiner nos itens** — metade com a escala a
+  até 5 dias (o algoritmo deveria ter achado: o CE/itens chegam ao Mercante depois, o ciclo já
+  concluiu ou não foi revisitado — os pendentes são visitados com saltos aleatórios) e ~40% com a
+  escala prevista a **6–15 dias** (janela de ±5 dias apertada); 776 declaram CE fora do Mercante.
+- **Prefixos 00/10/13/18/12...** são CEs que **existem no Mercante** (emitidos em outros portos —
+  transbordo/cabotagem): a hipótese de que ficavam fora estava errada.
+- **Operadores**: a API é nacional (Pecém, Rio, Suape, Itaguaí...). Em Santos, o loop tem Santos Brasil
+  (8931356), BTP (8931359) e Embraport (8931404); falta o **Ecoporto (8931318)**, ~3,3 mil desembarques
+  em 60 dias. Há códigos com muito movimento sem cadastro em `ovr_recintos` (9801303, 9981403, 9101602,
+  0301304 — fora de Santos).
+
 ## Princípio geral da heurística (usuário, 01/10/2026)
 
 Contêiner + intervalo de datas **nunca basta** para dizer que um evento é do mesmo ciclo — sobretudo
@@ -203,13 +237,22 @@ nem fronteira); cabotagem segue o fluxo, com escaneamento marcado como não obri
 confiança; CE declarado igual (ou master/filhote) corrobora. Imagem no Mongo por `numeroinformado` +
 `dataescaneamento` com **+3 h** e janela estreita (medida depois da correção).
 
-**CE**: candidatos do Mercante (contêiner + escala), **sem exportação** para desembarque; declarado
-nos eventos só corrobora/desempata. **Hipótese do usuário (01/10) a confirmar** com
-`diagnostico_ces_ciclo_de_vida.py`: os eventos informam master e house(s) de forma intercambiada — se
+**CE — confirmado em 01/10 (segunda medição)**: a unidade é a **família do CE** (master + filhotes,
+`Conhecimento.numeroCEMaster`). Candidatos: CEs cujo `Item` tem o contêiner (Mercante — confiável) e
+com escala numa janela maior que ±5 dias (a medir; ~40% dos perdidos estão a 6–15 dias), **sem
+exportação** para desembarque de importação. Confiança: alta quando o Mercante (contêiner nos itens) e
+o CE declarado nos eventos apontam a mesma família; média só com o Mercante e candidato único;
+declarado de outra família ou inexistente = desconfiança. O ciclo deve ficar ligado a **todos os CEs da
+família que têm o contêiner** (proposta: tabela ciclo↔CE com papel master/filhote/simples, origem e
+confiança), para o NAVI-I achar o ciclo pelo card do master E do filhote. Ciclos concluídos sem CE
+voltam a ser tentados quando o Mercante receber o CE (o CE chega depois). Texto anterior: **Hipótese do usuário (01/10) a confirmar** com
+`diagnostico_ces_ciclo_de_vida.py` (CONFIRMADA): os eventos informam master e house(s) de forma intercambiada — se
 sim, a unidade de comparação passa a ser a **família do CE** (master + filhotes, via
 `Conhecimento.numeroCEMaster`): CE declarado da mesma família corrobora a mesma operação; só CE sem
 parentesco desconfia. O "OUTRO CE" das ligações atuais pode ser isso ou bug do algoritmo antigo; sem candidato, o ciclo segue (a operação física existe) com o CE
 declarado guardado como informação.
+
+**Operadores**: lista vinda de `ovr_recintos` (`e_operador` + unidade), não fixa — inclui o Ecoporto.
 
 **Processamento orientado a eventos** (resolve as horas de loop): marca d'água do último id lido de
 cada tabela de eventos; a cada volta, só os contêineres com evento novo têm a linha do tempo refeita
