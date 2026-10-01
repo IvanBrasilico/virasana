@@ -24,7 +24,7 @@ from virasana.risco_historico.views_risco_historico import bp_risco_historico
 from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
 from virasana.navii.views_navii import bp_navii
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
-from virasana.tests.test_navii_filtros_salvos import BancoFalso
+from virasana.tests.test_navii_filtros_salvos import banco_mongo
 
 PREFIXO = '/virasana'
 HOST_INTERNO = '127.0.0.1:5001'
@@ -51,7 +51,7 @@ class Usuario(UserMixin):
 def cria_app():
     pasta_templates = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
     app = Flask(__name__, template_folder=pasta_templates)
-    app.config.update(LOGIN_DISABLED=True, TESTING=True, db_session=cria_sessao(), mongodb=BancoFalso())
+    app.config.update(LOGIN_DISABLED=True, TESTING=True, db_session=cria_sessao(), mongodb=banco_mongo())
     LoginManager(app).request_loader(lambda req: Usuario())
 
     @app.route('/mini1/<_id>')  # mesma rota/endpoint de virasana/views.py

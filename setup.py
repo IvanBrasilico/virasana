@@ -62,6 +62,7 @@ setup(
             'flake8-todo',
             'flask-webtest',
             'isort',
+            'mongomock',
             'mypy',
             'pylint',
             'pytest',

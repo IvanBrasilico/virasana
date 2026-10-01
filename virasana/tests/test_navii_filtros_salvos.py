@@ -1,13 +1,13 @@
 """Testes do autocompletar (sugestões) e dos filtros salvos do NAVI-I.
 
-O MongoDB é substituído por uma coleção falsa em memória com só o que
-`virasana.navii.filtros_salvos` usa (find/update_one/delete_one/create_index).
+O MongoDB é o `mongomock` (mesma API do pymongo, em memória; inclui o índice
+único usuário + nome).
 """
-import copy
 import os
 import unittest
-from types import SimpleNamespace
 
+import mongomock
+import pymongo
 from flask import Flask
 from flask_login import LoginManager, UserMixin
 
@@ -17,43 +17,9 @@ from virasana.navii.views_navii import bp_navii
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 
 
-class ColecaoFalsa:
-    def __init__(self):
-        self.documentos = []
-
-    def create_index(self, *args, **kwargs):
-        pass
-
-    @staticmethod
-    def _casa(documento, filtro):
-        return all(documento.get(k) == v for k, v in filtro.items())
-
-    def find(self, filtro, projecao=None):
-        excluir = {k for k, v in (projecao or {}).items() if not v}
-        return [{k: copy.deepcopy(v) for k, v in d.items() if k not in excluir}
-                for d in self.documentos if self._casa(d, filtro)]
-
-    def update_one(self, filtro, atualizacao, upsert=False):
-        for documento in self.documentos:
-            if self._casa(documento, filtro):
-                documento.update(copy.deepcopy(atualizacao['$set']))
-                return
-        if upsert:
-            self.documentos.append({**filtro, **copy.deepcopy(atualizacao['$set']),
-                                    **atualizacao.get('$setOnInsert', {})})
-
-    def delete_one(self, filtro):
-        for i, documento in enumerate(self.documentos):
-            if self._casa(documento, filtro):
-                del self.documentos[i]
-                return SimpleNamespace(deleted_count=1)
-        return SimpleNamespace(deleted_count=0)
-
-
-class BancoFalso(dict):
-    def __missing__(self, nome):
-        self[nome] = ColecaoFalsa()
-        return self[nome]
+def banco_mongo():
+    """Banco Mongo novo, vazio, em memória."""
+    return mongomock.MongoClient().db_teste
 
 
 def codigos(sugestoes):
@@ -109,7 +75,7 @@ class TestSugestoesDeRecinto(unittest.TestCase):
 class TestFiltrosSalvos(unittest.TestCase):
 
     def setUp(self):
-        self.col = filtros_salvos.colecao(BancoFalso())
+        self.col = filtros_salvos.colecao(banco_mongo())
 
     def test_salva_lista_e_substitui_pelo_nome(self):
         filtros_salvos.salva(self.col, 'ana', 'China', 'efetiva', {'porto_origem': 'cn, CNSHA'})
@@ -154,6 +120,18 @@ class TestFiltrosSalvos(unittest.TestCase):
             filtros_salvos.salva(self.col, 'ana', 'mais um', 'efetiva', {})
         filtros_salvos.salva(self.col, 'ana', 'f0', 'prevista', {})  # substituir continua valendo
 
+    def test_indice_unico_usuario_nome_no_banco(self):
+        filtros_salvos.salva(self.col, 'ana', 'meu', 'efetiva', {})
+        with self.assertRaises(pymongo.errors.DuplicateKeyError):
+            self.col.insert_one({'usuario': 'ana', 'nome': 'meu'})
+        self.col.insert_one({'usuario': 'beto', 'nome': 'meu'})  # mesmo nome, outro usuário: pode
+
+    def test_documento_gravado(self):
+        filtros_salvos.salva(self.col, 'ana', 'meu', 'efetiva', {'ncm': '8471'})
+        documento = self.col.find_one({'usuario': 'ana'})
+        self.assertEqual(documento['filtros'], {'ncm': ['8471']})
+        self.assertLessEqual(documento['criado'], documento['atualizado'])
+
 
 class Usuario(UserMixin):
     def __init__(self, id_):
@@ -165,7 +143,7 @@ class TestApi(unittest.TestCase):
     def setUp(self):
         self.session = cria_sessao()
         self.session.execute(tabela_recintos.insert(), [{'id': 1, 'nome': 'BTP', 'cod_siscomex': '8931356'}])
-        self.mongo = BancoFalso()
+        self.mongo = banco_mongo()
         pasta_templates = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
         app = Flask(__name__, template_folder=pasta_templates)
         app.config.update(LOGIN_DISABLED=True, TESTING=True, db_session=self.session, mongodb=self.mongo)
