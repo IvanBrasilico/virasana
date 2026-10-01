@@ -280,11 +280,42 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
      sem exportação, janela de escala de 15 dias, filhote como principal;
    - `heuristica_ciclo.py`: `processa_conteiner(...)` — as duas passagens (linha do tempo → CEs →
      linha do tempo corroborada pela família).
-3. **Modo sombra**: roda o núcleo sobre um período e grava num relatório/tabela à parte, comparando
-   com o ciclo atual (conclusões, escaneamentos, divergências), sem alterar nada.
+3. **Modo sombra — FEITO (01/10/2026)**: `sombra_ciclo_de_vida.py` (somente leitura; testes em
+   `tests/test_sombra_ciclo_de_vida.py`). Escopo = `ovr_recintos.e_operador` com `cod_unidade = '0817800'`
+   (normalizado com zeros à esquerda); operadores da linha do tempo = todos os `e_operador` + recintos
+   com embarque/desembarque nos eventos. Amostra os contêineres mais recentes desembarcados no período,
+   carrega TODOS os eventos deles (desde o início do período − 2 dias; acessos só `operacao = 'C'`),
+   os CEs do Mercante pelos itens (só dos anos do período — dígitos 3–4 do CE) com master, tráfego e
+   escalas (preferindo a de BRSSZ), roda `processa_conteiner` e compara com o ciclo atual do mesmo
+   `desembarque_id`. Relatório: volume e desembarques sem ciclo atual por operador; situação atual x
+   nova; etapas (igual/nova/removida/diferente); escaneamentos ganhos/perdidos (os de confiança baixa não
+   contam como ligados) e confiança/motivos; CE atual x principal novo (igual/mesma família/novo/
+   perdido/diferente); saídas > 72 h; incompletos; alertas; peso x tara; Mongo com +3 h (`--mongo`);
+   amostras das divergências; `--csv` com uma linha por ciclo.
+   ```
+   cd /home/ajna/apps/ajna/virasana
+   virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py \
+       --dias 30 --conteineres 3000 --mongo --csv sombra.csv
+   ```
 4. **DDL aditiva** (usuário/DBA): situação, fluxo, motivo, confiança e origem das ligações, marcas d'água.
 5. **Troca do loop** para o processamento por eventos (o atual fica para rollback).
 6. **Reprocessamento** dos pendentes em lotes, com relatório.
+
+### Ativação no Servidor (supervisor)
+
+Hoje o loop antigo roda sob o supervisor como
+`python virasana/analytic_scripts/ciclo_de_vida/manager_ciclo_de_vida.py` (variáveis de ambiente do
+`ajna_commons`; não há `.conf` dele no repositório). Até a etapa 5 **nada muda no Servidor**: o
+`manager_ciclo_de_vida.py` continua sendo o ponto de entrada em produção, e a sombra é rodada à mão
+(só lê; grava apenas o log/CSV no diretório corrente).
+
+Na etapa 5 o ponto de entrada **muda**: um script novo (proposta:
+`virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py`, orientado a eventos com marcas
+d'água) vira um **programa novo do supervisor**, no padrão de `supervisor_virasana_periodic.conf`
+(`directory` = raiz do virasana, `command` = `virasana-venv/bin/python <script>`, `autostart`,
+`autorestart`, `user=ajna`, logs em `/var/log/virasana/ciclo_de_vida/`). Troca: `supervisorctl stop`
+do programa antigo → `supervisorctl start` do novo. Rollback: o inverso (o `manager_ciclo_de_vida.py`
+não será alterado nem apagado). Os dois nunca devem rodar juntos gravando nas mesmas tabelas.
 
 Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
 novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).
