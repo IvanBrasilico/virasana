@@ -10,17 +10,22 @@ Escopo (decisão do usuário): operadores de Santos = `ovr_recintos.e_operador` 
 '0817800'` (Alfândega de Santos). "Operadores" para a linha do tempo = todos os `e_operador` mais os
 recintos que registram embarque/desembarque nos eventos carregados (são terminais portuários).
 
+Amostra: contêineres ESPALHADOS pelo período (ordem pseudoaleatória fixa pelo id, reprodutível) — a
+primeira rodada (01/10) pegou só os mais recentes, que o loop antigo ainda não tinha criado (atraso).
+O período termina, por padrão, 7 dias antes de hoje (--ignorar-ultimos-dias) pelo mesmo motivo.
+
 Relatório:
   0. parâmetros e operadores do escopo;
-  1. volume: contêineres, ciclos novos x atuais, desembarques sem ciclo atual (ex.: Ecoporto);
+  1. volume: desembarques por dia no escopo x ciclos atuais, atraso do loop antigo, ciclos novos com e
+     sem ciclo atual por operador e por idade (ex.: Ecoporto);
   2. situação nova x atual e motivos;
-  3. etapas (saída, entrada e saída do seco): iguais, novas, removidas, diferentes;
-  4. escaneamentos: ganhos/perdidos e confiança/motivos das ligações novas;
+  3. etapas (saída, entrada e saída do seco), só ciclos com ciclo atual: iguais, novas, removidas...;
+  4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas;
   5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente) e confiança;
   6. saídas tardias (> 72 h, além da janela antiga) e ciclos incompletos (fronteiras);
   7. alertas mais frequentes;
-  8. peso x tara no desembarque (serve para saber se veio cheio?);
-  9. imagens no Mongo (opcional, --mongo): defasagem depois de corrigir o fuso (+3 h);
+  8. contêiner vazio: manifesto do Mercante (conteinervazioresumo) x peso x tara x CE;
+  9. imagens no Mongo (opcional, --mongo): defasagem imagem - inspeção POR RECINTO (janela ±8 h);
  10. amostras das divergências.
 
 CE Mercante: os dígitos 3–4 do número são o ano de emissão (ex.: 1526... = 2026) — usados só para
@@ -45,7 +50,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (  # noqa: E402
-    CandidatoCE, CEsResolvidos, familia, normaliza_ce,
+    JANELA_ESCALA_DIAS, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
 )
 from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import Diagnostico, _dt  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_conteiner  # noqa: E402
@@ -54,13 +59,17 @@ from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noq
 UNIDADE_SANTOS = '0817800'
 PORTO_SANTOS = 'BRSSZ'
 HORAS_JANELA_ANTIGA = 72
-FUSO_MONGO_HORAS = 3        # Mongo em UTC, API em hora local (medido: +3 h em 291 de 300)
+JANELA_MONGO_HORAS = 8      # a 1ª sombra mostrou que o +3 h não vale para todos: medir por recinto
+RESIDUO_MONGO_MINUTOS = 10
 MARGEM_EVENTOS_DIAS = 2
+DIAS_ATRASO_LOOP = 7        # o loop antigo cria os ciclos com dias de atraso (medido: ~5)
+SIM, NAO = 'sim', 'não'
 
 COLUNAS_CSV = ['conteiner', 'desembarque_id', 'data_desembarque', 'operador', 'ciclo_atual_id', 'situacao_atual',
                'situacao_nova', 'fluxo_novo', 'motivo_novo', 'saida', 'entrada_seco', 'saida_seco',
                'escaneamentos', 'escaneamentos_ganhos', 'escaneamentos_perdidos', 'ce_atual', 'ce_novo',
-               'ces_familia', 'ce_comparacao', 'ce_confianca', 'alertas']
+               'ces_familia', 'ce_comparacao', 'ce_confianca', 'alertas', 'idade_dias', 'vazio_mercante',
+               'peso_balanca', 'peso_manifesto']
 
 
 # ---------------------------------------------------------------------- comparação (pura)
@@ -171,11 +180,29 @@ class Carregador:
         if not escopo:
             return []
         return [linha[0] for linha in self.diag.consulta(
-            'SELECT numeroConteiner, MAX(id) FROM apirecintos_embarquedesembarque '
-            "WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo AND dataHoraOcorrencia >= :inicio "
-            "AND dataHoraOcorrencia < :fim AND numeroConteiner IS NOT NULL AND numeroConteiner <> '' "
-            'GROUP BY numeroConteiner ORDER BY 2 DESC LIMIT :limite',
+            # ordem pseudoaleatória reprodutível (hash multiplicativo do id): espalha a amostra pelo período
+            'SELECT numeroConteiner, (MAX(id) * 2654435761) % 4294967291 AS ordem '
+            "FROM apirecintos_embarquedesembarque WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo "
+            'AND dataHoraOcorrencia >= :inicio AND dataHoraOcorrencia < :fim AND numeroConteiner IS NOT NULL '
+            "AND numeroConteiner <> '' GROUP BY numeroConteiner ORDER BY ordem LIMIT :limite",
             {'escopo': sorted(escopo), 'limite': limite}, listas=('escopo',))]
+
+    def desembarques_por_dia(self, escopo: Set[str]) -> List[tuple]:
+        """(dia, desembarques no escopo, com ciclo atual) — todo o período, não só a amostra."""
+        if not escopo:
+            return []
+        return self.diag.consulta(
+            'SELECT DATE(d.dataHoraOcorrencia) AS dia, COUNT(*), COUNT(c.ID) FROM apirecintos_embarquedesembarque d '
+            'LEFT JOIN ciclodevida_ciclo_de_vida_importacao c ON c.desembarque_id = d.id '
+            "WHERE d.embarqueDesembarque = 'D' AND d.codigoRecinto IN :escopo AND d.dataHoraOcorrencia >= :inicio "
+            'AND d.dataHoraOcorrencia < :fim GROUP BY DATE(d.dataHoraOcorrencia) ORDER BY dia',
+            {'escopo': sorted(escopo)}, listas=('escopo',))
+
+    def ultimo_desembarque_com_ciclo(self) -> Optional[datetime]:
+        linhas = self.diag.consulta(
+            'SELECT d.dataHoraOcorrencia FROM apirecintos_embarquedesembarque d WHERE d.id = '
+            '(SELECT MAX(desembarque_id) FROM ciclodevida_ciclo_de_vida_importacao)')
+        return _dt(linhas[0][0]) if linhas else None
 
     def eventos(self, conteineres: List[str]):
         """{contêiner: [Evento]}, {desembarque_id: (peso, tara, peso manifesto)} e recintos com embarque."""
@@ -232,6 +259,16 @@ class Carregador:
         self.estatisticas['CEs dos anos do período'] = len({ce for lista in por_conteiner.values() for ce in lista})
         return por_conteiner
 
+    def vazios(self, conteineres: List[str]) -> Dict[str, List[date]]:
+        """Datas de escala dos manifestos em que o contêiner consta como VAZIO (conteinervazioresumo)."""
+        manifestos = defaultdict(set)
+        for manifesto, cont in self.diag._por_lotes(
+                'SELECT manifesto, idConteinerVazio FROM conteinervazioresumo WHERE idConteinerVazio IN :conteineres',
+                'conteineres', conteineres):
+            manifestos[_texto(cont)].add(_texto(manifesto))
+        escalas = self._escalas({m for lista in manifestos.values() for m in lista if m})
+        return {cont: [dia for m in lista for dia in escalas.get(m, ())] for cont, lista in manifestos.items()}
+
     def _escalas(self, manifestos) -> Dict[str, List[date]]:
         """Datas previstas de atracação por manifesto: as de Santos; sem escala em Santos, todas."""
         santos, todas = defaultdict(list), defaultdict(list)
@@ -276,6 +313,8 @@ class Sombra(Diagnostico):
         self.ciclos: Dict[int, ldt.CicloCalculado] = {}
         self.pesos: Dict[int, tuple] = {}
         self.nomes: Dict[str, str] = {}
+        self.por_dia: List[tuple] = []
+        self.ultimo_com_ciclo: Optional[datetime] = None
 
     def executa(self):
         carregador = Carregador(self, self.periodo['inicio'], self.periodo['fim'])
@@ -285,9 +324,12 @@ class Sombra(Diagnostico):
                      f'agora = {self.agora:%Y-%m-%d %H:%M}; até {self.limite_conteineres} contêineres; '
                      f'parâmetros: {ldt.Parametros()}')
         self.tabela(['operador do escopo (unidade 0817800)', 'nome'], [(c, self.nomes.get(c)) for c in sorted(escopo)])
+        self.por_dia = carregador.desembarques_por_dia(escopo)
+        self.ultimo_com_ciclo = carregador.ultimo_desembarque_com_ciclo()
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
         eventos, self.pesos, portuarios = carregador.eventos(conteineres)
         candidatos = carregador.candidatos(conteineres)
+        vazios = carregador.vazios(conteineres)
         operadores |= portuarios
         self.escreve(f'Operadores para a linha do tempo: {len(operadores)} (e_operador + recintos com embarque/'
                      f'desembarque nos eventos). CEs do Mercante: {dict(carregador.estatisticas)}')
@@ -300,22 +342,43 @@ class Sombra(Diagnostico):
         atuais = carregador.ciclos_atuais({c.desembarque.id for _, c, _ in resultados})
         for conteiner, ciclo, ces in resultados:
             self.ciclos[ciclo.desembarque.id] = ciclo
-            self.linhas.append(compara(conteiner, ciclo, ces, candidatos.get(conteiner, []),
-                                       atuais.get(ciclo.desembarque.id)))
+            linha = compara(conteiner, ciclo, ces, candidatos.get(conteiner, []), atuais.get(ciclo.desembarque.id))
+            peso, tara, manifesto = self.pesos.get(ciclo.desembarque.id, (None, None, None))
+            linha.update({'idade_dias': (self.agora - ciclo.desembarque.data).days,
+                          'vazio_mercante': vazio_no_manifesto(vazios.get(conteiner, ()), ciclo.desembarque.data),
+                          'peso_balanca': _faixa_peso(peso, tara), 'peso_manifesto': _faixa_peso(manifesto, tara)})
+            self.linhas.append(linha)
         self.escreve(f'Contêineres: {len(conteineres)}; ciclos novos no período: {len(self.linhas)}; '
                      f'com ciclo atual: {sum(1 for lin in self.linhas if lin["ciclo_atual_id"])}')
 
     # ---------------------------------------------------------------- seções
-    def _conta(self, *campos, filtro=None) -> list:
-        contagem = Counter(tuple(lin[c] for c in campos) for lin in self.linhas if not filtro or filtro(lin))
+    def _conta(self, *campos, filtro=None, extra=None) -> list:
+        """Contagem das linhas por `campos` (`extra`: campos calculados {nome: função da linha})."""
+        def valor(lin, campo):
+            return extra[campo](lin) if extra and campo in extra else lin[campo]
+        contagem = Counter(tuple(valor(lin, c) for c in campos) for lin in self.linhas if not filtro or filtro(lin))
         return [(*chave, n) for chave, n in contagem.most_common()]
 
     def secao_volume(self):
-        self.titulo('1. VOLUME — ciclos novos sem ciclo atual, por operador')
-        self.tabela(['operador', 'nome', 'ciclos novos', 'sem ciclo atual'], [
-            (op, self.nomes.get(op), n, sum(1 for lin in self.linhas
-                                            if lin['operador'] == op and not lin['ciclo_atual_id']))
-            for op, n in Counter(lin['operador'] for lin in self.linhas).most_common()])
+        self.titulo('1. VOLUME E ATRASO DO LOOP ANTIGO')
+        atraso = (f'{(self.agora - self.ultimo_com_ciclo).total_seconds() / 86400:.1f} dias'
+                  if self.ultimo_com_ciclo else '-')
+        self.escreve(f'Último desembarque com ciclo atual: {self.ultimo_com_ciclo or "-"} (atraso: {atraso}); o loop '
+                     f'antigo cria no máximo 2.000 ciclos por volta.')
+        self.escreve()
+        self.tabela(['dia (todo o período, escopo)', 'desembarques', 'com ciclo atual'], self.por_dia)
+        self.escreve()
+        self.escreve('Amostra:')
+        self.tabela(['operador', 'nome', 'ciclos novos', 'com ciclo atual', 'sem ciclo atual'], [
+            (op, self.nomes.get(op), n, n - sem, sem) for op, n, sem in self._por_operador()])
+        self.escreve()
+        self.tabela(['sem ciclo atual: idade do desembarque', 'vazio no Mercante', 'ciclos'], self._conta(
+            'idade', 'vazio_mercante', filtro=lambda lin: not lin['ciclo_atual_id'],
+            extra={'idade': lambda lin: _faixa_idade(lin['idade_dias'])}))
+
+    def _por_operador(self):
+        for op, n in Counter(lin['operador'] for lin in self.linhas).most_common():
+            yield op, n, sum(1 for lin in self.linhas if lin['operador'] == op and not lin['ciclo_atual_id'])
 
     def secao_situacao(self):
         self.titulo('2. SITUAÇÃO ATUAL x NOVA')
@@ -325,16 +388,18 @@ class Sombra(Diagnostico):
         self.tabela(['situação nova', 'motivo', 'ciclos'], self._conta('situacao_nova', 'motivo_novo'))
 
     def secao_etapas(self):
-        self.titulo('3. ETAPAS — atual x nova')
+        self.titulo('3. ETAPAS — atual x nova (só ciclos que têm ciclo atual)')
         for etapa in ('saida', 'entrada_seco', 'saida_seco'):
             self.escreve()
-            self.tabela([etapa, 'ciclos'], self._conta(etapa))
+            self.tabela([etapa, 'ciclos'], self._conta(etapa, filtro=_com_atual))
 
     def secao_escaneamentos(self):
         self.titulo('4. ESCANEAMENTOS')
-        self.tabela(['escaneamentos (atual x novo, sem os de confiança baixa)', 'ciclos'], self._conta('escaneamentos'))
-        self.escreve(f'Ligações ganhas: {sum(lin["escaneamentos_ganhos"] for lin in self.linhas)}; '
-                     f'perdidas: {sum(lin["escaneamentos_perdidos"] for lin in self.linhas)}')
+        com_atual = [lin for lin in self.linhas if _com_atual(lin)]
+        self.tabela(['escaneamentos (atual x novo, sem os de confiança baixa; só com ciclo atual)', 'ciclos'],
+                    self._conta('escaneamentos', filtro=_com_atual))
+        self.escreve(f'Ligações ganhas: {sum(lin["escaneamentos_ganhos"] for lin in com_atual)}; '
+                     f'perdidas: {sum(lin["escaneamentos_perdidos"] for lin in com_atual)}')
         confianca, motivos = Counter(), Counter()
         for ciclo in self.ciclos.values():
             for lig in ciclo.escaneamentos:
@@ -346,7 +411,8 @@ class Sombra(Diagnostico):
 
     def secao_ces(self):
         self.titulo('5. CEs — atual x principal novo (filhote principal; família master/filhote)')
-        self.tabela(['CE atual x novo', 'confiança do CE novo', 'ciclos'], self._conta('ce_comparacao', 'ce_confianca'))
+        self.tabela(['tem ciclo atual', 'CE atual x novo', 'confiança do CE novo', 'ciclos'], self._conta(
+            'tem_atual', 'ce_comparacao', 'ce_confianca', extra={'tem_atual': lambda lin: _sim(_com_atual(lin))}))
 
     def secao_saidas(self):
         self.titulo('6. SAÍDAS TARDIAS E FRONTEIRAS')
@@ -366,32 +432,40 @@ class Sombra(Diagnostico):
         self.tabela(['alerta', 'ciclos'], contagem.most_common(20))
 
     def secao_pesos(self):
-        self.titulo('8. PESO x TARA NO DESEMBARQUE (dá para saber se veio cheio?)')
-        faixas = Counter()
-        for ciclo in self.ciclos.values():
-            peso, tara, manifesto = self.pesos.get(ciclo.desembarque.id, (None, None, None))
-            faixas[(_faixa_peso(peso, tara), 'com peso de manifesto' if manifesto else 'sem peso de manifesto')] += 1
-        self.tabela(['peso bruto - tara', 'manifesto', 'desembarques'], [(*k, n) for k, n in faixas.most_common()])
+        self.titulo('8. CONTÊINER VAZIO — manifesto do Mercante x peso x tara x CE')
+        self.escreve(f'"vazio no Mercante": o contêiner consta como vazio (conteinervazioresumo) num manifesto com '
+                     f'escala a até {JANELA_ESCALA_DIAS} dias do desembarque.')
+        tem_ce = {'ce': lambda lin: _sim(bool(lin['ce_novo']))}
+        self.tabela(['vazio no Mercante', 'CE resolvido', 'ciclos'], self._conta('vazio_mercante', 'ce', extra=tem_ce))
+        self.escreve()
+        self.tabela(['vazio no Mercante', 'balança: peso - tara', 'ciclos'],
+                    self._conta('vazio_mercante', 'peso_balanca'))
+        self.escreve()
+        self.tabela(['vazio no Mercante', 'manifesto: peso - tara', 'ciclos'],
+                    self._conta('vazio_mercante', 'peso_manifesto'))
+        self.escreve()
+        self.tabela(['vazio no Mercante', 'situação nova', 'fluxo novo', 'ciclos'],
+                    self._conta('vazio_mercante', 'situacao_nova', 'fluxo_novo'))
 
-    def secao_mongo(self, db, limite=300):
-        self.titulo(f'9. IMAGENS NO MONGO — defasagem após corrigir o fuso (+{FUSO_MONGO_HORAS} h), até {limite}')
+    def secao_mongo(self, db, limite=600):
+        self.titulo(f'9. IMAGENS NO MONGO — defasagem imagem - inspeção por recinto (janela ±{JANELA_MONGO_HORAS} h, '
+                    f'até {limite} inspeções)')
         if db is None:
             self.escreve('(desligado: use --mongo)')
             return
-        inspecoes = [(c.desembarque, lig.evento) for c in self.ciclos.values() for lig in c.escaneamentos][:limite]
         conteiner_do = {lin['desembarque_id']: lin['conteiner'] for lin in self.linhas}
-        contagem = Counter()
-        for desembarque, inspecao in inspecoes:
-            esperado = inspecao.data + timedelta(hours=FUSO_MONGO_HORAS)
-            documentos = db['fs.files'].find(
-                {'metadata.numeroinformado': conteiner_do[desembarque.id],
-                 'metadata.dataescaneamento': {'$gte': esperado - timedelta(hours=6),
-                                               '$lte': esperado + timedelta(hours=6)}},
-                {'metadata.dataescaneamento': 1})
-            deltas = [abs((d['metadata']['dataescaneamento'].replace(tzinfo=None) - esperado).total_seconds()) / 60
-                      for d in documentos]
-            contagem[_faixa_minutos(min(deltas) if deltas else None)] += 1
-        self.tabela(['imagem mais próxima de inspeção + 3 h', 'inspeções'], contagem.most_common())
+        inspecoes = [(conteiner_do[c.desembarque.id], lig.evento) for c in self.ciclos.values()
+                     for lig in c.escaneamentos][:limite]
+        contagem, exatas = Counter(), Counter()
+        for conteiner, inspecao in inspecoes:
+            chave, exata = defasagem_mongo(db, conteiner, inspecao.data)
+            contagem[(inspecao.recinto, chave)] += 1
+            exatas[(inspecao.recinto, chave)] += exata
+        self.escreve(f'Imagem mais próxima da inspeção (metadata.numeroinformado + dataescaneamento), em horas '
+                     f'inteiras; "resíduo <= {RESIDUO_MONGO_MINUTOS} min" = diferença quase exata nessas horas.')
+        self.tabela(['recinto', 'nome', 'imagem - inspeção', 'inspeções', f'resíduo <= {RESIDUO_MONGO_MINUTOS} min'], [
+            (recinto, self.nomes.get(recinto), chave, n, exatas[(recinto, chave)])
+            for (recinto, chave), n in sorted(contagem.items(), key=lambda kv: (kv[0][0], -kv[1]))])
 
     def secao_amostras_divergencias(self):
         self.titulo(f'10. AMOSTRAS DAS DIVERGÊNCIAS ({self.amostras} por tipo)')
@@ -435,24 +509,58 @@ class Sombra(Diagnostico):
             escritor.writerows(self.linhas)
 
 
+def vazio_no_manifesto(datas_escala, desembarque: datetime, janela_dias: int = JANELA_ESCALA_DIAS) -> str:
+    """'sim' se o contêiner consta vazio num manifesto com escala perto do desembarque."""
+    perto = any(abs((dia - desembarque.date()).days) <= janela_dias for dia in datas_escala)
+    return _sim(perto)
+
+
+def defasagem_mongo(db, conteiner: str, data_inspecao: datetime):
+    """('+3 h' / '+0 h' / 'nenhuma imagem', resíduo pequeno?) da imagem mais próxima da inspeção."""
+    janela = timedelta(hours=JANELA_MONGO_HORAS)
+    documentos = db['fs.files'].find(
+        {'metadata.numeroinformado': conteiner,
+         'metadata.dataescaneamento': {'$gte': data_inspecao - janela, '$lte': data_inspecao + janela}},
+        {'metadata.dataescaneamento': 1})
+    minutos = [(d['metadata']['dataescaneamento'].replace(tzinfo=None) - data_inspecao).total_seconds() / 60
+               for d in documentos]
+    if not minutos:
+        return f'nenhuma imagem em ±{JANELA_MONGO_HORAS} h', False
+    mais_proxima = min(minutos, key=abs)
+    horas = round(mais_proxima / 60)
+    return f'{horas:+d} h', abs(mais_proxima - 60 * horas) <= RESIDUO_MONGO_MINUTOS
+
+
+def _com_atual(linha: dict) -> bool:
+    return bool(linha['ciclo_atual_id'])
+
+
+def _sim(valor: bool) -> str:
+    return SIM if valor else NAO
+
+
+def _faixa_idade(dias: int) -> str:
+    for teto, rotulo in ((DIAS_ATRASO_LOOP, f'< {DIAS_ATRASO_LOOP} dias (atraso do loop)'), (30, '7 a 30 dias'),
+                         (93, '30 a 93 dias')):
+        if dias < teto:
+            return rotulo
+    return '>= 93 dias'
+
+
 def _faixa_peso(peso, tara) -> str:
-    if peso is None or tara is None:
-        return 'sem peso ou tara'
+    """Peso menos tara, em faixas; separa peso ausente/zerado (não medido) de peso <= tara."""
+    if peso is None:
+        return 'sem peso'
+    if float(peso) == 0:
+        return 'peso zero'
+    if not tara:
+        return 'sem tara'
     liquido = float(peso) - float(tara)
     if liquido <= 0:
-        return '<= 0 (vazio?)'
+        return 'peso <= tara'
     if liquido < 500:
         return '0 a 500 kg'
     return '500 a 2.000 kg' if liquido < 2000 else '> 2.000 kg'
-
-
-def _faixa_minutos(minutos: Optional[float]) -> str:
-    if minutos is None:
-        return 'nenhuma imagem em ±6 h'
-    for teto, rotulo in ((5, 'até 5 min'), (30, '5 a 30 min'), (120, '30 min a 2 h')):
-        if minutos <= teto:
-            return rotulo
-    return '2 a 6 h'
 
 
 SECOES = ('secao_volume', 'secao_situacao', 'secao_etapas', 'secao_escaneamentos', 'secao_ces', 'secao_saidas',
@@ -478,8 +586,11 @@ def roda(sombra: Sombra, mongo_db=None) -> List[str]:
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
-    parser.add_argument('--dias', type=int, default=30, help='período: desembarques dos últimos N dias (padrão 30)')
-    parser.add_argument('--conteineres', type=int, default=3000, help='contêineres avaliados (os mais recentes)')
+    parser.add_argument('--dias', type=int, default=30, help='período: N dias de desembarques (padrão 30)')
+    parser.add_argument('--ignorar-ultimos-dias', type=int, default=DIAS_ATRASO_LOOP,
+                        help=f'o período termina N dias antes de hoje (atraso do loop; padrão {DIAS_ATRASO_LOOP})')
+    parser.add_argument('--conteineres', type=int, default=3000,
+                        help='contêineres avaliados (amostra espalhada pelo período, reprodutível)')
     parser.add_argument('--amostras', type=int, default=5, help='amostras por tipo de divergência')
     parser.add_argument('--mongo', action='store_true', help='inclui a seção das imagens (MONGODB_URI do ajna_commons)')
     parser.add_argument('--csv', help='grava uma linha por ciclo com a comparação (separador ;)')
@@ -493,7 +604,7 @@ def main():
         from pymongo import MongoClient
         from ajna_commons.flask.conf import DATABASE, MONGODB_URI
         mongo_db = MongoClient(host=MONGODB_URI)[DATABASE]
-    fim = datetime.now()
+    fim = datetime.now() - timedelta(days=args.ignorar_ultimos_dias)
     inicio = fim - timedelta(days=args.dias)
     engine = create_engine(uri)
     with engine.connect() as conexao, open(args.saida, 'w', encoding='utf-8') as saida:

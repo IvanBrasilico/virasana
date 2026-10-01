@@ -202,6 +202,37 @@ Log: `virasana/ciclo_de_vida_ces_20261001_160742.log` (desembarques de 02/08 a 0
   em 60 dias. Há códigos com muito movimento sem cadastro em `ovr_recintos` (9801303, 9981403, 9101602,
   0301304 — fora de Santos).
 
+## Terceira medição — primeira rodada da sombra (01/10/2026, `sombra_ciclo_de_vida.py`)
+
+Log: `virasana/ciclo_de_vida_sombra_20261001_171744.log` + `sombra.csv` (3.000 contêineres, 3.031 ciclos).
+
+- **Amostra viciada — corrigida no script**: pegava os contêineres de maior id; 3.004 dos 3.031 ciclos
+  eram de 30/09 e 01/10, que o loop antigo **ainda não tinha criado** (só 27 com ciclo atual). A
+  comparação ficou inconclusiva. Agora a amostra é espalhada pelo período (hash do id, reprodutível) e o
+  período termina 7 dias antes de hoje (`--ignorar-ultimos-dias`).
+- **Volume x loop antigo**: ≥ 2,2 mil contêineres desembarcados por dia nos operadores de Santos (só no
+  dia 30/09 da amostra); o loop cria no máximo 2.000 ciclos por volta e cada volta leva horas — o atraso
+  é estrutural. A seção 1 agora mede: desembarques por dia x com ciclo e a data do último desembarque
+  com ciclo.
+- **Ecoporto**: 23 desembarques, nenhum com ciclo atual (confirma a falta na lista fixa do loop).
+- **Passagem conclui**: 79 ciclos fechados por "embarque no mesmo operador" (o loop antigo nunca fecha);
+  46 deles sem CE resolvido.
+- **Ligações de inspeção**: 901 alta, 49 média, 2 baixa (de 952) — quase todas no recinto da etapa e com
+  o CE declarado da família; 140 até 1 h **antes** do desembarque no mesmo recinto (relógio/scanner no
+  cais) e 49 no gate do TRA.
+- **CE**: 31% dos ciclos novos sem CE resolvido (941 de 3.031).
+- **Peso x tara no desembarque**: peso - tara <= 0 em 1.924 de 3.031 — a balança parece não medir (peso
+  zero?) ou o contêiner veio **vazio**. Hipótese a medir: boa parte dos desembarques é de contêiner
+  vazio (o Brasil importa vazios para exportar cheios), sem CE de importação. A seção 8 agora separa
+  peso zero de peso <= tara e cruza com o manifesto do Mercante (`conteinervazioresumo`: contêiner
+  declarado vazio no manifesto, com escala perto do desembarque) e com o CE resolvido.
+- **Mongo: o +3 h não vale para todos** — com a imagem esperada em inspeção + 3 h, só 76 de 300 ficaram a
+  até 30 min; 206 a 2–6 h (imagem no mesmo relógio da API?). A medição antiga (+3 h em 291 de 300) foi
+  feita nas imagens já ligadas pelo loop (janela ±4 h, `find_one`), outro período e só 3 operadores. A
+  seção 9 agora mede a defasagem **por recinto**, pela imagem mais próxima numa janela de ±8 h.
+- **Desempenho**: a rodada inteira (3 mil contêineres, todos os eventos, Mercante e 300 consultas ao
+  Mongo) levou segundos — carregar por lote de contêineres é viável para o serviço por eventos.
+
 ## Princípio geral da heurística (usuário, 01/10/2026)
 
 Contêiner + intervalo de datas **nunca basta** para dizer que um evento é do mesmo ciclo — sobretudo
@@ -283,14 +314,14 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
 3. **Modo sombra — FEITO (01/10/2026)**: `sombra_ciclo_de_vida.py` (somente leitura; testes em
    `tests/test_sombra_ciclo_de_vida.py`). Escopo = `ovr_recintos.e_operador` com `cod_unidade = '0817800'`
    (normalizado com zeros à esquerda); operadores da linha do tempo = todos os `e_operador` + recintos
-   com embarque/desembarque nos eventos. Amostra os contêineres mais recentes desembarcados no período,
-   carrega TODOS os eventos deles (desde o início do período − 2 dias; acessos só `operacao = 'C'`),
+   com embarque/desembarque nos eventos. Amostra contêineres espalhados pelo período (que termina 7 dias
+   antes de hoje — atraso do loop antigo), carrega TODOS os eventos deles (desde o início do período − 2 dias; acessos só `operacao = 'C'`),
    os CEs do Mercante pelos itens (só dos anos do período — dígitos 3–4 do CE) com master, tráfego e
    escalas (preferindo a de BRSSZ), roda `processa_conteiner` e compara com o ciclo atual do mesmo
    `desembarque_id`. Relatório: volume e desembarques sem ciclo atual por operador; situação atual x
    nova; etapas (igual/nova/removida/diferente); escaneamentos ganhos/perdidos (os de confiança baixa não
    contam como ligados) e confiança/motivos; CE atual x principal novo (igual/mesma família/novo/
-   perdido/diferente); saídas > 72 h; incompletos; alertas; peso x tara; Mongo com +3 h (`--mongo`);
+   perdido/diferente); saídas > 72 h; incompletos; alertas; vazio no Mercante x peso x tara x CE; defasagem do Mongo por recinto (`--mongo`);
    amostras das divergências; `--csv` com uma linha por ciclo.
    ```
    cd /home/ajna/apps/ajna/virasana

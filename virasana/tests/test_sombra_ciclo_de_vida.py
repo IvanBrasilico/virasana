@@ -7,7 +7,9 @@ Cenário (SQLite, desembarques de março/2026, agora = 10/04/2026):
   CTRB: desembarque no ECOPORTO, sem ciclo atual; CE simples + um CE de exportação (descartado)
   CTRC: saída 15 dias após o desembarque (além das 72 h do algoritmo antigo); ciclo atual pendente
   CTRE: inspeção declarando CE de OUTRA família (confiança baixa); o ciclo atual a tinha ligado
+  CTRV: contêiner VAZIO no manifesto do Mercante (escala no dia), peso zero na balança, sem CE nem ciclo
   CTRR: desembarque no Rio (fora do escopo)
+O CTRB também consta vazio num manifesto de dezembro/2025 (longe do desembarque: não conta).
 """
 import csv
 import io
@@ -25,14 +27,16 @@ from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import CEsResolvidos
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao as Ciclo, CicloDeVidaImportacaoEscaneamentos as Esc,
 )
-from virasana.integracao.mercante.mercantealchemy import Conhecimento, Escala, EscalaManifesto, Item, Manifesto
+from virasana.integracao.mercante.mercantealchemy import (
+    Conhecimento, ConteinerVazio, Escala, EscalaManifesto, Item, Manifesto,
+)
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 
 from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva  # noqa: I100
 
 M, H1, ANTIGO = '152600000000001', '152600000000002', '152400000000005'
 S, EXPORTACAO, X, Y = '152600000000010', '152600000000040', '152600000000020', '152600000000030'
-BTP, ECOPORTO, EADI, RIO = '8931356', '8931318', '8932000', '8911101'
+BTP, ECOPORTO, EADI, RIO = '8931359', '8931318', '8932000', '8911101'
 INICIO, FIM, AGORA = datetime(2026, 3, 1), datetime(2026, 4, 1), datetime(2026, 4, 10)
 
 
@@ -52,9 +56,13 @@ def _mercante(session):
     ce(S, 'MAN2', ['CTRB'])
     ce(EXPORTACAO, 'MAN2', ['CTRB'], trafego='7')
     ce(X, 'MAN3', ['CTRE'])
-    session.add_all([Manifesto(numero=m) for m in ('MAN0', 'MAN1', 'MAN2', 'MAN3')])
+    session.add_all([Manifesto(numero=m) for m in ('MAN0', 'MAN1', 'MAN2', 'MAN3', 'MANV', 'MAN9')])
+    ConteinerVazio.__table__.create(session.get_bind(), checkfirst=True)
+    session.add_all([ConteinerVazio(manifesto='MANV', idConteinerVazio='CTRV'),
+                     ConteinerVazio(manifesto='MAN9', idConteinerVazio='CTRB')])
     escalas = [('E1', 'MAN1', '2026-03-01', 'BRSSZ'), ('E0', 'MAN1', '2026-02-01', 'CNSHA'),
-               ('E2', 'MAN2', '2026-03-03', 'BRSSZ'), ('E3', 'MAN3', '2026-03-09', 'BRSSZ')]
+               ('E2', 'MAN2', '2026-03-03', 'BRSSZ'), ('E3', 'MAN3', '2026-03-09', 'BRSSZ'),
+               ('E4', 'MANV', '2026-03-12', 'BRSSZ'), ('E9', 'MAN9', '2025-12-01', 'BRSSZ')]
     for i, (escala, manifesto, data, porto) in enumerate(escalas, start=1):
         session.add(Escala(numeroDaEscala=escala, dataPrevistaAtracacao=data, portoDaEscala=porto))
         session.add(EscalaManifesto(ID=i, manifesto=manifesto, escala=escala))
@@ -66,7 +74,7 @@ def _recintos(session):
     session.execute(text('ALTER TABLE ovr_recintos ADD COLUMN e_operador BOOLEAN'))
     session.execute(text('ALTER TABLE ovr_recintos ADD COLUMN cod_unidade VARCHAR(7)'))
     session.execute(text("INSERT INTO ovr_recintos (id, nome, cod_siscomex, e_operador, cod_unidade) VALUES "
-                         "(1, 'BTP', '8931356', 1, '817800'), (2, 'ECOPORTO SANTOS', '8931318', 1, '0817800'), "
+                         "(1, 'BTP', '8931359', 1, '817800'), (2, 'ECOPORTO SANTOS', '8931318', 1, '0817800'), "
                          "(3, 'EADI SANTOS', '8932000', 0, '0817800'), (4, 'MULTIRIO', '8911101', 1, '0717600')"))
 
 
@@ -106,6 +114,7 @@ def monta(session):
     acesso('CTRC', d(20), BTP, 'S')
     ids_['de'] = desembarque('CTRE', d(9), BTP, X, pesoBrutoBalanca=3800, taraConteiner=3800)
     ids_['ie'] = inspecao('CTRE', d(9, 14), BTP, Y)
+    ids_['dv'] = desembarque('CTRV', d(12), BTP, pesoBrutoBalanca=0, taraConteiner=2200)
     desembarque('CTRR', d(6), RIO)
     for modelo, linhas in eventos.items():
         modelo.__table__.create(session.get_bind(), checkfirst=True)
@@ -157,19 +166,43 @@ class TestFuncoes(unittest.TestCase):
                          'concluído (saiu do seco)')
 
     def test_faixas_e_normalizacoes(self):
-        self.assertEqual(sombra._faixa_peso(None, 3800), 'sem peso ou tara')
-        self.assertEqual(sombra._faixa_peso(3800, 3800), '<= 0 (vazio?)')
-        self.assertEqual(sombra._faixa_peso(4000, 3800), '0 a 500 kg')
-        self.assertEqual(sombra._faixa_peso(25000, 3800), '> 2.000 kg')
-        self.assertEqual(sombra._faixa_minutos(None), 'nenhuma imagem em ±6 h')
-        self.assertEqual(sombra._faixa_minutos(3), 'até 5 min')
-        self.assertEqual(sombra._faixa_minutos(200), '2 a 6 h')
+        casos = [(None, 3800, 'sem peso'), (0, 3800, 'peso zero'), (4000, None, 'sem tara'),
+                 (3800, 3800, 'peso <= tara'), (4000, 3800, '0 a 500 kg'), (5000, 3800, '500 a 2.000 kg'),
+                 (25000, 3800, '> 2.000 kg')]
+        for peso, tara, esperado in casos:
+            with self.subTest(peso=peso, tara=tara):
+                self.assertEqual(sombra._faixa_peso(peso, tara), esperado)
+        self.assertEqual(sombra._faixa_idade(3), '< 7 dias (atraso do loop)')
+        self.assertEqual(sombra._faixa_idade(10), '7 a 30 dias')
+        self.assertEqual(sombra._faixa_idade(100), '>= 93 dias')
         self.assertEqual(sombra._unidade(817800), '0817800')
         self.assertEqual(sombra._unidade(' 0817800 '), '0817800')
         self.assertEqual(sombra._ano_do_ce(M), 2026)
         self.assertIsNone(sombra._ano_do_ce('123'))
         self.assertIsNone(sombra._texto('  '))
         self.assertEqual(sombra._texto(7), '7')
+
+
+    def test_vazio_no_manifesto(self):
+        self.assertEqual(sombra.vazio_no_manifesto([date(2026, 3, 12)], d(12)), sombra.SIM)
+        self.assertEqual(sombra.vazio_no_manifesto([date(2025, 12, 1), date(2026, 2, 1)], d(3)), sombra.NAO)
+        self.assertEqual(sombra.vazio_no_manifesto([], d(3)), sombra.NAO)
+
+    def test_defasagem_mongo_pela_imagem_mais_proxima(self):
+        db = mongomock.MongoClient()['teste']
+        inspecao = d(10, 12)
+
+        def imagem(conteiner, delta):
+            db['fs.files'].insert_one({'metadata': {'numeroinformado': conteiner,
+                                                    'dataescaneamento': inspecao + delta}})
+
+        imagem('C1', timedelta(hours=-2, minutes=-58))
+        imagem('C2', timedelta(minutes=20))
+        imagem('C2', timedelta(hours=3))
+        imagem('C3', timedelta(hours=9))  # fora da janela de 8 h
+        self.assertEqual(sombra.defasagem_mongo(db, 'C1', inspecao), ('-3 h', True))
+        self.assertEqual(sombra.defasagem_mongo(db, 'C2', inspecao), ('+0 h', False))  # resíduo de 20 min
+        self.assertEqual(sombra.defasagem_mongo(db, 'C3', inspecao), ('nenhuma imagem em ±8 h', False))
 
 
 class TestSombra(unittest.TestCase):
@@ -182,6 +215,9 @@ class TestSombra(unittest.TestCase):
         # imagem da inspeção do CTRA: Mongo em UTC (+3 h), 2 minutos depois
         mongo['fs.files'].insert_one({'metadata': {'numeroinformado': 'CTRA', 'dataescaneamento':
                                                    d(2, 12) + timedelta(hours=3, minutes=2)}})
+        # imagem da inspeção do CTRE: mesmo relógio da API (+0 h), 5 minutos depois
+        mongo['fs.files'].insert_one({'metadata': {'numeroinformado': 'CTRE', 'dataescaneamento':
+                                                   d(9, 14) + timedelta(minutes=5)}})
         saida = io.StringIO()
         cls.sombra = sombra.Sombra(session.connection(), saida, INICIO, FIM, conteineres=100, amostras=5,
                                    agora=AGORA)
@@ -210,7 +246,23 @@ class TestSombra(unittest.TestCase):
     def test_escopo_so_operadores_de_santos(self):
         self.assertEqual(self.valores(BTP), ['BTP'])
         self.assertEqual(self.valores(ECOPORTO), ['ECOPORTO SANTOS'])
-        self.assertEqual(sorted(self.linhas), ['CTRA', 'CTRB', 'CTRC', 'CTRE'])  # CTRR: Rio, fora
+        self.assertEqual(sorted(self.linhas), ['CTRA', 'CTRB', 'CTRC', 'CTRE', 'CTRV'])  # CTRR: Rio, fora
+
+    def test_amostra_espalhada_e_reprodutivel(self):
+        """A amostra segue o hash do id (não os mais recentes): o limite pega os de menor hash."""
+        carregador = sombra.Carregador(self.sombra, INICIO, FIM)
+        ids = {'CTRA': self.ids['da'], 'CTRB': self.ids['db'], 'CTRC': self.ids['dc'], 'CTRE': self.ids['de'],
+               'CTRV': self.ids['dv']}
+        esperado = sorted(ids, key=lambda c: (ids[c] * 2654435761) % 4294967291)[:2]
+        self.assertEqual(carregador.conteineres({BTP, ECOPORTO}, 2), esperado)
+        self.assertEqual(carregador.conteineres({BTP, ECOPORTO}, 2), esperado)
+
+    def test_atraso_do_loop_antigo(self):
+        self.assertIn('Último desembarque com ciclo atual: 2026-03-09 08:00:00 (atraso: 31.7 dias)', self.log)
+        self.assertEqual(self.valores('2026-03-02'), ['1', '1'])
+        self.assertEqual(self.valores('2026-03-12'), ['1', '0'])
+        self.assertEqual(self.valores('7 a 30 dias', sombra.SIM), ['1'])  # CTRV: vazio, sem ciclo atual
+        self.assertEqual(self.valores('30 a 93 dias', sombra.NAO), ['1'])  # CTRB: Ecoporto
 
     def test_tra_que_o_algoritmo_antigo_perdeu(self):
         linha = self.linhas['CTRA']
@@ -231,7 +283,8 @@ class TestSombra(unittest.TestCase):
         self.assertEqual((linha['situacao_nova'], linha['fluxo_novo'], linha['saida']),
                          (ldt.CONCLUIDO, ldt.OPERADOR, 'nova'))
         self.assertEqual((linha['ce_novo'], linha['ce_comparacao']), (S, 'novo'))  # exportação descartada
-        self.assertEqual(self.valores(ECOPORTO, 'ECOPORTO SANTOS', colunas=4), ['1', '1'])  # seção 1
+        self.assertEqual(self.valores(ECOPORTO, 'ECOPORTO SANTOS', colunas=5), ['1', '0', '1'])  # seção 1
+        self.assertEqual(self.valores(BTP, 'BTP', colunas=5), ['4', '3', '1'])
 
     def test_saida_tardia(self):
         linha = self.linhas['CTRC']
@@ -256,13 +309,19 @@ class TestSombra(unittest.TestCase):
         self.assertEqual(candidatos[M].datas_escala, (date(2026, 3, 1),))
         self.assertEqual(candidatos[H1].master, M)
 
-    def test_peso_e_tara(self):
-        self.assertEqual(self.valores('> 2.000 kg', 'com peso de manifesto'), ['1'])
-        self.assertEqual(self.valores('<= 0 (vazio?)', 'sem peso de manifesto'), ['1'])
+    def test_vazio_do_mercante_peso_e_tara(self):
+        self.assertEqual((self.linhas['CTRV']['vazio_mercante'], self.linhas['CTRB']['vazio_mercante']),
+                         (sombra.SIM, sombra.NAO))
+        self.assertEqual(self.valores(sombra.SIM, sombra.NAO, colunas=3), ['1'])  # vazio e sem CE
+        self.assertEqual(self.valores(sombra.SIM, 'peso zero'), ['1'])
+        self.assertEqual(self.valores(sombra.NAO, 'peso <= tara'), ['1'])
+        self.assertEqual(self.valores(sombra.NAO, '> 2.000 kg'), ['1'])
+        self.assertEqual((self.linhas['CTRA']['peso_balanca'], self.linhas['CTRA']['peso_manifesto']),
+                         ('> 2.000 kg', '> 2.000 kg'))
 
-    def test_mongo_corrige_fuso(self):
-        self.assertEqual(self.valores('até 5 min'), ['1'])
-        self.assertEqual(self.valores('nenhuma imagem em ±6 h'), ['1'])
+    def test_mongo_defasagem_por_recinto(self):
+        self.assertEqual(self.valores(BTP, 'BTP', '+3 h'), ['1', '1'])
+        self.assertEqual(self.valores(BTP, 'BTP', '+0 h'), ['1', '1'])
 
     def test_amostras_das_divergencias(self):
         self.assertIn('--- entrada no seco removida/diferente: 0 amostra(s)', self.log)
@@ -275,7 +334,7 @@ class TestSombra(unittest.TestCase):
             self.sombra.grava_csv(caminho)
             with open(caminho, encoding='utf-8-sig') as arquivo:
                 linhas = list(csv.DictReader(arquivo, delimiter=';'))
-        self.assertEqual(len(linhas), 4)
+        self.assertEqual(len(linhas), 5)
         self.assertEqual(list(linhas[0]), sombra.COLUNAS_CSV)
 
 
