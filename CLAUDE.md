@@ -43,7 +43,7 @@ Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados vi
 - `virasana/entregas/` — **Entregas por CNPJ** (`/entregas_cnpj/`, blueprint `bp_entregas`, template `templates/entregas_cnpj.html`): saídas pelos gates (AcessoVeiculo) dos contêineres dos CEs de importação de um CNPJ; tela + planilha. Lógica em `busca_entregas.py`, reusada pelo script `analytic_scripts/entregas_cnpj.py`.
 - `virasana/apreensoes/` — tela **Transporte das apreensões** (`/apreensoes_transporte/`, blueprint `bp_apreensoes`, template `templates/apreensoes_transporte.html`, planilha). Só valida e formata: a lógica é a do script `analytic_scripts/dados_transporte_apreensoes.py`.
 - `virasana/navii/menu.py` — submenu **NAVII** do menu principal (`views.mynavbar` só chama `subgrupo_navii()`). Tela nova de análise de risco entra em `ENTRADAS_NAVII`; o teste `test_prefixo_proxy.TestMenuNavii` garante que cada endpoint existe (endpoint errado quebra todas as páginas).
-- `virasana/analytic_scripts/` — scripts de análise rodados à mão (não por cron): `dados_transporte_apreensoes.py` (apreensões de drogas do Fichas → acessos de veículo: placa, motorista, transportadora; CSV), `entregas_cnpj.py`, `ciclo_de_vida/` (tabelas do Ciclo de Vida usadas pelo NAVI-I).
+- `virasana/analytic_scripts/` — scripts de análise rodados à mão (não por cron): `dados_transporte_apreensoes.py` (apreensões de drogas do Fichas → acessos de veículo: placa, motorista, transportadora; CSV), `entregas_cnpj.py`, `diagnostico_risco_perdimentos.py` (o que as Fichas com resultado oferecem para extrair filtros de risco; log com CPF/CNPJ mascarados), `ciclo_de_vida/` (tabelas do Ciclo de Vida usadas pelo NAVI-I).
 - `virasana/workers/` — tarefas Celery e monitoramento de diretórios.
 - `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
 - `virasana/forms/`, `virasana/exportacao/`, `virasana/analises/` — WTForms, exportação de dados, análises pontuais.
@@ -78,7 +78,7 @@ python -m pytest --cov=virasana virasana/tests
 A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
 
 ```bash
-python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_navii_filtros_salvos.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py virasana/tests/test_apreensoes_transporte_tela.py virasana/tests/test_prefixo_proxy.py --disable-warnings
+python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_navii_filtros_salvos.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py virasana/tests/test_apreensoes_transporte_tela.py virasana/tests/test_diagnostico_risco_perdimentos.py virasana/tests/test_prefixo_proxy.py --disable-warnings
 ```
 
 ## Restrição principal: não arriscar produção
