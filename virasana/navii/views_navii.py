@@ -16,8 +16,9 @@ definidos em `busca_navii.py`.
 """
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
+from werkzeug.routing import BuildError
 
 from virasana.navii import filtros_salvos, referencias
 from virasana.navii.busca_navii import (
@@ -31,9 +32,19 @@ bp_navii = Blueprint(
     template_folder='templates',
 )
 
-# Rota já existente em virasana/views.py (`/mini1/<_id>`) que serve a
-# miniatura da imagem do GridFS a partir do `imagem_id`.
-IMAGEM_URL_TEMPLATE = '/virasana/mini1/imagem_id'
+
+def _imagem_url_template() -> str:
+    """URL da miniatura da imagem (rota `/mini1/<_id>` de virasana/views.py),
+    com 'imagem_id' no lugar do id — o JS troca pelo id de cada imagem.
+
+    Em produção a app roda sob o prefixo /virasana atrás de proxy: a URL
+    precisa sair do `url_for`/`script_root`, nunca fixa. Sem a rota registrada
+    (testes, app isolada), monta pelo `script_root`.
+    """
+    try:
+        return url_for('mini', _id='imagem_id')
+    except BuildError:
+        return request.script_root + '/mini1/imagem_id'
 
 
 def _serializa_valor(v):
@@ -59,12 +70,12 @@ def _defaults_periodo():
     }
 
 
-@bp_navii.route('/')
+@bp_navii.route('/', strict_slashes=False)  # sem redirect da barra final (proxy; ver CLAUDE.md)
 @login_required
 def index():
     return render_template(
         'navii.html',
-        imagem_url_template=IMAGEM_URL_TEMPLATE,
+        imagem_url_template=_imagem_url_template(),
         defaults_periodo=_defaults_periodo(),
         porto_escala_padrao=PORTO_ESCALA_PADRAO,
     )

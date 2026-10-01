@@ -40,7 +40,7 @@ def _consulta():
     )
 
 
-@bp_entregas.route('/')
+@bp_entregas.route('/', strict_slashes=False)  # sem redirect da barra final (proxy; ver CLAUDE.md)
 @login_required
 def index():
     hoje = date.today()
