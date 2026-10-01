@@ -87,13 +87,13 @@ def _sql(consulta: str, *listas: str):
     return texto.bindparams(*[bindparam(nome, expanding=True) for nome in listas]) if listas else texto
 
 
-SQL_FICHAS = '''
+SQL_FICHAS = """
 SELECT o.id, o.numero, o.datahora, o.numeroCEmercante, o.cnpj_fiscalizado, o.observacoes
 FROM ovr_ovrs o
 WHERE EXISTS (SELECT 1 FROM ovr_resultados r WHERE r.ovr_id = o.id AND r.tipo_resultado IN :tipos)
   {filtro_data}
 ORDER BY o.datahora
-'''
+"""
 SQL_RESULTADOS = _sql('SELECT ovr_id, tipo_resultado, valor FROM ovr_resultados '
                       'WHERE ovr_id IN :ids AND tipo_resultado IN :tipos', 'ids', 'tipos')
 SQL_RVFS = _sql('SELECT ovr_id, numeroCEmercante, numerolote, descricao, descricao_interna '
@@ -179,8 +179,122 @@ def busca_fichas(conexao, tipos=TIPOS_PADRAO, inicio: Optional[datetime] = None,
     if fim:
         filtro_data += ' AND o.datahora < :fim'
         params['fim'] = fim
-    consulta = _sql(SQL_FICHAS.format(filtro_data=filtro_data), 'tipos')  # nosec (só os filtros fixos acima)
+    # SQL: só os filtros fixos acima entram no texto
+    consulta = _sql(SQL_FICHAS.format(filtro_data=filtro_data), 'tipos')  # nosec B608
     return [dict(linha._mapping) for linha in conexao.execute(consulta, params)]
+
+
+def _sinal(ficha: dict, dimensao: str, valor):
+    if valor:
+        ficha['sinais'][dimensao].add(valor)
+
+
+def _texto(valor) -> str:
+    return (valor or '').strip()
+
+
+def _sinais_do_fichas(conexao, fichas: Dict[int, dict], tipos) -> Dict[int, list]:
+    """Resultados e sinais tirados do próprio Fichas (ficha, RVF, TG, categorias).
+    Devolve os textos livres de cada ficha, para as citações."""
+    ids = list(fichas)
+    textos = {i: [fichas[i].get('observacoes') or ''] for i in ids}
+    for r in _por_lotes(conexao, SQL_RESULTADOS, 'ids', ids, tipos=list(tipos)):
+        fichas[r['ovr_id']]['resultados'].append(r['tipo_resultado'])
+        fichas[r['ovr_id']]['valor'] += float(r['valor'] or 0)
+    for ficha in fichas.values():
+        ficha['ces'].add(_ce(ficha.get('numeroCEmercante')))
+        _sinal(ficha, 'importador', documento(ficha.get('cnpj_fiscalizado')))
+    for rvf in _por_lotes(conexao, SQL_RVFS, 'ids', ids):
+        fichas[rvf['ovr_id']]['ces'].add(_ce(rvf['numeroCEmercante']))
+        _sinal(fichas[rvf['ovr_id']], 'conteiner', normaliza_conteiner(rvf['numerolote']))
+        textos[rvf['ovr_id']] += [rvf['descricao'] or '', rvf['descricao_interna'] or '']
+    for consulta, dimensao, campo in ((SQL_APREENSOES, 'apreensao', 'descricao'), (SQL_INFRACOES, 'infracao', 'nome'),
+                                      (SQL_MARCAS, 'marca', 'nome'), (SQL_FLAGS, 'flag', 'nome')):
+        for linha in _por_lotes(conexao, consulta, 'ids', ids):
+            valor = _texto(linha[campo])
+            _sinal(fichas[linha['ovr_id']], dimensao, valor.upper() if dimensao == 'marca' else valor)
+    for tg in _por_lotes(conexao, SQL_TG, 'ids', ids):
+        _sinal(fichas[tg['ovr_id']], 'ncm_encontrado', posicao_ncm(tg['ncm']))
+        textos[tg['ovr_id']] += [tg['descricao'] or '', tg['observacoes'] or '']
+    for ficha in fichas.values():
+        ficha['ces'].discard(None)
+    return textos
+
+
+def _sinais_dos_textos(fichas: Dict[int, dict], textos: Dict[int, list]):
+    """CNPJs, CPFs e contêineres citados (o motivo dos eventos fica de fora: traz CPF de auditores)."""
+    for ficha_id, partes in textos.items():
+        texto = '\n'.join(dict.fromkeys(partes))
+        for dimensao, extrator in (('cnpj_citado', extrai_cnpjs), ('cpf_citado', extrai_cpfs),
+                                   ('conteiner', extrai_conteineres)):
+            for valor in extrator(texto):
+                _sinal(fichas[ficha_id], dimensao, valor)
+
+
+def _dados_mercante(conexao, todos_ces: set):
+    """CEs, porto de carregamento dos manifestos e posições NCM declaradas, em lote."""
+    ces = {c['numeroCEmercante']: c for c in _por_lotes(conexao, SQL_CES, 'ces', todos_ces)}
+    manifestos = {m['numero']: m['portoCarregamento'] for m in _por_lotes(
+        conexao, SQL_MANIFESTOS, 'numeros', {c['manifestoCE'] for c in ces.values() if c['manifestoCE']})}
+    ncms_ce: Dict[str, set] = {}
+    for n in _por_lotes(conexao, SQL_NCM_CE, 'ces', set(ces)):
+        posicao = posicao_ncm(n['identificacaoNCM'])
+        if posicao:
+            ncms_ce.setdefault(n['numeroCEMercante'], set()).add(posicao)
+    return ces, manifestos, ncms_ce
+
+
+def _sinais_do_ce(ficha: dict, ce: dict, manifestos: dict, ncms_ce: dict):
+    """Importador, embarcador, rota, portos, baldeação e NCM declarada de um CE da ficha."""
+    _sinal(ficha, 'importador', documento(ce['consignatario']))
+    _sinal(ficha, 'embarcador', normaliza_embarcador(ce['embarcador']))
+    origem, destino = _texto(ce['portoOrigemCarga']).upper(), _texto(ce['portoDestFinal']).upper()
+    _sinal(ficha, 'porto_origem', origem)
+    _sinal(ficha, 'pais_origem', origem[:2])
+    if origem and destino:
+        _sinal(ficha, 'rota', f'{origem} > {destino}')
+    carregamento = _texto(manifestos.get(ce['manifestoCE'])).upper()
+    if carregamento and carregamento != origem:
+        _sinal(ficha, 'porto_baldeacao', carregamento)
+    for posicao in ncms_ce.get(ce['numeroCEmercante'], ()):
+        _sinal(ficha, 'ncm_declarado', posicao)
+        if origem:
+            _sinal(ficha, 'pais_ncm', f'{origem[:2]} {posicao}')
+
+
+def _e_exportacao(ce: dict) -> bool:
+    return ce['tipoTrafego'] == TRAFEGO_EXPORTACAO
+
+
+def _aplica_mercante(fichas: Dict[int, dict], dados_mercante, incluir_exportacao: bool) -> int:
+    """Sinais do Mercante em cada ficha; tira as fichas só de exportação (se
+    não for para incluir). Devolve quantas foram descartadas."""
+    ces, manifestos, ncms_ce = dados_mercante
+    descartadas = 0
+    for ficha_id in list(fichas):
+        ficha = fichas[ficha_id]
+        conhecidos = [ces[ce] for ce in ficha['ces'] if ce in ces]
+        ficha['exportacao'] = bool(conhecidos) and all(_e_exportacao(c) for c in conhecidos)
+        if ficha['exportacao'] and not incluir_exportacao:
+            del fichas[ficha_id]
+            descartadas += 1
+            continue
+        for ce in conhecidos:
+            if incluir_exportacao or not _e_exportacao(ce):
+                _sinais_do_ce(ficha, ce, manifestos, ncms_ce)
+    return descartadas
+
+
+def _empresas(conexao, fichas: Dict[int, dict], ces: dict) -> Dict[str, str]:
+    """Nome das empresas (laudo_empresas) por CNPJ e por raiz, para exibição."""
+    cnpjs = {re.sub(r'\D', '', c['consignatario'] or '') for c in ces.values()}
+    cnpjs |= {re.sub(r'\D', '', f.get('cnpj_fiscalizado') or '') for f in fichas.values()}
+    cnpjs |= {c for f in fichas.values() for c in f['sinais']['cnpj_citado']}
+    empresas = {}
+    for e in _por_lotes(conexao, SQL_EMPRESAS, 'cnpjs', {c for c in cnpjs if len(c) == 14}):
+        empresas.setdefault(e['cnpj'], e['nome'])
+        empresas.setdefault(e['cnpj'][:8], e['nome'])
+    return empresas
 
 
 def extrai(conexao, tipos=TIPOS_PADRAO, inicio=None, fim=None, incluir_exportacao=False) -> dict:
@@ -192,99 +306,18 @@ def extrai(conexao, tipos=TIPOS_PADRAO, inicio=None, fim=None, incluir_exportaca
     """
     fichas = {f['id']: {**f, 'sinais': {chave: set() for chave, _, _ in DIMENSOES}, 'ces': set(),
                         'resultados': [], 'valor': 0.0} for f in busca_fichas(conexao, tipos, inicio, fim)}
-    ids = list(fichas)
-    if not ids:
+    if not fichas:
         return {'fichas': [], 'descartadas_exportacao': 0, 'ces_no_mercante': 0, 'ces': 0, 'empresas': {}}
-
-    def sinal(ficha_id, dimensao, valor):
-        if valor:
-            fichas[ficha_id]['sinais'][dimensao].add(valor)
-
-    textos = {i: [fichas[i].get('observacoes') or ''] for i in ids}
-    for r in _por_lotes(conexao, SQL_RESULTADOS, 'ids', ids, tipos=list(tipos)):
-        ficha = fichas[r['ovr_id']]
-        ficha['resultados'].append(r['tipo_resultado'])
-        ficha['valor'] += float(r['valor'] or 0)
-    for ficha in fichas.values():
-        ficha['ces'].add(_ce(ficha.get('numeroCEmercante')))
-        sinal(ficha['id'], 'importador', documento(ficha.get('cnpj_fiscalizado')))
-    for rvf in _por_lotes(conexao, SQL_RVFS, 'ids', ids):
-        fichas[rvf['ovr_id']]['ces'].add(_ce(rvf['numeroCEmercante']))
-        sinal(rvf['ovr_id'], 'conteiner', normaliza_conteiner(rvf['numerolote']))
-        textos[rvf['ovr_id']] += [rvf['descricao'] or '', rvf['descricao_interna'] or '']
-    for consulta, dimensao, campo in ((SQL_APREENSOES, 'apreensao', 'descricao'), (SQL_INFRACOES, 'infracao', 'nome'),
-                                      (SQL_MARCAS, 'marca', 'nome'), (SQL_FLAGS, 'flag', 'nome')):
-        for linha in _por_lotes(conexao, consulta, 'ids', ids):
-            sinal(linha['ovr_id'], dimensao, (linha[campo] or '').strip().upper() if dimensao == 'marca'
-                  else (linha[campo] or '').strip())
-    for tg in _por_lotes(conexao, SQL_TG, 'ids', ids):
-        sinal(tg['ovr_id'], 'ncm_encontrado', posicao_ncm(tg['ncm']))
-        textos[tg['ovr_id']] += [tg['descricao'] or '', tg['observacoes'] or '']
-    # citações nos textos livres (o motivo dos eventos fica de fora: traz CPF de auditores)
-    for ficha_id, partes in textos.items():
-        texto = '\n'.join(dict.fromkeys(partes))
-        for cnpj in extrai_cnpjs(texto):
-            sinal(ficha_id, 'cnpj_citado', cnpj)
-        for cpf in extrai_cpfs(texto):
-            sinal(ficha_id, 'cpf_citado', cpf)
-        for conteiner in extrai_conteineres(texto):
-            sinal(ficha_id, 'conteiner', conteiner)
-
-    # Mercante
-    for ficha in fichas.values():
-        ficha['ces'].discard(None)
+    _sinais_dos_textos(fichas, _sinais_do_fichas(conexao, fichas, tipos))
     todos_ces = {ce for ficha in fichas.values() for ce in ficha['ces']}
-    ces = {c['numeroCEmercante']: c for c in _por_lotes(conexao, SQL_CES, 'ces', todos_ces)}
-    manifestos = {m['numero']: m['portoCarregamento'] for m in _por_lotes(
-        conexao, SQL_MANIFESTOS, 'numeros', {c['manifestoCE'] for c in ces.values() if c['manifestoCE']})}
-    ncms_ce: Dict[str, set] = {}
-    for n in _por_lotes(conexao, SQL_NCM_CE, 'ces', set(ces)):
-        posicao = posicao_ncm(n['identificacaoNCM'])
-        if posicao:
-            ncms_ce.setdefault(n['numeroCEMercante'], set()).add(posicao)
-
-    descartadas = 0
-    cnpjs_completos = set()
-    for ficha_id in list(fichas):
-        ficha = fichas[ficha_id]
-        conhecidos = [ces[ce] for ce in ficha['ces'] if ce in ces]
-        ficha['exportacao'] = bool(conhecidos) and all(c['tipoTrafego'] == TRAFEGO_EXPORTACAO for c in conhecidos)
-        if ficha['exportacao'] and not incluir_exportacao:
-            del fichas[ficha_id]
-            descartadas += 1
-            continue
-        for ce in conhecidos:
-            if ce['tipoTrafego'] == TRAFEGO_EXPORTACAO and not incluir_exportacao:
-                continue
-            consignatario = re.sub(r'\D', '', ce['consignatario'] or '')
-            if len(consignatario) == 14:
-                cnpjs_completos.add(consignatario)
-            sinal(ficha_id, 'importador', documento(ce['consignatario']))
-            sinal(ficha_id, 'embarcador', normaliza_embarcador(ce['embarcador']))
-            origem = (ce['portoOrigemCarga'] or '').strip().upper()
-            destino = (ce['portoDestFinal'] or '').strip().upper()
-            sinal(ficha_id, 'porto_origem', origem)
-            sinal(ficha_id, 'pais_origem', origem[:2])
-            if origem and destino:
-                sinal(ficha_id, 'rota', f'{origem} > {destino}')
-            carregamento = (manifestos.get(ce['manifestoCE']) or '').strip().upper()
-            if carregamento and carregamento != origem:
-                sinal(ficha_id, 'porto_baldeacao', carregamento)
-            for posicao in ncms_ce.get(ce['numeroCEmercante'], ()):
-                sinal(ficha_id, 'ncm_declarado', posicao)
-                if origem:
-                    sinal(ficha_id, 'pais_ncm', f'{origem[:2]} {posicao}')
-    cnpjs_completos |= {re.sub(r'\D', '', f.get('cnpj_fiscalizado') or '') for f in fichas.values()}
-    cnpjs_completos |= {c for f in fichas.values() for c in f['sinais']['cnpj_citado']}
-    empresas = {}
-    for e in _por_lotes(conexao, SQL_EMPRESAS, 'cnpjs', {c for c in cnpjs_completos if len(c) == 14}):
-        empresas.setdefault(e['cnpj'], e['nome'])
-        empresas.setdefault(e['cnpj'][:8], e['nome'])
+    dados_mercante = _dados_mercante(conexao, todos_ces)
+    descartadas = _aplica_mercante(fichas, dados_mercante, incluir_exportacao)
     for ficha in fichas.values():
         ficha['perdimento'] = PERDIMENTO in ficha['resultados']
         ficha['apreensao'] = APREENSAO in ficha['resultados']
     return {'fichas': list(fichas.values()), 'descartadas_exportacao': descartadas,
-            'ces': len(todos_ces), 'ces_no_mercante': len(ces), 'empresas': empresas}
+            'ces': len(todos_ces), 'ces_no_mercante': len(dados_mercante[0]),
+            'empresas': _empresas(conexao, fichas, dados_mercante[0])}
 
 
 # ------------------------------------------------------------ agregação

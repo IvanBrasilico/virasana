@@ -44,7 +44,7 @@ DIAS_ANTES_DO_MANIFESTO = 90
 MAXIMO_DIAS_PERIODO = 366
 TAMANHO_LOTE = 500
 
-SQL_CONTEINERES_DOS_CES = text('''
+SQL_CONTEINERES_DOS_CES = text("""
 SELECT c.numeroCEmercante AS ce, c.consignatario AS consignatario, c.cnpjNotify AS notify,
        c.descricao AS mercadoria, m.dataInicioOperacaoDate AS data_manifesto, i.codigoConteiner AS conteiner
 FROM conhecimentosresumo c
@@ -54,9 +54,9 @@ WHERE (c.consignatario LIKE :cnpj_prefixo OR c.cnpjNotify LIKE :cnpj_prefixo)
   AND c.tipoTrafego = :trafego
   AND m.dataInicioOperacaoDate BETWEEN :inicio_manifesto AND :fim_manifesto
   AND i.codigoConteiner IS NOT NULL AND i.codigoConteiner <> ''
-''')
+""")
 
-SQL_SAIDAS = text('''
+SQL_SAIDAS = text("""
 SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, placa, placaSemirreboque,
        cnpjTransportador, cpfMotorista, nomeMotorista, numeroConhecimento
 FROM apirecintos_acessosveiculo
@@ -65,12 +65,12 @@ WHERE numeroConteiner IN :conteineres
   AND (vazioConteiner IS NULL OR vazioConteiner = 0)
   AND dataHoraOcorrencia BETWEEN :inicio AND :fim
 ORDER BY dataHoraOcorrencia
-''').bindparams(bindparam('conteineres', expanding=True))
+""").bindparams(bindparam('conteineres', expanding=True))
 
-SQL_NCMS = text('''
+SQL_NCMS = text("""
 SELECT numeroCEMercante AS ce, codigoConteiner AS conteiner, identificacaoNCM AS ncm
 FROM ncmitemresumo WHERE numeroCEMercante IN :ces
-''').bindparams(bindparam('ces', expanding=True))
+""").bindparams(bindparam('ces', expanding=True))
 
 SQL_RECINTOS = text('SELECT cod_siscomex, nome FROM ovr_recintos WHERE cod_siscomex IN :codigos'
                     ).bindparams(bindparam('codigos', expanding=True))

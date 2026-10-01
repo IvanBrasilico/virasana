@@ -118,7 +118,7 @@ def planilha():
     descricao = {'tipos': ', '.join(TIPOS_RESULTADO[t] for t in p['tipos']),
                  'inicio': p['inicio'] or 'início', 'fim': p['fim'] or 'hoje',
                  'exportacao': 'incluída' if p['exportacao'] else 'excluída'}
-    nome = f"risco_historico_fichas_{date.today():%Y%m%d}.xlsx"
+    nome = f'risco_historico_fichas_{date.today():%Y%m%d}.xlsx'
     return send_file(
         io.BytesIO(planilha_xlsx(extracao(p), descricao)), as_attachment=True, download_name=nome,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -54,7 +54,7 @@ from sqlalchemy import create_engine, text
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
-SQL_APREENSOES = '''
+SQL_APREENSOES = """
 SELECT ficha.id AS ovr_id, ficha.numero AS ovr_numero, ficha.datahora AS ovr_datahora,
        ficha.numeroCEmercante AS ovr_ce, ficha.observacoes AS ovr_observacoes,
        rvf.id AS rvf_id, rvf.datahora AS rvf_datahora, rvf.numeroCEmercante AS rvf_ce,
@@ -67,7 +67,7 @@ INNER JOIN ovr_apreensoes_rvf a ON a.rvf_id = rvf.id
 LEFT JOIN ovr_tiposapreensao t ON t.id = a.tipo_id
 WHERE ficha.datahora >= :inicio AND ficha.datahora < :fim
 ORDER BY ficha.datahora, rvf.id
-'''
+"""
 
 COLUNAS_ACESSO = ('id', 'codigoRecinto', 'dataHoraOcorrencia', 'operacao', 'direcao', 'tipoOperacao',
                   'placa', 'placaSemirreboque', 'numeroConteiner', 'numeroConhecimento',

@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import virasana.navii.busca_navii  # noqa: F401 — ajusta o sys.path (ajna_commons, bhadrasana2) para rodar isolado
 from virasana.navii import referencias
 from virasana.navii.referencias.atualiza_referencias import (
     codigos_usados, filtra_usados, gera_navios, gera_ncm, gera_paises, gera_portos,

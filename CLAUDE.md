@@ -79,8 +79,15 @@ python -m pytest --cov=virasana virasana/tests
 A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
 
 ```bash
-python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_navii_filtros_salvos.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py virasana/tests/test_apreensoes_transporte_tela.py virasana/tests/test_diagnostico_risco_perdimentos.py virasana/tests/test_dados_risco_perdimentos.py virasana/tests/test_risco_historico_tela.py virasana/tests/test_prefixo_proxy.py --disable-warnings
+python qualidade_navii.py            # testes + flake8 + bandit + radon dos módulos novos
+python qualidade_navii.py --rapido   # só as verificações estáticas
 ```
+
+`qualidade_navii.py` (ou `tox -e navii`) tem a lista dos módulos e testes novos: **módulo ou teste novo entra
+lá**. Regras: flake8 com 120 colunas, aspas (`'` simples; `"""` em texto multilinha) e complexidade ciclomática
+≤ 10; bandit sem alertas (SQL montado só com constantes leva `# nosec B608`, com a justificativa num comentário
+na linha de cima — palavras depois do `nosec` viram ruído no bandit); radon sem nota D ou pior. Mongo nos
+testes: `mongomock` (extras `dev`). Cada arquivo de teste tem de passar também rodando sozinho.
 
 ## Restrição principal: não arriscar produção
 

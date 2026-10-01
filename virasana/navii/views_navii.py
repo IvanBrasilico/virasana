@@ -81,6 +81,30 @@ def index():
     )
 
 
+def _filtros_da_requisicao() -> dict:
+    """Filtros da busca a partir da query string da API."""
+    filtros = {}
+    for campo in CAMPOS_LISTA:  # repetidos (?ncm=8471&ncm=6109) ou separados por vírgula
+        valores = [v for v in request.args.getlist(campo) if v.strip()]
+        if valores:
+            filtros[campo] = valores
+    for campo in ('produto', 'empresa'):
+        valor = (request.args.get(campo) or '').strip()
+        if valor:
+            filtros[campo] = valor
+    for campo in ('concluido', 'com_imagem'):
+        if request.args.get(campo) in ('1', 'true', 'True'):
+            filtros[campo] = True
+    ncms_max = request.args.get('ncms_max', type=int)
+    if ncms_max:
+        filtros['ncms_max'] = ncms_max
+    data_inicio, data_fim = request.args.get('data_inicio'), request.args.get('data_fim')
+    if data_inicio and data_fim:
+        filtros['data_inicio'] = data_inicio
+        filtros['data_fim'] = data_fim
+    return filtros
+
+
 @bp_navii.route('/api/ces')
 @login_required
 def api_ces():
@@ -90,27 +114,7 @@ def api_ces():
     cursor_id = request.args.get('cursor_id', type=int)
     limit = request.args.get('limit', default=20, type=int)
     limit = max(1, min(limit, 50))
-
-    filtros = {}
-    for campo in CAMPOS_LISTA:  # repetidos (?ncm=8471&ncm=6109) ou separados por vírgula
-        valores = [v for v in request.args.getlist(campo) if v.strip()]
-        if valores:
-            filtros[campo] = valores
-    for campo in ('produto', 'empresa'):
-        valor = request.args.get(campo)
-        if valor and valor.strip():
-            filtros[campo] = valor.strip()
-    for campo in ('concluido', 'com_imagem'):
-        if request.args.get(campo) in ('1', 'true', 'True'):
-            filtros[campo] = True
-    ncms_max = request.args.get('ncms_max', type=int)
-    if ncms_max:
-        filtros['ncms_max'] = ncms_max
-    data_inicio = request.args.get('data_inicio')
-    data_fim = request.args.get('data_fim')
-    if data_inicio and data_fim:
-        filtros['data_inicio'] = data_inicio
-        filtros['data_fim'] = data_fim
+    filtros = _filtros_da_requisicao()
 
     try:
         resultados = busca_ces_navii(

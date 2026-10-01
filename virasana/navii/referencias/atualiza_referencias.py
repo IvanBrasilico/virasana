@@ -55,7 +55,8 @@ import json
 import os
 import re
 import shutil
-import subprocess
+# subprocess: só o curl de download, com argumentos fixos (ver baixa())
+import subprocess  # nosec B404
 import tempfile
 import urllib.parse
 import urllib.request
@@ -258,7 +259,7 @@ def grava(nome: str, dados: dict):
     print(f'  {nome}: {os.path.getsize(caminho) / 1024:.0f} KB')
 
 
-def main():
+def _argumentos():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--brutos', help='diretório com os arquivos já baixados (não acessa a internet)')
     parser.add_argument('--guardar-brutos', help='diretório onde guardar os arquivos baixados')
@@ -269,82 +270,87 @@ def main():
                         help="início do período considerado por --banco ('YYYY-MM-DD'; padrão: 12 meses atrás)")
     parser.add_argument('--sem-filtro-de-uso', action='store_true',
                         help='ignora o usados.json e gera as tabelas completas')
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    caminho_usados = os.path.join(AQUI, 'usados.json')
-    if args.banco:
-        import sys
-        from sqlalchemy import create_engine
-        uri = args.uri
-        if not uri:
-            sys.path.append('../ajna_docs/commons')
-            from ajna_commons.flask.conf import SQL_URI as uri
-        print(f'Consultando navios e portos usados desde {args.desde} (pode levar alguns minutos)...')
-        with create_engine(uri).connect() as conexao:
-            grava('usados.json', codigos_usados(conexao, args.desde))
-    usados = None
-    if os.path.exists(caminho_usados) and not args.sem_filtro_de_uso:
-        usados = le_json(caminho_usados)
 
+def _atualiza_usados(args):
+    """--banco: grava o usados.json com os navios/portos usados na base desde --desde."""
+    import sys
+    from sqlalchemy import create_engine
+    uri = args.uri
+    if not uri:
+        sys.path.append('../ajna_docs/commons')
+        from ajna_commons.flask.conf import SQL_URI as uri
+    print(f'Consultando navios e portos usados desde {args.desde} (pode levar alguns minutos)...')
+    with create_engine(uri).connect() as conexao:
+        grava('usados.json', codigos_usados(conexao, args.desde))
+
+
+def _baixa_fontes(args) -> dict:
+    """Caminho do arquivo bruto de cada fonte; baixa se não vier --brutos.
+    Uma fonte fora do ar não impede as demais."""
     diretorio = args.brutos or args.guardar_brutos or tempfile.mkdtemp(prefix='navii_ref_')
     os.makedirs(diretorio, exist_ok=True)
     caminhos = {}
     for chave, fonte in FONTES.items():
         caminhos[chave] = os.path.join(diretorio, fonte['arquivo_bruto'])
-        if not args.brutos:
-            print(f"Baixando {fonte['descricao']}...")
-            try:
-                baixa(fonte['url'], caminhos[chave])
-            except Exception as err:  # noqa: uma fonte fora do ar não impede as demais
-                print(f'  [AVISO] download falhou ({err}); a tabela que depende dela será mantida como está.')
+        if args.brutos:
+            continue
+        print(f"Baixando {fonte['descricao']}...")
+        try:
+            baixa(fonte['url'], caminhos[chave])
+        except Exception as err:  # noqa: uma fonte fora do ar não impede as demais
+            print(f'  [AVISO] download falhou ({err}); a tabela que depende dela será mantida como está.')
+    return caminhos
 
-    print('Gerando JSONs em', AQUI)
-    fontes_json = le_existente('fontes.json') or {}
-    quantidades = dict(fontes_json.get('quantidades') or {})
-    vigencia = fontes_json.get('ncm_vigencia')
-    falhas = []
 
-    def gera(nome: str, gerador):
-        """Roda o gerador; em erro ou resultado vazio, avisa e mantém o arquivo anterior."""
+class _GeradorTolerante:
+    """Roda cada gerador; em erro ou resultado vazio, avisa e mantém o arquivo anterior."""
+
+    def __init__(self):
+        self.falhas = []
+
+    def gera(self, nome: str, gerador):
         try:
             tabela = gerador()
             if not tabela:
                 raise ValueError('resultado vazio')
             return tabela
         except Exception as err:  # noqa: segue com as demais tabelas
-            falhas.append(nome)
+            self.falhas.append(nome)
             print(f'  [AVISO] {nome} não foi gerado ({type(err).__name__}: {err}); mantido o arquivo anterior.')
             return None
 
-    bruto_ncm = gera('ncm.json (leitura)', lambda: le_json(caminhos['ncm.json']))
-    ncm = gera('ncm.json', lambda: gera_ncm(bruto_ncm)) if bruto_ncm else None
-    portos_todos = gera('portos.json', lambda: gera_portos(
-        csv.DictReader(io.StringIO(le_texto(caminhos['portos.json'])))))
-    paises = gera('paises.json', lambda: gera_paises(le_json(caminhos['paises.json']),
-                                                     le_json(caminhos['paises_wikidata'])))
-    navios_todos = gera('navios.json', lambda: gera_navios(le_json(caminhos['navios.json'])))
 
-    if ncm:
-        grava('ncm.json', ncm)
-        quantidades.update(ncm_capitulos=len(ncm['capitulos']), ncm_posicoes=len(ncm['posicoes']))
-        vigencia = f"{bruto_ncm.get('Data_Ultima_Atualizacao_NCM')} — {bruto_ncm.get('Ato')}"
-    if paises:
-        grava('paises.json', paises)
-        quantidades['paises'] = len(paises)
-    for nome, todos, chave_usados in (('portos', portos_todos, 'portos'), ('navios', navios_todos, 'navios')):
-        if not todos:
-            continue
-        tabela = filtra_usados(todos, usados and usados[chave_usados])
-        grava(f'{nome}.json', tabela)
-        quantidades.update({nome: len(tabela), f'{nome}_na_fonte': len(todos)})
-        if usados:
-            print(f"  filtro de uso (desde {usados['desde']}): {len(tabela)} de "
-                  f"{len(usados[chave_usados])} {nome} usados têm nome.")
-            if nome == 'portos':
-                sem_nome = sorted(set(usados['portos']) - set(tabela))
-                print(f'  Portos usados sem nome ({len(sem_nome)}), candidatos a portos_ajustes.json: '
-                      + ', '.join(sem_nome[:60]))
+def _gera_tabelas(caminhos: dict, gerador: _GeradorTolerante) -> dict:
+    bruto_ncm = gerador.gera('ncm.json (leitura)', lambda: le_json(caminhos['ncm.json']))
+    return {
+        'bruto_ncm': bruto_ncm,
+        'ncm': gerador.gera('ncm.json', lambda: gera_ncm(bruto_ncm)) if bruto_ncm else None,
+        'portos': gerador.gera('portos.json', lambda: gera_portos(
+            csv.DictReader(io.StringIO(le_texto(caminhos['portos.json']))))),
+        'paises': gerador.gera('paises.json', lambda: gera_paises(le_json(caminhos['paises.json']),
+                                                                  le_json(caminhos['paises_wikidata']))),
+        'navios': gerador.gera('navios.json', lambda: gera_navios(le_json(caminhos['navios.json']))),
+    }
 
+
+def _grava_filtrada(nome: str, todos: dict, usados: Optional[dict], quantidades: dict):
+    """Grava portos/navios filtrados pelo uso real na base (usados.json)."""
+    tabela = filtra_usados(todos, usados and usados[nome])
+    grava(f'{nome}.json', tabela)
+    quantidades.update({nome: len(tabela), f'{nome}_na_fonte': len(todos)})
+    if not usados:
+        return
+    print(f"  filtro de uso (desde {usados['desde']}): {len(tabela)} de "
+          f'{len(usados[nome])} {nome} usados têm nome.')
+    if nome == 'portos':
+        sem_nome = sorted(set(usados['portos']) - set(tabela))
+        print(f'  Portos usados sem nome ({len(sem_nome)}), candidatos a portos_ajustes.json: '
+              + ', '.join(sem_nome[:60]))
+
+
+def _grava_fontes(quantidades: dict, vigencia, falhas: list, usados: Optional[dict]):
     grava('fontes.json', {
         'gerado_em': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'ncm_vigencia': vigencia,
@@ -355,8 +361,38 @@ def main():
                           if usados else None),
         'fontes': {chave: {'descricao': f['descricao'], 'url': f['url']} for chave, f in FONTES.items()},
     })
-    if falhas:
-        print(f'Concluído com avisos: não atualizados {", ".join(falhas)} (mantidas as versões anteriores).')
+
+
+def main():
+    args = _argumentos()
+    if args.banco:
+        _atualiza_usados(args)
+    caminho_usados = os.path.join(AQUI, 'usados.json')
+    usados = le_json(caminho_usados) if os.path.exists(caminho_usados) and not args.sem_filtro_de_uso else None
+    caminhos = _baixa_fontes(args)
+
+    print('Gerando JSONs em', AQUI)
+    fontes_json = le_existente('fontes.json') or {}
+    quantidades = dict(fontes_json.get('quantidades') or {})
+    vigencia = fontes_json.get('ncm_vigencia')
+    gerador = _GeradorTolerante()
+    tabelas = _gera_tabelas(caminhos, gerador)
+    if tabelas['ncm']:
+        grava('ncm.json', tabelas['ncm'])
+        quantidades.update(ncm_capitulos=len(tabelas['ncm']['capitulos']),
+                           ncm_posicoes=len(tabelas['ncm']['posicoes']))
+        bruto_ncm = tabelas['bruto_ncm']
+        vigencia = f"{bruto_ncm.get('Data_Ultima_Atualizacao_NCM')} — {bruto_ncm.get('Ato')}"
+    if tabelas['paises']:
+        grava('paises.json', tabelas['paises'])
+        quantidades['paises'] = len(tabelas['paises'])
+    for nome in ('portos', 'navios'):
+        if tabelas[nome]:
+            _grava_filtrada(nome, tabelas[nome], usados, quantidades)
+
+    _grava_fontes(quantidades, vigencia, gerador.falhas, usados)
+    if gerador.falhas:
+        print(f'Concluído com avisos: não atualizados {", ".join(gerador.falhas)} (mantidas as versões anteriores).')
     else:
         print('Concluído.')
 

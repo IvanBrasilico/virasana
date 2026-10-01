@@ -162,7 +162,8 @@ class Diagnostico:
             f'FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({lista}) '
             f'ORDER BY TABLE_ROWS DESC'))
         for tabela in TABELAS:
-            for linha in self.consulta(f'SHOW CREATE TABLE {tabela}'):  # nosec B608 (nomes da constante)
+            # nomes de tabela vêm da constante TABELAS
+            for linha in self.consulta(f'SHOW CREATE TABLE {tabela}'):  # nosec B608
                 self.escreve()
                 self.escreve(linha[1])
 
@@ -203,9 +204,9 @@ class Diagnostico:
 
         rvf = 'ovr_verificacoesfisicas'
         self._cobertura([
-            ('CE na ficha (15 dígitos)', na_ficha("LENGTH(TRIM(o.numeroCEmercante)) = 15")),
-            ('CNPJ fiscalizado (8+ dígitos)', na_ficha("LENGTH(TRIM(o.cnpj_fiscalizado)) >= 8")),
-            ('observações preenchidas', na_ficha("LENGTH(TRIM(o.observacoes)) > 0")),
+            ('CE na ficha (15 dígitos)', na_ficha('LENGTH(TRIM(o.numeroCEmercante)) = 15')),
+            ('CNPJ fiscalizado (8+ dígitos)', na_ficha('LENGTH(TRIM(o.cnpj_fiscalizado)) >= 8')),
+            ('observações preenchidas', na_ficha('LENGTH(TRIM(o.observacoes)) > 0')),
             ('com RVF', existe(rvf)),
             ('RVF com CE', existe(rvf, 'LENGTH(TRIM(x.numeroCEmercante)) = 15')),
             ('RVF com lote/contêiner preenchido', existe(rvf, 'LENGTH(TRIM(x.numerolote)) > 0')),
@@ -219,7 +220,7 @@ class Diagnostico:
             ('com TG', existe('ovr_tgovr')),
             ('TG com item com NCM', f'SELECT COUNT(*) FROM {f} fr WHERE EXISTS (SELECT 1 FROM ovr_tgovr t '  # nosec
                                     f'JOIN ovr_itenstg i ON i.tg_id = t.id WHERE t.ovr_id = fr.id '
-                                    f"AND LENGTH(TRIM(i.ncm)) >= 4)"),
+                                    f'AND LENGTH(TRIM(i.ncm)) >= 4)'),
             ('TG com item com marca', f'SELECT COUNT(*) FROM {f} fr WHERE EXISTS (SELECT 1 FROM ovr_tgovr t '  # nosec
                                       f'JOIN ovr_itenstg i ON i.tg_id = t.id WHERE t.ovr_id = fr.id '
                                       f'AND i.marca_id IS NOT NULL)'),
@@ -241,15 +242,17 @@ class Diagnostico:
         self.escreve()
         itens = [
             ('CE encontrado em conhecimentosresumo', f'SELECT COUNT(DISTINCT fc.ce) {base}'),
-            ('  com contêiner em itensresumo', f"SELECT COUNT(DISTINCT fc.ce) {base} WHERE EXISTS (SELECT 1 FROM "
-                                               f"itensresumo i WHERE i.numeroCEmercante = fc.ce "
-                                               f"AND i.codigoConteiner <> '')"),
-            ('  com NCM em ncmitemresumo', f'SELECT COUNT(DISTINCT fc.ce) {base} WHERE EXISTS (SELECT 1 FROM '
-                                           f'ncmitemresumo n WHERE n.numeroCEMercante = fc.ce)'),
-            ('  embarcador preenchido', f"SELECT COUNT(DISTINCT fc.ce) {base} WHERE LENGTH(TRIM(c.embarcador)) > 0"),
-            ('  consignatário com 14 dígitos', f"SELECT COUNT(DISTINCT fc.ce) {base} "
-                                               f"WHERE LENGTH(TRIM(c.consignatario)) = 14"),
-            ('  notify preenchido', f"SELECT COUNT(DISTINCT fc.ce) {base} WHERE LENGTH(TRIM(c.cnpjNotify)) > 0"),
+            ('  com contêiner em itensresumo',
+             f'SELECT COUNT(DISTINCT fc.ce) {base} WHERE EXISTS (SELECT 1 FROM '  # nosec B608
+             f'itensresumo i WHERE i.numeroCEmercante = fc.ce '
+             f"AND i.codigoConteiner <> '')"),
+            ('  com NCM em ncmitemresumo',
+             f'SELECT COUNT(DISTINCT fc.ce) {base} WHERE EXISTS (SELECT 1 FROM '  # nosec B608
+             f'ncmitemresumo n WHERE n.numeroCEMercante = fc.ce)'),
+            ('  embarcador preenchido', f'SELECT COUNT(DISTINCT fc.ce) {base} WHERE LENGTH(TRIM(c.embarcador)) > 0'),
+            ('  consignatário com 14 dígitos', f'SELECT COUNT(DISTINCT fc.ce) {base} '
+                                               f'WHERE LENGTH(TRIM(c.consignatario)) = 14'),
+            ('  notify preenchido', f'SELECT COUNT(DISTINCT fc.ce) {base} WHERE LENGTH(TRIM(c.cnpjNotify)) > 0'),
             ('  baldeação (manifesto carregado fora da origem)',
              f'SELECT COUNT(DISTINCT fc.ce) {base} JOIN manifestosresumo m ON m.numero = c.manifestoCE '
              f'WHERE m.portoCarregamento <> c.portoOrigemCarga'),
@@ -260,11 +263,11 @@ class Diagnostico:
         self.escreve()
         self.escreve('CNPJ fiscalizado x partes do CE (raiz de 8 dígitos):')
         papeis = self.consulta(
-            f"SELECT SUM(CASE WHEN SUBSTR(TRIM(o.cnpj_fiscalizado), 1, 8) = "  # nosec
-            f"SUBSTR(TRIM(c.consignatario), 1, 8) THEN 1 ELSE 0 END), "
-            f"SUM(CASE WHEN SUBSTR(TRIM(o.cnpj_fiscalizado), 1, 8) = "
-            f"SUBSTR(TRIM(c.cnpjNotify), 1, 8) THEN 1 ELSE 0 END), COUNT(*) "
-            f"{base} JOIN ovr_ovrs o ON o.id = fc.ficha WHERE LENGTH(TRIM(o.cnpj_fiscalizado)) >= 8")
+            f'SELECT SUM(CASE WHEN SUBSTR(TRIM(o.cnpj_fiscalizado), 1, 8) = '  # nosec
+            f'SUBSTR(TRIM(c.consignatario), 1, 8) THEN 1 ELSE 0 END), '
+            f'SUM(CASE WHEN SUBSTR(TRIM(o.cnpj_fiscalizado), 1, 8) = '
+            f'SUBSTR(TRIM(c.cnpjNotify), 1, 8) THEN 1 ELSE 0 END), COUNT(*) '
+            f'{base} JOIN ovr_ovrs o ON o.id = fc.ficha WHERE LENGTH(TRIM(o.cnpj_fiscalizado)) >= 8')
         if papeis:
             consignatario, notify, total = (int(v or 0) for v in papeis[0])
             self.tabela(['fiscalizado é...', 'fichas x CE', 'de'], [
@@ -281,25 +284,30 @@ class Diagnostico:
         f = self.fichas
         textos = {}
         fontes = [
-            ('observações da ficha', f'SELECT fr.id, o.observacoes FROM {f} fr JOIN ovr_ovrs o ON o.id = fr.id'),
-            ('descrição da RVF', f'SELECT v.ovr_id, v.descricao FROM {f} fr JOIN ovr_verificacoesfisicas v '
-                                 f'ON v.ovr_id = fr.id'),
-            ('descrição interna da RVF', f'SELECT v.ovr_id, v.descricao_interna FROM {f} fr '
-                                         f'JOIN ovr_verificacoesfisicas v ON v.ovr_id = fr.id'),
-            ('motivo dos eventos', f'SELECT e.ovr_id, e.motivo FROM {f} fr JOIN ovr_eventos e ON e.ovr_id = fr.id'),
-            ('TG (descrição/observações)', f"SELECT t.ovr_id, COALESCE(t.descricao, '') || ' ' || "
-                                           f"COALESCE(t.observacoes, '') FROM {f} fr JOIN ovr_tgovr t "
-                                           f"ON t.ovr_id = fr.id"),
+            ('observações da ficha',
+             f'SELECT fr.id, o.observacoes FROM {f} fr JOIN ovr_ovrs o ON o.id = fr.id'),  # nosec B608
+            ('descrição da RVF',
+             f'SELECT v.ovr_id, v.descricao FROM {f} fr '  # nosec B608
+             f'JOIN ovr_verificacoesfisicas v ON v.ovr_id = fr.id'),
+            ('descrição interna da RVF',
+             f'SELECT v.ovr_id, v.descricao_interna FROM {f} fr '  # nosec B608
+             f'JOIN ovr_verificacoesfisicas v ON v.ovr_id = fr.id'),
+            ('motivo dos eventos',
+             f'SELECT e.ovr_id, e.motivo FROM {f} fr JOIN ovr_eventos e ON e.ovr_id = fr.id'),  # nosec B608
+            ('TG (descrição/observações)',
+             f"SELECT t.ovr_id, COALESCE(t.descricao, '') || ' ' || "  # nosec B608
+             f"COALESCE(t.observacoes, '') FROM {f} fr JOIN ovr_tgovr t ON t.ovr_id = fr.id"),
         ]
         if self.mysql:  # MySQL não tem || para concatenar
-            fontes[-1] = ('TG (descrição/observações)', f"SELECT t.ovr_id, CONCAT_WS(' ', t.descricao, t.observacoes) "
-                                                        f"FROM {f} fr JOIN ovr_tgovr t ON t.ovr_id = fr.id")
+            fontes[-1] = ('TG (descrição/observações)',
+                          f"SELECT t.ovr_id, CONCAT_WS(' ', t.descricao, t.observacoes) "  # nosec B608
+                          f'FROM {f} fr JOIN ovr_tgovr t ON t.ovr_id = fr.id')
         extratores = {'CPF': extrai_cpfs, 'CNPJ': extrai_cnpjs, 'contêiner': extrai_conteineres,
                       'placa': extrai_placas, 'NCM citado': extrai_ncms}
         por_fonte = []
         fichas_por_tipo = {tipo: set() for tipo in extratores}
         exemplos = {tipo: [] for tipo in extratores}
-        for nome_fonte, sql in fontes:  # nosec B608 (fontes fixas acima)
+        for nome_fonte, sql in fontes:
             contagem = Counter()
             for ficha, texto in self.consulta(sql):
                 textos.setdefault(ficha, []).append(texto or '')

@@ -265,7 +265,7 @@ class Diagnostico:
         self.titulo('2. ESTRUTURA DAS TABELAS (SHOW CREATE TABLE)')
         self.escreve('Volume aproximado (information_schema — estimativa do InnoDB, não é COUNT exato):')
         self.executa(
-            'SELECT TABLE_NAME, ENGINE, TABLE_ROWS, '
+            'SELECT TABLE_NAME, ENGINE, TABLE_ROWS, '  # nosec B608
             'ROUND(DATA_LENGTH/1024/1024) AS dados_mb, ROUND(INDEX_LENGTH/1024/1024) AS indices_mb, '
             'TABLE_COLLATION '
             'FROM information_schema.TABLES '
@@ -294,7 +294,7 @@ class Diagnostico:
                      'JOIN escalasresumo e ON e.numeroDaEscala = em.escala ORDER BY m.numero, e.dataPrevistaAtracacao')
         self.escreve()
         self.escreve('O ciclo de vida está atualizado? (último desembarque e volume por mês)')
-        self.executa("SELECT LEFT(data_desembarque, 7) AS mes, COUNT(*) AS ciclos, "
+        self.executa('SELECT LEFT(data_desembarque, 7) AS mes, COUNT(*) AS ciclos, '
                      'SUM(concluido = 1) AS concluidos, MAX(data_desembarque) AS ultimo_desembarque '
                      'FROM ciclodevida_ciclo_de_vida_importacao GROUP BY mes ORDER BY mes DESC LIMIT 6')
         self.escreve()

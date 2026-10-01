@@ -370,6 +370,14 @@ def monta_query_navii(
     )
     # Filtros que só dependem do Conhecimento: valem para a query principal e
     # também dentro da janela (ver `_filtra_janela`).
+    criterios_ce = _criterios_ce(filtros)
+    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce)
+    q = q.filter(*criterios_ce)
+    return _filtra_por_candidato(q, filtros, exigir_escaneamento)
+
+
+def _criterios_ce(filtros: dict) -> list:
+    """Critérios que só dependem do Conhecimento (tráfego, portos, produto, empresa)."""
     criterios_ce = [or_(
         Conhecimento.tipoTrafego != TIPO_TRAFEGO_EXPORTACAO,
         Conhecimento.tipoTrafego.is_(None),
@@ -390,9 +398,12 @@ def monta_query_navii(
             Conhecimento.embarcador.ilike(termo),
             Conhecimento.consignatario.ilike(termo),
         ))
-    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce)
-    q = q.filter(*criterios_ce)
+    return criterios_ce
 
+
+def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
+    """Filtros em outras tabelas (imagem, NCM, recinto, entregue, qtde. de
+    NCMs), verificados por candidato da janela com `_existe`/subquery."""
     if exigir_escaneamento or filtros.get('com_imagem'):
         q = q.filter(_existe_ciclo(
             CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None),
