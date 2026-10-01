@@ -149,9 +149,13 @@ Log: `virasana/ciclo_de_vida_diagnostico_20261001_152637.log`.
 - **Trânsito > 6 h**: ~1,1 mil contêineres cheios entraram em outro recinto 6 a 72 h depois da saída
   (TRA perdido) e ~1,2 mil **vazios** (devolução de vazio — outra operação, o risco descrito pelo usuário).
   428 ciclos têm como "entrada no seco" uma entrada com o contêiner vazio.
-- **Recinto 8931318 não é TRA**: nas amostras, o contêiner entra e sai dele em ~9 min e segue para o TRA
-  de verdade (8931339, 8931304); também aparece inspecionando logo depois da saída do operador. Hoje o
-  algoritmo fecha o TRA nele. Há "recintos de passagem" (pátio/posto de escaneamento) a tratar.
+- **Entrada em OPERADOR tratada como TRA**: o 8931318 é o **ECOPORTO SANTOS, operador**
+  (`ovr_recintos.e_operador`; pode registrar EmbarqueDesembarque) — correção do usuário, 01/10. Nas
+  amostras, o contêiner sai do operador, entra e sai do Ecoporto em ~9 min e segue para o TRA (8931339,
+  8931304); o algoritmo, que toma QUALQUER entrada em outro recinto como seco, fechou o "TRA" no
+  Ecoporto. O Ecoporto também aparece inspecionando contêineres de outros operadores (escaneamento
+  terceirizado). E a lista fixa `OPERADORES` do loop (8931356, 8931359, 8931404) **não inclui o
+  Ecoporto**: desembarques lá não abrem ciclo. Usar `e_operador` em vez da lista fixa.
 - **Scanner no gate do TRA**: a inspeção vem minutos ANTES da entrada no TRA (ex.: inspeção 17:04,
   entrada 17:14).
 - **Recuperação pelo CE é pequena**: 3,4 mil dos 169 mil ciclos sem escaneamento têm inspeção com o
@@ -188,7 +192,8 @@ outra operação:
   automaticamente; baixa fica registrada para análise.
 
 **Fechamento por tipo**: operador (saída validada, sem entrada válida em seco depois); TRA (entrada
-cheia válida em outro recinto; recintos de passagem como o 8931318 não contam — segue-se para a
+cheia válida em recinto **não operador** (`ovr_recintos.e_operador` falso; entrada em outro operador,
+como o Ecoporto 8931318, é baldeação se houver embarque lá, ou passagem) — segue-se para a
 próxima entrada; scanner minutos antes do gate aceito); passagem/transbordo (embarque no mesmo
 operador sem gate no meio); baldeação (saída → entrada em outro operador → embarque); **saída omitida**
 (fronteira sem saída: fecha como incompleto, não fica pendente para sempre); abandono (90 dias sem saída
@@ -214,8 +219,8 @@ cada tabela de eventos; a cada volta, só os contêineres com evento novo têm a
 Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
 
 1. **Diagnóstico v2** (curto, só leitura, por amostragem): por que 52% sem CE (CE declarado existe no
-   Mercante? prefixos? escala?); OUTRO CE é master/filhote?; recintos de passagem (estadas curtas por
-   recinto); saídas tardias que passam/não passam na continuidade; passagem com continuidade; scanner
+   Mercante? prefixos? escala?); OUTRO CE é master/filhote?; operadores fora da lista fixa do loop
+   (`e_operador`) — seção 0 de `diagnostico_ces_ciclo_de_vida.py`; saídas tardias que passam/não passam na continuidade; passagem com continuidade; scanner
    x gate; fuso por recinto e janela da imagem após +3 h; peso x tara no desembarque; atraso de criação.
 2. **Núcleo puro** `linha_do_tempo.py`: recebe os eventos de um contêiner e devolve os ciclos com as
    ligações e a confiança — sem banco; testes com os casos reais das amostras.
