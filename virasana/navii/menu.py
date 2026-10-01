@@ -14,6 +14,7 @@ ENTRADAS_NAVII = [
     ('NAVI-I — Análise de risco na importação', 'navii.index'),
     ('Entregas por CNPJ', 'entregas.index'),
     ('Transporte das apreensões', 'apreensoes.index'),
+    ('Risco histórico das Fichas', 'risco_historico.index'),
 ]
 
 # Manual publicado no Apache, fora das apps (ver ajna_docs/docs2.0/publica_manual.sh)

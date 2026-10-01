@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Risco histórico das Fichas</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual das telas do NAVI-I, Entregas e Apreensões */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .form-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-linha .br-input { flex: 1 1 10rem; margin: 0; }
+        .grupo-tipos { flex: 2 1 22rem; }
+        .grupo-tipos .rotulo { display: block; font-size: .875rem; font-weight: 600; color: #333; margin-bottom: .375rem; }
+        .grupo-tipos .opcoes { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+        .opcao { display: inline-flex; align-items: center; gap: .375rem; font-size: .8125rem; }
+        .opcao input { width: 1rem; height: 1rem; }
+        .form-linha .botoes { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .dica { font-size: .75rem; color: #777; margin-top: .75rem; line-height: 1.4; }
+        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+        .resumo .item { font-size: .875rem; color: #555; }
+        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        details.dimensao { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; margin: .75rem 0; }
+        details.dimensao > summary {
+            cursor: pointer; padding: .875rem 1.25rem; font-weight: 700; color: #1c1c1c;
+            display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
+        }
+        details.dimensao > summary .contagem { font-weight: 400; color: #666; font-size: .8125rem; }
+        details.dimensao > summary .selo {
+            font-size: .625rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+            padding: .125rem .5rem; border-radius: 999px; background: #E8EEF9; color: #0C326F;
+        }
+        details.dimensao > summary .selo.contexto { background: #F3F3F3; color: #666; }
+        .conteudo-dimensao { padding: 0 1.25rem 1rem; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
+        table.dados tr:hover td { background: #F5F8FD; }
+        table.dados td.numero { text-align: right; white-space: nowrap; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .descricao { color: #555; max-width: 28rem; }
+        .fichas a { font-family: monospace; margin-right: .375rem; }
+        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+        .aviso { color: #A15C00; font-size: .8125rem; margin-top: .75rem; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">HISTÓRICO</span> Risco histórico das Fichas</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            O que as Fichas com resultado (apreensão, perdimento...) têm em comum: importadores, embarcadores,
+            rotas, NCMs, marcas, CNPJs e CPFs citados. Cada tabela mostra em quantas fichas cada valor aparece —
+            candidatos a filtros de risco para os CEs que chegam.
+        </p>
+    </div>
+
+    <form class="painel" method="get" action="{{ url_for('risco_historico.index') }}">
+        <input type="hidden" name="pesquisar" value="1" />
+        <div class="form-linha">
+            <div class="br-input">
+                <label for="inicio">Fichas de</label>
+                <input id="inicio" name="inicio" type="date" value="{{ p.inicio or '' }}" />
+            </div>
+            <div class="br-input">
+                <label for="fim">até</label>
+                <input id="fim" name="fim" type="date" value="{{ p.fim or '' }}" />
+            </div>
+            <div class="br-input">
+                <label for="minimo">Mínimo de fichas</label>
+                <input id="minimo" name="minimo" type="number" min="1" max="100" value="{{ p.minimo }}" />
+            </div>
+            <div class="grupo-tipos">
+                <span class="rotulo">Resultados</span>
+                <div class="opcoes">
+                    {% for codigo, nome in tipos_resultado.items() %}
+                    <label class="opcao"><input type="checkbox" name="tipos" value="{{ codigo }}"
+                        {% if codigo in p.tipos %}checked{% endif %} /> {{ nome }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <label class="opcao"><input type="checkbox" name="exportacao" value="1"
+                {% if p.exportacao %}checked{% endif %} /> Incluir fichas de exportação</label>
+            <div class="botoes">
+                <button class="br-button primary" type="submit">
+                    <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
+                </button>
+                {% if resumo %}
+                <a class="br-button secondary"
+                   href="{{ url_for('risco_historico.planilha', inicio=p.inicio, fim=p.fim, tipos=p.tipos | list,
+                                    minimo=p.minimo, exportacao=1 if p.exportacao else None) }}">
+                    <i class="fas fa-file-excel mr-1" aria-hidden="true"></i> Exportar planilha
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <p class="dica">Sem datas = todo o histórico. As tabelas mostram os valores presentes em pelo menos
+            o mínimo de fichas; a planilha traz todos os valores e uma linha por ficha.</p>
+        {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
+            <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
+    </form>
+
+    {% if resumo %}
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resumo.fichas }}</strong>fichas</div>
+            <div class="item"><strong>{{ resumo.perdimentos }}</strong>com perdimento</div>
+            <div class="item"><strong>{{ resumo.apreensoes }}</strong>com apreensão</div>
+            <div class="item"><strong>{{ '{:,.2f}'.format(resumo.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>valor (R$)</div>
+            <div class="item"><strong>{{ resumo.ces_no_mercante }} / {{ resumo.ces }}</strong>CEs encontrados no Mercante</div>
+            {% if resumo.descartadas_exportacao %}
+            <div class="item"><strong>{{ resumo.descartadas_exportacao }}</strong>fichas de exportação fora</div>
+            {% endif %}
+        </div>
+        <p class="dica"><span class="selo">identidade</span> importador, embarcador, documentos citados e marcas —
+            os candidatos mais fortes a filtro. As demais dimensões (rota, porto, NCM) são frequentes por natureza:
+            servem de contexto ou combinadas (ex.: país + NCM).</p>
+    </div>
+
+    {% for chave, rotulo, identidade in dimensoes %}
+    {% set linhas = tabelas[chave] %}
+    {% set relevantes = linhas | selectattr('qtd_fichas', 'ge', p.minimo) | list %}
+    <details class="dimensao" {% if identidade and relevantes %}open{% endif %}>
+        <summary>{{ rotulo }}
+            <span class="selo {{ '' if identidade else 'contexto' }}">{{ 'identidade' if identidade else 'contexto' }}</span>
+            <span class="contagem">{{ relevantes | length }} em {{ p.minimo }}+ fichas · {{ linhas | length }} valores</span>
+        </summary>
+        <div class="conteudo-dimensao">
+            {% if relevantes %}
+            <div class="tabela-rolavel">
+                <table class="dados">
+                    <thead>
+                        <tr><th>Valor</th><th>Descrição</th><th>Fichas</th><th>Perdimentos</th><th>Apreensões</th>
+                            <th>Valor (R$)</th><th>Período</th><th>Fichas (mais recentes)</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for linha in relevantes[:linhas_por_dimensao] %}
+                        <tr>
+                            <td class="mono">{{ linha.valor }}</td>
+                            <td class="descricao">{{ linha.descricao }}</td>
+                            <td class="numero">{{ linha.qtd_fichas }}</td>
+                            <td class="numero">{{ linha.perdimentos }}</td>
+                            <td class="numero">{{ linha.apreensoes }}</td>
+                            <td class="numero">{{ '{:,.2f}'.format(linha.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="mono">{{ linha.primeira.strftime('%m/%Y') if linha.primeira else '' }}
+                                {% if linha.ultima and linha.ultima != linha.primeira %}– {{ linha.ultima.strftime('%m/%Y') }}{% endif %}</td>
+                            <td class="fichas">{% for ficha in linha.fichas[:fichas_por_linha] %}<a
+                                href="/bhadrasana2/ovr?id={{ ficha }}" target="_blank">{{ ficha }}</a>{% endfor %}
+                                {% if linha.fichas | length > fichas_por_linha %}…{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if relevantes | length > linhas_por_dimensao %}
+            <p class="aviso">Exibindo os {{ linhas_por_dimensao }} primeiros valores. A planilha traz todos.</p>
+            {% endif %}
+            {% else %}
+            <p class="vazio">Nenhum valor em {{ p.minimo }} ou mais fichas.</p>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+    <p class="aviso"><i class="fas fa-user-shield" aria-hidden="true"></i>
+        Contém CNPJs e CPFs: use e compartilhe conforme as regras de sigilo fiscal e a LGPD.</p>
+    {% endif %}
+</div>
+</body>
+</html>

@@ -20,6 +20,7 @@ from werkzeug.test import Client
 
 from virasana.apreensoes.views_apreensoes import bp_apreensoes
 from virasana.entregas.views_entregas import bp_entregas
+from virasana.risco_historico.views_risco_historico import bp_risco_historico
 from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
 from virasana.navii.views_navii import bp_navii
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
@@ -33,6 +34,7 @@ TELAS = [
     ('/navii', 'NAVI-I'),
     ('/entregas_cnpj', 'Entregas por CNPJ'),
     ('/apreensoes_transporte', 'Transporte das apreensões'),
+    ('/risco_historico', 'Risco histórico das Fichas'),
 ]
 
 # links para a OUTRA app usam o prefixo dela (ex.: ficha no Fichas)
@@ -59,6 +61,7 @@ def cria_app():
     app.register_blueprint(bp_navii)
     app.register_blueprint(bp_entregas)
     app.register_blueprint(bp_apreensoes)
+    app.register_blueprint(bp_risco_historico)
     return app
 
 
