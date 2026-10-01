@@ -125,8 +125,14 @@ def resolve_ces(desembarque: datetime, candidatos: Iterable[CandidatoCE], declar
 
 
 def familia(resolvidos: CEsResolvidos, candidatos: Iterable[CandidatoCE] = ()) -> set:
-    """Todos os CEs da família escolhida (inclusive o master sem o contêiner nos itens), para
-    corroborar o CE declarado nos eventos."""
+    """Todos os CEs da família escolhida, para corroborar o CE declarado nos eventos: os que têm o
+    contêiner, o master (mesmo sem o contêiner nos itens) e os IRMÃOS — filhotes do mesmo master sem o
+    contêiner nos itens (`tem_conteiner=False`; a sombra de 01/10 mostrou inspeções no cais, minutos
+    depois do desembarque, declarando um CE "de outra família")."""
+    candidatos = list(candidatos)
     ces = set(resolvidos.ces)
-    masters = {c.master for c in candidatos if c.ce in ces and c.master}
-    return ces | masters
+    # masters: o dos CEs escolhidos e os próprios escolhidos que são master de algum candidato
+    masters = {c.master for c in candidatos if c.ce in ces and c.master} | (
+        ces & {c.master for c in candidatos if c.master})
+    irmaos = {c.ce for c in candidatos if c.master and c.master in masters}
+    return ces | masters | irmaos

@@ -20,13 +20,18 @@ Relatório:
      sem ciclo atual por operador e por idade (ex.: Ecoporto);
   2. situação nova x atual e motivos;
   3. etapas (saída, entrada e saída do seco), só ciclos com ciclo atual: iguais, novas, removidas...;
+     onde estava a entrada no seco do ciclo atual quando a nova a remove/troca;
   4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas;
-  5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente) e confiança;
+  5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente) e confiança; por que
+     o CE atual foi perdido/trocado; eventos com CE declarado de OUTRA família: relação e tráfego;
   6. saídas tardias (> 72 h, além da janela antiga) e ciclos incompletos (fronteiras);
   7. alertas mais frequentes;
   8. contêiner vazio: manifesto do Mercante (conteinervazioresumo) x peso x tara x CE;
   9. imagens no Mongo (opcional, --mongo): defasagem imagem - inspeção POR RECINTO (janela ±8 h);
  10. amostras das divergências.
+
+Família do CE: os CEs com o contêiner nos itens, o master e os IRMÃOS (filhotes do mesmo master, mesmo
+sem o contêiner nos itens) — a 2ª rodada mostrou inspeções no cais declarando um CE "de outra família".
 
 CE Mercante: os dígitos 3–4 do número são o ano de emissão (ex.: 1526... = 2026) — usados só para
 não carregar CEs de anos antigos do mesmo contêiner (o relatório mostra quantos foram descartados).
@@ -50,8 +55,9 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (  # noqa: E402
-    JANELA_ESCALA_DIAS, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
+    JANELA_ESCALA_DIAS, TRAFEGO_EXPORTACAO, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
 )
+from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ces_ciclo_de_vida import relacao  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import Diagnostico, _dt  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_conteiner  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noqa: E402
@@ -64,12 +70,14 @@ RESIDUO_MONGO_MINUTOS = 10
 MARGEM_EVENTOS_DIAS = 2
 DIAS_ATRASO_LOOP = 7        # o loop antigo cria os ciclos com dias de atraso (medido: ~5)
 SIM, NAO = 'sim', 'não'
+TRAFEGOS = {'3': 'cabotagem', '5': 'importação', '7': 'exportação', '9': 'passagem'}
+OUTRA_FAMILIA = 'CE declarado de OUTRA família'
 
 COLUNAS_CSV = ['conteiner', 'desembarque_id', 'data_desembarque', 'operador', 'ciclo_atual_id', 'situacao_atual',
                'situacao_nova', 'fluxo_novo', 'motivo_novo', 'saida', 'entrada_seco', 'saida_seco',
                'escaneamentos', 'escaneamentos_ganhos', 'escaneamentos_perdidos', 'ce_atual', 'ce_novo',
                'ces_familia', 'ce_comparacao', 'ce_confianca', 'alertas', 'idade_dias', 'vazio_mercante',
-               'peso_balanca', 'peso_manifesto']
+               'peso_balanca', 'peso_manifesto', 'ce_atual_motivo', 'recinto_seco_atual', 'recinto_seco_novo']
 
 
 # ---------------------------------------------------------------------- comparação (pura)
@@ -167,6 +175,7 @@ class Carregador:
         self.diag, self.inicio, self.fim = diag, inicio, fim
         self.desde = inicio - timedelta(days=MARGEM_EVENTOS_DIAS)
         self.estatisticas = Counter()
+        self.info: Dict[str, dict] = {}   # CE -> master, tráfego, manifesto (Mercante)
 
     def operadores(self):
         """(escopo Santos, todos os operadores, {código: nome})."""
@@ -231,20 +240,49 @@ class Carregador:
         return eventos, pesos, portuarios
 
     def candidatos(self, conteineres: List[str]) -> Dict[str, List[CandidatoCE]]:
-        """CEs do Mercante cujo Item tem o contêiner (só de anos recentes), com master, tráfego e escalas."""
+        """CEs do Mercante cujo Item tem o contêiner (só de anos recentes), com master, tráfego e escalas,
+        mais os irmãos (filhotes do mesmo master) sem o contêiner nos itens (`tem_conteiner=False`)."""
         por_conteiner = self._ces_dos_itens(conteineres)
         ces = {ce for lista in por_conteiner.values() for ce in lista}
-        info = {normaliza_ce(ce): (normaliza_ce(master), _texto(trafego), _texto(manifesto))
-                for ce, master, trafego, manifesto in self.diag._por_lotes(
-                    'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego, manifestoCE FROM conhecimentosresumo '
-                    'WHERE numeroCEmercante IN :ces', 'ces', ces)}
-        escalas = self._escalas({m for _, _, m in info.values() if m})
-        resultado = defaultdict(list)
+        self.info_de(ces)
+        escalas = self._escalas({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
+        irmaos = self._irmaos({self.info[ce]['master'] for ce in ces if ce in self.info} | ces)
+        resultado = {}
         for cont, lista in por_conteiner.items():
-            for ce in sorted(c for c in lista if c in info):
-                master, trafego, manifesto = info[ce]
-                resultado[cont].append(CandidatoCE(ce, master, trafego, tuple(escalas.get(manifesto, ()))))
+            proprios = [CandidatoCE(ce, self.info[ce]['master'], self.info[ce]['trafego'],
+                                    tuple(escalas.get(self.info[ce]['manifesto'], ())))
+                        for ce in sorted(lista) if ce in self.info]
+            resultado[cont] = proprios + irmaos_de(proprios, irmaos)
+        self.estatisticas['irmãos sem o contêiner (família)'] = sum(
+            1 for lista in resultado.values() for c in lista if not c.tem_conteiner)
         return resultado
+
+    def info_de(self, ces):
+        """Carrega master, tráfego e manifesto dos CEs que ainda não estão em `self.info`."""
+        for ce, master, trafego, manifesto in self.diag._por_lotes(
+                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego, manifestoCE FROM conhecimentosresumo '
+                'WHERE numeroCEmercante IN :ces', 'ces', {ce for ce in ces if ce and ce not in self.info}):
+            self.info[normaliza_ce(ce)] = {'master': normaliza_ce(master), 'trafego': _texto(trafego),
+                                           'manifesto': _texto(manifesto)}
+
+    def _irmaos(self, masters) -> Dict[str, List[tuple]]:
+        """{master: [(filhote, tráfego)]} — todos os filhotes dos masters (índice numeroCEMaster)."""
+        por_master = defaultdict(list)
+        for ce, master, trafego in self.diag._por_lotes(
+                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego FROM conhecimentosresumo '
+                'WHERE numeroCEMaster IN :masters', 'masters', {m for m in masters if m}):
+            por_master[normaliza_ce(master)].append((normaliza_ce(ce), _texto(trafego)))
+        return por_master
+
+    def itens_de(self, ces) -> Set[tuple]:
+        """{(CE, contêiner)} dos itens dos CEs (sem filtro de ano)."""
+        return {(normaliza_ce(ce), _texto(cont)) for ce, cont in self.diag._por_lotes(
+            'SELECT numeroCEmercante, codigoConteiner FROM itensresumo WHERE numeroCEmercante IN :ces', 'ces', ces)}
+
+    def escalas_dos_ces(self, ces) -> Dict[str, List[date]]:
+        """{CE: datas de escala do manifesto} (CEs já em `self.info`)."""
+        escalas = self._escalas({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
+        return {ce: escalas.get(self.info[ce]['manifesto'], []) for ce in ces if ce in self.info}
 
     def _ces_dos_itens(self, conteineres: List[str]) -> Dict[str, Set[str]]:
         anos = set(range(self.inicio.year - 1, self.fim.year + 1))
@@ -315,6 +353,10 @@ class Sombra(Diagnostico):
         self.nomes: Dict[str, str] = {}
         self.por_dia: List[tuple] = []
         self.ultimo_com_ciclo: Optional[datetime] = None
+        self.atuais: Dict[int, dict] = {}
+        self.acessos: Dict[int, ldt.Evento] = {}
+        self.inspecoes: Dict[int, ldt.Evento] = {}
+        self.conflitos = Counter()
 
     def executa(self):
         carregador = Carregador(self, self.periodo['inicio'], self.periodo['fim'])
@@ -328,28 +370,58 @@ class Sombra(Diagnostico):
         self.ultimo_com_ciclo = carregador.ultimo_desembarque_com_ciclo()
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
         eventos, self.pesos, portuarios = carregador.eventos(conteineres)
+        todos = [e for lista in eventos.values() for e in lista]
+        self.acessos = {e.id: e for e in todos if e.tipo in (ldt.ENTRADA, ldt.SAIDA)}
+        self.inspecoes = {e.id: e for e in todos if e.tipo == ldt.INSPECAO}
         candidatos = carregador.candidatos(conteineres)
         vazios = carregador.vazios(conteineres)
         operadores |= portuarios
         self.escreve(f'Operadores para a linha do tempo: {len(operadores)} (e_operador + recintos com embarque/'
                      f'desembarque nos eventos). CEs do Mercante: {dict(carregador.estatisticas)}')
-        resultados = []
-        for conteiner in conteineres:
-            for ciclo, ces in processa_conteiner(eventos[conteiner], candidatos.get(conteiner, []), escopo,
-                                                 operadores, self.agora):
-                if self.periodo['inicio'] <= ciclo.desembarque.data < self.periodo['fim']:
-                    resultados.append((conteiner, ciclo, ces))
-        atuais = carregador.ciclos_atuais({c.desembarque.id for _, c, _ in resultados})
+        resultados = [(conteiner, ciclo, ces) for conteiner in conteineres
+                      for ciclo, ces in processa_conteiner(eventos[conteiner], candidatos.get(conteiner, []), escopo,
+                                                           operadores, self.agora)
+                      if self.periodo['inicio'] <= ciclo.desembarque.data < self.periodo['fim']]
+        self.atuais = carregador.ciclos_atuais({c.desembarque.id for _, c, _ in resultados})
         for conteiner, ciclo, ces in resultados:
             self.ciclos[ciclo.desembarque.id] = ciclo
-            linha = compara(conteiner, ciclo, ces, candidatos.get(conteiner, []), atuais.get(ciclo.desembarque.id))
-            peso, tara, manifesto = self.pesos.get(ciclo.desembarque.id, (None, None, None))
-            linha.update({'idade_dias': (self.agora - ciclo.desembarque.data).days,
-                          'vazio_mercante': vazio_no_manifesto(vazios.get(conteiner, ()), ciclo.desembarque.data),
-                          'peso_balanca': _faixa_peso(peso, tara), 'peso_manifesto': _faixa_peso(manifesto, tara)})
-            self.linhas.append(linha)
+            self.linhas.append(self._linha(conteiner, ciclo, ces, candidatos.get(conteiner, []),
+                                           vazios.get(conteiner, ())))
+        self._explica_ces(carregador)
         self.escreve(f'Contêineres: {len(conteineres)}; ciclos novos no período: {len(self.linhas)}; '
                      f'com ciclo atual: {sum(1 for lin in self.linhas if lin["ciclo_atual_id"])}')
+
+    def _linha(self, conteiner, ciclo, ces, candidatos, vazios) -> dict:
+        atual = self.atuais.get(ciclo.desembarque.id)
+        linha = compara(conteiner, ciclo, ces, candidatos, atual)
+        peso, tara, manifesto = self.pesos.get(ciclo.desembarque.id, (None, None, None))
+        entrada_atual = self.acessos.get((atual or {}).get('entrada_seco_id'))
+        linha.update({'idade_dias': (self.agora - ciclo.desembarque.data).days,
+                      'vazio_mercante': vazio_no_manifesto(vazios, ciclo.desembarque.data),
+                      'peso_balanca': _faixa_peso(peso, tara), 'peso_manifesto': _faixa_peso(manifesto, tara),
+                      'ce_atual_motivo': '',
+                      'recinto_seco_atual': entrada_atual.recinto if entrada_atual else
+                      ('fora dos eventos carregados' if (atual or {}).get('entrada_seco_id') else '-'),
+                      'recinto_seco_novo': ciclo.entrada_seco.evento.recinto if ciclo.entrada_seco else '-'})
+        return linha
+
+    def _explica_ces(self, carregador: 'Carregador'):
+        """Por que o CE atual foi perdido/trocado; relação dos CEs declarados de OUTRA família."""
+        divergentes = [lin for lin in self.linhas if lin['ce_comparacao'] in ('perdido', 'diferente')]
+        conflitos = [(lig.evento.tipo, lig.evento.ce_declarado, ciclo) for ciclo in self.ciclos.values()
+                     for lig in ciclo.ligacoes() if OUTRA_FAMILIA in lig.motivos]
+        carregador.info_de({lin['ce_atual'] for lin in divergentes} | {ce for _, ce, _ in conflitos})
+        ces_atuais = {lin['ce_atual'] for lin in divergentes}
+        itens, escalas = carregador.itens_de(ces_atuais), carregador.escalas_dos_ces(ces_atuais)
+        anos = set(range(self.periodo['inicio'].year - 1, self.periodo['fim'].year + 1))
+        for linha in divergentes:
+            linha['ce_atual_motivo'] = motivo_ce_atual(linha['ce_atual'], linha['conteiner'], carregador.info, itens,
+                                                       escalas, linha['data_desembarque'], anos)
+        principal = {lin['desembarque_id']: lin['ce_novo'] for lin in self.linhas}
+        for tipo, declarado, ciclo in conflitos:
+            dados = carregador.info.get(declarado) or {}
+            self.conflitos[(tipo, relacao(principal[ciclo.desembarque.id], declarado, carregador.info),
+                            TRAFEGOS.get(dados.get('trafego'), dados.get('trafego') or '-'))] += 1
 
     # ---------------------------------------------------------------- seções
     def _conta(self, *campos, filtro=None, extra=None) -> list:
@@ -392,6 +464,13 @@ class Sombra(Diagnostico):
         for etapa in ('saida', 'entrada_seco', 'saida_seco'):
             self.escreve()
             self.tabela([etapa, 'ciclos'], self._conta(etapa, filtro=_com_atual))
+        self.escreve()
+        self.escreve('Entrada no seco removida/diferente: onde estava a do ciclo atual (o loop antigo trata como seco '
+                     'todo recinto fora da sua lista de 3 operadores, inclusive o Ecoporto):')
+        self.tabela(['entrada_seco', 'recinto do ciclo atual', 'nome', 'recinto novo', 'ciclos'], [
+            (comp, atual, self.nomes.get(atual, ''), novo, n) for comp, atual, novo, n in self._conta(
+                'entrada_seco', 'recinto_seco_atual', 'recinto_seco_novo',
+                filtro=lambda lin: lin['entrada_seco'] in ('removida', 'diferente'))[:15]])
 
     def secao_escaneamentos(self):
         self.titulo('4. ESCANEAMENTOS')
@@ -413,6 +492,14 @@ class Sombra(Diagnostico):
         self.titulo('5. CEs — atual x principal novo (filhote principal; família master/filhote)')
         self.tabela(['tem ciclo atual', 'CE atual x novo', 'confiança do CE novo', 'ciclos'], self._conta(
             'tem_atual', 'ce_comparacao', 'ce_confianca', extra={'tem_atual': lambda lin: _sim(_com_atual(lin))}))
+        self.escreve()
+        self.tabela(['CE atual perdido/trocado', 'por quê (CE atual no Mercante)', 'ciclos'], self._conta(
+            'ce_comparacao', 'ce_atual_motivo', filtro=lambda lin: lin['ce_comparacao'] in ('perdido', 'diferente')))
+        self.escreve()
+        self.escreve('Eventos com CE declarado de OUTRA família (confiança baixa): relação com o CE principal do '
+                     'ciclo e tráfego do CE declarado:')
+        self.tabela(['evento', 'relação com o CE do ciclo', 'tráfego do declarado', 'eventos'],
+                    [(*chave, n) for chave, n in self.conflitos.most_common()])
 
     def secao_saidas(self):
         self.titulo('6. SAÍDAS TARDIAS E FRONTEIRAS')
@@ -476,6 +563,7 @@ class Sombra(Diagnostico):
              and lin['situacao_nova'] == ldt.ABERTO),
             ('entrada no seco removida/diferente', lambda lin: lin['entrada_seco'] in ('removida', 'diferente')),
             ('CE diferente (fora da família)', lambda lin: lin['ce_comparacao'] == 'diferente'),
+            ('CE atual perdido', lambda lin: lin['ce_comparacao'] == 'perdido'),
             ('escaneamento perdido', lambda lin: lin['escaneamentos_perdidos'] > 0),
         ]
         for rotulo, filtro in tipos:
@@ -490,7 +578,9 @@ class Sombra(Diagnostico):
         self.escreve(f"{linha['conteiner']} desembarque {ciclo.desembarque.data} em {ciclo.desembarque.recinto}; "
                      f"ciclo atual {linha['ciclo_atual_id'] or '-'}: {linha['situacao_atual']}; "
                      f"nova: {ciclo.situacao}/{ciclo.fluxo} — {ciclo.motivo}; CE {linha['ce_atual'] or '-'} -> "
-                     f"{linha['ce_novo'] or '-'} ({linha['ce_comparacao']})")
+                     f"{linha['ce_novo'] or '-'} ({linha['ce_comparacao']}"
+                     + (f": {linha['ce_atual_motivo']})" if linha['ce_atual_motivo'] else ')'))
+        self._mostra_atual(linha)
         for nome, lig in (('saída', ciclo.saida), ('entrada seco', ciclo.entrada_seco),
                           ('saída seco', ciclo.saida_seco), ('embarque', ciclo.embarque)):
             if lig:
@@ -501,6 +591,22 @@ class Sombra(Diagnostico):
                          f'{"; ".join(lig.motivos)}')
         if ciclo.alertas:
             self.escreve(f'   alertas: {"; ".join(ciclo.alertas)}')
+
+    def _mostra_atual(self, linha: dict):
+        """Etapas do ciclo atual que a nova não tem (entrada no seco, escaneamentos perdidos)."""
+        atual = self.atuais.get(linha['desembarque_id'])
+        if not atual:
+            return
+        if linha['entrada_seco'] in ('removida', 'diferente'):
+            entrada = self.acessos.get(atual['entrada_seco_id'])
+            self.escreve(f'   [atual] entrada seco: {entrada.data} {entrada.recinto}' if entrada else
+                         f'   [atual] entrada seco: id {atual["entrada_seco_id"]} (fora dos eventos carregados)')
+        novos = {lig.evento.id for lig in self.ciclos[linha['desembarque_id']].escaneamentos
+                 if lig.confianca != ldt.BAIXA}
+        for esc_id in sorted(set(atual['escaneamentos']) - novos):
+            inspecao = self.inspecoes.get(esc_id)
+            self.escreve(f'   [atual] inspeção perdida: {inspecao.data} {inspecao.recinto} CE {inspecao.ce_declarado}'
+                         if inspecao else f'   [atual] inspeção perdida: id {esc_id} (fora dos eventos carregados)')
 
     def grava_csv(self, caminho: str):
         with open(caminho, 'w', newline='', encoding='utf-8-sig') as arquivo:
@@ -513,6 +619,35 @@ def vazio_no_manifesto(datas_escala, desembarque: datetime, janela_dias: int = J
     """'sim' se o contêiner consta vazio num manifesto com escala perto do desembarque."""
     perto = any(abs((dia - desembarque.date()).days) <= janela_dias for dia in datas_escala)
     return _sim(perto)
+
+
+def irmaos_de(proprios: List[CandidatoCE], irmaos_por_master: Dict[str, List[tuple]]) -> List[CandidatoCE]:
+    """Filhotes dos masters da família que não têm o contêiner nos itens (só corroboram)."""
+    conhecidos = {c.ce for c in proprios}
+    masters = ({c.master for c in proprios if c.master} | conhecidos) & set(irmaos_por_master)
+    return [CandidatoCE(ce, master, trafego, (), tem_conteiner=False)
+            for master in sorted(masters) for ce, trafego in irmaos_por_master[master] if ce not in conhecidos]
+
+
+def motivo_ce_atual(ce: str, conteiner: str, info: Dict[str, dict], itens: Set[tuple],
+                    escalas: Dict[str, List[date]], desembarque: datetime, anos: Set[int]) -> str:
+    """Por que o CE do ciclo atual não foi o escolhido pela heurística nova."""
+    dados = info.get(ce)
+    if not dados:
+        return 'CE atual fora do Mercante'
+    if dados['trafego'] == TRAFEGO_EXPORTACAO:
+        return 'CE atual é de exportação'
+    if (ce, conteiner) not in itens:
+        return 'contêiner não está nos itens do CE atual'
+    if _ano_do_ce(ce) not in anos:
+        return 'CE atual de outro ano'
+    datas = escalas.get(ce)
+    if not datas:
+        return 'manifesto do CE atual sem escala'
+    dias = min(abs((dia - desembarque.date()).days) for dia in datas)
+    if dias <= JANELA_ESCALA_DIAS:
+        return 'outra família escolhida (as duas com escala próxima)'
+    return 'escala do CE atual a ' + ('16 a 30 dias' if dias <= 30 else '31 a 90 dias' if dias <= 90 else '> 90 dias')
 
 
 def defasagem_mongo(db, conteiner: str, data_inspecao: datetime):

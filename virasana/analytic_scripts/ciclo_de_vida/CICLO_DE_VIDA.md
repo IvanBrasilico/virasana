@@ -233,6 +233,50 @@ Log: `virasana/ciclo_de_vida_sombra_20261001_171744.log` + `sombra.csv` (3.000 c
 - **Desempenho**: a rodada inteira (3 mil contêineres, todos os eventos, Mercante e 300 consultas ao
   Mongo) levou segundos — carregar por lote de contêineres é viável para o serviço por eventos.
 
+## Quarta medição — segunda rodada da sombra (01/10/2026, amostra espalhada)
+
+Log: `virasana/ciclo_de_vida_sombra_20261001_173024.log` + `sombra.csv` (desembarques de 25/08 a 24/09;
+3.000 contêineres, 3.006 ciclos, **2.970 com ciclo atual**).
+
+- **Cobertura do loop antigo**: 3 a 8 mil desembarques por dia nos operadores de Santos; o loop cria ciclo
+  para praticamente todos os dos 3 operadores da lista, com **atraso estável de ~4 dias** (corrige a
+  leitura da 3ª medição: ele acompanha o volume). Na amostra, os 36 sem ciclo são todos do **Ecoporto**.
+- **Ganhos da heurística nova** (nos 2.970 com ciclo atual): ~1.450 pendentes passam a fechar — passagem
+  702 (embarque no mesmo operador), entregue pelo operador 452 (saída depois das 72 h), baldeação 200,
+  TRA 29, incompletos por fronteira 67; **760 saídas recuperadas** (764 a mais de 72 h do desembarque);
+  **+683 escaneamentos** em 582 ciclos (19 perdidos); CE: 779 novos onde não havia, 435 trocados pelo
+  filhote da mesma família, 876 iguais, **82 perdidos**, 3 diferentes.
+- **Defeito do núcleo corrigido**: 70 ciclos ficavam "abertos no operador" porque o contêiner, depois de
+  sair, **voltou ao mesmo operador do desembarque** (quase sempre vazio, dias depois — outra operação).
+  Agora é fronteira: o ciclo fecha na saída. Também: saída duvidosa (CE de outra família) não fecha
+  mais o ciclo por causa de uma entrada vazia depois.
+- **Escaneamentos perdidos (19) = CE declarado "de outra família"**, vários no cais minutos depois do
+  desembarque. Causa provável: a família não incluía os **irmãos** (filhotes do mesmo master sem o
+  contêiner nos itens). Agora inclui; a sombra classifica a relação de cada conflito para confirmar.
+- **Ecoporto como "seco" no loop antigo**: os 50 "concluído (saiu do seco)" que viram "entregue pelo
+  operador" e os 19 que viram "TRA aberto" são, nas amostras, passagens de **minutos** pelo Ecoporto
+  (BTP sai → Ecoporto entra e sai → TRA entra, tudo em ~40 min); o loop antigo tomou o Ecoporto como
+  seco e perdeu o TRA real. A sombra agora mostra o recinto da entrada no seco antiga.
+- **CEs perdidos (82)**: quase todos com prefixo 12/10 (emitidos em outros portos), em passagem e com
+  mais de 2 t — provável transbordo; o motivo (fora do Mercante, contêiner fora dos itens, escala longe,
+  exportação...) agora é medido.
+- **Contêiner vazio**: 18% dos desembarques constam vazios no manifesto do Mercante (534 de 3.006), 87%
+  deles sem CE — explicam metade dos ciclos sem CE. O **peso de manifesto − tara** do evento separa bem
+  (vazio: ≤ tara ou < 500 kg em 80%; não vazio: > 2 t em 83%); a **balança** quase nunca pesa (sem peso
+  ou zero em ~75%). Proposta: marcar o ciclo como **vazio** (manifesto + peso) e não cobrá-lo como
+  pendência nem exigir escaneamento — decisão do usuário.
+- **Mongo: defasagem fixa POR RECINTO** (resíduo ≤ 10 min em ~99%): **+3 h** — 8931304, 8931305
+  (Transbrasa), 8931318 (Ecoporto), 8931339, 8931342 (Marimex), 8931356 (Santos Brasil), 8931359 (BTP),
+  8933202 (Eudmarco), 8933206 (Deicmar Alemoa); **+0 h** — 8931309 (Movecta), 8931364 (Deicmar
+  Outeirinhos), 8931404 (Embraport), 8933001 (Localfrio), 8933204 (Santos Brasil CLIA). Sem imagem em
+  ±8 h: BTP 22%, Embraport 12%. A busca da imagem deve usar a defasagem do recinto com janela estreita
+  (±15 min); proposta: o serviço recalibra a tabela sozinho (moda por recinto nas inspeções recentes).
+- **Recintos que não informam a entrada** ("saída sem entrada"): 8931305 Transbrasa 26, 8931318 Ecoporto
+  25, 8932794 9... — hoje a saída é ignorada e o ciclo fecha como entregue pelo operador. Possível regra
+  (a decidir): saída num seco durante o trânsito, dentro do prazo, vale como TRA com entrada omitida
+  (confiança média).
+- **Desempenho**: ~1 min no total (consultas de até 3 s; Mongo 18 s para 600 inspeções).
+
 ## Princípio geral da heurística (usuário, 01/10/2026)
 
 Contêiner + intervalo de datas **nunca basta** para dizer que um evento é do mesmo ciclo — sobretudo
@@ -311,7 +355,7 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
      sem exportação, janela de escala de 15 dias, filhote como principal;
    - `heuristica_ciclo.py`: `processa_conteiner(...)` — as duas passagens (linha do tempo → CEs →
      linha do tempo corroborada pela família).
-3. **Modo sombra — FEITO (01/10/2026)**: `sombra_ciclo_de_vida.py` (somente leitura; testes em
+3. **Modo sombra — FEITO (01/10/2026; 2 rodadas em produção, ver 3ª e 4ª medições)**: `sombra_ciclo_de_vida.py` (somente leitura; testes em
    `tests/test_sombra_ciclo_de_vida.py`). Escopo = `ovr_recintos.e_operador` com `cod_unidade = '0817800'`
    (normalizado com zeros à esquerda); operadores da linha do tempo = todos os `e_operador` + recintos
    com embarque/desembarque nos eventos. Amostra contêineres espalhados pelo período (que termina 7 dias

@@ -110,6 +110,20 @@ class TestFluxos(unittest.TestCase):
         self.assertIsNone(ciclo.entrada_seco)
         self.assertEqual(ciclo.escaneamentos, [])
 
+    def test_volta_ao_operador_do_desembarque_e_outra_operacao(self):
+        # sombra de 01/10 (ECMU7356412, FFAU6617369): saiu e, dias depois, voltou vazio ao mesmo terminal
+        ciclo = um_ciclo([D(t(9, 17)), S(t(9, 18, 22)), INSP(t(9, 29, 16), SB, vazio=True),
+                          ENT(t(9, 29, 17), SB, vazio=True), INSP(t(9, 30, 16), SB, vazio=True)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.OPERADOR, ldt.CONCLUIDO))
+        self.assertIn('voltou ao operador do desembarque', ciclo.motivo)
+        self.assertEqual(ciclo.escaneamentos, [])   # nem o scanner do gate da volta nem o de depois
+
+    def test_volta_ao_operador_do_desembarque_depois_de_outro_operador(self):
+        ciclo = um_ciclo([D(t(9, 1), BTP), S(t(9, 2), BTP), ENT(t(9, 2, 10), EMB), ENT(t(9, 12), BTP)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.OPERADOR, ldt.CONCLUIDO))
+        self.assertIn('voltou ao operador do desembarque', ciclo.motivo)
+        self.assertIn('saída do operador 8931404 não informada', ciclo.alertas)
+
     def test_transito_longo_ainda_tra(self):
         ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 20), SECO2)])
         self.assertEqual(ciclo.fluxo, ldt.TRA)
@@ -186,6 +200,12 @@ class TestSegmentacaoEConfianca(unittest.TestCase):
         self.assertEqual(ciclo.situacao, ldt.ABERTO)
         self.assertIn('saída duvidosa', ciclo.motivo)
 
+    def test_saida_duvidosa_nao_conclui_nem_com_entrada_vazia_depois(self):
+        # sombra de 01/10 (ZCSU6632611): saída com CE de outra família seguida de entrada vazia
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 14), ce=X), ENT(t(9, 15), DEPOT, vazio=True)], familia={M, H1})
+        self.assertEqual(ciclo.situacao, ldt.ABERTO)
+        self.assertIn('saída duvidosa', ciclo.motivo)
+
     def test_embarque_com_ce_de_outra_familia_e_incompleto(self):
         ciclo = um_ciclo([D(t(9, 1)), E(t(9, 20), ce=X)], familia={M, H1})
         self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.INDEFINIDO, ldt.INCOMPLETO))
@@ -235,6 +255,16 @@ class TestCEsDoCiclo(unittest.TestCase):
         self.assertEqual(cdc.familia(r, candidatos), {H1, M})
 
 
+    def test_familia_inclui_irmaos_sem_o_conteiner(self):
+        irmao = cdc.CandidatoCE(H2, M, '5', (date(2026, 9, 12),), tem_conteiner=False)
+        candidatos = [self.candidato(H1, M), irmao]
+        r = cdc.resolve_ces(self.DESEMBARQUE, candidatos)
+        self.assertEqual(r.ces, {H1: 'filhote'})   # o irmão não entra na escolha (não tem o contêiner)
+        self.assertEqual(cdc.familia(r, candidatos), {H1, M, H2})
+        r = cdc.resolve_ces(self.DESEMBARQUE, [self.candidato(M), irmao])   # escolhido o master (simples)
+        self.assertEqual(cdc.familia(r, [self.candidato(M), irmao]), {M, H2})
+
+
 class TestProcessaConteiner(unittest.TestCase):
 
     def test_duas_passagens_corroboram_pela_familia(self):
@@ -246,6 +276,15 @@ class TestProcessaConteiner(unittest.TestCase):
         self.assertEqual((ces.principal, ces.confianca), (H1, ldt.ALTA))   # declarado (M) é da família
         self.assertEqual([e.confianca for e in ciclo.escaneamentos], [ldt.ALTA, ldt.BAIXA])
         self.assertEqual(ciclo.situacao, ldt.CONCLUIDO)
+
+    def test_inspecao_declarando_irmao_e_da_familia(self):
+        # sombra de 01/10 (ECMU7308179): inspeção no cais 10 min depois do desembarque, CE de um irmão
+        candidatos = [cdc.CandidatoCE(H1, M, '5', (date(2026, 9, 7),)),
+                      cdc.CandidatoCE(H2, M, '5', (date(2026, 9, 7),), tem_conteiner=False)]
+        eventos = [D(t(9, 7, 17), ce=H1), INSP(t(9, 7, 17, 10), SB, ce=H2), S(t(9, 14, 23))]
+        [(ciclo, ces)] = processa_conteiner(eventos, candidatos, ESCOPO, OPERADORES, AGORA)
+        self.assertEqual(ces.principal, H1)
+        self.assertEqual([e.confianca for e in ciclo.escaneamentos], [ldt.ALTA])
 
 
 if __name__ == '__main__':

@@ -11,7 +11,8 @@ linha do tempo continuar sem um evento-FRONTEIRA que abra outra operação:
   - novo desembarque do contêiner (corta o segmento);
   - embarque;
   - nova entrada no mesmo recinto sem a saída registrada (prova de saída omitida);
-  - entrada com o contêiner VAZIO depois da saída (devolução de vazio — outra operação).
+  - entrada com o contêiner VAZIO depois da saída (devolução de vazio — outra operação);
+  - entrada no OPERADOR DO DESEMBARQUE depois de sair dele (o contêiner voltou: outra operação).
 Com a fronteira, a próxima operação nunca é confundida com esta, mesmo com prazos longos.
 
 Estados: no OPERADOR do desembarque -> em TRÂNSITO (saiu) -> em OUTRO OPERADOR (passagem/baldeação;
@@ -220,16 +221,21 @@ class _Percurso:
 
     def _entrada_apos_saida(self, evento: Evento):
         horas = _horas(evento.data, self.desde)
-        if evento.recinto in self.operadores:
+        if evento.recinto == self.ciclo.desembarque.recinto:
+            # voltou ao operador do desembarque depois de sair: é outra operação (sombra de 01/10: quase
+            # sempre a devolução do vazio para exportar) — fronteira
+            self._libera_espera(evento, aceita_gate=False)
+            self._entrega('entregue pelo operador (depois voltou ao operador do desembarque)')
+        elif evento.recinto in self.operadores:
             self._libera_espera(evento)
             self.estado, self.recinto, self.desde = 'outro_operador', evento.recinto, evento.data
         elif evento.vazio:
             self._libera_espera(evento, aceita_gate=False)
-            self._fim(OPERADOR, CONCLUIDO, 'entregue pelo operador (entrada seguinte com o contêiner vazio)')
+            self._entrega('entregue pelo operador (entrada seguinte com o contêiner vazio)')
         elif horas > self.params.prazo_transito_horas:
             self._libera_espera(evento, aceita_gate=False)
             self._alerta(f'entrada em {evento.recinto} {horas:.0f} h depois da saída — fora do prazo de trânsito')
-            self._fim(OPERADOR, CONCLUIDO, 'entregue pelo operador')
+            self._entrega('entregue pelo operador')
         else:
             self._libera_espera(evento)
             motivos = [f'trânsito de {horas:.0f} h'] if horas > self.params.transito_alerta_horas else []
@@ -266,15 +272,21 @@ class _Percurso:
         else:
             self._alerta(f'{evento.tipo} em {evento.recinto} sem entrada — ignorado')
 
-    # ------------------------------------------------------------------ fechamento por prazo
+    # ------------------------------------------------------------------ fechamento
+    def _entrega(self, motivo: str):
+        """Fecha como entregue pelo operador — menos quando a saída é duvidosa (CE de outra família)."""
+        if self.ciclo.saida and self.ciclo.saida.confianca == BAIXA:
+            self._fim(OPERADOR, ABERTO, 'saída duvidosa (CE de outra família) — revisar')
+        else:
+            self._fim(OPERADOR, CONCLUIDO, motivo)
+
     def _fecha_por_prazo(self):
         dias = _horas(self.agora, self.desde) / 24
         if self.estado == 'transito':
             self._libera_espera()
-            if self.ciclo.saida and self.ciclo.saida.confianca == BAIXA:
-                self._fim(OPERADOR, ABERTO, 'saída duvidosa (CE de outra família) — revisar')
-            elif _horas(self.agora, self.desde) > self.params.prazo_transito_horas:
-                self._fim(OPERADOR, CONCLUIDO, 'entregue pelo operador')
+            duvidosa = self.ciclo.saida and self.ciclo.saida.confianca == BAIXA
+            if duvidosa or _horas(self.agora, self.desde) > self.params.prazo_transito_horas:
+                self._entrega('entregue pelo operador')
             else:
                 self._fim(INDEFINIDO, ABERTO, 'saiu do operador; aguardando possível entrada em recinto seco')
         elif self.estado in ('operador', 'outro_operador', 'seco'):
