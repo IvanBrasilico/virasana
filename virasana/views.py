@@ -51,6 +51,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
 from virasana.integracao.due import due_manager
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
+from virasana.navii.menu import subgrupo_navii
 from virasana.integracao.risco.alertas_manager import get_alertas_filtro_agrupados
 from virasana.models.anomalia_lote import get_conhecimentos_filtro, \
     get_ids_score_conhecimento_zscore
@@ -1554,6 +1555,7 @@ def mynavbar():
                  Separator(),
                  View('Importar Bson', 'upload_bson'),
              ),
+             subgrupo_navii(),
              ]
     if current_user.is_authenticated:
         items.append(View('Sair', 'commons.logout'))

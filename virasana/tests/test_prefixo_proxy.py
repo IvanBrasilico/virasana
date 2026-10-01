@@ -10,13 +10,16 @@ import os
 import re
 import unittest
 
-from flask import Flask
+from flask import Flask, url_for
 from flask_login import LoginManager, UserMixin
+from flask_nav.elements import Navbar
+from flask_nav.renderers import SimpleRenderer
 from werkzeug.exceptions import NotFound
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.test import Client
 
 from virasana.entregas.views_entregas import bp_entregas
+from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
 from virasana.navii.views_navii import bp_navii
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 from virasana.tests.test_navii_filtros_salvos import BancoFalso
@@ -101,6 +104,23 @@ class TestPrefixoProxy(unittest.TestCase):
     def test_formulario_e_planilha_das_entregas(self):
         html = self.get('/entregas_cnpj/?cnpj=123&inicio=2026-05-01&fim=2026-05-31').get_data(as_text=True)
         self.assertIn(f'action="{PREFIXO}/entregas_cnpj/"', html)
+
+
+class TestMenuNavii(unittest.TestCase):
+    """O submenu NAVII é renderizado em TODAS as páginas do virasana: um
+    endpoint errado derrubaria o sistema inteiro."""
+
+    def test_cada_entrada_monta_com_o_prefixo(self):
+        app = cria_app()
+        with app.test_request_context('/', base_url=f'http://{HOST_INTERNO}{PREFIXO}/'):
+            html = SimpleRenderer().visit(Navbar('AJNA', subgrupo_navii())).render()
+            for _, endpoint in ENTRADAS_NAVII:
+                with self.subTest(endpoint=endpoint):
+                    url = url_for(endpoint)
+                    self.assertTrue(url.startswith(PREFIXO + '/'), url)
+                    self.assertIn(f'href="{url}"', html)
+        self.assertIn('NAVII', html)
+        self.assertIn(f'href="{URL_MANUAL}"', html)
 
 
 if __name__ == '__main__':
