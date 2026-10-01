@@ -354,6 +354,11 @@ Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amost
    carga conteinerizada). Análise: depois do `_existe` o ganho esperado é pequeno (~4% menos
    candidatos; o desastre de 16 min vinha do plano de execução, não da quantidade). Mantidos por
    ora; decidir com a nova medição. Se excluir: `Item.codigoConteiner != ''` em `monta_query_navii`.
+3a. **Card do filhote sem ciclo/imagem** (medido em 01/10/2026, ver
+   `analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md`): o contêiner consta nos itens do CE master E do
+   filhote; o ciclo guarda um só CE (36% das vezes o master) e o NAVI-I liga card↔ciclo pelo CE exato
+   (`_mesmo_conteiner_do_ciclo`) — o card do filhote (importador real) fica sem ciclo/imagem. Resolver
+   no ciclo de vida (ligar o ciclo à família do CE) ou, enquanto isso, ligar pelo contêiner + família.
 3. **Ciclos sem CE**: avaliar se vale casar ciclo e Item só pelo contêiner + proximidade de data
    quando o CE do ciclo está vazio (não feito: risco de casar contêiner reutilizado).
 4. **Ponte recinto ↔ terminal do manifesto**: abandonada por decisão do usuário (decisão 4). As
