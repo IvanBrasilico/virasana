@@ -33,6 +33,9 @@ MODULOS = [
     'virasana/analytic_scripts/entregas_cnpj.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ciclo_de_vida.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ces_ciclo_de_vida.py',
+    'virasana/analytic_scripts/ciclo_de_vida/linha_do_tempo.py',
+    'virasana/analytic_scripts/ciclo_de_vida/ces_do_ciclo.py',
+    'virasana/analytic_scripts/ciclo_de_vida/heuristica_ciclo.py',
 ]
 
 TESTES = [
@@ -49,6 +52,7 @@ TESTES = [
     'virasana/tests/test_completude_tela.py',
     'virasana/tests/test_diagnostico_ciclo_de_vida.py',
     'virasana/tests/test_diagnostico_ces_ciclo_de_vida.py',
+    'virasana/tests/test_linha_do_tempo.py',
     'virasana/tests/test_prefixo_proxy.py',
 ]
 

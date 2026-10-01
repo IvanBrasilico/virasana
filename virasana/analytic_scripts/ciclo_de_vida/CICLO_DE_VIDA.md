@@ -209,7 +209,12 @@ ao alargar tolerâncias. A API tem erros e omissões: uma saída não informada 
 encontrada, muitos dias depois, ser de OUTRA operação (contêiner já vazio, já em exportação...). Toda
 ligação precisa de **validação adicional de que ainda é a mesma operação**.
 
-## Plano v2 (proposto em 01/10/2026 — aguardando aprovação)
+## Plano v2 (APROVADO pelo usuário em 01/10/2026)
+
+Decisões do usuário na aprovação: **escopo só Santos** (operadores de Santos via `ovr_recintos`:
+`e_operador` + unidade — inclui o Ecoporto); com master e filhote, o **CE principal é o filhote** (o do
+importador real), mas o ciclo fica ligado à família. Os ajustes de baixo risco no loop atual NÃO foram
+aprovados explicitamente — não mexer no `manager_ciclo_de_vida.py` sem pedir.
 
 **Ideia central: linha do tempo do contêiner + estadas.** Em vez de buscas soltas por janela, carregar
 todos os eventos do contêiner (desembarque/embarque, acessos, inspeções — contêiner e hora são os dados
@@ -265,8 +270,16 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
    Mercante? prefixos? escala?); OUTRO CE é master/filhote?; operadores fora da lista fixa do loop
    (`e_operador`) — seção 0 de `diagnostico_ces_ciclo_de_vida.py`; saídas tardias que passam/não passam na continuidade; passagem com continuidade; scanner
    x gate; fuso por recinto e janela da imagem após +3 h; peso x tara no desembarque; atraso de criação.
-2. **Núcleo puro** `linha_do_tempo.py`: recebe os eventos de um contêiner e devolve os ciclos com as
-   ligações e a confiança — sem banco; testes com os casos reais das amostras.
+2. **Núcleo puro — FEITO (01/10/2026)**, sem banco, testado em `tests/test_linha_do_tempo.py`:
+   - `linha_do_tempo.py`: `ciclos_do_conteiner(eventos, operadores_escopo, operadores, agora,
+     familias)` — máquina de estados (operador → trânsito → outro operador / seco → fim), fronteiras,
+     inspeções em espera durante o trânsito e a passagem por outro operador (scanner no gate do TRA),
+     confiança por ligação, situação (aberto/concluído/incompleto/abandono) e motivo; parâmetros em
+     `Parametros` (trânsito 48 h, gate 2 h, relógio 1 h, permanência típica 10 dias, abandono 93 dias);
+   - `ces_do_ciclo.py`: `resolve_ces(desembarque, candidatos, declarados)` — família master/filhote,
+     sem exportação, janela de escala de 15 dias, filhote como principal;
+   - `heuristica_ciclo.py`: `processa_conteiner(...)` — as duas passagens (linha do tempo → CEs →
+     linha do tempo corroborada pela família).
 3. **Modo sombra**: roda o núcleo sobre um período e grava num relatório/tabela à parte, comparando
    com o ciclo atual (conclusões, escaneamentos, divergências), sem alterar nada.
 4. **DDL aditiva** (usuário/DBA): situação, fluxo, motivo, confiança e origem das ligações, marcas d'água.
