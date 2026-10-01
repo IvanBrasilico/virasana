@@ -199,7 +199,11 @@ confiança; CE declarado igual (ou master/filhote) corrobora. Imagem no Mongo po
 `dataescaneamento` com **+3 h** e janela estreita (medida depois da correção).
 
 **CE**: candidatos do Mercante (contêiner + escala), **sem exportação** para desembarque; declarado
-nos eventos só corrobora/desempata; sem candidato, o ciclo segue (a operação física existe) com o CE
+nos eventos só corrobora/desempata. **Hipótese do usuário (01/10) a confirmar** com
+`diagnostico_ces_ciclo_de_vida.py`: os eventos informam master e house(s) de forma intercambiada — se
+sim, a unidade de comparação passa a ser a **família do CE** (master + filhotes, via
+`Conhecimento.numeroCEMaster`): CE declarado da mesma família corrobora a mesma operação; só CE sem
+parentesco desconfia. O "OUTRO CE" das ligações atuais pode ser isso ou bug do algoritmo antigo; sem candidato, o ciclo segue (a operação física existe) com o CE
 declarado guardado como informação.
 
 **Processamento orientado a eventos** (resolve as horas de loop): marca d'água do último id lido de

@@ -520,8 +520,8 @@ class Diagnostico:
             contagem['sem data' if horas is None else f'{round(horas):+d} h'] += 1
         self.tabela(['imagem - inspeção', 'imagens'], sorted(contagem.items(), key=lambda kv: kv[0]))
 
-    def resumo(self):
-        self.titulo('12. CONSULTAS MAIS LENTAS')
+    def resumo(self, numero=12):
+        self.titulo(f'{numero}. CONSULTAS MAIS LENTAS')
         self.tabela(['consulta', 's'], [(q, f'{s:.1f}') for q, s in sorted(self.tempos, key=lambda t: -t[1])[:10]])
 
 
