@@ -74,8 +74,9 @@ Correção (bugs):
    escaneamento; os mais antigos nunca são vistos. `session.merge` de objeto sem ID insere duplicatas
    se a inspeção já estiver em outro ciclo.
 8. **`busca_desembarque_conteiner`** compara `>= data` e `<= data` (igualdade); `inicio`/`fim` não usados.
-9. **CE escolhido pela escala ±5 dias, o mais antigo**, ignorando o `numeroConhecimento` que o próprio
-   desembarque (EmbarqueDesembarque) e a inspeção trazem, e ignorando o tráfego (passagem/cabotagem).
+9. **CE escolhido pela escala ±5 dias, o mais antigo**, sem desempate quando há mais de um CE para o
+   contêiner e ignorando o tráfego (passagem/cabotagem). O `numeroConhecimento` dos eventos poderia
+   servir de desempate — mas é declarado, não 100% confiável (ver "Confiabilidade dos dados").
 10. **Fuso horário**: a API grava a hora local (o fuso é descartado em `converte_datetime`); a busca no
     Mongo trata essa hora como UTC — a janela de ±4 h fica deslocada em ~3 h.
 11. `func` só existe quando o arquivo roda como script (import dentro do `__main__`).
@@ -89,27 +90,44 @@ Custo (por que o loop leva horas):
   se acumulam e entram em todas as voltas.
 - Commit a cada passo de cada ciclo.
 
+## Confiabilidade dos dados (orientação do usuário, 01/10/2026)
+
+| Dado | Confiança | Por quê |
+|---|---|---|
+| `numeroConteiner` e `dataHoraOcorrencia` dos eventos da API | **alta** | informados automaticamente / por OCR |
+| `numeroConhecimento` (CE) e demais campos **declarados** nos eventos da API | **não é 100%** | digitados/declarados pelo recinto; servem para **corroborar** e desempatar, nunca como verdade única |
+| Mongo `metadata.numeroinformado` e `metadata.dataescaneamento` | **usar** | dados da própria imagem |
+| Mongo, demais campos de `metadata` (`carga.*`, `recinto`, `predictions.*`...) | **NÃO usar** | preenchidos pela heurística do `virasana_periodic`, que será **substituída** justamente pela heurística do ciclo de vida |
+
 ## Escaneamento: como achar sem pegar o de outra operação
 
-Fontes de ligação, da mais forte para a mais fraca:
+A âncora é sempre **contêiner + tempo** (os dados confiáveis); o resto corrobora ou desconfia:
 
-1. **Inspeção com o CE do ciclo** (`InspecaoNaoInvasiva.numeroConhecimento = numeroCEmercante`) e o
-   contêiner — independe de recinto e data informados (resolve terceirizado e data errada).
-2. **Imagem com o CE** no Mongo (`metadata.carga.conhecimento.conhecimento`) — quando a integração de
-   carga já vinculou a imagem.
-3. Recinto do ciclo + janela do fluxo (regra atual), **com corte do lado da outra operação**: nunca
-   depois do primeiro evento que indica outra operação do mesmo contêiner (entrada vazio, embarque,
-   desembarque seguinte, inspeção com OUTRO CE).
-4. Contêiner + janela em qualquer recinto — só como candidato "fraco", marcado como tal.
+1. **Janela do fluxo, recortada pelos eventos do próprio contêiner**: desembarque → saída do operador
+   (fluxo operador) ou entrada → saída do seco (TRA), e **nunca depois do primeiro evento que indica
+   outra operação** do mesmo contêiner (novo desembarque, embarque, entrada/saída de outra passagem).
+   Dentro da janela, a inspeção vale **em qualquer recinto** (resolve o escaneamento terceirizado e o
+   recinto informado errado).
+2. **Corroboração** (aumenta a confiança, registrada como tal): inspeção com o mesmo CE do ciclo;
+   recinto da inspeção igual ao do ciclo.
+3. **Desconfiança** (baixa a confiança ou exclui, a decidir com os números): inspeção com OUTRO CE,
+   `vazio`/`vazioConteiner` informado, entrada no seco com o contêiner vazio.
+4. **Data informada errada**: inspeção do contêiner um pouco fora da janela, sem outra operação no
+   meio — candidato "fraco", com a defasagem registrada.
 
-Sinais de "outra operação" a medir antes de confiar: `vazio`/`vazioConteiner`, `predictions.vazio`
-da imagem, inspeção com outro CE, novo desembarque ou embarque do contêiner.
+A imagem continua sendo achada no Mongo só por `numeroinformado` + `dataescaneamento` (com o fuso
+corrigido), a partir da inspeção ligada.
+
+Sinais de "outra operação" a medir antes de confiar: `vazio`/`vazioConteiner`, inspeção com outro CE,
+novo desembarque ou embarque do contêiner. (A seção 11 do diagnóstico mostra os outros campos do Mongo
+só como informação — eles não entram na heurística.)
 
 ## Plano (proposto — ver resposta de 01/10/2026; nada implementado ainda)
 
-0. **Medir** (`diagnostico_ciclo_de_vida.py`): estado dos pendentes por estágio e idade, tráfego,
-   passagem/embarque, saídas depois de 72 h, `saida_id` sem `data_saida`, escaneamentos achados só
-   pelo CE (e em que recinto/defasagem), risco de outra operação, campos do Mongo.
+0. **Medir** (`diagnostico_ciclo_de_vida.py`; o usuário está rodando em produção em 01/10/2026):
+   estado dos pendentes por estágio e idade, tráfego, passagem/embarque, saídas depois de 72 h,
+   `saida_id` sem `data_saida`, escaneamentos achados pelo CE (e em que recinto/defasagem — mede o
+   terceirizado e a data errada), risco de outra operação, defasagem de horário imagem x inspeção.
 1. **Correções seguras** dos bugs 1, 2, 3, 5, 7, 8, 11 (com testes em SQLite e simulação do loop).
 2. **Situação + agenda no ciclo** (colunas novas, nulas — ALTER TABLE pelo DBA): `fluxo`
    (operador/TRA/passagem/baldeação/abandono), `situacao`/`motivo_conclusao`, `tentativas`,
@@ -117,8 +135,11 @@ da imagem, inspeção com outro CE, novo desembarque ou embarque do contêiner.
    novidade param de ser reconsultados.
 3. **Fechamento por tipo**: passagem/baldeação concluem no embarque (EmbarqueDesembarque E);
    cabotagem marcada como "escaneamento não obrigatório"; abandono após 90 dias.
-4. **Escaneamento por CE primeiro**, depois recinto+janela com corte de outra operação; imagem pelo CE
-   no Mongo e com o fuso corrigido; registrar a **origem da ligação** (CE, recinto, fraco) em
-   `..._escaneamentos`.
-5. **Ligar o CE pelo `numeroConhecimento`** do desembarque quando existir; escala só como reserva.
+4. **Escaneamento ancorado em contêiner + tempo** (ver "Escaneamento: como achar"): janela do fluxo
+   recortada pelos eventos do próprio contêiner, em qualquer recinto; CE e recinto só corroboram;
+   imagem no Mongo só por `numeroinformado` + `dataescaneamento`, com o fuso corrigido; registrar a
+   **confiança/origem da ligação** em `..._escaneamentos`.
+5. **CE do ciclo pelo Mercante** (Item.codigoConteiner + escala, como hoje); o `numeroConhecimento` do
+   desembarque/inspeção só corrobora ou desempata entre CEs candidatos — divergência vira alerta,
+   não troca automática.
 6. Reprocessar os pendentes antigos com as regras novas (script único, em lotes, com relatório).
