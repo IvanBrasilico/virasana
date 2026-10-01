@@ -7,6 +7,9 @@ Expõe:
   GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página); na
                              primeira página (sem cursor) traz também `total`
                              de contêineres que o filtro encontrou na base
+  GET /navii/api/sugestoes -> autocompletar de porto, NCM e recinto
+  GET|POST|DELETE /navii/api/filtros -> filtros salvos do usuário (MongoDB,
+                             ver `filtros_salvos.py`)
 
 Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
@@ -14,11 +17,12 @@ definidos em `busca_navii.py`.
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 
+from virasana.navii import filtros_salvos, referencias
 from virasana.navii.busca_navii import (
-    busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
-    PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao,
+    CAMPOS_LISTA, busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
+    PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
 )
 
 bp_navii = Blueprint(
@@ -77,10 +81,13 @@ def api_ces():
     limit = max(1, min(limit, 50))
 
     filtros = {}
-    for campo in ('ncm', 'produto', 'porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao',
-                  'recinto', 'empresa'):
+    for campo in CAMPOS_LISTA:  # repetidos (?ncm=8471&ncm=6109) ou separados por vírgula
+        valores = [v for v in request.args.getlist(campo) if v.strip()]
+        if valores:
+            filtros[campo] = valores
+    for campo in ('produto', 'empresa'):
         valor = request.args.get(campo)
-        if valor:
+        if valor and valor.strip():
             filtros[campo] = valor.strip()
     for campo in ('concluido', 'com_imagem'):
         if request.args.get(campo) in ('1', 'true', 'True'):
@@ -117,3 +124,50 @@ def api_ces():
         'tipo_janela': tipo_janela,
         'filtros': filtros,
     })
+
+
+def _usuario():
+    """Identificação do usuário logado (dono dos filtros salvos)."""
+    return getattr(current_user, 'id', None)
+
+
+@bp_navii.route('/api/sugestoes')
+@login_required
+def api_sugestoes():
+    """Autocompletar dos campos da tela: ?campo=porto|ncm|recinto&q=texto."""
+    campo, termo = request.args.get('campo'), request.args.get('q', '')
+    if campo == 'porto':
+        sugestoes = referencias.sugere_portos(termo)
+    elif campo == 'ncm':
+        sugestoes = referencias.sugere_ncm(termo)
+    elif campo == 'recinto':
+        sugestoes = sugere_recintos(current_app.config['db_session'], termo)
+    else:
+        return jsonify({'erro': 'campo inválido'}), 400
+    return jsonify({'sugestoes': sugestoes})
+
+
+@bp_navii.route('/api/filtros', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def api_filtros_salvos():
+    """Filtros salvos do usuário logado.
+
+    GET lista; POST {nome, tipo_janela, filtros} cria ou substitui; DELETE
+    ?nome= apaga. Todas devolvem a lista atualizada em `filtros_salvos`.
+    """
+    usuario = _usuario()
+    if not usuario:
+        return jsonify({'erro': 'usuário não identificado'}), 401
+    col = filtros_salvos.colecao(current_app.config['mongodb'])
+    try:
+        if request.method == 'POST':
+            dados = request.get_json(silent=True) or {}
+            filtros_salvos.salva(col, usuario, dados.get('nome'), dados.get('tipo_janela'), dados.get('filtros'))
+        elif request.method == 'DELETE':
+            if not filtros_salvos.apaga(col, usuario, request.args.get('nome')):
+                return jsonify({'erro': 'filtro não encontrado'}), 404
+    except filtros_salvos.FiltroInvalido as err:
+        return jsonify({'erro': str(err)}), 400
+    salvos = [{**d, 'atualizado': _serializa_valor(d.get('atualizado')), 'criado': _serializa_valor(d.get('criado'))}
+              for d in filtros_salvos.lista(col, usuario)]
+    return jsonify({'filtros_salvos': salvos})

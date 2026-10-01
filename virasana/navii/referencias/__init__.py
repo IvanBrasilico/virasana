@@ -13,8 +13,9 @@ import io
 import json
 import os
 import re
+import unicodedata
 from functools import lru_cache
-from typing import Optional
+from typing import Iterable, List, Optional, Tuple
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 
@@ -69,6 +70,42 @@ def nome_navio(embarcacao: Optional[str]) -> Optional[str]:
     if not embarcacao:
         return None
     return _tabela('navios.json').get(embarcacao.strip())
+
+
+def _sem_acento(texto: str) -> str:
+    return unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode().lower()
+
+
+def _sugere(opcoes: Iterable[Tuple[str, str]], termo: str, limite: int) -> List[dict]:
+    """Primeiro os códigos que começam pelo termo, depois os nomes que o contêm
+    (sem diferenciar acentos/maiúsculas)."""
+    termo_codigo = re.sub(r'[\s.]', '', termo or '').upper()
+    termo_nome = _sem_acento((termo or '').strip())
+    if not termo_nome:
+        return []
+    por_codigo, por_nome = [], []
+    for codigo, descricao in opcoes:
+        if termo_codigo and codigo.startswith(termo_codigo):
+            por_codigo.append({'codigo': codigo, 'descricao': descricao})
+        elif termo_nome in _sem_acento(descricao):
+            por_nome.append({'codigo': codigo, 'descricao': descricao})
+    return (sorted(por_codigo, key=lambda s: (len(s['codigo']), s['codigo'])) + por_nome)[:limite]
+
+
+def sugere_portos(termo: str, limite: int = 15) -> List[dict]:
+    """Sugestões para os campos de porto: países (código de 2 letras = todos os
+    portos do país) e portos das tabelas locais. [{'codigo', 'descricao'}]"""
+    paises = [(sigla, f'{nome} (todos os portos)') for sigla, nome in _tabela('paises.json').items()]
+    portos = {**_portos(), **_tabela('portos_ajustes.json')}
+    return _sugere(paises + [(codigo, descreve_porto(codigo) or nome) for codigo, nome in portos.items()],
+                   termo, limite)
+
+
+def sugere_ncm(termo: str, limite: int = 15) -> List[dict]:
+    """Sugestões para o campo NCM: capítulos (2 dígitos) e posições (4)."""
+    tabela = _tabela('ncm.json')
+    opcoes = list(tabela.get('capitulos', {}).items()) + list(tabela.get('posicoes', {}).items())
+    return _sugere(opcoes, termo, limite)
 
 
 def descricao_posicao_ncm(ncm: Optional[str]) -> Optional[str]:

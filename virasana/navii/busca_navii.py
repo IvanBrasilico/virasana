@@ -13,9 +13,9 @@ carga ainda nem desembarcou. Por isso a busca parte do CE declarado e o ciclo
 imagem", "entregue ao importador") restringem aos contêineres que o têm.
 
 Suporta filtros sucessivos (NCM, rota, porto de baldeação do manifesto,
-produto, recinto, empresa, ciclo concluído/"entregue ao importador",
-quantidade máxima de NCMs distintos, somente com imagem de escaneamento),
-contagem total do filtro e paginação por cursor (Item.ID decrescente).
+produto na descrição do CE, recinto — portos, NCM e recinto aceitam lista —,
+empresa, ciclo concluído/"entregue ao importador", quantidade máxima de NCMs
+distintos, somente com imagem de escaneamento), contagem total do filtro e paginação por cursor (Item.ID decrescente).
 A janela de dias (`_janela_previsao`/`_janela_efetiva`) é apenas a *sugestão*
 de período inicial — `data_inicio`/`data_fim` em `filtros` sobrescrevem essa
 sugestão.
@@ -89,6 +89,11 @@ TIPO_TRAFEGO_EXPORTACAO = '7'
 # futuro virá da unidade/equipe de trabalho do usuário logado.
 PORTO_ESCALA_PADRAO = 'BRSSZ'
 
+# Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
+# Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
+CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto')
+_CAMPOS_PORTO = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao')
+
 
 def _janela_previsao() -> Tuple[str, str]:
     """Sugestão de janela de PREVISÃO de atracação: 3 a 15 dias no futuro.
@@ -160,16 +165,38 @@ def _existe_ciclo(*criterios, origem=CicloDeVidaImportacao):
     return _existe(origem, _mesmo_conteiner_do_ciclo(), *criterios)
 
 
+def _lista_de_codigos(valor) -> List[str]:
+    """'CNSHA, cnngb;SGSIN' ou ['CNSHA', 'CNNGB SGSIN'] -> ['CNSHA', 'cnngb', 'SGSIN']."""
+    if valor is None:
+        return []
+    partes = valor if isinstance(valor, (list, tuple, set)) else [valor]
+    codigos = []
+    for parte in partes:
+        codigos.extend(p for p in re.split(r'[,;\s]+', str(parte)) if p)
+    return codigos
+
+
 def normaliza_filtros(filtros: Optional[dict]) -> dict:
-    """Padroniza o que o usuário digitou: códigos de porto em maiúsculas e NCM
-    só com dígitos (a base guarda '84713012'; o usuário pode digitar
-    '8471.30.12'). Sem isso, 'brssz' ou '8471.30' não achariam nada."""
+    """Padroniza o que o usuário digitou: os campos de CAMPOS_LISTA viram
+    listas sem repetição, códigos de porto em maiúsculas e NCM só com dígitos
+    (a base guarda '84713012'; o usuário pode digitar '8471.30.12'). Sem isso,
+    'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro."""
     filtros = dict(filtros or {})
-    for campo in ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao'):
-        if filtros.get(campo):
-            filtros[campo] = str(filtros[campo]).strip().upper()
-    if filtros.get('ncm'):
-        filtros['ncm'] = re.sub(r'\D', '', str(filtros['ncm']))
+    for campo in CAMPOS_LISTA:
+        if campo not in filtros:
+            continue
+        codigos = []
+        for codigo in _lista_de_codigos(filtros[campo]):
+            if campo in _CAMPOS_PORTO:
+                codigo = codigo.upper()
+            elif campo == 'ncm':
+                codigo = re.sub(r'\D', '', codigo)
+            if codigo and codigo not in codigos:
+                codigos.append(codigo)
+        if codigos:
+            filtros[campo] = codigos
+        else:
+            del filtros[campo]
     return filtros
 
 
@@ -182,11 +209,24 @@ def _porto_ou_pais(coluna, valor: str):
     return coluna == valor
 
 
-def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto: Optional[str] = None):
+def _algum_porto(coluna, valores):
+    """`_porto_ou_pais` para uma lista (vale qualquer um): os códigos completos
+    viram um único IN; os parciais (país), um LIKE cada."""
+    if isinstance(valores, str):
+        valores = [valores]
+    valores = [v.strip().upper() for v in valores]
+    completos = [v for v in valores if len(v) >= 5]
+    criterios = [_porto_ou_pais(coluna, v) for v in valores if len(v) < 5]
+    if completos:
+        criterios.insert(0, coluna.in_(completos) if len(completos) > 1 else coluna == completos[0])
+    return criterios[0] if len(criterios) == 1 else or_(*criterios)
+
+
+def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto=None):
     """Subquery dos manifestos com escala de data PREVISTA de atracação no
     período (VARCHAR 'YYYY-MM-DD', comparação textual).
 
-    Com `porto`, só valem as escalas NAQUELE porto (Escala.portoDaEscala): um
+    Com `porto` (código ou lista), só valem as escalas nesse(s) porto(s) (Escala.portoDaEscala): um
     manifesto tem uma escala por porto em que o navio atraca, e a data que
     interessa é a da atracação no porto do usuário — não em outro porto.
 
@@ -200,7 +240,7 @@ def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto: Optional[st
         .where(
             Escala.dataPrevistaAtracacao >= inicio,
             Escala.dataPrevistaAtracacao <= fim,
-            *([Escala.portoDaEscala == porto] if porto else []),
+            *([_algum_porto(Escala.portoDaEscala, porto)] if porto else []),
         )
     )
 
@@ -215,7 +255,7 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime):
     )
 
 
-def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto: Optional[str] = None,
+def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
                    criterios_ce=()):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
@@ -279,9 +319,12 @@ def monta_query_navii(
             Escala.dataPrevistaAtracacao quando o ciclo não localizou o
             desembarque — ver `_filtra_janela`).
         filtros: dict opcional com filtros sucessivos:
-            - ncm (str): prefixo do código NCM declarado NO CONTÊINER (ex.: '8471')
-            - produto (str): busca textual na descrição do NCM do contêiner
-              (NCMItem.descritivo) — ncm e produto valem para o mesmo NCMItem
+            Os campos de CAMPOS_LISTA aceitam lista (ou texto separado por
+            vírgula) e valem para QUALQUER um dos valores.
+            - ncm (str | lista): prefixo do código NCM declarado NO CONTÊINER (ex.: '8471')
+            - produto (str): busca textual na descrição da mercadoria do CE
+              (Conhecimento.descricao). O `NCMItem.descritivo` não serve: na
+              base real traz números de BL/contêiner, não o produto.
             - porto_origem / porto_destino (str): código do porto de origem/destino
               da carga (Conhecimento — o que o embarcador declarou). Os filtros
               de porto aceitam código parcial: 'CN' ou 'US' filtram pelo PAÍS
@@ -332,13 +375,15 @@ def monta_query_navii(
         Conhecimento.tipoTrafego.is_(None),
     )]
     if filtros.get('porto_origem'):
-        criterios_ce.append(_porto_ou_pais(Conhecimento.portoOrigemCarga, filtros['porto_origem']))
+        criterios_ce.append(_algum_porto(Conhecimento.portoOrigemCarga, filtros['porto_origem']))
     if filtros.get('porto_destino'):
-        criterios_ce.append(_porto_ou_pais(Conhecimento.portoDestFinal, filtros['porto_destino']))
+        criterios_ce.append(_algum_porto(Conhecimento.portoDestFinal, filtros['porto_destino']))
     if filtros.get('porto_baldeacao'):
         criterios_ce.append(Conhecimento.manifestoCE.in_(
-            select(Manifesto.numero).where(_porto_ou_pais(Manifesto.portoCarregamento, filtros['porto_baldeacao']))
+            select(Manifesto.numero).where(_algum_porto(Manifesto.portoCarregamento, filtros['porto_baldeacao']))
         ))
+    if filtros.get('produto'):
+        criterios_ce.append(Conhecimento.descricao.ilike(f"%{filtros['produto'].strip()}%"))
     if filtros.get('empresa'):
         termo = f"%{filtros['empresa']}%"
         criterios_ce.append(or_(
@@ -357,24 +402,19 @@ def monta_query_navii(
             ),
         ))
 
-    criterios_ncm = []
     if filtros.get('ncm'):
-        criterios_ncm.append(NCMItem.identificacaoNCM.like(f"{filtros['ncm']}%"))
-    if filtros.get('produto'):
-        criterios_ncm.append(NCMItem.descritivo.ilike(f"%{filtros['produto']}%"))
-    if criterios_ncm:
         q = q.filter(_existe(
             NCMItem,
             NCMItem.numeroCEMercante == Item.numeroCEmercante,
             NCMItem.codigoConteiner == Item.codigoConteiner,
-            *criterios_ncm,
+            or_(*[NCMItem.identificacaoNCM.like(f'{ncm}%') for ncm in filtros['ncm']]),
         ))
 
     if filtros.get('recinto'):
-        recinto = filtros['recinto']
+        recintos = filtros['recinto']
         q = q.filter(_existe_ciclo(or_(
-            CicloDeVidaImportacao.codigoRecintoDesembarque == recinto,
-            CicloDeVidaImportacao.codigoRecintoArmazenagem == recinto,
+            CicloDeVidaImportacao.codigoRecintoDesembarque.in_(recintos),
+            CicloDeVidaImportacao.codigoRecintoArmazenagem.in_(recintos),
         )))
 
     if filtros.get('concluido'):
@@ -486,11 +526,12 @@ def busca_ciclos_navii(session, itens: List[Item]) -> Dict[Tuple[str, str], Cicl
 
 
 def busca_manifestos_navii(
-    session, numeros_manifesto: Iterable[str], porto: Optional[str] = None,
+    session, numeros_manifesto: Iterable[str], porto=None,
 ) -> Dict[str, dict]:
     """Manifesto + dados da escala (embarcação, data prevista de atracação) dos
-    CEs da página, em lote, por número do manifesto. Com `porto`, considera só
-    as escalas naquele porto de atracação (mesmo critério da janela).
+    CEs da página, em lote, por número do manifesto. Com `porto` (código ou
+    lista), considera só as escalas nesse(s) porto(s) de atracação (mesmo
+    critério da janela).
 
     Returns:
         {numero: {'manifesto': Manifesto | None, 'embarcacao': str | None,
@@ -511,7 +552,7 @@ def busca_manifestos_navii(
         .filter(EscalaManifesto.manifesto.in_(numeros))
     )
     if porto:
-        q_escalas = q_escalas.filter(Escala.portoDaEscala == porto)
+        q_escalas = q_escalas.filter(_algum_porto(Escala.portoDaEscala, porto))
     escalas = q_escalas.all()
     for numero, embarcacao, data_prevista in escalas:
         dados = resultado.get(numero)
@@ -542,6 +583,23 @@ def busca_nomes_recintos(session, codigos: Iterable[str], campo: str = 'cod_sisc
         select(coluna, tabela_recintos.c.nome).where(coluna.in_(codigos))
     ).all()
     return {codigo: nome for codigo, nome in linhas if nome}
+
+
+def sugere_recintos(session, termo: str, limite: int = 15) -> List[dict]:
+    """Sugestões para o campo Recinto: código Siscomex (o que o ciclo de vida
+    usa) que começa pelo termo ou nome que o contém. [{'codigo', 'descricao'}]"""
+    termo = (termo or '').strip().replace('%', '').replace('_', '')
+    if not termo:
+        return []
+    codigo, nome = tabela_recintos.c.cod_siscomex, tabela_recintos.c.nome
+    linhas = session.execute(
+        select(codigo, func.max(nome))
+        .where(codigo.isnot(None), codigo != '', or_(codigo.like(f'{termo}%'), nome.ilike(f'%{termo}%')))
+        .group_by(codigo)
+        .order_by(func.max(nome))
+        .limit(limite)
+    ).all()
+    return [{'codigo': c, 'descricao': n or ''} for c, n in linhas]
 
 
 def _texto_para_float(valor: Optional[str]) -> Optional[float]:

@@ -29,7 +29,7 @@ from sqlalchemy.orm import sessionmaker
 from virasana.navii.busca_navii import (
     busca_ces_navii, busca_ciclos_navii, busca_manifestos_navii,
     busca_nomes_recintos, conta_conteineres_navii, monta_cards_navii,
-    monta_query_navii, tabela_recintos,
+    monta_query_navii, normaliza_filtros, tabela_recintos,
 )
 # Importados depois de busca_navii, que já ajusta o sys.path para o repo
 # irmão bhadrasana2/ajna_commons (ver virasana/navii/busca_navii.py).
@@ -61,12 +61,12 @@ def cria_sessao():
 
 def cria_ce(session, numero, manifesto, conteineres, embarcador='EMBARCADOR QUALQUER',
             consignatario='00000000000000', porto_origem='CNSHA', porto_destino='BRSSZ',
-            tipo_trafego='5'):
+            tipo_trafego='5', descricao=None):
     """conteineres: {codigo: [(ncm, descritivo), ...]}"""
     session.add(Conhecimento(
         numeroCEmercante=numero, manifestoCE=manifesto, embarcador=embarcador,
         consignatario=consignatario, portoOrigemCarga=porto_origem,
-        portoDestFinal=porto_destino, descricao=f'mercadoria do {numero}',
+        portoDestFinal=porto_destino, descricao=descricao or f'mercadoria do {numero}',
         tipoTrafego=tipo_trafego, tipoBLConhecimento='12',
     ))
     for codigo, ncms in conteineres.items():
@@ -114,10 +114,11 @@ def monta_cenario(session):
     cria_ce(session, 'CE1', 'M1', {
         'C1': [('84713000', 'Notebook'), ('84716000', 'Teclado')],
         'C2': [('95030000', 'Brinquedo de plastico')],
-    }, embarcador='ACME EXPORT CO', consignatario='11222333000181')
+    }, embarcador='ACME EXPORT CO', consignatario='11222333000181',
+        descricao='NOTEBOOKS, TECLADOS E BRINQUEDOS DE PLASTICO')
     cria_ce(session, 'CE2', 'M1', {'C3': [('84713000', 'Notebook')]})
     cria_ce(session, 'CE3', 'M2', {'C4': [('61091000', 'Camiseta')]},
-            consignatario='LOJA X LTDA', porto_origem='CNNGB')
+            consignatario='LOJA X LTDA', porto_origem='CNNGB', descricao='T-SHIRTS DE ALGODAO')
     cria_ce(session, 'CE4', 'M2', {'C5': [('61091000', 'Camiseta')]})
     cria_ce(session, 'CE5', 'M3', {'C7': []})
     cria_ce(session, 'CE6', 'M1', {'C6': []}, porto_destino='BRRIG')
@@ -232,6 +233,14 @@ class TestTrafegoEPorto(NaviiSqliteTestCase):
         self._navio_b_atraca_em_paranagua_no_periodo()
         self.assertEqual(self.conteineres('prevista'), {'C1', 'C2', 'C3', 'C6', 'C4', 'C5'})
 
+    def test_lista_de_portos_de_atracacao(self):
+        self._navio_b_atraca_em_paranagua_no_periodo()
+        self.assertEqual(self.conteineres('prevista', porto_escala=['BRSSZ', 'BRPNG']),
+                         {'C1', 'C2', 'C3', 'C6', 'C4', 'C5'})
+        self.assertEqual(self.conteineres('prevista', porto_escala='BR'), {'C1', 'C2', 'C3', 'C6', 'C4', 'C5'})
+        self.assertEqual(busca_manifestos_navii(self.session, ['M2'], ['BRPNG', 'BRSSZ'])['M2']
+                         ['dataPrevistaAtracacao'], '2026-02-20')  # a maior data entre os portos
+
     def test_com_porto_so_conta_a_escala_naquele_porto(self):
         self._navio_b_atraca_em_paranagua_no_periodo()
         self.assertEqual(self.conteineres('prevista', porto_escala='BRSSZ'), {'C1', 'C2', 'C3', 'C6'})
@@ -270,12 +279,34 @@ class TestFiltros(NaviiSqliteTestCase):
         self.assertEqual(self.conteineres(porto_escala='brssz'), self.conteineres(porto_escala='BRSSZ'))
         self.assertEqual(self.conteineres(porto_origem=' cnngb '), {'C4'})
 
-    def test_produto_sem_diferenciar_maiusculas(self):
-        self.assertEqual(self.conteineres(produto='BRINQ'), {'C2'})
+    def test_produto_na_descricao_do_ce_sem_diferenciar_maiusculas(self):
+        # vale para todos os contêineres do CE (a descrição é do conhecimento)
+        self.assertEqual(self.conteineres(produto='brinq'), {'C1', 'C2'})
+        self.assertEqual(self.conteineres(produto='T-SHIRT'), {'C4'})
+        # o descritivo do NCM ("Camiseta") não é mais pesquisado
+        self.assertEqual(self.conteineres(produto='camiseta'), set())
 
-    def test_ncm_e_produto_valem_para_o_mesmo_ncm_declarado(self):
-        self.assertEqual(self.conteineres(ncm='8471', produto='teclado'), {'C1'})
-        self.assertEqual(self.conteineres(ncm='9503', produto='notebook'), set())
+    def test_ncm_e_produto_combinados(self):
+        # NCM do contêiner E descrição do CE
+        self.assertEqual(self.conteineres(ncm='9503', produto='notebook'), {'C2'})
+        self.assertEqual(self.conteineres(ncm='6109', produto='notebook'), set())
+
+    def test_listas_valem_qualquer_um_dos_valores(self):
+        self.assertEqual(self.conteineres(ncm=['8471', '6109']), {'C1', 'C4'})
+        self.assertEqual(self.conteineres(ncm='8471, 6109'), {'C1', 'C4'})  # texto com vírgula
+        self.assertEqual(self.conteineres(porto_origem=['CNNGB', 'US']), {'C4'})
+        self.assertEqual(self.conteineres(porto_destino=['BRRIG', 'brssz']), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(porto_baldeacao=['SGSIN', 'CNSHA']), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(recinto=['8932000', '9999999']), {'C4'})
+        self.assertEqual(self.total(ncm=['8471', '6109']), 2)
+
+    def test_lista_vazia_nao_filtra(self):
+        self.assertEqual(self.conteineres(ncm=[], porto_origem=' , '), self.conteineres())
+
+    def test_normaliza_listas(self):
+        self.assertEqual(normaliza_filtros({'ncm': '8471.30, 8471.30;6109', 'porto_origem': ['cnsha', 'CN'],
+                                            'produto': 'x'}),
+                         {'ncm': ['847130', '6109'], 'porto_origem': ['CNSHA', 'CN'], 'produto': 'x'})
 
     def test_portos_origem_destino(self):
         self.assertEqual(self.conteineres(porto_origem='CNNGB'), {'C4'})
@@ -487,6 +518,12 @@ class TestApiCes(NaviiSqliteTestCase):
     def test_filtro_porto_escala(self):
         self.assertEqual(self.get(porto_escala='BRSSZ').get_json()['total'], 4)
         self.assertEqual(self.get(porto_escala='BRPNG').get_json()['total'], 2)  # C1 e C4, pelo desembarque
+
+    def test_filtro_em_lista_repetido_ou_com_virgula(self):
+        self.assertEqual(self.client.get('/navii/api/ces', query_string=[
+            ('data_inicio', PERIODO['data_inicio']), ('data_fim', PERIODO['data_fim']),
+            ('ncm', '8471'), ('ncm', '6109')]).get_json()['total'], 2)
+        self.assertEqual(self.get(ncm='8471,6109').get_json()['total'], 2)
 
     def test_janela_invalida_400(self):
         self.assertEqual(self.get(tipo_janela='xyz').status_code, 400)

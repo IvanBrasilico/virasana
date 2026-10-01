@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="{% if csrf_token is defined %}{{ csrf_token() }}{% endif %}" />
     <title>NAVI-I — Análise de risco na importação</title>
 
     <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
@@ -86,6 +87,57 @@
         .campo-checkbox { display: flex; align-items: center; gap: .5rem; }
         .campo-checkbox input { width: 1.1rem; height: 1.1rem; }
         .campo-checkbox label { font-size: .8125rem; color: #1c1c1c; margin: 0; }
+
+        /* ---------- Campos com lista de códigos + autocompletar ---------- */
+        .rotulo-campo { display: block; font-size: .875rem; font-weight: 600; color: #333; margin-bottom: .25rem; }
+        .caixa-lista {
+            position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem;
+            min-height: 2.5rem; padding: .25rem .375rem; background: #fff;
+            border: 1px solid #888; border-radius: 6px; cursor: text;
+        }
+        .caixa-lista:focus-within { border-color: #1351B4; box-shadow: 0 0 0 2px rgba(19,81,180,.25); }
+        .painel-filtros .caixa-lista input {
+            flex: 1 1 4rem; min-width: 4rem; width: auto; border: none; outline: none; box-shadow: none;
+            height: 1.875rem; padding: 0 .25rem; font-size: .875rem; background: transparent;
+        }
+        .chip-codigo {
+            display: inline-flex; align-items: center; gap: .25rem; max-width: 100%;
+            background: #E8EEF9; color: #0C326F; border-radius: 999px; padding: .125rem .25rem .125rem .5rem;
+            font-size: .75rem; font-weight: 700; font-family: monospace;
+        }
+        .chip-codigo .nome-chip {
+            font-family: Rawline, Raleway, sans-serif; font-weight: 400; color: #445; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; max-width: 7rem;
+        }
+        .chip-codigo button {
+            background: none; border: none; color: inherit; cursor: pointer; font-size: .875rem;
+            line-height: 1; padding: 0 .125rem;
+        }
+        .lista-sugestoes {
+            position: absolute; left: -1px; right: -1px; top: calc(100% + 2px); z-index: 20;
+            list-style: none; margin: 0; padding: .25rem 0; background: #fff;
+            border: 1px solid #CCC; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+            max-height: 16rem; overflow-y: auto;
+        }
+        .lista-sugestoes li {
+            padding: .375rem .625rem; font-size: .75rem; color: #333; cursor: pointer; line-height: 1.3;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .lista-sugestoes li.ativo, .lista-sugestoes li:hover { background: #F0F4FC; }
+        .lista-sugestoes .codigo-sugestao { font-family: monospace; font-weight: 700; color: #0C326F; margin-right: .375rem; }
+        .dica-lista { font-size: .6875rem; color: #777; margin-top: .25rem; }
+
+        /* ---------- Filtros salvos ---------- */
+        .linha-salvos { display: flex; gap: .375rem; align-items: center; }
+        .painel-filtros .linha-salvos select,
+        .painel-filtros .linha-salvos input {
+            flex: 1 1 auto; min-width: 0; height: 2.25rem; padding: 0 .5rem; font-size: .8125rem;
+            border: 1px solid #888; border-radius: 6px; background: #fff;
+        }
+        .linha-salvos .br-button { flex: 0 0 auto; }
+        .salvar-filtro { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #EDEDED; }
+        .msg-salvos { font-size: .75rem; color: #168821; margin-top: .375rem; min-height: 1rem; }
+        .msg-salvos.erro { color: #E52207; }
 
         .campo-slider .valor-slider { float: right; font-weight: 700; color: #1351B4; }
         .campo-slider input[type="range"] { width: 100%; margin-top: .375rem; accent-color: #1351B4; }
@@ -296,6 +348,17 @@
         <aside class="painel-filtros" id="painel-filtros">
             <div class="titulo-filtros"><i class="fas fa-sliders-h" aria-hidden="true"></i> Filtros</div>
 
+            <div class="campo">
+                <label class="rotulo-campo" for="f-salvos">Meus filtros salvos</label>
+                <div class="linha-salvos">
+                    <select id="f-salvos"><option value="">carregando…</option></select>
+                    <button class="br-button circle small" id="btn-apagar-salvo" type="button" disabled
+                            title="Apagar o filtro escolhido" aria-label="Apagar o filtro escolhido">
+                        <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+
             <div class="toggle-janela" id="toggle-janela">
                 <button data-valor="prevista" class="prevista">Previsão de atracação</button>
                 <button data-valor="efetiva" class="efetiva ativo">Desembarque efetivo</button>
@@ -316,35 +379,29 @@
                 <div class="dica-periodo" id="dica-periodo"></div>
             </div>
 
-            <div class="campo br-input">
-                <label for="f-porto_escala">Porto de atracação (escala)</label>
-                <input id="f-porto_escala" type="text" value="{{ porto_escala_padrao }}"
-                       placeholder="ex.: BRSSZ — vazio = todos os portos" />
+            {% macro campo_lista(campo, rotulo, sugestoes, placeholder, dica='') %}
+            <div class="campo">
+                <label class="rotulo-campo" for="f-{{ campo }}">{{ rotulo }}</label>
+                <div class="caixa-lista" data-campo="{{ campo }}" data-sugestoes="{{ sugestoes }}">
+                    <input id="f-{{ campo }}" type="text" autocomplete="off" placeholder="{{ placeholder }}"
+                           role="combobox" aria-autocomplete="list" aria-expanded="false"
+                           aria-controls="sug-{{ campo }}" />
+                    <ul class="lista-sugestoes" id="sug-{{ campo }}" role="listbox" hidden></ul>
+                </div>
+                {% if dica %}<div class="dica-lista">{{ dica }}</div>{% endif %}
             </div>
-            <div class="campo br-input">
-                <label for="f-ncm">NCM</label>
-                <input id="f-ncm" type="text" placeholder="ex.: 8471" />
-            </div>
+            {% endmacro %}
+            {{ campo_lista('porto_escala', 'Porto de atracação (escala)', 'porto', 'porto ou país',
+                           'Vazio = todos os portos.') }}
+            {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição') }}
             <div class="campo br-input">
                 <label for="f-produto">Produto</label>
-                <input id="f-produto" type="text" placeholder="descrição do item" />
+                <input id="f-produto" type="text" placeholder="descrição da mercadoria no CE" />
             </div>
-            <div class="campo br-input">
-                <label for="f-porto_origem">Porto de origem</label>
-                <input id="f-porto_origem" type="text" placeholder="porto (CNSHA) ou país (CN)" />
-            </div>
-            <div class="campo br-input">
-                <label for="f-porto_destino">Porto de destino</label>
-                <input id="f-porto_destino" type="text" placeholder="porto (BRSSZ) ou país (BR)" />
-            </div>
-            <div class="campo br-input">
-                <label for="f-porto_baldeacao">Porto de baldeação (manifesto)</label>
-                <input id="f-porto_baldeacao" type="text" placeholder="porto de carregamento ou país" />
-            </div>
-            <div class="campo br-input">
-                <label for="f-recinto">Recinto</label>
-                <input id="f-recinto" type="text" placeholder="código do recinto" />
-            </div>
+            {{ campo_lista('porto_origem', 'Porto de origem', 'porto', 'porto ou país') }}
+            {{ campo_lista('porto_destino', 'Porto de destino', 'porto', 'porto ou país') }}
+            {{ campo_lista('porto_baldeacao', 'Porto de baldeação (manifesto)', 'porto', 'porto ou país') }}
+            {{ campo_lista('recinto', 'Recinto', 'recinto', 'código ou nome') }}
             <div class="campo br-input">
                 <label for="f-empresa">Empresa</label>
                 <input id="f-empresa" type="text" placeholder="embarcador ou consignatário" />
@@ -370,6 +427,18 @@
                 <i class="fas fa-filter mr-1" aria-hidden="true"></i> Aplicar filtros
             </button>
             <button class="br-button secondary block" id="btn-limpar" type="button">Limpar filtros</button>
+
+            <div class="salvar-filtro">
+                <label class="rotulo-campo" for="f-nome-salvo">Salvar estes filtros</label>
+                <div class="linha-salvos">
+                    <input id="f-nome-salvo" type="text" maxlength="60" placeholder="nome do filtro" />
+                    <button class="br-button secondary small" id="btn-salvar-filtro" type="button">
+                        <i class="fas fa-save mr-1" aria-hidden="true"></i> Salvar
+                    </button>
+                </div>
+                <div class="dica-periodo">O período não é salvo: ao recuperar, vale o período sugerido pela tela.</div>
+                <div class="msg-salvos" id="msg-salvos" role="status"></div>
+            </div>
         </aside>
 
         <main class="painel-resultados">
@@ -413,8 +482,14 @@
     var API_URL = {{ url_for('navii.api_ces') | tojson }};
     var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
     var DEFAULTS_PERIODO = {{ defaults_periodo | tojson }};
+    var SUGESTOES_URL = {{ url_for('navii.api_sugestoes') | tojson }};
+    var FILTROS_SALVOS_URL = {{ url_for('navii.api_filtros_salvos') | tojson }};
+    var PORTO_ESCALA_PADRAO = {{ porto_escala_padrao | tojson }};
+    var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 
-    var campos = ['porto_escala', 'ncm', 'produto', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto', 'empresa'];
+    // Campos com lista de códigos (vale qualquer um) e campos de texto livre
+    var CAMPOS_LISTA = ['porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto'];
+    var CAMPOS_TEXTO = ['produto', 'empresa'];
     var rotulos = {
         porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
@@ -547,7 +622,7 @@
         el.chips.innerHTML = '';
         Object.keys(estadoBusca.filtros).forEach(function (chave) {
             var valor = estadoBusca.filtros[chave];
-            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : valor;
+            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : (Array.isArray(valor) ? valor.join(', ') : valor);
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
@@ -559,6 +634,9 @@
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
+                } else if (CAMPOS_LISTA.indexOf(chave) >= 0) {
+                    listas[chave] = [];
+                    renderCaixa(chave);
                 } else {
                     document.getElementById('f-' + chave).value = '';
                 }
@@ -817,7 +895,14 @@
             data_inicio: estadoBusca.periodo.inicio,
             data_fim: estadoBusca.periodo.fim
         });
-        Object.keys(estadoBusca.filtros).forEach(function (k) { params.set(k, estadoBusca.filtros[k]); });
+        Object.keys(estadoBusca.filtros).forEach(function (k) {
+            var valor = estadoBusca.filtros[k];
+            if (Array.isArray(valor)) {
+                valor.forEach(function (v) { params.append(k, v); });
+            } else {
+                params.set(k, valor);
+            }
+        });
         if (estadoBusca.cursor) { params.set('cursor_id', estadoBusca.cursor); }
 
         fetch(API_URL + '?' + params.toString())
@@ -881,20 +966,198 @@
         reiniciarBusca();
     });
 
-    function leFiltrosDaTela() {
-        estadoBusca.filtros = {};
-        campos.forEach(function (campo) {
-            var valor = document.getElementById('f-' + campo).value.trim();
-            if (valor) { estadoBusca.filtros[campo] = valor; }
+    /* ---------------- Campos com lista de códigos + autocompletar ---------------- */
+    var listas = {};      // campo -> [códigos escolhidos]
+    var descricoes = {};  // código -> descrição (vinda das sugestões), exibida no chip
+
+    function listaPadrao(campo) {
+        return (campo === 'porto_escala' && PORTO_ESCALA_PADRAO) ? [PORTO_ESCALA_PADRAO] : [];
+    }
+
+    function normalizaCodigo(campo, codigo) {
+        codigo = String(codigo).trim();
+        if (campo === 'ncm') { return codigo.replace(/\D/g, ''); }
+        if (campo === 'recinto') { return codigo; }
+        return codigo.toUpperCase();
+    }
+
+    function adicionaCodigos(campo, texto, descricao) {
+        String(texto).split(/[,;\s]+/).forEach(function (parte) {
+            var codigo = normalizaCodigo(campo, parte);
+            if (!codigo) { return; }
+            if (listas[campo].indexOf(codigo) < 0) { listas[campo].push(codigo); }
+            if (descricao) { descricoes[campo + ':' + codigo] = descricao; }
         });
-        var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
-        if (ncmsMax > 0) { estadoBusca.filtros.ncms_max = ncmsMax; }
-        CHECKBOXES.forEach(function (campo) {
-            if (document.getElementById('f-' + campo).checked) { estadoBusca.filtros[campo] = 1; }
+        renderCaixa(campo);
+    }
+
+    function renderCaixa(campo) {
+        var caixa = document.querySelector('.caixa-lista[data-campo="' + campo + '"]');
+        var input = caixa.querySelector('input');
+        caixa.querySelectorAll('.chip-codigo').forEach(function (chip) { chip.remove(); });
+        listas[campo].forEach(function (codigo) {
+            var descricao = descricoes[campo + ':' + codigo];
+            var chip = document.createElement('span');
+            chip.className = 'chip-codigo';
+            if (descricao) { chip.title = descricao; }
+            chip.innerHTML = escapeHtml(codigo) +
+                (descricao ? '<span class="nome-chip">' + escapeHtml(descricao) + '</span>' : '') +
+                '<button type="button" aria-label="remover ' + escapeHtml(codigo) + '">×</button>';
+            chip.querySelector('button').addEventListener('click', function () {
+                listas[campo] = listas[campo].filter(function (c) { return c !== codigo; });
+                renderCaixa(campo);
+                input.focus();
+            });
+            caixa.insertBefore(chip, input);
         });
     }
 
-    document.getElementById('btn-aplicar').addEventListener('click', function () {
+    function confirmaTextoDigitado() {
+        // o que ficou digitado sem Enter também vale (ex.: digitou "CNSHA" e clicou em Aplicar)
+        CAMPOS_LISTA.forEach(function (campo) {
+            var input = document.getElementById('f-' + campo);
+            if (input.value.trim()) { adicionaCodigos(campo, input.value); input.value = ''; }
+        });
+    }
+
+    function ligaCaixa(caixa) {
+        var campo = caixa.dataset.campo;
+        var tipo = caixa.dataset.sugestoes;
+        var input = caixa.querySelector('input');
+        var ul = caixa.querySelector('.lista-sugestoes');
+        var temporizador = null, itens = [], ativo = -1, pedido = 0;
+
+        function fecha() {
+            ul.hidden = true;
+            input.setAttribute('aria-expanded', 'false');
+            ativo = -1;
+        }
+
+        function mostra(sugestoes) {
+            itens = sugestoes;
+            ativo = -1;
+            ul.innerHTML = sugestoes.map(function (s, i) {
+                return '<li role="option" data-i="' + i + '"><span class="codigo-sugestao">' +
+                    escapeHtml(s.codigo) + '</span>' + escapeHtml(s.descricao) + '</li>';
+            }).join('');
+            ul.hidden = sugestoes.length === 0;
+            input.setAttribute('aria-expanded', String(!ul.hidden));
+        }
+
+        function destaca(i) {
+            ativo = i;
+            ul.querySelectorAll('li').forEach(function (li, j) {
+                li.classList.toggle('ativo', j === i);
+                if (j === i) { li.scrollIntoView({ block: 'nearest' }); }
+            });
+        }
+
+        function escolhe(i) {
+            var sugestao = itens[i];
+            if (!sugestao) { return; }
+            adicionaCodigos(campo, sugestao.codigo, sugestao.descricao);
+            input.value = '';
+            fecha();
+            input.focus();
+        }
+
+        input.addEventListener('input', function () {
+            clearTimeout(temporizador);
+            // texto colado ou com separador ("CNSHA, CNNGB"): o que vem antes do último separador vira chip
+            var partes = input.value.split(/[,;]/);
+            if (partes.length > 1) {
+                input.value = partes.pop().replace(/^\s+/, '');
+                adicionaCodigos(campo, partes.join(','));
+            }
+            var termo = input.value.trim();
+            if (termo.length < 2) { fecha(); return; }
+            temporizador = setTimeout(function () {
+                var meuPedido = ++pedido;
+                fetch(SUGESTOES_URL + '?' + new URLSearchParams({ campo: tipo, q: termo }).toString())
+                    .then(function (resp) { return resp.ok ? resp.json() : { sugestoes: [] }; })
+                    .then(function (dados) {
+                        // descarta respostas atrasadas (o usuário continuou digitando)
+                        if (meuPedido === pedido && input.value.trim() === termo) { mostra(dados.sugestoes || []); }
+                    })
+                    .catch(fecha);
+            }, 200);
+        });
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown' && !ul.hidden) {
+                e.preventDefault();
+                destaca(Math.min(ativo + 1, itens.length - 1));
+            } else if (e.key === 'ArrowUp' && !ul.hidden) {
+                e.preventDefault();
+                destaca(Math.max(ativo - 1, 0));
+            } else if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+                e.preventDefault();
+                if (ativo >= 0 && !ul.hidden) {
+                    escolhe(ativo);
+                } else if (input.value.trim()) {
+                    adicionaCodigos(campo, input.value);
+                    input.value = '';
+                    fecha();
+                } else if (e.key === 'Enter') {
+                    aplicaFiltros();
+                }
+            } else if (e.key === 'Escape') {
+                fecha();
+            } else if (e.key === 'Backspace' && !input.value && listas[campo].length) {
+                listas[campo].pop();
+                renderCaixa(campo);
+            }
+        });
+
+        // mousedown (e não click): escolhe antes do blur fechar a lista
+        ul.addEventListener('mousedown', function (e) {
+            var li = e.target.closest('li[data-i]');
+            if (li) { e.preventDefault(); escolhe(parseInt(li.dataset.i, 10)); }
+        });
+        input.addEventListener('blur', function () { setTimeout(fecha, 150); });
+        caixa.addEventListener('click', function (e) { if (e.target === caixa) { input.focus(); } });
+    }
+
+    CAMPOS_LISTA.forEach(function (campo) { listas[campo] = listaPadrao(campo); renderCaixa(campo); });
+    document.querySelectorAll('.caixa-lista').forEach(ligaCaixa);
+
+    /* ---------------- Leitura/aplicação dos filtros ---------------- */
+    function filtrosDaTela() {
+        confirmaTextoDigitado();
+        var filtros = {};
+        CAMPOS_LISTA.forEach(function (campo) {
+            if (listas[campo].length) { filtros[campo] = listas[campo].slice(); }
+        });
+        CAMPOS_TEXTO.forEach(function (campo) {
+            var valor = document.getElementById('f-' + campo).value.trim();
+            if (valor) { filtros[campo] = valor; }
+        });
+        var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
+        if (ncmsMax > 0) { filtros.ncms_max = ncmsMax; }
+        CHECKBOXES.forEach(function (campo) {
+            if (document.getElementById('f-' + campo).checked) { filtros[campo] = 1; }
+        });
+        return filtros;
+    }
+
+    function leFiltrosDaTela() {
+        estadoBusca.filtros = filtrosDaTela();
+    }
+
+    function preencheTela(filtros) {
+        CAMPOS_LISTA.forEach(function (campo) {
+            listas[campo] = (filtros[campo] || []).slice();
+            document.getElementById('f-' + campo).value = '';
+            renderCaixa(campo);
+        });
+        CAMPOS_TEXTO.forEach(function (campo) { document.getElementById('f-' + campo).value = filtros[campo] || ''; });
+        var ncmsMax = filtros.ncms_max || 0;
+        document.getElementById('f-ncms_max').value = ncmsMax;
+        document.getElementById('valor-ncms_max').textContent = ncmsMax > 0 ? ncmsMax : 'Sem limite';
+        CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
+    }
+
+    function aplicaFiltros() {
         leFiltrosDaTela();
 
         var dataInicio = document.getElementById('f-data-inicio').value;
@@ -902,21 +1165,120 @@
         if (dataInicio && dataFim) { estadoBusca.periodo = { inicio: dataInicio, fim: dataFim }; }
 
         reiniciarBusca();
-    });
+    }
+
+    document.getElementById('btn-aplicar').addEventListener('click', aplicaFiltros);
 
     document.getElementById('btn-limpar').addEventListener('click', function () {
-        // defaultValue: volta ao valor inicial do campo (vazio, ou o porto de atracação padrão)
-        campos.forEach(function (campo) {
-            var input = document.getElementById('f-' + campo);
-            input.value = input.defaultValue;
-        });
-        document.getElementById('f-ncms_max').value = 0;
-        document.getElementById('valor-ncms_max').textContent = 'Sem limite';
-        CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = false; });
+        var padrao = {};
+        CAMPOS_LISTA.forEach(function (campo) { padrao[campo] = listaPadrao(campo); });
+        preencheTela(padrao);
         leFiltrosDaTela();
         aplicarDatasDefault(estadoBusca.tipo_janela);
         reiniciarBusca();
     });
+
+    /* ---------------- Filtros salvos (por usuário) ---------------- */
+    var salvos = [];
+    var selSalvos = document.getElementById('f-salvos');
+    var inputNomeSalvo = document.getElementById('f-nome-salvo');
+    var btnApagarSalvo = document.getElementById('btn-apagar-salvo');
+    var msgSalvos = document.getElementById('msg-salvos');
+
+    function avisoSalvos(texto, erro) {
+        msgSalvos.textContent = texto || '';
+        msgSalvos.classList.toggle('erro', !!erro);
+    }
+
+    function renderSalvos(selecionado) {
+        selSalvos.innerHTML = '';
+        var vazio = document.createElement('option');
+        vazio.value = '';
+        vazio.textContent = salvos.length ? '— escolha um filtro —' : 'nenhum filtro salvo';
+        selSalvos.appendChild(vazio);
+        salvos.forEach(function (salvo) {
+            var opcao = document.createElement('option');
+            opcao.value = salvo.nome;
+            opcao.textContent = salvo.nome;
+            selSalvos.appendChild(opcao);
+        });
+        selSalvos.value = salvos.some(function (s) { return s.nome === selecionado; }) ? selecionado : '';
+        btnApagarSalvo.disabled = !selSalvos.value;
+    }
+
+    function requisitaSalvos(metodo, url, corpo) {
+        var opcoes = { method: metodo, headers: { 'X-CSRFToken': CSRF_TOKEN } };
+        if (corpo) {
+            opcoes.headers['Content-Type'] = 'application/json';
+            opcoes.body = JSON.stringify(corpo);
+        }
+        return fetch(url, opcoes).then(function (resp) {
+            return resp.json().catch(function () { return {}; }).then(function (dados) {
+                if (!resp.ok) { throw new Error(dados.erro || ('Erro ' + resp.status)); }
+                salvos = dados.filtros_salvos || [];
+                return dados;
+            });
+        });
+    }
+
+    function aplicaSalvo(salvo) {
+        estadoBusca.tipo_janela = salvo.tipo_janela;
+        document.querySelectorAll('#toggle-janela button').forEach(function (b) {
+            b.classList.toggle('ativo', b.dataset.valor === salvo.tipo_janela);
+        });
+        aplicarDatasDefault(salvo.tipo_janela);
+        preencheTela(salvo.filtros || {});
+        inputNomeSalvo.value = salvo.nome;
+        avisoSalvos('Filtro "' + salvo.nome + '" aplicado.');
+        leFiltrosDaTela();
+        reiniciarBusca();
+    }
+
+    selSalvos.addEventListener('change', function () {
+        btnApagarSalvo.disabled = !selSalvos.value;
+        var salvo = salvos.filter(function (s) { return s.nome === selSalvos.value; })[0];
+        if (salvo) { aplicaSalvo(salvo); }
+    });
+
+    document.getElementById('btn-salvar-filtro').addEventListener('click', function () {
+        var nome = inputNomeSalvo.value.trim().replace(/\s+/g, ' ');
+        if (!nome) {
+            avisoSalvos('Dê um nome ao filtro.', true);
+            inputNomeSalvo.focus();
+            return;
+        }
+        var existe = salvos.some(function (s) { return s.nome === nome; });
+        if (existe && !window.confirm('Já existe um filtro "' + nome + '". Substituir?')) { return; }
+        requisitaSalvos('POST', FILTROS_SALVOS_URL,
+                        { nome: nome, tipo_janela: estadoBusca.tipo_janela, filtros: filtrosDaTela() })
+            .then(function () {
+                renderSalvos(nome);
+                avisoSalvos('Filtro "' + nome + '" salvo.');
+            })
+            .catch(function (e) { avisoSalvos(e.message, true); });
+    });
+
+    inputNomeSalvo.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btn-salvar-filtro').click(); }
+    });
+
+    btnApagarSalvo.addEventListener('click', function () {
+        var nome = selSalvos.value;
+        if (!nome || !window.confirm('Apagar o filtro "' + nome + '"?')) { return; }
+        requisitaSalvos('DELETE', FILTROS_SALVOS_URL + '?' + new URLSearchParams({ nome: nome }).toString())
+            .then(function () {
+                renderSalvos('');
+                avisoSalvos('Filtro "' + nome + '" apagado.');
+            })
+            .catch(function (e) { avisoSalvos(e.message, true); });
+    });
+
+    requisitaSalvos('GET', FILTROS_SALVOS_URL)
+        .then(function () { renderSalvos(''); })
+        .catch(function (e) {
+            renderSalvos('');
+            avisoSalvos('Filtros salvos indisponíveis: ' + e.message, true);
+        });
 
     new IntersectionObserver(function (entries) {
         if (entries[0].isIntersecting) { carregarPagina(); }

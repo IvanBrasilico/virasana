@@ -168,6 +168,15 @@ Regras e limitações (importantes):
 10. **Forma de trabalhar**: mudanças pequenas e incrementais sobre o código existente ("tidy"),
    sem reescrever do zero; mexer o mínimo na tela, que o usuário considera boa; muitos testes com
    dados simulados; plano antes de mudanças não triviais. Produção não pode quebrar.
+11. **Produto = `Conhecimento.descricao`** (30/09/2026). O `NCMItem.descritivo` não tem informação
+   útil (na base real traz números de BL/contêiner, ex.: `COSU6221941390`); o usuário confirmou
+   com uma amostra. O filtro virou critério do CE (`criterios_ce`), dentro da janela.
+12. **Filtros salvos** (30/09/2026): no **MongoDB** (coleção `navii_filtros_salvos`, sem DDL no
+   MySQL), **só o dono** vê/apaga os seus, e **o período não é salvo** (ao recuperar, vale o
+   período sugerido pela tela). Filtros guardados como documento livre, porque os campos mudam.
+13. **Listas**: porto de atracação/origem/destino/baldeação, NCM e recinto aceitam vários valores
+   ("OU"); na tela, cada valor é um chip, com autocompletar (portos/países e NCM das tabelas locais
+   de referência, recintos de `ovr_recintos`).
 
 ## Como a busca funciona (desenho atual)
 
@@ -213,7 +222,25 @@ Na tela: ciclo de vida opcional com selo/aviso; nome do recinto na linha do temp
 total; checkbox de imagem; porto de atracação (padrão BRSSZ); nomes de portos/países/navios e
 descrição oficial da posição NCM ao lado do texto declarado.
 
-Ainda não medido em produção: o efeito de `criterios_ce` no piso de ~1,6 s da janela efetiva.
+O efeito de `criterios_ce` foi medido na terceira rodada (ver "Terceira medição").
+
+Depois da terceira medição (30/09/2026, noite; commit anterior `090ab9f`):
+- **Produto** passou a pesquisar `Conhecimento.descricao` (decisão 11). Ainda não medido; deve
+  ficar muito mais barato (o texto já é lido junto com o CE; antes eram ~49 linhas de
+  `ncmitemresumo` por candidato).
+- **Filtros em lista** (decisão 13): `normaliza_filtros` transforma os campos de `CAMPOS_LISTA`
+  em listas; `_algum_porto` junta códigos completos num `IN` e países (prefixo) em `LIKE`; NCM vira
+  um `OR` de `LIKE` dentro do mesmo `_existe`; recinto, `IN`. A API aceita `?ncm=8471&ncm=6109`
+  ou `?ncm=8471,6109`. `busca_manifestos_navii(porto=...)` aceita lista.
+- **Autocompletar**: `GET /navii/api/sugestoes?campo=porto|ncm|recinto&q=` —
+  `referencias.sugere_portos`/`sugere_ncm` (tabelas locais, sem banco) e
+  `busca_navii.sugere_recintos` (`ovr_recintos`, só linhas com `cod_siscomex`). NCM sugere capítulo
+  e posição; o usuário pode digitar o código completo.
+- **Filtros salvos** (decisão 12): `navii/filtros_salvos.py` + `GET|POST|DELETE /navii/api/filtros`
+  (JSON; o POST/DELETE mandam `X-CSRFToken`, lido de `<meta name="csrf-token">`). Índice único
+  (usuario, nome); máx. 100 por usuário; só as chaves de `CAMPOS_SALVAVEIS`, normalizadas.
+  Testes com coleção falsa em memória (`mongomock` não está instalado no venv).
+- Testado também no navegador com o servidor de demonstração (dados simulados).
 
 ## Tempos medidos em produção (`--analyze`, 30/09/2026, versão ANTERIOR ao `_existe`)
 
@@ -269,6 +296,40 @@ O que o `ANALYZE` mostrou nesta rodada:
 - Se o piso de ~1,6 s por página incomodar: o caminho é guardar o resultado da janela (cache por
   filtro) em vez de recalcular a cada rolagem — não feito.
 
+### Terceira medição (30/09/2026 17h, com `criterios_ce` dentro da janela)
+
+Log `navii_diagnostico_20260930_171546.log`: 140 queries, 513 s no total (antes 561 s). Janela
+efetiva 15–25/09, prevista 03–15/10.
+
+| Cenário (efetiva) | 2ª medição | 3ª medição |
+|---|---|---|
+| porto BRSSZ, sem outros filtros | 1,7 s (contagem 2,5 s) | **1,2 s** (contagem 2,0 s) |
+| porto de origem / destino / baldeação (todos os portos) | 3,0 s | **0,2–0,9 s** |
+| empresa (texto ou CNPJ) | 3,2–4,7 s | **0,5 s** |
+| origem + NCM + até 3 NCMs | 10,8 s | **2,0 s** |
+| recinto + empresa + entregue | 5,1 s | **0,6 s** |
+| porto BRSSZ + NCM (página / contagem) | 2,4 s / 6,7 s | 1,3–2,6 s / **20,5 s** |
+| NCM por prefixo, todos os portos (página / contagem) | 3,5 s / 12,3 s | 2,5 s / **17,7 s** |
+| produto "brinquedo", todos os portos | 44 s | **99 s** na 1ª, 30 s depois |
+| todos os portos, sem filtros | 3,1 s | 20,7 s na 1ª (cache frio), 2,3 s depois |
+
+Prevista: igual à rodada anterior (0,1–4 s; produto 17–25 s).
+
+Leitura do `ANALYZE`:
+- `criterios_ce` **funcionou**: filtros de Conhecimento caíram de 3–5 s para menos de 1 s. O
+  piso da efetiva com porto BRSSZ ficou em ~1,2 s (140 mil candidatos em Santos).
+- **A contagem com NCM é o gargalo que sobrou**: a página para ao achar 20 cards, mas a contagem
+  sonda o NCM de TODOS os candidatos (140 mil `_existe` em `ncmitemresumo`, 12 linhas cada, pelo
+  `ix_ncmitem_chave` — que já cobre `identificacaoNCM`; é I/O aleatório, 18 s). Como a contagem
+  roda na mesma requisição da 1ª página, **a tela espera 20 s para mostrar cards prontos em 2 s**.
+  Proposta (não feita): buscar a contagem numa requisição separada, depois dos cards.
+- **Produto "brinquedo" não encontrou nenhum contêiner** nos 11 dias (252 mil candidatos
+  sondados, 49 linhas de NCM cada = 12 M linhas, 95 s). Sem acerto a página nunca completa e
+  varre tudo — é o pior caso. Suspeita: `descritivo` não está em português/pode ser abreviado;
+  conferir com amostra antes de concluir. O `ilike` vira `lower(descritivo) LIKE lower(...)`
+  (desnecessário com collation `_ci`, mas não muda o plano: não há índice em `descritivo`).
+- Os 20 s de "todos os portos" são cache frio (1ª query da rodada); a página seguinte leva 2,3 s.
+
 Outros fatos do diagnóstico com amostras:
 - Código de recinto no ciclo de vida = `ovr_recintos.cod_siscomex` (confirmado: `8931404`).
 - **Ciclo de vida atrasado**: último desembarque em 14/09/2026 (16 dias antes). Na janela efetiva
@@ -284,8 +345,10 @@ Outros fatos do diagnóstico com amostras:
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
 `--analyze` em homologação/fora do pico):
 
-1. **Medir de novo** com `--analyze` depois do `_existe` (o script agora termina com um resumo
-   dos tempos). É a única forma de saber se a janela efetiva com porto ficou abaixo de ~1 s.
+1. ~~Medir de novo depois do `_existe`/`criterios_ce`~~ — feito (terceira medição). Sobrou:
+   **contagem assíncrona** (a contagem com NCM custa 18–20 s e trava a 1ª página — proposta, ainda
+   não aprovada/feita). O `descritivo` foi conferido: não serve (decisão 11). Medir de novo o filtro
+   de produto, agora pela descrição do CE.
 2. **Itens sem contêiner** (carga solta/granel/veículos, ~2,2 M de 51 M = 4%): aparecem como card
    com título "--". O usuário aceita excluí-los **se** isso melhorar muito o desempenho (o foco é
    carga conteinerizada). Análise: depois do `_existe` o ganho esperado é pequeno (~4% menos
