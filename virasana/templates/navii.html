@@ -15,6 +15,7 @@
         body { background: #F8F8F8; }
 
         .page-subtitle { color: #666; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
         .rotulo-mini {
             display: block; font-size: .625rem; font-weight: 700;
             text-transform: uppercase; letter-spacing: .04em; color: #666;
@@ -335,6 +336,7 @@
 
     <div class="cabecalho-pagina">
         <div>
+        <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
             <h1><span class="marca-navii">NAVI-I</span> Análise de risco na importação</h1>
             <p class="page-subtitle text-down-01 mb-0 mt-1">
                 Contêineres declarados em CEs mercante (exceto exportação) no período selecionado, com dados do Mercante e

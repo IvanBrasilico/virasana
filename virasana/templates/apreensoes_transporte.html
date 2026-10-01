@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transporte das apreensões</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual das telas do NAVI-I e das Entregas */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .form-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-linha .br-input { flex: 1 1 10rem; margin: 0; }
+        .form-linha .campo-checkbox { display: flex; align-items: center; gap: .5rem; flex: 1 1 14rem; }
+        .form-linha .campo-checkbox input { width: 1.1rem; height: 1.1rem; }
+        .form-linha .campo-checkbox label { font-size: .8125rem; margin: 0; }
+        .form-linha .botoes { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .dica { font-size: .75rem; color: #777; margin-top: .75rem; }
+        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1rem; }
+        .resumo .item { font-size: .875rem; color: #555; }
+        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        .formas { font-size: .8125rem; color: #555; margin-bottom: 1rem; }
+        .formas code { background: #F0F4FC; color: #0C326F; padding: 0 .25rem; border-radius: 3px; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
+        table.dados tr:hover td { background: #F5F8FD; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .secundario { display: block; color: #888; font-size: .75rem; }
+        .forma { color: #0C326F; font-weight: 600; white-space: nowrap; }
+        .nenhuma { color: #999; font-style: italic; }
+        .aviso { color: #A15C00; font-size: .8125rem; margin-top: .75rem; }
+        .estado-vazio { text-align: center; padding: 2.5rem 1rem; border: 2px dashed #DDDEE0; border-radius: 8px; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">APREENSÕES</span> Transporte das apreensões</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            Para cada verificação física (RVF) do Fichas com apreensão, os veículos, motoristas e
+            transportadoras que passaram pelos gates dos recintos (API Recintos) com o contêiner apreendido.
+            Uma linha por conjunto motorista + veículo + transportadora, com a quantidade de ocorrências.
+        </p>
+    </div>
+
+    <form class="painel" method="get" action="{{ url_for('apreensoes.index') }}">
+        <input type="hidden" name="pesquisar" value="1" />
+        <div class="form-linha">
+            <div class="br-input">
+                <label for="inicio">Fichas de</label>
+                <input id="inicio" name="inicio" type="date" value="{{ p.inicio }}" required />
+            </div>
+            <div class="br-input">
+                <label for="fim">até</label>
+                <input id="fim" name="fim" type="date" value="{{ p.fim }}" required />
+            </div>
+            <div class="br-input">
+                <label for="dias_antes">Dias antes da RVF</label>
+                <input id="dias_antes" name="dias_antes" type="number" min="0" max="90" value="{{ p.dias_antes }}" />
+            </div>
+            <div class="br-input">
+                <label for="dias_depois">Dias depois da RVF</label>
+                <input id="dias_depois" name="dias_depois" type="number" min="0" max="90" value="{{ p.dias_depois }}" />
+            </div>
+            <div class="campo-checkbox">
+                <input id="outras_viagens" name="outras_viagens" type="checkbox" value="1"
+                       {% if p.outras_viagens %}checked{% endif %} />
+                <label for="outras_viagens">Incluir outras viagens do veículo/motorista e os demais contêineres do CE</label>
+            </div>
+            <div class="botoes">
+                <button class="br-button primary" type="submit">
+                    <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
+                </button>
+                {% if linhas is not none %}
+                <a class="br-button secondary"
+                   href="{{ url_for('apreensoes.planilha', inicio=p.inicio, fim=p.fim, dias_antes=p.dias_antes,
+                                    dias_depois=p.dias_depois, outras_viagens=1 if p.outras_viagens else None) }}">
+                    <i class="fas fa-file-excel mr-1" aria-hidden="true"></i> Exportar planilha
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <p class="dica">Período máximo de 1 ano (cada RVF faz várias consultas à API Recintos).</p>
+        {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
+            <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
+    </form>
+
+    {% if linhas is not none %}
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resumo.rvfs }}</strong>RVFs com apreensão</div>
+            <div class="item"><strong>{{ resumo.rvfs_com_acesso }}</strong>com algum acesso localizado</div>
+            <div class="item"><strong>{{ resumo.conjuntos }}</strong>conjuntos motorista/veículo/transportadora</div>
+            <div class="item"><strong>{{ resumo.ocorrencias }}</strong>ocorrências</div>
+        </div>
+        {% if resumo.por_forma %}
+        <p class="formas"><strong>Por forma de ligação:</strong>
+            {% for forma, v in resumo.por_forma %}<code>{{ forma }}</code> {{ v.conjuntos }} conjuntos / {{ v.ocorrencias }} ocorrências{% if not loop.last %} · {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+
+        {% if linhas %}
+        <div class="tabela-rolavel">
+            <table class="dados">
+                <thead>
+                    <tr>
+                        <th>Ficha / RVF</th><th>Apreensão</th><th>Ligação</th><th>Motorista</th>
+                        <th>Veículo</th><th>Transportadora</th><th>Ocorrências</th><th>Período</th>
+                        <th>Recintos / contêineres</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for linha in linhas[:limite] %}
+                    <tr>
+                        <td class="mono">
+                            <a href="/bhadrasana2/ovr?id={{ linha.ovr_id }}" target="_blank">{{ linha.ovr_numero or linha.ovr_id }}</a>
+                            <span class="secundario">RVF {{ linha.rvf_id }} · {{ linha.numeroCEmercante or '' }}</span></td>
+                        <td>{{ linha.apreensao_tipos or '' }}
+                            {% if linha.apreensao_peso_total %}<span class="secundario">{{ '%.1f' | format(linha.apreensao_peso_total) }} kg</span>{% endif %}</td>
+                        {% if linha.qtd_ocorrencias %}
+                        <td><span class="forma">{{ linha.forma_ligacao }}</span><span class="secundario mono">{{ linha.valor_ligacao }}</span></td>
+                        <td>{{ linha.nomeMotorista or '' }}<span class="secundario mono">{{ linha.cpfMotorista or '' }}</span></td>
+                        <td class="mono">{{ linha.placa or '' }}
+                            {% if linha.placaSemirreboque %}<span class="secundario">semirreboque {{ linha.placaSemirreboque }}</span>{% endif %}</td>
+                        <td class="mono">{{ linha.cnpjTransportador or '' }}</td>
+                        <td>{{ linha.qtd_ocorrencias }}<span class="secundario">{{ linha.movimentos }}</span></td>
+                        <td class="mono">{{ linha.primeira_datahora.strftime('%d/%m/%Y') if linha.primeira_datahora else '' }}
+                            <span class="secundario">{{ linha.dias_da_rvf_mais_proximo }} dia(s) da RVF</span></td>
+                        <td>{{ linha.recintos or '' }}<span class="secundario mono">{{ linha.conteineres or '' }}</span></td>
+                        {% else %}
+                        <td colspan="7" class="nenhuma">{{ linha.forma_ligacao }} — nenhum acesso localizado</td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if linhas | length > limite %}
+        <p class="aviso">Exibindo as primeiras {{ limite }} linhas. A planilha traz todas.</p>
+        {% endif %}
+        {% else %}
+        <div class="estado-vazio">Nenhuma RVF com apreensão nas fichas do período.</div>
+        {% endif %}
+        <p class="aviso"><i class="fas fa-user-shield" aria-hidden="true"></i>
+            Dados pessoais (CPF e nome de motoristas): use e compartilhe conforme as regras de sigilo fiscal e a LGPD.</p>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

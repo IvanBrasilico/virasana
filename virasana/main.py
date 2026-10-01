@@ -37,6 +37,7 @@ from virasana.routes import analisecompletude_app
 from virasana.views import configure_app, csrf
 from virasana.navii.views_navii import bp_navii
 from virasana.entregas.views_entregas import bp_entregas
+from virasana.apreensoes.views_apreensoes import bp_apreensoes
 
 
 # from bhadrasana.models import db_session
@@ -64,6 +65,7 @@ app.register_blueprint(parametros_risco_bp)
 app.register_blueprint(importar_planilhas_bp)
 app.register_blueprint(bp_navii)
 app.register_blueprint(bp_entregas)
+app.register_blueprint(bp_apreensoes)
 
 configure_applog(app)
 api = api_login.configure(app)

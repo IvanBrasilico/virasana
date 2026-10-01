@@ -41,6 +41,8 @@ Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados vi
 - `virasana/usecases/` — regras de negócio (`apirecintos_manager.py`, `auditoria.py`, `bagagens_manager.py`).
 - `virasana/navii/` — **NAVI-I**, tela de análise de risco na importação (`/navii`, blueprint `bp_navii`, template gov.br `templates/navii.html`). **Antes de mexer, ler [virasana/navii/CONTEXTO.md](virasana/navii/CONTEXTO.md)**: decisões do usuário, modelo de dados, medições do banco, armadilhas e pendências. Em resumo: a busca parte do contêiner declarado (`Item`), o Ciclo de Vida é opcional, filtros em outras tabelas usam `_existe` (subquery com `LIMIT 1`, nunca `IN`/`JOIN`), `ovr_recintos` é lida por `tabela_recintos` (não importar `bhadrasana.models.ovr`). `navii/referencias/` tem tabelas locais código→nome (NCM, portos, países, navios) geradas de fontes públicas e filtradas pelo uso real na base (`atualiza_referencias.py --banco`); `navii/diagnostico_sql.py` mede as queries da tela (`--analyze`). `navii/filtros_salvos.py` guarda os filtros salvos de cada usuário no **MongoDB** (coleção `navii_filtros_salvos`).
 - `virasana/entregas/` — **Entregas por CNPJ** (`/entregas_cnpj/`, blueprint `bp_entregas`, template `templates/entregas_cnpj.html`): saídas pelos gates (AcessoVeiculo) dos contêineres dos CEs de importação de um CNPJ; tela + planilha. Lógica em `busca_entregas.py`, reusada pelo script `analytic_scripts/entregas_cnpj.py`.
+- `virasana/apreensoes/` — tela **Transporte das apreensões** (`/apreensoes_transporte/`, blueprint `bp_apreensoes`, template `templates/apreensoes_transporte.html`, planilha). Só valida e formata: a lógica é a do script `analytic_scripts/dados_transporte_apreensoes.py`.
+- `virasana/navii/menu.py` — submenu **NAVII** do menu principal (`views.mynavbar` só chama `subgrupo_navii()`). Tela nova de análise de risco entra em `ENTRADAS_NAVII`; o teste `test_prefixo_proxy.TestMenuNavii` garante que cada endpoint existe (endpoint errado quebra todas as páginas).
 - `virasana/analytic_scripts/` — scripts de análise rodados à mão (não por cron): `dados_transporte_apreensoes.py` (apreensões de drogas do Fichas → acessos de veículo: placa, motorista, transportadora; CSV), `entregas_cnpj.py`, `ciclo_de_vida/` (tabelas do Ciclo de Vida usadas pelo NAVI-I).
 - `virasana/workers/` — tarefas Celery e monitoramento de diretórios.
 - `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
@@ -76,7 +78,7 @@ python -m pytest --cov=virasana virasana/tests
 A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
 
 ```bash
-python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_navii_filtros_salvos.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py virasana/tests/test_prefixo_proxy.py --disable-warnings
+python -m pytest virasana/tests/test_navii.py virasana/tests/test_navii_busca_sqlite.py virasana/tests/test_navii_referencias.py virasana/tests/test_navii_filtros_salvos.py virasana/tests/test_entregas_cnpj.py virasana/tests/test_dados_transporte_apreensoes.py virasana/tests/test_apreensoes_transporte_tela.py virasana/tests/test_prefixo_proxy.py --disable-warnings
 ```
 
 ## Restrição principal: não arriscar produção

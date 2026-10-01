@@ -18,6 +18,7 @@ from werkzeug.exceptions import NotFound
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.test import Client
 
+from virasana.apreensoes.views_apreensoes import bp_apreensoes
 from virasana.entregas.views_entregas import bp_entregas
 from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
 from virasana.navii.views_navii import bp_navii
@@ -31,7 +32,11 @@ HOST_INTERNO = '127.0.0.1:5001'
 TELAS = [
     ('/navii', 'NAVI-I'),
     ('/entregas_cnpj', 'Entregas por CNPJ'),
+    ('/apreensoes_transporte', 'Transporte das apreensões'),
 ]
+
+# links para a OUTRA app usam o prefixo dela (ex.: ficha no Fichas)
+OUTRAS_APPS = ('/bhadrasana2/',)
 
 URL_EM_ATRIBUTO = re.compile(r'''(?:href|src|action)\s*=\s*["'](/[^"']*)''')
 URL_EM_STRING_JS = re.compile(r'''=\s*"(/[^"]*)"''')  # var X = "/..." (saída do | tojson)
@@ -53,6 +58,7 @@ def cria_app():
 
     app.register_blueprint(bp_navii)
     app.register_blueprint(bp_entregas)
+    app.register_blueprint(bp_apreensoes)
     return app
 
 
@@ -84,7 +90,7 @@ class TestPrefixoProxy(unittest.TestCase):
             with self.subTest(tela=caminho):
                 self.assertTrue(urls, 'nenhuma URL interna encontrada — o teste não está olhando nada')
                 for url in urls:
-                    self.assertTrue(url.startswith(PREFIXO + '/'), f'URL sem o prefixo: {url}')
+                    self.assertTrue(url.startswith((PREFIXO + '/',) + OUTRAS_APPS), f'URL sem o prefixo: {url}')
 
     def test_navii_js_recebe_as_urls_das_apis_com_prefixo(self):
         html = self.get('/navii/').get_data(as_text=True)
