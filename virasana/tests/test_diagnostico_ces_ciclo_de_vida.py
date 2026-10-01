@@ -12,6 +12,8 @@ import io
 import unittest
 from datetime import datetime, timedelta
 
+from sqlalchemy import text
+
 from virasana.analytic_scripts.ciclo_de_vida import diagnostico_ces_ciclo_de_vida as dce
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao as Ciclo, CicloDeVidaImportacaoEscaneamentos as Esc,
@@ -45,6 +47,11 @@ def monta(session):
         Escala(numeroDaEscala='E1', dataPrevistaAtracacao=(d(5) + timedelta(days=10)).strftime('%Y-%m-%d')),
         EscalaManifesto(ID=1, manifesto='MAN1', escala='E1'),
     ])
+    # ovr_recintos real tem e_operador (a tabela leve do NAVI-I não declara a coluna)
+    session.execute(text('ALTER TABLE ovr_recintos ADD COLUMN e_operador BOOLEAN'))
+    session.execute(text("INSERT INTO ovr_recintos (id, nome, cod_siscomex, e_operador) VALUES "
+                         "(1, 'BTP', '8931356', 1), (2, 'ECOPORTO SANTOS', '8931318', 1), "
+                         "(3, 'EADI', '8932000', 0)"))
     ids = iter(range(1, 1000))
     eventos = {EmbarqueDesembarque: [], AcessoVeiculo: [], InspecaoNaoInvasiva: []}
 
@@ -64,6 +71,9 @@ def monta(session):
     iy = inspecao('CTRY', d(3, 12), H2)
     dz, iz1, iz2 = desembarque('CTRZ', d(3), None), inspecao('CTRZ', d(3, 10), '6ALSK182J'), inspecao('CTRZ', d(3, 11), H1)
     dw1, dw2, dw3 = desembarque('CTRW1', d(5), FORA), desembarque('CTRW2', d(5), H2), desembarque('CTRW3', d(5), '')
+    eventos[EmbarqueDesembarque].append(dict(id=next(ids), numeroConteiner='CTREC', dataHoraOcorrencia=d(6),
+                                             codigoRecinto='8931318', tipoOperacao='I', numeroConhecimento=None,
+                                             embarqueDesembarque='D'))
     for modelo, linhas in eventos.items():
         modelo.__table__.create(session.get_bind(), checkfirst=True)
         session.execute(modelo.__table__.insert(), linhas)
@@ -133,6 +143,10 @@ class TestDiagnosticoCEs(unittest.TestCase):
     def test_sem_erros(self):
         self.assertEqual(self.falhas, [])
         self.assertNotIn('!! ERRO', self.log)
+
+    def test_operadores_fora_da_lista_do_loop(self):
+        self.assertEqual(self.valores('8931318'), ['ECOPORTO SANTOS', 'sim', '1', '0', 'NÃO'])
+        self.assertEqual(self.valores('8931356'), ['BTP', 'sim', '6', '0', 'sim'])
 
     def test_papel_do_ce_do_ciclo(self):
         self.assertEqual(self.valores('MASTER (tem filhotes)'), ['10', '5', '1'])

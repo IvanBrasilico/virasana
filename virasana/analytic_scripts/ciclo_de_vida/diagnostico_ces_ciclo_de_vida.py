@@ -9,6 +9,8 @@ para a heurística toda. Também mede por que 52% dos ciclos ficam sem CE.
 
 Somente leitura, por AMOSTRA (os ciclos mais recentes do período). Seções:
 
+  0. operadores: recintos com `ovr_recintos.e_operador` x desembarques/embarques no período x a lista
+     fixa `OPERADORES` do loop (o ECOPORTO SANTOS, 8931318, é operador e não está nela);
   1. CE do ciclo: master (tem filhotes), filhote (tem master) ou simples; tipo de BL; tráfego;
   2. inspeções já ligadas com CE declarado: relação com o CE do ciclo (igual, filhote, master, irmão,
      mesmo manifesto, sem relação, inexistente, não é número de CE) e se o contêiner consta nos itens
@@ -39,7 +41,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import (  # noqa: E402
-    TEM_CE, Diagnostico, _dt,
+    OPERADORES, TEM_CE, Diagnostico, _dt,
 )
 
 DIAS_EVENTOS_APOS_DESEMBARQUE = 10
@@ -162,6 +164,26 @@ class DiagnosticoCEs(Diagnostico):
             'FROM ciclodevida_ciclo_de_vida_importacao c WHERE c.data_desembarque >= :inicio '
             'AND c.data_desembarque < :fim AND ' + TEM_CE + ' ORDER BY c.ID DESC LIMIT :limite',  # nosec B608
             {'limite': limite})
+
+    # ---------------------------------------------------------------- 0
+    def secao_operadores(self):
+        self.titulo('0. OPERADORES (ovr_recintos.e_operador) x desembarques/embarques no período x lista do loop')
+        recintos = {cod: (nome, e_operador) for cod, nome, e_operador in self.consulta(
+            'SELECT cod_siscomex, nome, e_operador FROM ovr_recintos WHERE cod_siscomex IS NOT NULL '
+            "AND cod_siscomex <> ''")}
+        eventos = defaultdict(Counter)
+        for recinto, tipo, quantidade in self.consulta(
+                'SELECT codigoRecinto, embarqueDesembarque, COUNT(*) FROM apirecintos_embarquedesembarque '
+                'WHERE dataHoraOcorrencia >= :inicio AND dataHoraOcorrencia < :fim '
+                'GROUP BY codigoRecinto, embarqueDesembarque'):
+            eventos[recinto][tipo] = quantidade
+        codigos = set(eventos) | {cod for cod, (_, e_operador) in recintos.items() if e_operador}
+        linhas = [(cod, (recintos.get(cod) or ('(não cadastrado)', None))[0],
+                   'sim' if (recintos.get(cod) or (None, False))[1] else 'não',
+                   eventos[cod]['D'], eventos[cod]['E'], 'sim' if cod in OPERADORES else 'NÃO')
+                  for cod in codigos]
+        self.tabela(['recinto', 'nome', 'e_operador', 'desembarques', 'embarques', 'na lista do loop'],
+                    sorted(linhas, key=lambda lin: -lin[3]))
 
     # ---------------------------------------------------------------- 1
     def secao_ce_do_ciclo(self):
@@ -314,7 +336,8 @@ class DiagnosticoCEs(Diagnostico):
         return resultado
 
 
-SECOES = ('secao_ce_do_ciclo', 'secao_inspecoes_ligadas', 'secao_eventos_declarados', 'secao_ciclos_sem_ce')
+SECOES = ('secao_operadores', 'secao_ce_do_ciclo', 'secao_inspecoes_ligadas', 'secao_eventos_declarados',
+          'secao_ciclos_sem_ce')
 
 
 def roda(diag: DiagnosticoCEs) -> list:
