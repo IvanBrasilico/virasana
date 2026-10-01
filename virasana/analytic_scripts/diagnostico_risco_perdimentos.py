@@ -169,10 +169,10 @@ class Diagnostico:
     def secao_resultados(self):
         self.titulo('2. RESULTADOS POR TIPO E ANO (todas as fichas, sem filtro de tipo/período)')
         linhas = self.consulta(
-            'SELECT r.tipo_resultado, SUBSTR(CAST(o.datahora AS CHAR), 1, 4) AS ano, COUNT(*) AS resultados, '
+            'SELECT r.tipo_resultado, SUBSTR(CAST(o.datahora AS CHAR), 1, 4) AS ano_ficha, COUNT(*) AS resultados, '
             'COUNT(DISTINCT r.ovr_id) AS fichas, SUM(r.valor) AS valor '
-            'FROM ovr_resultados r JOIN ovr_ovrs o ON o.id = r.ovr_id GROUP BY r.tipo_resultado, ano '
-            'ORDER BY ano, r.tipo_resultado')
+            'FROM ovr_resultados r JOIN ovr_ovrs o ON o.id = r.ovr_id GROUP BY r.tipo_resultado, ano_ficha '
+            'ORDER BY ano_ficha, r.tipo_resultado')
         self.tabela(['tipo', 'ano', 'resultados', 'fichas', 'valor'],
                     [(f'{t} {TIPOS_RESULTADO.get(t, "?")}', ano, n, f, round(v or 0, 2)) for t, ano, n, f, v in linhas])
         self.escreve()
