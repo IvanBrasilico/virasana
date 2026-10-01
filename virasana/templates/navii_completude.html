@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Completude de escaneamentos</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual das telas do NAVII */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .form-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-linha .br-input { flex: 0 1 12rem; margin: 0; }
+        .dica { font-size: .75rem; color: #777; margin-top: .75rem; line-height: 1.4; }
+        .panorama { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
+        .cartao { border: 1px solid #E6E6E6; border-radius: 8px; padding: 1rem 1.25rem; background: #fff; }
+        .cartao h2 { font-size: 1rem; font-weight: 700; margin: 0 0 .25rem; color: #1c1c1c; }
+        .cartao .caminho { font-size: .75rem; color: #666; margin-bottom: .75rem; }
+        .cartao .numeros { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+        .cartao .numeros div { font-size: .8125rem; color: #555; }
+        .cartao .numeros strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        .alerta { color: #E52207 !important; }
+        .titulo-secao { font-size: 1.125rem; font-weight: 700; margin: 0 0 .25rem; color: #1c1c1c; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: middle; }
+        table.dados tr:hover td { background: #F5F8FD; }
+        table.dados td.numero, table.dados th.numero { text-align: right; white-space: nowrap; }
+        table.dados tfoot td { font-weight: 700; border-top: 2px solid #E6E6E6; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .barra { display: inline-block; width: 4rem; height: .5rem; background: #EDEDED; border-radius: 999px;
+                 vertical-align: middle; margin-right: .375rem; overflow: hidden; }
+        .barra span { display: block; height: 100%; background: #E52207; }
+        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">COMPLETUDE</span> Completude de escaneamentos</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            Contêineres sem escaneamento, pelo Ciclo de Vida da importação, nos dois caminhos possíveis depois do
+            desembarque: remoção para recinto seco (TRA) ou desembaraço no próprio operador portuário.
+        </p>
+    </div>
+
+    <form class="painel" method="get" action="{{ url_for('completude.index') }}">
+        <div class="form-linha">
+            <div class="br-input">
+                <label for="inicio">De</label>
+                <input id="inicio" name="inicio" type="date" value="{{ inicio }}" required />
+            </div>
+            <div class="br-input">
+                <label for="fim">Até</label>
+                <input id="fim" name="fim" type="date" value="{{ fim }}" required />
+            </div>
+            <button class="br-button primary" type="submit">
+                <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
+            </button>
+        </div>
+        <p class="dica">TRA: data de <strong>entrada no recinto seco</strong> (entradas das últimas 3 h ficam de
+            fora — ainda sem tempo de escanear). Operador: data de <strong>saída do operador</strong> dos ciclos
+            concluídos sem entrada em recinto seco. Período máximo de 92 dias.</p>
+        {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
+            <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
+    </form>
+
+    {% if fluxos %}
+    <div class="panorama">
+        {% for chave, f in fluxos.items() %}
+        <div class="cartao">
+            <h2>{{ f.titulo }}</h2>
+            <div class="caminho">{{ f.caminho }}</div>
+            <div class="numeros">
+                <div><strong>{{ f.totais.total }}</strong>{{ f.rotulo_total }}</div>
+                <div><strong>{{ '%.0f' | format(f.participacao * 100) }}%</strong>dos contêineres</div>
+                <div><strong class="{{ 'alerta' if f.totais.pct_sem_escaneamento > 0.05 }}">{{ '%.1f' | format(f.totais.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
+                <div><strong>{{ f.totais.sem_imagem }}</strong>sem imagem</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% for chave, f in fluxos.items() %}
+    <div class="painel">
+        <h2 class="titulo-secao">{{ f.titulo }}</h2>
+        <p class="dica mt-0">{{ f.caminho }}. Clique no recinto para ver os contêineres.</p>
+        {% if f.linhas %}
+        <div class="tabela-rolavel">
+            <table class="dados">
+                <thead>
+                    <tr>
+                        <th>Recinto</th><th>Nome</th>
+                        <th class="numero">{{ 'Entradas' if chave == 'tra' else 'Entregas' }}</th>
+                        <th class="numero">Sem escaneamento</th><th class="numero">Sem imagem</th>
+                        <th>% sem escaneamento</th>
+                        {% if chave == 'tra' %}
+                        <th class="numero">Saídas do seco</th><th class="numero">Saídas sem escaneamento</th>
+                        <th>% saídas sem escaneamento</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for item in f.linhas %}
+                    <tr>
+                        <td class="mono">{% if item.codigo_recinto %}<a href="{{ url_for('completude.recinto',
+                            codigo=item.codigo_recinto, fluxo=chave, inicio=inicio, fim=fim) }}">{{ item.codigo_recinto }}</a>{% else %}—{% endif %}</td>
+                        <td>{{ item.nome_recinto }}</td>
+                        <td class="numero">{{ item.total }}</td>
+                        <td class="numero">{{ item.sem_escaneamento }}</td>
+                        <td class="numero">{{ item.sem_imagem }}</td>
+                        <td class="mono"><span class="barra"><span style="width: {{ '%.0f' | format(item.pct_sem_escaneamento * 100) }}%"></span></span>{{ '%.1f' | format(item.pct_sem_escaneamento * 100) }}%</td>
+                        {% if chave == 'tra' %}
+                        <td class="numero">{{ item.total_saidas }}</td>
+                        <td class="numero">{{ item.saidas_sem_escaneamento }}</td>
+                        <td class="mono">{{ '%.1f' | format(item.pct_saidas_sem_escaneamento * 100) }}%</td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2">TOTAL</td>
+                        <td class="numero">{{ f.totais.total }}</td>
+                        <td class="numero">{{ f.totais.sem_escaneamento }}</td>
+                        <td class="numero">{{ f.totais.sem_imagem }}</td>
+                        <td class="mono">{{ '%.1f' | format(f.totais.pct_sem_escaneamento * 100) }}%</td>
+                        {% if chave == 'tra' %}
+                        <td class="numero">{{ f.totais.total_saidas }}</td>
+                        <td class="numero">{{ f.totais.saidas_sem_escaneamento }}</td>
+                        <td class="mono">{{ '%.1f' | format(f.totais.pct_saidas_sem_escaneamento * 100) }}%</td>
+                        {% endif %}
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="vazio">Nenhum contêiner neste caminho no período.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+</body>
+</html>

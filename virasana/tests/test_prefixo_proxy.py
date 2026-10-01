@@ -19,6 +19,7 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.test import Client
 
 from virasana.apreensoes.views_apreensoes import bp_apreensoes
+from virasana.completude.views_completude import bp_completude
 from virasana.entregas.views_entregas import bp_entregas
 from virasana.risco_historico.views_risco_historico import bp_risco_historico
 from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
@@ -35,6 +36,7 @@ TELAS = [
     ('/entregas_cnpj', 'Entregas por CNPJ'),
     ('/apreensoes_transporte', 'Transporte das apreensões'),
     ('/risco_historico', 'Risco histórico das Fichas'),
+    ('/completude_escaneamentos', 'Completude de escaneamentos'),
 ]
 
 # links para a OUTRA app usam o prefixo dela (ex.: ficha no Fichas)
@@ -62,6 +64,7 @@ def cria_app():
     app.register_blueprint(bp_entregas)
     app.register_blueprint(bp_apreensoes)
     app.register_blueprint(bp_risco_historico)
+    app.register_blueprint(bp_completude)
     return app
 
 

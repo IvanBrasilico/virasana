@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Completude — {{ codigo }}</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual das telas do NAVII */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem; flex-wrap: wrap;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+        .resumo .item { font-size: .875rem; color: #555; }
+        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        .alerta { color: #E52207 !important; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
+        table.dados tr:hover td { background: #F5F8FD; }
+        table.dados tr.sem-escaneamento td { background: #FEF3F2; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .secundario { display: block; color: #888; font-size: .75rem; }
+        .selo { font-size: .6875rem; font-weight: 700; padding: .125rem .5rem; border-radius: 999px; white-space: nowrap; }
+        .selo.ok { background: rgba(22,136,33,.1); color: #168821; }
+        .selo.falta { background: rgba(229,34,7,.1); color: #E52207; }
+        .miniaturas { display: flex; gap: .375rem; flex-wrap: wrap; }
+        .miniaturas img { width: 7rem; height: 4rem; object-fit: cover; border-radius: 4px; border: 1px solid #DDD; }
+        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim) }}">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Completude de escaneamentos</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">{{ 'TRA' if fluxo == 'tra' else 'OPERADOR' }}</span>
+            {{ codigo }} {% if nome %}— {{ nome }}{% endif %}</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">{{ dados_fluxo.titulo }}: {{ dados_fluxo.caminho }}.
+            Período de {{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}.</p>
+    </div>
+
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resumo.total }}</strong>{{ dados_fluxo.rotulo_total }}</div>
+            <div class="item"><strong class="{{ 'alerta' if resumo.sem_escaneamento }}">{{ resumo.sem_escaneamento }}</strong>sem escaneamento</div>
+            <div class="item"><strong>{{ '%.1f' | format(resumo.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
+            <div class="item"><strong>{{ resumo.sem_imagem }}</strong>sem imagem</div>
+            {% if fluxo == 'tra' %}
+            <div class="item"><strong>{{ resumo.total_saidas }}</strong>saídas do seco</div>
+            <div class="item"><strong>{{ resumo.saidas_sem_escaneamento }}</strong>saídas sem escaneamento</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="painel">
+        {% if linhas %}
+        <div class="tabela-rolavel">
+            <table class="dados">
+                <thead>
+                    <tr>
+                        <th>Contêiner / CE</th><th>Desembarque</th><th>Saída do operador</th>
+                        {% if fluxo == 'tra' %}<th>Entrada no seco</th><th>Saída do seco</th>{% endif %}
+                        <th>Escaneamento</th><th>Imagens</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for lin in linhas %}
+                    <tr class="{{ '' if lin.escaneamentos else 'sem-escaneamento' }}">
+                        <td class="mono">{{ lin.conteiner }}<span class="secundario">{{ lin.ce or '' }}</span></td>
+                        <td class="mono">{{ lin.desembarque.strftime('%d/%m/%Y %H:%M') if lin.desembarque else '—' }}</td>
+                        <td class="mono">{{ lin.saida.strftime('%d/%m/%Y %H:%M') if lin.saida else '—' }}</td>
+                        {% if fluxo == 'tra' %}
+                        <td class="mono">{{ lin.entrada_seco.strftime('%d/%m/%Y %H:%M') if lin.entrada_seco else '—' }}</td>
+                        <td class="mono">{{ lin.saida_seco.strftime('%d/%m/%Y %H:%M') if lin.saida_seco else '—' }}</td>
+                        {% endif %}
+                        <td>{% for e in lin.escaneamentos %}<span class="selo ok">{{ e.data.strftime('%d/%m %H:%M') if e.data else e.id }}</span> {% else %}<span class="selo falta">sem escaneamento</span>{% endfor %}</td>
+                        <td><div class="miniaturas">{% for imagem in lin.imagens %}<a href="{{ urls_imagem.arquivo }}{{ imagem }}" target="_blank"><img src="{{ urls_imagem.mini }}{{ imagem }}" alt="Imagem de escaneamento" loading="lazy"></a>{% else %}{% if lin.escaneamentos %}<span class="selo falta">sem imagem</span>{% endif %}{% endfor %}</div></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="vazio">Nenhum contêiner deste recinto no período.</p>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>
