@@ -59,7 +59,8 @@ Correção (bugs):
    mas não filtra por ele (`order_by(id).limit(2000)` desde o início da tabela).
 2. **…e grava `saida_id` sem `data_saida`**. Depois, `check_ciclo_concluido` faz
    `data_saida + timedelta(...)` com `None` → `TypeError`, e `get_entrada_seco` busca com data `None`.
-   Esses ciclos ficam presos para sempre (e podem derrubar o loop).
+   Esses ciclos ficam presos para sempre (e podem derrubar o loop). *Medição de 01/10: 0 casos — na
+   prática o atalho não casa nada, porque só relê saídas antigas (bug 1); é código morto.*
 3. **`.one_or_none()` com mais de um ciclo** para o mesmo contêiner/CE (retransmissões, desembarques
    repetidos) levanta `MultipleResultsFound` em `saidas_novas_operadores` e `busca_escaneamentos_novos`
    — sem `try`, a exceção derruba a iteração do loop.
@@ -67,6 +68,8 @@ Correção (bugs):
    tempo no operador (até 90 dias) nunca ganha saída → ciclo aberto até os 93 dias.
 5. **Agendamento conta como saída/entrada**: as buscas de AcessoVeiculo não filtram `operacao = 'C'`
    (acesso efetivado) — um agendamento (G) pode virar a "saída"; também não tratam retificações.
+   *Medição de 01/10: 0 casos — os operadores só transmitem acessos C e quase nenhuma retificação.
+   Manter o filtro por segurança, sem prioridade.*
 6. **Transit time de 6 h decide o caminho**: saída sem entrada em seco em 6 h → concluído como
    "entregue pelo operador"; se a entrada no seco vier depois (trânsito lento), o fluxo TRA é perdido.
    E a entrada no seco não olha se o contêiner entrou **vazio** (depósito de vazios/REDEX).
@@ -122,24 +125,101 @@ Sinais de "outra operação" a medir antes de confiar: `vazio`/`vazioConteiner`,
 novo desembarque ou embarque do contêiner. (A seção 11 do diagnóstico mostra os outros campos do Mongo
 só como informação — eles não entram na heurística.)
 
-## Plano (proposto — ver resposta de 01/10/2026; nada implementado ainda)
+## Primeira medição em produção (01/10/2026, desembarques de 03/06 a 01/10)
 
-0. **Medir** (`diagnostico_ciclo_de_vida.py`; o usuário está rodando em produção em 01/10/2026):
-   estado dos pendentes por estágio e idade, tráfego, passagem/embarque, saídas depois de 72 h,
-   `saida_id` sem `data_saida`, escaneamentos achados pelo CE (e em que recinto/defasagem — mede o
-   terceirizado e a data errada), risco de outra operação, defasagem de horário imagem x inspeção.
-1. **Correções seguras** dos bugs 1, 2, 3, 5, 7, 8, 11 (com testes em SQLite e simulação do loop).
-2. **Situação + agenda no ciclo** (colunas novas, nulas — ALTER TABLE pelo DBA): `fluxo`
-   (operador/TRA/passagem/baldeação/abandono), `situacao`/`motivo_conclusao`, `tentativas`,
-   `proxima_tentativa`. O loop só visita quem está "vencido", com espera crescente; ciclos sem
-   novidade param de ser reconsultados.
-3. **Fechamento por tipo**: passagem/baldeação concluem no embarque (EmbarqueDesembarque E);
-   cabotagem marcada como "escaneamento não obrigatório"; abandono após 90 dias.
-4. **Escaneamento ancorado em contêiner + tempo** (ver "Escaneamento: como achar"): janela do fluxo
-   recortada pelos eventos do próprio contêiner, em qualquer recinto; CE e recinto só corroboram;
-   imagem no Mongo só por `numeroinformado` + `dataescaneamento`, com o fuso corrigido; registrar a
-   **confiança/origem da ligação** em `..._escaneamentos`.
-5. **CE do ciclo pelo Mercante** (Item.codigoConteiner + escala, como hoje); o `numeroConhecimento` do
-   desembarque/inspeção só corrobora ou desempata entre CEs candidatos — divergência vira alerta,
-   não troca automática.
-6. Reprocessar os pendentes antigos com as regras novas (script único, em lotes, com relatório).
+Log: `virasana/ciclo_de_vida_diagnostico_20261001_152637.log`.
+
+- **339 mil ciclos, 227 mil pendentes (67%)**; 140 mil com 30 a 93 dias. Os pendentes são quase só
+  "sem saída" (217 mil) e TRA aguardando a saída do seco (~11 mil): todo ciclo com saída e sem entrada
+  no seco é fechado em 6 h.
+- **Atraso na criação dos ciclos**: o ciclo mais novo (ID 339.370, quase o máximo) é de um desembarque
+  de 26/09, e o diagnóstico rodou em 01/10 — nenhum pendente com menos de 3 dias. `desembarques_novos`
+  só roda uma vez por volta (que leva horas) e pega no máximo 2.000.
+- **52% dos ciclos sem CE** (177 mil). Os desembarques trazem CE declarado; nas amostras sem CE ligado,
+  os declarados começam com 10, 13, 18 ou 00 (os ligados, com 15) — hipótese a verificar: CEs de
+  passagem/transbordo emitidos fora, ausentes do `conhecimentosresumo` ou fora da janela de escala.
+- **CE de outro tipo**: 7,7 mil ciclos de importação ligados a CE de **exportação** (tráfego 7) — o
+  `get_conhecimento` não filtra o tráfego e pega o contêiner reaproveitado.
+- **Passagem/transbordo**: 12,4 mil ciclos de tráfego 9, só 25 concluídos. 128 mil pendentes têm
+  embarque posterior no MESMO operador e 38 mil em outro. Amostras: desembarque → embarque 4 dias depois,
+  **mesmo CE declarado nos dois eventos e nenhum acesso de gate no meio** (o contêiner não saiu).
+- **Saídas além de 72 h**: 88 mil pendentes têm saída (acesso C) no operador até 93 dias — mas, pelo
+  princípio abaixo, só valem com validação de que é a mesma operação. A permanência medida (só < 3
+  dias) é viés da janela atual.
+- **Trânsito > 6 h**: ~1,1 mil contêineres cheios entraram em outro recinto 6 a 72 h depois da saída
+  (TRA perdido) e ~1,2 mil **vazios** (devolução de vazio — outra operação, o risco descrito pelo usuário).
+  428 ciclos têm como "entrada no seco" uma entrada com o contêiner vazio.
+- **Recinto 8931318 não é TRA**: nas amostras, o contêiner entra e sai dele em ~9 min e segue para o TRA
+  de verdade (8931339, 8931304); também aparece inspecionando logo depois da saída do operador. Hoje o
+  algoritmo fecha o TRA nele. Há "recintos de passagem" (pátio/posto de escaneamento) a tratar.
+- **Scanner no gate do TRA**: a inspeção vem minutos ANTES da entrada no TRA (ex.: inspeção 17:04,
+  entrada 17:14).
+- **Recuperação pelo CE é pequena**: 3,4 mil dos 169 mil ciclos sem escaneamento têm inspeção com o
+  próprio CE (2,6 mil em outro recinto). O grosso dos "sem escaneamento" é de pendentes sem saída,
+  passagem e cabotagem (209 de 15,7 mil cabotagens têm escaneamento).
+- **Ligações já feitas que desconfiam**: ~24,6 mil (14%) com inspeção declarando OUTRO CE (pode ser o
+  master/filhote — `Conhecimento.numeroCEMaster` existe — a verificar) e ~32 mil com inspeção vazio = 1.
+- **Inspeções de vazio são 30 a 45% nos operadores** (ex.: 8931356: 80 mil de 196 mil): janela larga
+  só por contêiner + data pega vazio com facilidade.
+- **Fuso confirmado**: imagem (Mongo) = inspeção (API) **+3 h** em 291 de 300 (8 com +0 h — ver por
+  recinto). O Mongo está em UTC e a API em hora local.
+
+## Princípio geral da heurística (usuário, 01/10/2026)
+
+Contêiner + intervalo de datas **nunca basta** para dizer que um evento é do mesmo ciclo — sobretudo
+ao alargar tolerâncias. A API tem erros e omissões: uma saída não informada pode fazer a "próxima saída"
+encontrada, muitos dias depois, ser de OUTRA operação (contêiner já vazio, já em exportação...). Toda
+ligação precisa de **validação adicional de que ainda é a mesma operação**.
+
+## Plano v2 (proposto em 01/10/2026 — aguardando aprovação)
+
+**Ideia central: linha do tempo do contêiner + estadas.** Em vez de buscas soltas por janela, carregar
+todos os eventos do contêiner (desembarque/embarque, acessos, inspeções — contêiner e hora são os dados
+confiáveis) e percorrê-los em ordem com uma máquina de estados. A validação de "mesma operação" vem da
+**continuidade**: um evento só entra no ciclo se não houver, antes dele, um evento-fronteira que abra
+outra operação:
+
+- fronteiras: novo desembarque; embarque; **entrada no mesmo operador** depois do desembarque sem saída
+  registrada (prova de saída omitida); entrada com o contêiner **vazio** depois da saída (devolução);
+- sinais secundários (para quando as omissões não deixam fronteira): vazio informado no evento
+  candidato x carga cheia no desembarque (peso x tara do desembarque), declaração/CE declarados que
+  corroboram ou não, plausibilidade do tempo (distribuição por recinto);
+- cada ligação recebe **confiança (alta/média/baixa) e motivo**; só alta/média fecham o ciclo
+  automaticamente; baixa fica registrada para análise.
+
+**Fechamento por tipo**: operador (saída validada, sem entrada válida em seco depois); TRA (entrada
+cheia válida em outro recinto; recintos de passagem como o 8931318 não contam — segue-se para a
+próxima entrada; scanner minutos antes do gate aceito); passagem/transbordo (embarque no mesmo
+operador sem gate no meio); baldeação (saída → entrada em outro operador → embarque); **saída omitida**
+(fronteira sem saída: fecha como incompleto, não fica pendente para sempre); abandono (90 dias sem saída
+nem fronteira); cabotagem segue o fluxo, com escaneamento marcado como não obrigatório.
+
+**Escaneamento**: inspeção dentro da estada, em qualquer recinto; vazio numa estada cheia baixa a
+confiança; CE declarado igual (ou master/filhote) corrobora. Imagem no Mongo por `numeroinformado` +
+`dataescaneamento` com **+3 h** e janela estreita (medida depois da correção).
+
+**CE**: candidatos do Mercante (contêiner + escala), **sem exportação** para desembarque; declarado
+nos eventos só corrobora/desempata; sem candidato, o ciclo segue (a operação física existe) com o CE
+declarado guardado como informação.
+
+**Processamento orientado a eventos** (resolve as horas de loop): marca d'água do último id lido de
+cada tabela de eventos; a cada volta, só os contêineres com evento novo têm a linha do tempo refeita
+(uma consulta por tabela por lote de contêineres). Ciclo sem novidade não é reconsultado. Prazos
+(abandono etc.) fecham por UPDATE em lote. Desembarques novos sem o teto de 2.000 por volta.
+
+Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
+
+1. **Diagnóstico v2** (curto, só leitura, por amostragem): por que 52% sem CE (CE declarado existe no
+   Mercante? prefixos? escala?); OUTRO CE é master/filhote?; recintos de passagem (estadas curtas por
+   recinto); saídas tardias que passam/não passam na continuidade; passagem com continuidade; scanner
+   x gate; fuso por recinto e janela da imagem após +3 h; peso x tara no desembarque; atraso de criação.
+2. **Núcleo puro** `linha_do_tempo.py`: recebe os eventos de um contêiner e devolve os ciclos com as
+   ligações e a confiança — sem banco; testes com os casos reais das amostras.
+3. **Modo sombra**: roda o núcleo sobre um período e grava num relatório/tabela à parte, comparando
+   com o ciclo atual (conclusões, escaneamentos, divergências), sem alterar nada.
+4. **DDL aditiva** (usuário/DBA): situação, fluxo, motivo, confiança e origem das ligações, marcas d'água.
+5. **Troca do loop** para o processamento por eventos (o atual fica para rollback).
+6. **Reprocessamento** dos pendentes em lotes, com relatório.
+
+Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
+novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).
