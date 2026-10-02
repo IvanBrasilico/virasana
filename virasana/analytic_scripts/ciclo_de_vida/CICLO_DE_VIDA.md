@@ -440,11 +440,12 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
    ADD COLUMN com `ALGORITHM=INSTANT`, índices `INPLACE, LOCK=NONE`; rollback no fim do arquivo.
    Depois (com o serviço gravando): telas mostram tipo/OOG/vazio e permitem excluir OOG da cobrança.
    **DDL aplicada em homologação em 02/10/2026** (pelo usuário).
-5. **Serviço por eventos — PRONTO (02/10/2026), ainda não ativado**: `servico_ciclo_de_vida.py`, com
+5. **Serviço por eventos — ATIVADO em produção em 02/10/2026** (pelo usuário): `servico_ciclo_de_vida.py`, com
    `carga_ciclo.py` (carga compartilhada com a sombra), `gravacao_ciclo.py` (tabelas v2 no SQLAlchemy Core,
    conferidas contra a DDL nos testes) e `imagens_ciclo.py` (imagem no Mongo pela defasagem do recinto);
    testes em `tests/test_servico_ciclo_de_vida.py`; programas do supervisor em `supervisor_ciclo_de_vida.conf`
-   (raiz do virasana). Ver "Serviço por eventos" abaixo. O loop atual fica para rollback.
+   (raiz do virasana). Ver "Serviço por eventos" abaixo. O loop atual fica para rollback. Acompanhamento:
+   `acompanha_ciclo_de_vida.py` (ver "Acompanhamento em produção").
 6. **Reprocessamento** dos pendentes do loop antigo: `servico_ciclo_de_vida.py --reprocessa N` (N
    contêineres por vez, os mais recentes primeiro; o log diz quantos pendentes antigos restam).
 
@@ -512,6 +513,42 @@ ambos `autostart=false`: `ciclo_de_vida_v2_hom` (`--homologacao`) e `ciclo_de_vi
 5. **Rollback**: `supervisorctl stop ciclo_de_vida_v2` e `start` do programa antigo — o
    `manager_ciclo_de_vida.py` não foi alterado. As colunas novas ficam como estão (o loop antigo as
    ignora). Os dois nunca devem rodar juntos gravando nas mesmas tabelas.
+
+### Acompanhamento em produção (`acompanha_ciclo_de_vida.py`)
+
+Relatório curto, só leitura, por índices (segundos) — rodar a qualquer hora e comparar com o anterior:
+
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/acompanha_ciclo_de_vida.py [--dias 28] [--saida arq.log]
+```
+
+Seções: (1) serviço — marcas d'água, eventos não lidos (fila), última gravação, ciclos gravados na última
+hora/dia e **sinais de outro gravador** (ciclo v2 com `last_modified > processado_em` ou escaneamento sem
+`confianca` num ciclo v2 = o loop antigo ainda roda); (2) cobertura por semana de desembarque (v2 x antigos,
+abertos, CE, vazio, entrada no seco e implícita, escaneamento, imagem, OOG); (3) situação x fluxo, motivos de
+quem não concluiu, abertos por idade e sem revisita; (4) escaneamentos por recinto (imagem, fora, confiança)
+e sem imagem por idade; (5) CE (confiança, sem CE por idade, papéis da família); (6) pendentes do loop
+antigo por mês; (7) **alertas**. O que esperar com o serviço saudável: marcas gravadas há poucos minutos,
+fila ~0, nenhum sinal de outro gravador, semanas recentes com ~100% v2, nenhum aberto com mais de 93 dias.
+
+### Efeitos nas telas (completude e NAVI-I) — 02/10/2026
+
+As telas continuam funcionando sem mudança (mesmas tabelas e IDs; colunas novas são ignoradas), mas os
+números mudam à medida que os ciclos viram v2:
+- **Completude**: entra o TRA com entrada implícita (recintos que não informam a entrada); o escaneamento
+  terceirizado/fora passa a contar para o TRA; ligações de outra operação (confiança baixa) saem —
+  pode AUMENTAR o "sem escaneamento" onde o loop antigo ligava inspeção errada; ciclos novos do Ecoporto.
+  O fluxo "operador" ainda é inferido (`concluido` + saída + sem entrada no seco) e por isso também pega
+  baldeação (saída e embarque em outro operador) — o mesmo que o loop antigo fazia após 48 h.
+- **NAVI-I**: o CE do ciclo passa a ser o **filhote** (antes, ~36% das vezes o master). Filtros que dependem
+  do ciclo (com imagem, recinto, concluído) e a janela "efetiva" ligam pelo CE exato: passam a achar o card
+  do filhote e deixam de achar o do master (o card do master ainda mostra o ciclo pela família).
+  "Concluído" passa a incluir passagem/baldeação (embarque) e incompleto.
+
+Ajustes propostos (aguardando aprovação): completude usar `fluxo` dos ciclos v2; NAVI-I ligar filtros e
+janela "efetiva" pela `ciclodevida_ciclo_ce` (pendência 3a do CONTEXTO.md); mostrar situação/motivo,
+entrada implícita, escaneamento fora e confiança no card e no detalhe da completude; decidir se o filtro
+"concluído" do NAVI-I significa "encerrado" ou "entregue" (situação concluído com fluxo operador/TRA).
 
 Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
 novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).
