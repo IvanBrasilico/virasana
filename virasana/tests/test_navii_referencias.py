@@ -85,13 +85,26 @@ class TestTiposConteinerEBL(unittest.TestCase):
         self.assertEqual(referencias.tipo_conteiner('40HC')['curta'], "40' high cube, uso geral (dry)")
         self.assertEqual(referencias.tipo_conteiner('OT')['curta'], 'open top')
 
-    def test_codigo_fora_da_norma_fica_a_confirmar(self):
-        tipo = referencias.tipo_conteiner('22K1')   # 6% dos ciclos na sombra de 02/10/2026
-        self.assertEqual((tipo['grupo'], tipo['confirmado'], tipo['oog']), ('K', False, False))
-        self.assertIn('a confirmar', tipo['curta'])
+    def test_grupo_k_e_tanque(self):
+        # fora da ISO 6346:1995; informado pelo usuário em 02/10/2026: 22K1 = tanque pressurizado
+        tipo = referencias.tipo_conteiner('22K1')
+        self.assertEqual((tipo['grupo'], tipo['curta'], tipo['confirmado'], tipo['oog']),
+                         ('K', "20', tanque", True, False))
+        self.assertIn('pressurizado', tipo['descricao'])
+        self.assertEqual(referencias.tipo_conteiner('22K2')['curta'], "20', tanque")
+        self.assertEqual(referencias.tipo_conteiner('2TK5')['grupo'], 'K')
+
+    def test_codigos_reais_de_formato_variado(self):
+        # dos desembarques de 30 dias (02/10/2026)
+        casos = {'4EG1': "40' largo high cube, uso geral (dry)", '49U9': "40' meia altura, open top",
+                 '48FR': 'plataforma / flat rack', '4510': "40' high cube, uso geral (dry)",
+                 '45R5': "40' high cube, refrigerado (reefer)"}
+        for codigo, curta in casos.items():
+            with self.subTest(codigo=codigo):
+                self.assertEqual(referencias.tipo_conteiner(codigo)['curta'], curta)
 
     def test_desconhecido_nao_inventa(self):
-        for codigo in (None, '', 'XXXX', '22Z1', '2229'):
+        for codigo in (None, '', 'XXXX', '22Z1', '2229', 'M7PW', 'M0PW'):
             with self.subTest(codigo=codigo):
                 self.assertIsNone(referencias.tipo_conteiner(codigo))
 

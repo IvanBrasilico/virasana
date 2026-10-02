@@ -117,10 +117,11 @@ carregado sob demanda por `referencias/__init__.py` e gerado por `atualiza_refer
 **Tipos de contêiner e de BL (02/10/2026, pedido do usuário):** `referencias.tipo_conteiner(codigo)`
 reconhece o código ISO (`45G1` → "40' high cube, uso geral (dry)"), o numérico antigo (`2210`) e
 apelidos (`40HC`, `40OT`, `20FR`), com `oog` (open top `U` e plataforma/flat rack `P`: carga fora de
-gabarito pode não passar no escâner) e `confirmado`. O código `22K1`/`22K2`/`22K0` (6% dos ciclos na
-sombra de 02/10) **não é da ISO 6346:1995** e fica "tipo K, a confirmar" até o usuário dizer o que é.
-`referencias.descreve_tipo_bl`/`tipos_bl` dão sigla + descrição curta; código fora da tabela aparece
-só como código (confirmar no banco se existem outros além de 10/11/12/15).
+gabarito pode não passar no escâner) e `confirmado`. O grupo **K** (`22K0` a `22K8`, 2,8% dos desembarques)
+não é da ISO 6346:1995: é **tanque** (usuário, 02/10/2026: `22K1` = tanque pressurizado). Cobertura
+nos desembarques de 30 dias: 97,8% reconhecidos; sem tipo 2,2%; `M7PW`/`M0PW` (0,05%) sem
+descrição. `referencias.descreve_tipo_bl`/`tipos_bl` dão sigla + descrição curta; conferido no
+banco que só existem 10, 11, 12 e 15 (CEs desde 01/08/2026: 72% BL, 16% HBL, 10% MBL, 1,4% MHBL).
 
 **Filtro de uso (pedido do usuário em 30/09/2026):** só interessam navios que operam contêineres
 (porta-contêineres, Ro-Ro/ConRo) e portos das rotas com o Brasil; as tabelas completas (89 mil

@@ -1,5 +1,5 @@
 {
-  "_fonte": "ISO 6346:1995 — códigos de tamanho (comprimento e altura) e de tipo (grupo + detalhe) do contêiner; descrições curtas em português. O 'grupo' e o potencial OOG (carga fora de gabarito: open top e plataforma/flat rack podem não passar nos gates padrão nem no escâner) são o que importa para o ciclo de vida. Códigos que não seguem a norma ficam em 'nao_iso' e são marcados 'a confirmar'; nenhum nome é inventado.",
+  "_fonte": "ISO 6346:1995 — códigos de tamanho (comprimento e altura) e de tipo (grupo + detalhe) do contêiner; descrições curtas em português. O 'grupo' e o potencial OOG (carga fora de gabarito: open top e plataforma/flat rack podem não passar nos gates padrão nem no escâner) são o que importa para o ciclo de vida. Grupo K (fora da ISO 6346:1995, muito usado pelos recintos: 22K0 a 22K8): tanque, informado pelo usuário em 02/10/2026 (22K1 = tanque pressurizado). Códigos que não seguem a norma e não foram confirmados ficam em 'nao_iso', marcados 'a confirmar'; nenhum nome é inventado. Cobertura medida nos desembarques de 30 dias (02/10/2026): 97,8% reconhecidos; o resto é tipo vazio (2,2%) e M7PW/M0PW (0,05%).",
   "comprimentos": {
     "1": "10'",
     "2": "20'",
@@ -40,6 +40,7 @@
     "U": {"nome": "open top", "oog": true},
     "P": {"nome": "plataforma / flat rack", "oog": true},
     "T": {"nome": "tanque", "oog": false},
+    "K": {"nome": "tanque", "oog": false},
     "A": {"nome": "aéreo / superfície", "oog": false}
   },
   "detalhes": {
@@ -50,11 +51,10 @@
     "U0": "aberturas numa ou nas duas extremidades",
     "U1": "travessas removíveis nas extremidades",
     "P1": "duas cabeceiras fixas",
-    "P3": "cabeceiras dobráveis"
+    "P3": "cabeceiras dobráveis",
+    "K1": "pressurizado"
   },
-  "nao_iso": {
-    "K": {"nome": "tipo K (fora da ISO 6346, a confirmar)", "oog": false}
-  },
+  "nao_iso": {},
   "numericos": {
     "_fonte": "código numérico antigo (ISO 6346:1984): 1º dígito do código de tipo (3ª posição); só os grupos de correspondência segura",
     "0": "G",

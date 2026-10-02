@@ -1,5 +1,5 @@
 {
-  "_fonte": "Mercante — Conhecimento.tipoBLConhecimento (ver TIPOS_BL em virasana/integracao/mercante/mercantealchemy.py). A família master/filhote vem de Conhecimento.numeroCEMaster. Código que não estiver aqui aparece só com o próprio código.",
+  "_fonte": "Mercante — Conhecimento.tipoBLConhecimento (ver TIPOS_BL em virasana/integracao/mercante/mercantealchemy.py). A família master/filhote vem de Conhecimento.numeroCEMaster. Código que não estiver aqui aparece só com o próprio código. Conferido no banco em 02/10/2026 (CEs emitidos desde 01/08/2026): 10 = 438.546 (72%), 12 = 99.427 (16%), 11 = 60.981 (10%), 15 = 8.446 (1,4%) — não há outros.",
   "10": {"sigla": "BL", "descricao": "único (sem consolidação)"},
   "11": {"sigla": "MBL", "descricao": "master (consolida filhotes)"},
   "12": {"sigla": "HBL", "descricao": "house (filhote de um master)"},

@@ -314,7 +314,8 @@ Log: `virasana/ciclo_de_vida_sombra_20261002_095406.log` (mesma amostra da quint
 - **Escala declarada no desembarque confere** com o manifesto do CE principal em 2.008 de 2.034 e com
   o do vazio em 423 de 539 — bom corroborador (também para achar o manifesto do vazio).
 - **Tipo do contêiner**: 45G1 (1.297), 22G0, 45G0, 45R1...; open top 21 e plataforma 7 (potencial OOG,
-  16 sem escaneamento); **`22K1`/`22K2`/`22K0` (215 ciclos) não são da ISO 6346** — a confirmar.
+  16 sem escaneamento); `22K1`/`22K2`/`22K0` (215 ciclos), fora da ISO 6346, são **tanques**
+  (usuário: `22K1` = tanque pressurizado). Nos desembarques de 30 dias, potencial OOG = 0,9%.
 - Consulta de pesagens: 5–8 s por lote (a mais lenta da sombra) — atenção no serviço por eventos.
 
 ## Decisões do usuário (02/10/2026)
