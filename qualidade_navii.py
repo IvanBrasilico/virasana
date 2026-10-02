@@ -43,6 +43,7 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/gravacao_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py',
     'virasana/analytic_scripts/ciclo_de_vida/acompanha_ciclo_de_vida.py',
+    'virasana/analytic_scripts/ciclo_de_vida/estagios_ciclo.py',
 ]
 
 TESTES = [
@@ -63,6 +64,7 @@ TESTES = [
     'virasana/tests/test_sombra_ciclo_de_vida.py',
     'virasana/tests/test_servico_ciclo_de_vida.py',
     'virasana/tests/test_acompanha_ciclo_de_vida.py',
+    'virasana/tests/test_estagios_ciclo.py',
     'virasana/tests/test_prefixo_proxy.py',
 ]
 

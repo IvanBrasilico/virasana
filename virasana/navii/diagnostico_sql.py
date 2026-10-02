@@ -26,6 +26,12 @@ Uso (a partir da raiz do repo virasana):
     python virasana/navii/diagnostico_sql.py
     python virasana/navii/diagnostico_sql.py --saida navii_diag.log --inicio 2026-09-01 --fim 2026-09-15
     python virasana/navii/diagnostico_sql.py --amostras   # inclui amostras de formato de dados
+
+Ligação pela família do CE (`busca_navii.LIGACAO_FAMILIA`, 02/10/2026): para comparar o custo, rodar só as
+buscas que dependem do ciclo de vida, com e sem a família, e comparar os resumos:
+
+    python virasana/navii/diagnostico_sql.py --analyze --so-ciclo --saida com_familia.log
+    python virasana/navii/diagnostico_sql.py --analyze --so-ciclo --sem-familia --saida sem_familia.log
 """
 import argparse
 import json
@@ -39,6 +45,7 @@ sys.path.append('../bhadrasana2')
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
+from virasana.navii import busca_navii
 from virasana.navii.busca_navii import (
     _periodo_navii, busca_ciclos_navii, busca_itens_navii,
     busca_manifestos_navii, busca_nomes_empresas, busca_nomes_recintos,
@@ -50,7 +57,7 @@ TABELAS = [
     'itensresumo', 'conhecimentosresumo', 'ncmitemresumo', 'manifestosresumo',
     'escalamanifestoresumo', 'escalasresumo',
     'ciclodevida_ciclo_de_vida_importacao',
-    'ciclodevida_ciclo_de_vida_importacao_escaneamentos',
+    'ciclodevida_ciclo_de_vida_importacao_escaneamentos', 'ciclodevida_ciclo_ce',
     'ovr_recintos', 'laudo_empresas', 'laudo_ncm', 'Enumerado',
 ]
 
@@ -63,7 +70,9 @@ CENARIOS = [
     ('porto de atracação + NCM', {'porto_escala': 'BRSSZ', 'ncm': '8471'}),
     ('porto de atracação + recinto + com imagem', {'porto_escala': 'BRSSZ', 'recinto': '8931356', 'com_imagem': True}),
     ('somente com imagem de escaneamento', {'com_imagem': True}),
-    ('somente entregues ao importador', {'concluido': True}),
+    ('somente entregues ao importador', {'estagio': ['entregue']}),
+    ('em recinto seco, não entregues', {'estagio': ['no_seco']}),
+    ('no operador ou em trânsito', {'estagio': ['no_operador', 'em_transito']}),
     ('NCM por prefixo (capítulo)', {'ncm': '8471'}),
     ('NCM completo', {'ncm': '84713012'}),
     ('produto (texto livre)', {'produto': 'brinquedo'}),
@@ -79,8 +88,12 @@ CENARIOS = [
     ('porto + NCM completo', {'porto_escala': 'BRSSZ', 'ncm': '84713012'}),
     ('recinto + com imagem', {'recinto': '8931404', 'com_imagem': True}),
     ('origem + NCM + até 3 NCMs', {'porto_origem': 'CNSHA', 'ncm': '8471', 'ncms_max': 3}),
-    ('recinto + empresa + entregue', {'recinto': '8931356', 'empresa': 'comercio', 'concluido': True}),
+    ('recinto + empresa + entregue', {'recinto': '8931356', 'empresa': 'comercio', 'estagio': ['entregue']}),
 ]
+# --so-ciclo: a janela efetiva sem filtros e as buscas com filtro do ciclo de vida (imagem, recinto, estágio)
+CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio')
+CENARIOS_CICLO = [(d, f) for d, f in CENARIOS
+                  if d == 'porto de atracação (padrão da tela)' or any(c in f for c in CAMPOS_DO_CICLO)]
 
 # Valores fictícios para o EXPLAIN das queries de enriquecimento da página
 # (20 CEs por página na tela).
@@ -315,10 +328,10 @@ class Diagnostico:
         self.executa('SELECT numeroCEmercante, codigoConteiner, tipoItemCarga, pesoBruto '
                      'FROM itensresumo ORDER BY ID DESC LIMIT 5')
 
-    def secao_buscas(self, session, periodos):
+    def secao_buscas(self, session, periodos, cenarios=CENARIOS):
         self.titulo('4. BUSCAS SIMULADAS (SQL gerado pela tela + EXPLAIN)')
         for tipo_janela in ('efetiva', 'prevista'):
-            for descricao, filtros in CENARIOS:
+            for descricao, filtros in cenarios:
                 filtros = dict(filtros)
                 inicio, fim = periodos.get(tipo_janela) or (None, None)
                 if inicio and fim:
@@ -377,7 +390,14 @@ def main():
     parser.add_argument('--analyze', action='store_true',
                         help='mede tempos/linhas reais (ANALYZE FORMAT=JSON no MariaDB, EXPLAIN ANALYZE '
                              'no MySQL >= 8.0.18) — EXECUTA as consultas')
+    parser.add_argument('--so-ciclo', action='store_true',
+                        help='só as buscas que dependem do ciclo de vida (janela efetiva, imagem, recinto, estágio)')
+    parser.add_argument('--sem-familia', action='store_true',
+                        help='liga contêiner e ciclo só pelo CE gravado no ciclo (sem ciclodevida_ciclo_ce), '
+                             'para comparar o custo da ligação pela família')
     args = parser.parse_args()
+    if args.sem_familia:
+        busca_navii.LIGACAO_FAMILIA = False
     if bool(args.inicio) != bool(args.fim):
         parser.error('--inicio e --fim precisam vir juntos')
 
@@ -388,11 +408,14 @@ def main():
         diag = Diagnostico(engine, saida, analyze=args.analyze)
         diag.escreve(f'Diagnóstico de SQL do NAVI-I — gerado em {datetime.now():%Y-%m-%d %H:%M:%S}')
         diag.escreve(f'Banco: {engine.url.render_as_string(hide_password=True)}')
+        diag.escreve(f'Ligação pela família do CE (ciclodevida_ciclo_ce): '
+                     f'{"SIM" if busca_navii.LIGACAO_FAMILIA else "NÃO (--sem-familia)"}')
         diag.secao_versao()
         diag.secao_tabelas()
         if args.amostras:
             diag.secao_amostras()
-        diag.secao_buscas(session, {'efetiva': periodo, 'prevista': periodo})
+        diag.secao_buscas(session, {'efetiva': periodo, 'prevista': periodo},
+                          CENARIOS_CICLO if args.so_ciclo else CENARIOS)
         diag.secao_enriquecimento(session)
         diag.secao_resumo()
     print(f'Diagnóstico gravado em {args.saida}')

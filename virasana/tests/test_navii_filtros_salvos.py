@@ -103,8 +103,8 @@ class TestFiltrosSalvos(unittest.TestCase):
         self.assertEqual(salvo['nome'], 'eletrônicos da China')
         self.assertEqual(salvo['filtros'], {
             'ncm': ['847130', '8517'], 'porto_escala': ['BRSSZ'], 'produto': 'notebook',
-            'ncms_max': 3, 'concluido': True, 'tipo_bl': ['11', '12'], 'sem_oog': True,
-        })
+            'ncms_max': 3, 'estagio': ['entregue'], 'tipo_bl': ['11', '12'], 'sem_oog': True,
+        })   # o "concluido" antigo vira o estágio "entregue"
 
     def test_validacoes(self):
         for nome, janela, filtros in (('', 'efetiva', {}), ('x' * 61, 'efetiva', {}),

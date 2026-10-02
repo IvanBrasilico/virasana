@@ -72,6 +72,20 @@ def monta_cenario(session):
     session.commit()
 
 
+def cria_t6(session):
+    """T6 (ciclo v2): entrada no EADI deduzida da inspeção, escaneado fora no Ecoporto antes do TRA."""
+    c = CicloDeVidaImportacao(
+        numeroConteiner='T6', numeroCEmercante='CET6', codigoRecintoDesembarque=BTP, codigoRecintoArmazenagem=SECO,
+        data_desembarque=datetime(2026, 3, 1), data_saida=datetime(2026, 3, 1, 20),
+        data_entrada_seco=datetime(2026, 3, 3), entrada_seco_implicita_de='inspecao', concluido=False,
+        situacao='aberto', fluxo='tra', motivo='no recinto seco', versao_heuristica='v2')
+    c.escaneamentos.append(CicloDeVidaImportacaoEscaneamentos(
+        escaneamento_id=606, data_escaneamento=datetime(2026, 3, 2, 18), confianca='media', codigoRecinto='8931318',
+        fora=True, motivo='na passagem pelo operador 8931318 (escaneamento fora)'))
+    session.add(c)
+    session.commit()
+
+
 class CompletudeTestCase(unittest.TestCase):
     def setUp(self):
         self.session = cria_sessao()
@@ -138,6 +152,31 @@ class TestBusca(CompletudeTestCase):
         self.assertIsNone(linhas['T3']['tipo'])
         sem_oog = bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA, sem_oog=True)
         self.assertEqual(sorted(lin['conteiner'] for lin in sem_oog), ['T1', 'T3'])
+
+    def test_operador_no_ciclo_v2_pela_coluna_fluxo(self):
+        """Ciclo v2: baldeação (saiu e embarcou em outro operador) não é entrega pelo operador; o loop antigo
+        a contava, por inferência, depois de 48 h."""
+        operador = dict(codigoRecintoDesembarque=BTP, data_desembarque=datetime(2026, 3, 1), concluido=True,
+                        situacao='concluido', versao_heuristica='v2')
+        ciclo(self.session, 'O5', None, data_saida=datetime(2026, 3, 3), fluxo='baldeacao',
+              data_embarque=datetime(2026, 3, 4), **operador)
+        ciclo(self.session, 'O6', None, data_saida=datetime(2026, 3, 3), fluxo='operador', **operador)
+        self.session.commit()
+        linhas = {r['codigo_recinto']: r for r in bc.agregado(self.session, 'operador', INICIO, FIM, AGORA)}
+        self.assertEqual((linhas[BTP]['total'], linhas[BTP]['sem_escaneamento']), (3, 2))   # O1, O2 e O6
+        conteineres = {lin['conteiner'] for lin in bc.detalhe(self.session, 'operador', BTP, INICIO, FIM, AGORA)}
+        self.assertEqual(conteineres, {'O1', 'O2', 'O6'})
+
+    def test_detalhe_com_situacao_entrada_implicita_e_escaneamento_fora(self):
+        cria_t6(self.session)
+        t6 = next(lin for lin in bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA) if lin['conteiner'] == 'T6')
+        self.assertEqual((t6['estagio']['rotulo'], t6['situacao'], t6['motivo'], t6['entrada_implicita']),
+                         ('Em recinto seco', 'aberto', 'no recinto seco', 'inspecao'))
+        [escaneamento] = t6['escaneamentos']
+        self.assertEqual((escaneamento['recinto'], escaneamento['confianca'], escaneamento['fora']),
+                         ('8931318', 'media', True))
+        t1 = next(lin for lin in bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA) if lin['conteiner'] == 'T1')
+        self.assertEqual((t1['estagio']['codigo'], t1['situacao']), ('entregue', None))   # loop antigo
 
     def test_fluxo_invalido(self):
         with self.assertRaises(ValueError):
@@ -206,8 +245,17 @@ class TestTela(CompletudeTestCase):
                          fim='2026-03-07')
         self.assertIn('O1', html)
         self.assertNotIn('Entrada no seco', html)
+        self.assertIn('Situação', html)
         self.assertEqual(self.client.get(f'/completude_escaneamentos/recinto/{BTP}?fluxo=xpto').status_code, 404)
         self.assertEqual(self.client.get(f'/completude_escaneamentos/recinto/{BTP}?inicio=x').status_code, 400)
+
+    def test_detalhe_v2(self):
+        cria_t6(self.session)
+        html = self.html(f'/completude_escaneamentos/recinto/{SECO}', fluxo='tra', inicio='2026-03-01',
+                         fim='2026-03-07')
+        for trecho in ('T6', 'implícita (inspeção)', 'Em recinto seco', 'no recinto seco', '>fora</span>',
+                       '8931318 · confiança média', 'Entregue'):
+            self.assertIn(trecho, html)
 
 
 if __name__ == '__main__':

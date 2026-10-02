@@ -21,11 +21,13 @@ Cenário (período de teste 2026-01-05 a 2026-01-15):
 """
 import unittest
 from datetime import datetime
+from unittest import mock
 
 from flask import Flask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from virasana.navii import busca_navii
 from virasana.navii.busca_navii import (
     busca_ces_navii, busca_ciclos_navii, busca_familias_navii, busca_manifestos_navii,
     busca_nomes_recintos, conta_conteineres_navii, monta_cards_navii,
@@ -34,7 +36,7 @@ from virasana.navii.busca_navii import (
 # Importados depois de busca_navii, que já ajusta o sys.path para o repo
 # irmão bhadrasana2/ajna_commons (ver virasana/navii/busca_navii.py).
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
-    CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
+    CicloDeVidaCE, CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
 )
 from virasana.integracao.mercante.mercantealchemy import (
     Conhecimento, Enumerado, Escala, EscalaManifesto, Item, Manifesto, NCMItem,
@@ -47,7 +49,7 @@ PERIODO = {'data_inicio': '2026-01-05', 'data_fim': '2026-01-15'}
 
 TABELAS = [
     Enumerado, Escala, EscalaManifesto, Manifesto, Conhecimento, Item, NCMItem,
-    CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
+    CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, CicloDeVidaCE,
     Empresa, EmbarqueDesembarque,   # desembarque: tipo do contêiner na completude
 ]
 
@@ -553,6 +555,126 @@ class TestFamiliaTiposDeBLETipoDeConteiner(NaviiSqliteTestCase):
         self.assertEqual(normaliza_filtros({'tipo_bl': ' 11, x12 '})['tipo_bl'], ['11', '12'])
 
 
+class TestCicloV2(NaviiSqliteTestCase):
+    """Ciclo de vida v2: master VM e filhote VF, os dois com o contêiner C9 nos itens, no manifesto M2 (escala FORA
+    do período). O ciclo foi gravado com o filhote (CE principal) e a família em `ciclodevida_ciclo_ce`:
+    desembarque 12/01 na BTP, saída, entrada IMPLÍCITA no EADI (deduzida da inspeção), escaneado fora no
+    Ecoporto (passagem antes do TRA, sem imagem) e no EADI (com imagem) — aberto, em recinto seco."""
+
+    def setUp(self):
+        super().setUp()
+        self.session.add_all([
+            Conhecimento(numeroCEmercante='VM', manifestoCE='M2', tipoBLConhecimento='11', tipoTrafego='5'),
+            Conhecimento(numeroCEmercante='VF', numeroCEMaster='VM', manifestoCE='M2', tipoBLConhecimento='12',
+                         tipoTrafego='5'),
+            Item(numeroCEmercante='VM', codigoConteiner='C9'),
+            Item(numeroCEmercante='VF', codigoConteiner='C9'),
+        ])
+        self.ciclo = CicloDeVidaImportacao(
+            numeroCEmercante='VF', numeroConteiner='C9', data_desembarque=datetime(2026, 1, 12, 8),
+            codigoRecintoDesembarque='8931356', data_saida=datetime(2026, 1, 12, 20),
+            data_entrada_seco=datetime(2026, 1, 13, 9), codigoRecintoArmazenagem='8932000',
+            entrada_seco_implicita_de='inspecao', concluido=False, situacao='aberto', fluxo='tra',
+            motivo='no recinto seco', confianca_ce='alta', versao_heuristica='v2')
+        self.ciclo.escaneamentos.extend([
+            CicloDeVidaImportacaoEscaneamentos(
+                escaneamento_id=91, data_escaneamento=datetime(2026, 1, 13, 10), imagem_id='5f0000000000000000000009',
+                confianca='alta', codigoRecinto='8932000', fora=False, motivo='no recinto da etapa (entrada implícita)'),
+            CicloDeVidaImportacaoEscaneamentos(
+                escaneamento_id=90, data_escaneamento=datetime(2026, 1, 12, 22), confianca='media',
+                codigoRecinto='8931318', fora=True,
+                motivo='na passagem pelo operador 8931318 (escaneamento fora)'),
+        ])
+        self.session.add(self.ciclo)
+        self.session.flush()
+        self.session.add_all([
+            CicloDeVidaCE(ciclo_de_vida_id=self.ciclo.ID, numeroCEmercante='VF', papel='filhote', principal=True,
+                          confianca='alta'),
+            CicloDeVidaCE(ciclo_de_vida_id=self.ciclo.ID, numeroCEmercante='VM', papel='master', principal=False,
+                          confianca='alta'),
+        ])
+        self.session.commit()
+
+    def pares(self, tipo_janela='efetiva', **filtros):
+        resultado = busca_ces_navii(self.session, tipo_janela, {**PERIODO, **filtros}, limit=50)
+        return {(r.item.numeroCEmercante, r.item.codigoConteiner) for r in resultado}
+
+    def cards(self, **filtros):
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, **filtros}, limit=50)
+        return {(c['numeroCEmercante'], c['numeroConteiner']): c for c in monta_cards_navii(self.session, resultados)}
+
+    def test_janela_efetiva_acha_o_card_do_master_pela_familia(self):
+        self.assertTrue({('VM', 'C9'), ('VF', 'C9')} <= self.pares())
+        self.assertEqual(self.total(), 6)
+        with mock.patch.object(busca_navii, 'LIGACAO_FAMILIA', False):
+            self.assertIn(('VF', 'C9'), self.pares())
+            self.assertNotIn(('VM', 'C9'), self.pares())   # o ciclo é do filhote; a escala está fora
+
+    def test_desembarque_pela_familia_fora_do_periodo_nao_cai_na_atracacao_prevista(self):
+        self.session.query(Conhecimento).filter(Conhecimento.numeroCEmercante.in_(['VM', 'VF'])).update(
+            {'manifestoCE': 'M1'}, synchronize_session=False)   # escala no período
+        self.ciclo.data_desembarque = datetime(2026, 2, 25)
+        self.session.commit()
+        self.assertFalse({('VM', 'C9'), ('VF', 'C9')} & self.pares())
+        with mock.patch.object(busca_navii, 'LIGACAO_FAMILIA', False):
+            self.assertEqual({('VM', 'C9'), ('VF', 'C9')} & self.pares(), {('VM', 'C9')})
+
+    def test_filtros_do_ciclo_valem_para_a_familia(self):
+        self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VM', 'C9'), ('VF', 'C9')})
+        self.assertEqual(self.pares(recinto='8932000'), {('CE3', 'C4'), ('VM', 'C9'), ('VF', 'C9')})
+        self.assertEqual(self.pares(estagio='no_seco'), {('VM', 'C9'), ('VF', 'C9')})
+        self.assertEqual(self.total(com_imagem=True), 3)
+        with mock.patch.object(busca_navii, 'LIGACAO_FAMILIA', False):
+            self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VF', 'C9')})
+
+    def test_estagios(self):
+        self.assertEqual(self.pares(estagio=['entregue']), {('CE1', 'C1')})   # ciclo antigo concluído
+        self.assertEqual(self.pares(concluido=True), {('CE1', 'C1')})          # filtro antigo = entregue
+        self.assertEqual(self.pares(estagio=['entregue', 'no_seco']), {('CE1', 'C1'), ('VM', 'C9'), ('VF', 'C9')})
+        self.assertEqual(self.pares(estagio=['no_operador', 'em_transito', 'embarcado', 'incompleto']), set())
+        self.ciclo.data_entrada_seco = None
+        self.session.commit()
+        self.assertEqual(self.pares(estagio='em_transito'), {('VM', 'C9'), ('VF', 'C9')})
+
+    def test_normaliza_estagio_e_filtro_antigo(self):
+        self.assertEqual(normaliza_filtros({'estagio': 'NO_SECO, xyz'})['estagio'], ['no_seco'])
+        self.assertNotIn('estagio', normaliza_filtros({'estagio': 'xyz'}))
+        self.assertEqual(normaliza_filtros({'concluido': True}), {'estagio': ['entregue']})
+        self.assertEqual(normaliza_filtros({'concluido': True, 'estagio': ['no_seco']})['estagio'],
+                         ['no_seco', 'entregue'])
+        self.assertEqual(normaliza_filtros({'concluido': False}), {})
+
+    def test_card_v2_com_estagio_entrada_implicita_e_escaneamentos(self):
+        card = self.cards()[('VM', 'C9')]
+        self.assertEqual(card['cicloPorCE'], 'VF')
+        self.assertEqual((card['estagio']['codigo'], card['estagio']['rotulo'], card['concluido']),
+                         ('no_seco', 'Em recinto seco', False))
+        self.assertEqual((card['situacao'], card['fluxo'], card['motivo']), ('aberto', 'tra', 'no recinto seco'))
+        self.assertEqual(card['linhaDoTempo']['entradaRecintoSeco']['implicita'], 'inspecao')
+        self.assertIsNone(card['linhaDoTempo']['embarque']['data'])
+        fora, eadi = card['escaneamentos']   # em ordem de data
+        self.assertEqual((fora['recinto'], fora['confianca'], fora['fora'], fora['temImagem']),
+                         ('8931318', 'media', True, False))
+        self.assertEqual((eadi['nomeRecinto'], eadi['confianca'], eadi['fora'], eadi['temImagem']),
+                         ('EADI SANTOS', 'alta', False, True))
+        self.assertEqual(card['imagens_ids'], ['5f0000000000000000000009'])
+
+    def test_card_do_ciclo_antigo(self):
+        card = self.cards()[('CE1', 'C1')]
+        self.assertEqual((card['estagio']['codigo'], card['concluido']), ('entregue', True))
+        self.assertEqual((card['situacao'], card['motivo']), (None, None))
+        self.assertEqual([e['confianca'] for e in card['escaneamentos']], [None, None])
+        self.assertIsNone(self.cards()[('CE1', 'C2')]['estagio'])   # sem ciclo
+
+    def test_card_com_embarque(self):
+        self.ciclo.situacao, self.ciclo.fluxo, self.ciclo.data_embarque = 'concluido', 'passagem', datetime(2026, 1, 14)
+        self.ciclo.data_entrada_seco = None
+        self.session.commit()
+        card = self.cards()[('VF', 'C9')]
+        self.assertEqual((card['estagio']['codigo'], card['concluido']), ('embarcado', False))
+        self.assertEqual(card['linhaDoTempo']['embarque']['data'], datetime(2026, 1, 14))
+
+
 class TestTabelaRecintos(unittest.TestCase):
     """A tabela leve do NAVI-I tem que continuar batendo com o model real do bhadrasana2."""
 
@@ -596,6 +718,7 @@ class TestApiCes(NaviiSqliteTestCase):
         self.assertEqual(dados['total'], 1)
         self.assertEqual(dados['cards'][0]['numeroConteiner'], 'C1')
         self.assertEqual(dados['cards'][0]['linhaDoTempo']['desembarque']['data'], '2026-01-11 08:00:00')
+        self.assertEqual(dados['cards'][0]['escaneamentos'][0]['data'], '2026-01-11 10:00:00')   # dentro da lista
 
     def test_filtro_porto_escala(self):
         self.assertEqual(self.get(porto_escala='BRSSZ').get_json()['total'], 4)
@@ -609,6 +732,14 @@ class TestApiCes(NaviiSqliteTestCase):
 
     def test_janela_invalida_400(self):
         self.assertEqual(self.get(tipo_janela='xyz').status_code, 400)
+
+    def test_estagio_e_concluido_antigo_pela_api(self):
+        dados = self.get(estagio='entregue').get_json()
+        self.assertEqual((dados['total'], dados['cards'][0]['estagio']['rotulo']), (1, 'Entregue'))
+        self.assertEqual(self.get(concluido='1').get_json()['total'], 1)
+        self.assertEqual(self.client.get('/navii/api/ces', query_string=[
+            ('data_inicio', PERIODO['data_inicio']), ('data_fim', PERIODO['data_fim']),
+            ('estagio', 'entregue'), ('estagio', 'no_seco')]).get_json()['total'], 1)
 
     def test_filtros_tipo_bl_e_sem_oog_pela_api(self):
         self.session.add(Conhecimento(numeroCEmercante='CM', manifestoCE='M1', tipoBLConhecimento='11',

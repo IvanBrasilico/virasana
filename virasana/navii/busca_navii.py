@@ -14,17 +14,18 @@ imagem", "entregue ao importador") restringem aos contêineres que o têm.
 
 Suporta filtros sucessivos (NCM, rota, porto de baldeação do manifesto,
 produto na descrição do CE, recinto, tipo de BL — portos, NCM, recinto e tipo de
-BL aceitam lista —, empresa, ciclo concluído/"entregue ao importador",
-quantidade máxima de NCMs distintos, somente com imagem de escaneamento, sem
-contêiner de potencial OOG), contagem total do filtro e paginação por cursor
-(Item.ID decrescente).
+BL aceitam lista —, empresa, estágio do ciclo de vida (no operador, em trânsito,
+em recinto seco, entregue... — ver `estagios_ciclo`), quantidade máxima de NCMs
+distintos, somente com imagem de escaneamento, sem contêiner de potencial OOG),
+contagem total do filtro e paginação por cursor (Item.ID decrescente).
 
 Família do CE (sombra do ciclo de vida, 01–02/10/2026): o contêiner consta nos
 itens do master E do(s) filhote(s), e o ciclo de vida guarda um só desses CEs.
 Por isso o ciclo do card é procurado na FAMÍLIA do CE (o próprio, o master, os
 filhotes e os irmãos), e o card mostra o tipo de BL e os filhotes do master. A
-janela "efetiva" e os filtros que dependem do ciclo ainda ligam pelo CE exato
-(desempenho; a tabela ciclo<->CE do ciclo de vida v2 vai resolver).
+janela "efetiva" e os filtros que dependem do ciclo ligam pelo CE gravado no ciclo
+E, no ciclo de vida v2, por qualquer CE da família (`ciclodevida_ciclo_ce`) — ver
+`LIGACAO_FAMILIA` (02/10/2026).
 A janela de dias (`_janela_previsao`/`_janela_efetiva`) é apenas a *sugestão*
 de período inicial — `data_inicio`/`data_fim` em `filtros` sobrescrevem essa
 sugestão.
@@ -44,6 +45,7 @@ Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
   - Resolução de CPF (bagagens_pessoas) — embarcador/consignatário do
     Conhecimento só guardam CNPJ ou nome estrangeiro, nunca CPF.
 """
+import os
 import re
 import sys
 from datetime import datetime, timedelta
@@ -52,6 +54,7 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 from sqlalchemy import (
     BigInteger, Column, MetaData, Table, VARCHAR, and_, func, join, literal, not_, or_, select, union,
 )
+from sqlalchemy.orm import selectinload, undefer_group
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -61,8 +64,9 @@ from virasana.integracao.mercante.mercantealchemy import (
     Conhecimento, Enumerado, Escala, EscalaManifesto, Item, Manifesto, NCMItem,
 )
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
-    CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, logger,
+    CicloDeVidaCE, CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, logger,
 )
+from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from bhadrasana.models.laudo import Empresa
 from virasana.navii import referencias
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
@@ -99,10 +103,18 @@ TIPO_TRAFEGO_EXPORTACAO = '7'
 # futuro virá da unidade/equipe de trabalho do usuário logado.
 PORTO_ESCALA_PADRAO = 'BRSSZ'
 
+# Ligação contêiner <-> ciclo de vida também pela FAMÍLIA do CE (`ciclodevida_ciclo_ce`, ciclo de vida v2): a
+# janela "efetiva" e os filtros do ciclo passam a achar o card do master quando o ciclo foi gravado com o
+# filhote (e vice-versa). Custa um segundo acesso indexado por candidato quando o primeiro não acha. Para
+# medir/desligar sem mudar o código: NAVII_LIGACAO_FAMILIA=0 (ver diagnostico_sql.py --sem-familia).
+LIGACAO_FAMILIA = os.environ.get('NAVII_LIGACAO_FAMILIA', '1') != '0'
+
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
-CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl')
-# Filtros de marcar (sim/não)
+CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
+                'estagio')
+# Filtros de marcar (sim/não). `concluido` é o filtro antigo "entregue ao importador" (links e filtros salvos
+# antigos): `normaliza_filtros` o converte no estágio "entregue".
 CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
 _CAMPOS_PORTO = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao')
 
@@ -150,11 +162,28 @@ def _periodo_navii(tipo_janela: str, filtros: dict) -> Tuple[str, str]:
 
 
 def _mesmo_conteiner_do_ciclo():
-    """Critério de ligação Item (contêiner declarado) <-> CicloDeVidaImportacao."""
+    """Critério de ligação Item (contêiner declarado) <-> CicloDeVidaImportacao pelo CE gravado no ciclo."""
     return and_(
         CicloDeVidaImportacao.numeroCEmercante == Item.numeroCEmercante,
         CicloDeVidaImportacao.numeroConteiner == Item.codigoConteiner,
     )
+
+
+def _mesmo_conteiner_pela_familia():
+    """Ligação Item <-> ciclo por QUALQUER CE da família gravada pelo ciclo de vida v2 (origem
+    `_CICLO_E_FAMILIA`): o card do master acha o ciclo gravado com o filhote, e vice-versa."""
+    return and_(
+        CicloDeVidaCE.numeroCEmercante == Item.numeroCEmercante,
+        CicloDeVidaImportacao.numeroConteiner == Item.codigoConteiner,
+    )
+
+
+_CICLO_E_FAMILIA = join(CicloDeVidaCE, CicloDeVidaImportacao,
+                        CicloDeVidaCE.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
+_CICLO_E_ESCANEAMENTOS = join(CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
+                              CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
+_FAMILIA_E_ESCANEAMENTOS = join(_CICLO_E_FAMILIA, CicloDeVidaImportacaoEscaneamentos,
+                                CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
 
 
 def _existe(origem, *criterios):
@@ -172,9 +201,18 @@ def _existe(origem, *criterios):
     return select(literal(1)).select_from(origem).where(*criterios).limit(1).scalar_subquery().isnot(None)
 
 
-def _existe_ciclo(*criterios, origem=CicloDeVidaImportacao):
-    """`_existe` para o ciclo de vida do contêiner (mesmo CE e contêiner)."""
-    return _existe(origem, _mesmo_conteiner_do_ciclo(), *criterios)
+def _existe_ciclo(*criterios, escaneamentos: bool = False):
+    """`_existe` para o ciclo de vida do contêiner: pelo CE gravado no ciclo (ciclos antigos e v2) OU, com
+    `LIGACAO_FAMILIA`, por qualquer CE da família (v2). São dois acessos indexados por candidato — o segundo
+    (`ix_ciclo_ce_ce`) só conta quando o primeiro não acha. `escaneamentos`: os critérios também olham os
+    escaneamentos do ciclo."""
+    direto = _existe(_CICLO_E_ESCANEAMENTOS if escaneamentos else CicloDeVidaImportacao,
+                     _mesmo_conteiner_do_ciclo(), *criterios)
+    if not LIGACAO_FAMILIA:
+        return direto
+    pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
+                           _mesmo_conteiner_pela_familia(), *criterios)
+    return or_(direto, pela_familia)
 
 
 def _lista_de_codigos(valor) -> List[str]:
@@ -192,8 +230,11 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
     """Padroniza o que o usuário digitou: os campos de CAMPOS_LISTA viram
     listas sem repetição, códigos de porto em maiúsculas e NCM só com dígitos
     (a base guarda '84713012'; o usuário pode digitar '8471.30.12'). Sem isso,
-    'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro."""
+    'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro.
+    Estágios desconhecidos são descartados; o filtro antigo `concluido` vira o estágio "entregue"."""
     filtros = dict(filtros or {})
+    if filtros.pop('concluido', None):
+        filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
     for campo in CAMPOS_LISTA:
         if campo not in filtros:
             continue
@@ -203,6 +244,8 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
                 codigo = codigo.upper()
             elif campo in ('ncm', 'tipo_bl'):
                 codigo = re.sub(r'\D', '', codigo)
+            elif campo == 'estagio':
+                codigo = codigo.lower() if codigo.lower() in estagios_ciclo.ESTAGIOS else ''
             if codigo and codigo not in codigos:
                 codigos.append(codigo)
         if codigos:
@@ -257,14 +300,20 @@ def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto=None):
     )
 
 
-def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime):
-    """IDs de Item cujo ciclo de vida registra desembarque do contêiner no período."""
-    return (
-        select(Item.ID.label('item_id'))
-        .select_from(CicloDeVidaImportacao)
-        .join(Item, _mesmo_conteiner_do_ciclo())
-        .where(CicloDeVidaImportacao.data_desembarque.between(inicio, fim))
-    )
+def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime) -> list:
+    """Consultas dos IDs de Item cujo ciclo de vida registra desembarque do contêiner no período: pelo CE
+    gravado no ciclo e, com `LIGACAO_FAMILIA`, pelos OUTROS CEs da família (o principal já é o do ciclo).
+    Partem dos ciclos do período (índice de data) — a família entra pela chave única (ciclo, CE)."""
+    no_periodo = CicloDeVidaImportacao.data_desembarque.between(inicio, fim)
+    consultas = [select(Item.ID.label('item_id')).select_from(CicloDeVidaImportacao)
+                 .join(Item, _mesmo_conteiner_do_ciclo()).where(no_periodo)]
+    if LIGACAO_FAMILIA:
+        consultas.append(
+            select(Item.ID.label('item_id')).select_from(CicloDeVidaImportacao)
+            .join(CicloDeVidaCE, CicloDeVidaCE.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
+            .join(Item, _mesmo_conteiner_pela_familia())
+            .where(no_periodo, CicloDeVidaCE.principal.is_(False)))
+    return consultas
 
 
 def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
@@ -309,7 +358,7 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
         )
     )
     janela = union(
-        _itens_com_desembarque_efetivo(inicio_dt, fim_dt),
+        *_itens_com_desembarque_efetivo(inicio_dt, fim_dt),
         itens_pela_atracacao_prevista,
     ).subquery('janela')
     return q.join(janela, janela.c.item_id == Item.ID)
@@ -356,8 +405,9 @@ def monta_query_navii(
               10 BL único, 11 MBL master, 12 HBL house, 15 MHBL — ver referencias)
             - sem_oog (bool): exclui os contêineres de potencial OOG (open top e
               plataforma/flat rack, pelo Item.isoCode — podem não passar no escâner)
-            - concluido (bool): só contêineres com ciclo de vida concluído
-              ("entregue ao importador") — exige ciclo de vida
+            - estagio (str | lista): estágio do contêiner no ciclo de vida (no_operador, em_transito,
+              no_seco, entregue, embarcado, incompleto — ver `estagios_ciclo`) — exige ciclo de vida.
+              `concluido` (bool, filtro antigo) = estágio "entregue".
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
               ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
             - com_imagem (bool): equivalente a `exigir_escaneamento=True`
@@ -423,13 +473,7 @@ def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
     """Filtros em outras tabelas (imagem, NCM, recinto, entregue, qtde. de
     NCMs), verificados por candidato da janela com `_existe`/subquery."""
     if exigir_escaneamento or filtros.get('com_imagem'):
-        q = q.filter(_existe_ciclo(
-            CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None),
-            origem=join(
-                CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
-                CicloDeVidaImportacaoEscaneamentos.ciclo_de_vida_id == CicloDeVidaImportacao.ID,
-            ),
-        ))
+        q = q.filter(_existe_ciclo(CicloDeVidaImportacaoEscaneamentos.imagem_id.isnot(None), escaneamentos=True))
 
     if filtros.get('ncm'):
         q = q.filter(_existe(
@@ -449,8 +493,8 @@ def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
             CicloDeVidaImportacao.codigoRecintoArmazenagem.in_(recintos),
         )))
 
-    if filtros.get('concluido'):
-        q = q.filter(_existe_ciclo(CicloDeVidaImportacao.concluido.is_(True)))
+    if filtros.get('estagio'):
+        q = q.filter(_existe_ciclo(or_(*[estagios_ciclo.criterio(e) for e in filtros['estagio']])))
 
     if filtros.get('ncms_max'):
         # Subquery correlacionada por CE (usa ix_ncmitem_chave) — em vez de
@@ -591,6 +635,7 @@ def busca_ciclos_navii(session, itens: List[Item],
     ces = {ce for ce, _ in pares} | {c for ce, _ in pares for c in familias.get(ce, ())}
     por_chave = {}
     for ciclo in (session.query(CicloDeVidaImportacao)
+                  .options(undefer_group('v2'), selectinload(CicloDeVidaImportacao.escaneamentos).undefer_group('v2'))
                   .filter(CicloDeVidaImportacao.numeroConteiner.in_({c for _, c in pares}),
                           CicloDeVidaImportacao.numeroCEmercante.in_(ces))
                   .order_by(CicloDeVidaImportacao.ID)):
@@ -844,6 +889,48 @@ def _dados_tipo_conteiner(item: Optional[Item]) -> dict:
     return {'isoCode': iso_code, 'tipoConteiner': referencias.tipo_conteiner(iso_code)}
 
 
+def _linha_do_tempo(ciclo: Optional[CicloDeVidaImportacao], nomes_recintos: Dict[str, str]) -> dict:
+    """Etapas do ciclo (API Recintos) — cada uma com data None quando o evento ainda não ocorreu ("se
+    houver") ou não há ciclo. v2: entrada no seco implícita (deduzida de inspeção/pesagem: `implicita`) e
+    embarque (passagem/baldeação)."""
+    def etapa(data_attr: str, recinto_attr: Optional[str] = None) -> dict:
+        codigo = getattr(ciclo, recinto_attr) if ciclo and recinto_attr else None
+        return {'data': getattr(ciclo, data_attr) if ciclo else None, 'recinto': codigo,
+                'nomeRecinto': nomes_recintos.get(codigo)}
+
+    return {
+        'desembarque': etapa('data_desembarque', 'codigoRecintoDesembarque'),
+        'saida': etapa('data_saida', 'codigoRecintoDesembarque'),
+        'entradaRecintoSeco': {**etapa('data_entrada_seco', 'codigoRecintoArmazenagem'),
+                               'implicita': ciclo.entrada_seco_implicita_de if ciclo else None},
+        'saidaRecintoSeco': etapa('data_saida_seco', 'codigoRecintoArmazenagem'),
+        'embarque': etapa('data_embarque'),
+    }
+
+
+def _escaneamentos_do_card(ciclo: Optional[CicloDeVidaImportacao], nomes_recintos: Dict[str, str]) -> List[dict]:
+    """Escaneamentos ligados ao ciclo, em ordem de data; v2: recinto, confiança, motivo e escaneamento fora
+    (terceirizado, antes do TRA). Ciclos antigos só têm a data e a imagem."""
+    if ciclo is None:
+        return []
+    return [{'data': e.data_escaneamento, 'recinto': e.codigoRecinto,
+             'nomeRecinto': nomes_recintos.get(e.codigoRecinto),
+             'confianca': e.confianca, 'motivo': e.motivo, 'fora': bool(e.fora), 'temImagem': e.imagem_id is not None}
+            for e in sorted(ciclo.escaneamentos, key=lambda e: e.data_escaneamento or datetime.min)]
+
+
+def _dados_situacao(ciclo: Optional[CicloDeVidaImportacao]) -> dict:
+    """Estágio (para o selo e o filtro), situação/fluxo/motivo da v2 e `concluido` = entregue ao importador."""
+    estagio = estagios_ciclo.estagio_do_ciclo(ciclo)
+    return {
+        'concluido': estagio == estagios_ciclo.ENTREGUE,
+        'estagio': estagios_ciclo.descreve(estagio),
+        'situacao': ciclo.situacao if ciclo else None,
+        'fluxo': ciclo.fluxo if ciclo else None,
+        'motivo': ciclo.motivo if ciclo else None,
+    }
+
+
 def monta_card_navii(
     ciclo: Optional[CicloDeVidaImportacao],
     conhecimento: Conhecimento,
@@ -861,7 +948,9 @@ def monta_card_navii(
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
     tempo do ciclo de vida (API Recintos) e as referências às imagens de
-    escaneamento (já carregadas via `ciclo.escaneamentos`, lazy='selectin').
+    escaneamento (já carregadas via `ciclo.escaneamentos`, lazy='selectin'). Do ciclo de vida
+    v2 (colunas carregadas por `busca_ciclos_navii`): estágio, situação/motivo, entrada no seco
+    implícita, embarque e os escaneamentos com recinto, confiança e "fora".
 
     `ciclo` pode ser None: o contêiner foi declarado no CE mas o ciclo de vida
     não foi localizado (ainda não desembarcou, ou a API Recintos não trouxe os
@@ -891,14 +980,6 @@ def monta_card_navii(
             'portoDescarregamento': manifesto.portoDescarregamento,
             'nomePortoDescarregamento': referencias.descreve_porto(manifesto.portoDescarregamento),
             'numeroViagem': manifesto.numeroViagem,
-        }
-
-    def etapa(data_attr: str, recinto_attr: str) -> dict:
-        codigo = getattr(ciclo, recinto_attr) if ciclo else None
-        return {
-            'data': getattr(ciclo, data_attr) if ciclo else None,
-            'recinto': codigo,
-            'nomeRecinto': nomes_recintos.get(codigo),
         }
 
     terminal = manifesto.codigoTerminalDescarregamento if manifesto is not None else None
@@ -935,16 +1016,9 @@ def monta_card_navii(
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
         'conteineres': itens['conteineres'],
-        'concluido': bool(ciclo and ciclo.concluido),
-        # Linha do tempo do ciclo de vida (API Recintos) — cada etapa pode ser
-        # None quando o evento ainda não ocorreu ("se houver") ou quando não
-        # há ciclo de vida para o contêiner.
-        'linhaDoTempo': {
-            'desembarque': etapa('data_desembarque', 'codigoRecintoDesembarque'),
-            'saida': etapa('data_saida', 'codigoRecintoDesembarque'),
-            'entradaRecintoSeco': etapa('data_entrada_seco', 'codigoRecintoArmazenagem'),
-            'saidaRecintoSeco': etapa('data_saida_seco', 'codigoRecintoArmazenagem'),
-        },
+        **_dados_situacao(ciclo),
+        'linhaDoTempo': _linha_do_tempo(ciclo, nomes_recintos),
+        'escaneamentos': _escaneamentos_do_card(ciclo, nomes_recintos),
     }
 
 
@@ -960,7 +1034,8 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
     nomes_recintos = busca_nomes_recintos(
         session,
         [c for r in resultados if r.ciclo
-         for c in (r.ciclo.codigoRecintoDesembarque, r.ciclo.codigoRecintoArmazenagem)],
+         for c in (r.ciclo.codigoRecintoDesembarque, r.ciclo.codigoRecintoArmazenagem,
+                   *(e.codigoRecinto for e in r.ciclo.escaneamentos))],
     )
     nomes_terminais = busca_nomes_recintos(
         session,

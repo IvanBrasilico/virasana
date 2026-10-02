@@ -363,6 +363,26 @@ Em 02/10/2026 (pedido do usuário — tipos de contêiner/BL e família do CE):
   Os dois são salvos nos filtros do usuário (`CAMPOS_MARCAVEIS`).
 - Testado também no navegador (servidor de demonstração com dados simulados).
 
+Em 02/10/2026 (ciclo de vida v2 em produção; decisões do usuário):
+- **Família do CE na janela e nos filtros** (pendência 3a): `_existe_ciclo` = ciclo pelo CE gravado OU
+  (`LIGACAO_FAMILIA`) por qualquer CE da família em `ciclodevida_ciclo_ce` (dois `_existe`, o segundo
+  pelo `ix_ciclo_ce_ce`); a janela "efetiva" ganhou um terceiro ramo no `UNION` (ciclos do período ->
+  `ciclo_ce` não principal -> `Item`). O "sem desembarque localizado" também considera a família.
+  **Preocupação do usuário: desempenho** (milhões de CEs). Desliga sem mudar código com
+  `NAVII_LIGACAO_FAMILIA=0`; medir com `diagnostico_sql.py --analyze --so-ciclo` com e sem
+  `--sem-familia` ANTES de reiniciar a aplicação em produção. Ainda NÃO medido.
+- **Filtro de estágio** (`estagio`, lista; `estagios_ciclo.py`): no operador, em trânsito, em recinto
+  seco, entregue, reembarcado, incompleto/abandono. Decisão do usuário: "concluído" = **entregue**
+  (concluído no operador ou no TRA), com as outras opções para ver cargas em vários estágios. O
+  `concluido` antigo (links/filtros salvos) vira o estágio "entregue" em `normaliza_filtros`. Ciclos
+  antigos (sem `situacao`) só entram em "entregue" (`concluido`).
+- **Card**: selo = estágio (com a descrição no `title`); situação + motivo; entrada no seco implícita;
+  etapa de embarque (passagem/baldeação); escaneamentos com recinto, confiança, motivo e "fora".
+- As colunas v2 estão no ORM (`ciclo_de_vida.py`) como `deferred(group='v2')` — as telas antigas e o
+  loop antigo não as selecionam; quem mostra usa `undefer_group('v2')`. `CicloDeVidaCE` mapeia a
+  `ciclodevida_ciclo_ce`. `test_estagios_ciclo` confere ORM x tabelas do serviço e SQL x Python dos
+  estágios.
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
@@ -381,10 +401,10 @@ Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amost
    `analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md`): o contêiner consta nos itens do CE master E do
    filhote; o ciclo guarda um só CE (36% das vezes o master) e o NAVI-I liga card↔ciclo pelo CE exato
    (`_mesmo_conteiner_do_ciclo`) — o card do filhote (importador real) fica sem ciclo/imagem.
-   **Resolvido no card em 02/10/2026** (ciclo procurado na família). Falta: a janela "efetiva" e os
-   filtros que dependem do ciclo ainda ligam pelo CE exato — o card do filhote só entra pela data
-   prevista. Resolver com a tabela ciclo↔CE do ciclo de vida v2 (`ddl_ciclo_de_vida_v2.sql`), sem
-   mexer no plano de execução da janela.
+   **Resolvido no card em 02/10/2026** (ciclo procurado na família) e, no mesmo dia, **na janela
+   "efetiva" e nos filtros** pela `ciclodevida_ciclo_ce` (ciclos v2). Falta MEDIR o custo em produção
+   (`diagnostico_sql.py --so-ciclo` com e sem `--sem-familia`). Ciclos antigos continuam ligados só
+   pelo CE gravado.
 3. **Ciclos sem CE**: avaliar se vale casar ciclo e Item só pelo contêiner + proximidade de data
    quando o CE do ciclo está vazio (não feito: risco de casar contêiner reutilizado).
 4. **Ponte recinto ↔ terminal do manifesto**: abandonada por decisão do usuário (decisão 4). As

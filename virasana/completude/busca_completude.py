@@ -12,11 +12,15 @@ caminhos que o contêiner pode seguir depois do desembarque:
   - Operador (desembaraço no porto): desembarque -> escaneamento -> saída,
     tudo no operador. Universo: ciclos CONCLUÍDOS, SEM entrada no seco e com
     SAÍDA no período, por operador (`codigoRecintoDesembarque`). É a "entrega
-    pelo operador" que o loop do ciclo de vida já infere (sem entrada no seco
-    até HORAS_TRANSIT_TIME depois da saída — ver manager_ciclo_de_vida).
+    pelo operador": no ciclo de vida v2, pela coluna `fluxo` = operador (fora
+    passagem/baldeação, que embarcam de novo); nos ciclos do loop antigo (sem
+    `fluxo`), inferida (sem entrada no seco até HORAS_TRANSIT_TIME depois da saída).
 
 Um ciclo tem escaneamento quando há linha em ..._escaneamentos; tem imagem
-quando alguma dessas linhas tem `imagem_id`. Somente leitura.
+quando alguma dessas linhas tem `imagem_id`. Somente leitura. O detalhe mostra,
+dos ciclos v2, o estágio/situação com o motivo, a entrada no seco implícita
+(deduzida de inspeção/pesagem) e, de cada escaneamento, recinto, confiança e se
+foi "fora" (terceirizado, antes do TRA).
 
 Tipo do contêiner (pedido do usuário, 02/10/2026): vem do evento de DESEMBARQUE
 da API Recintos (`tipoConteiner`, pelo `desembarque_id` do ciclo) — vale também
@@ -28,10 +32,12 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy import and_, case, exists, func, not_, or_, select
+from sqlalchemy.orm import selectinload, undefer_group
 
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao as Ciclo, CicloDeVidaImportacaoEscaneamentos as Esc,
 )
+from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo, linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 from virasana.navii import referencias
 from virasana.navii.busca_navii import tabela_recintos
@@ -78,7 +84,7 @@ def _criterios(fluxo: str, inicio: datetime, fim: datetime, agora: Optional[date
                 Ciclo.data_entrada_seco < limite]
     if fluxo == 'operador':
         return [Ciclo.concluido.is_(True), Ciclo.data_entrada_seco.is_(None), Ciclo.data_saida.isnot(None),
-                Ciclo.data_saida.between(inicio, fim)]
+                Ciclo.data_saida.between(inicio, fim), or_(Ciclo.fluxo.is_(None), Ciclo.fluxo == ldt.OPERADOR)]
     _fluxo(fluxo)
 
 
@@ -164,9 +170,10 @@ def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime]
 def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: datetime,
             agora: Optional[datetime] = None, sem_oog: bool = False) -> List[dict]:
     """Ciclos de um recinto no fluxo: uma linha por contêiner, com as datas, o tipo do
-    contêiner e os escaneamentos/imagens (os sem escaneamento primeiro)."""
+    contêiner, o estágio/situação (v2) e os escaneamentos/imagens (os sem escaneamento primeiro)."""
     consulta = (
         session.query(Ciclo, TIPO)
+        .options(undefer_group('v2'), selectinload(Ciclo.escaneamentos).undefer_group('v2'))
         .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
         .filter(_fluxo(fluxo)['recinto'] == codigo_recinto, *_criterios(fluxo, inicio, fim, agora))
     )
@@ -181,7 +188,12 @@ def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: dat
             'conteiner': ciclo.numeroConteiner, 'ce': ciclo.numeroCEmercante,
             'desembarque': ciclo.data_desembarque, 'saida': ciclo.data_saida,
             'entrada_seco': ciclo.data_entrada_seco, 'saida_seco': ciclo.data_saida_seco,
-            'escaneamentos': [{'id': e.escaneamento_id, 'data': e.data_escaneamento, 'imagem_id': e.imagem_id}
+            'entrada_implicita': ciclo.entrada_seco_implicita_de,
+            'estagio': estagios_ciclo.descreve(estagios_ciclo.estagio_do_ciclo(ciclo)),
+            'situacao': ciclo.situacao, 'motivo': ciclo.motivo,
+            'escaneamentos': [{'id': e.escaneamento_id, 'data': e.data_escaneamento, 'imagem_id': e.imagem_id,
+                               'recinto': e.codigoRecinto, 'confianca': e.confianca, 'motivo': e.motivo,
+                               'fora': bool(e.fora)}
                               for e in escaneamentos],
             'imagens': [e.imagem_id for e in escaneamentos if e.imagem_id],
         })

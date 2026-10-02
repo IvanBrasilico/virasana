@@ -221,6 +221,15 @@
         .descricao-bl { display: block; font-size: .6875rem; font-weight: 400; color: #666; }
         .aviso-familia { margin-top: .5rem; font-size: .6875rem; color: #555; }
         .grupo-marcaveis { display: flex; flex-direction: column; gap: .25rem; }
+        .situacao-ciclo { margin-top: .5rem; font-size: .6875rem; color: #555; }
+        .situacao-ciclo strong { color: #1c1c1c; }
+        .etapa-timeline .implicita-etapa { display: block; font-size: .625rem; color: #8A6D00; text-align: center; cursor: help; }
+        .escaneamentos-card {
+            margin-top: .5rem; display: flex; flex-wrap: wrap; gap: .375rem; align-items: center;
+            font-size: .6875rem; color: #555;
+        }
+        .tag-escaneamento { background: #F0F0F0; color: #333; padding: .125rem .5rem; border-radius: 999px; cursor: help; }
+        .tag-escaneamento.fora { background: #FFF5C2; color: #8A6D00; }
 
         .status-navii {
             display: inline-block; font-size: .75rem; font-weight: 700;
@@ -453,9 +462,17 @@
                 <label for="f-com_imagem">Somente com imagem de escaneamento</label>
             </div>
 
-            <div class="campo campo-checkbox">
-                <input id="f-concluido" type="checkbox" />
-                <label for="f-concluido">Somente entregues ao importador</label>
+            <div class="campo">
+                <span class="rotulo-campo">Estágio do ciclo de vida</span>
+                <div class="grupo-marcaveis" id="f-estagio">
+                    {% for estagio in estagios %}
+                    <div class="campo-checkbox">
+                        <input id="f-estagio-{{ estagio.codigo }}" type="checkbox" value="{{ estagio.codigo }}" />
+                        <label for="f-estagio-{{ estagio.codigo }}" title="{{ estagio.descricao }}">{{ estagio.rotulo }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="dica-lista">Nenhum marcado = todos. Marcar algum exige ciclo de vida localizado.</div>
             </div>
 
             <button class="br-button primary block mb-2 mt-3" id="btn-aplicar" type="button">
@@ -523,6 +540,11 @@
     var TIPOS_BL = {{ tipos_bl | tojson }};
     var SIGLAS_BL = {};
     TIPOS_BL.forEach(function (t) { SIGLAS_BL[t.codigo] = t.sigla; });
+    var ESTAGIOS = {{ estagios | tojson }};
+    var ROTULOS_ESTAGIO = {};
+    ESTAGIOS.forEach(function (e) { ROTULOS_ESTAGIO[e.codigo] = e.rotulo; });
+    var CONFIANCA = { alta: 'alta', media: 'média', baixa: 'baixa' };
+    var IMPLICITA = { inspecao: 'inspeção', pesagem: 'pesagem' };
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 
     // Campos com lista de códigos (vale qualquer um) e campos de texto livre
@@ -531,10 +553,10 @@
     var rotulos = {
         porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
-        ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador',
+        ncms_max: 'NCMs distintos ≤', estagio: 'Estágio',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG'
     };
-    var CHECKBOXES = ['concluido', 'com_imagem', 'sem_oog'];
+    var CHECKBOXES = ['com_imagem', 'sem_oog'];
 
     var DICAS_PERIODO = {
         prevista: 'Data prevista de atracação do navio (escala do manifesto do CE).',
@@ -546,7 +568,8 @@
         { chave: 'desembarque', rotulo: 'Desembarque' },
         { chave: 'saida', rotulo: 'Saída do caís' },
         { chave: 'entradaRecintoSeco', rotulo: 'Entrada recinto seco' },
-        { chave: 'saidaRecintoSeco', rotulo: 'Saída recinto seco' }
+        { chave: 'saidaRecintoSeco', rotulo: 'Saída recinto seco' },
+        { chave: 'embarque', rotulo: 'Embarque (passagem/baldeação)', opcional: true }
     ];
 
     var estadoBusca = {
@@ -587,6 +610,17 @@
 
     function marcaTiposBl(codigos) {
         document.querySelectorAll('#f-tipo_bl input').forEach(function (input) {
+            input.checked = codigos.indexOf(input.value) >= 0;
+        });
+    }
+
+    function estagiosMarcados() {
+        return Array.prototype.map.call(
+            document.querySelectorAll('#f-estagio input:checked'), function (input) { return input.value; });
+    }
+
+    function marcaEstagios(codigos) {
+        document.querySelectorAll('#f-estagio input').forEach(function (input) {
             input.checked = codigos.indexOf(input.value) >= 0;
         });
     }
@@ -677,7 +711,9 @@
             var valor = estadoBusca.filtros[chave];
             var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : (chave === 'tipo_bl'
                 ? valor.map(function (c) { return SIGLAS_BL[c] || c; }).join(', ')
-                : (Array.isArray(valor) ? valor.join(', ') : valor));
+                : (chave === 'estagio'
+                    ? valor.map(function (c) { return ROTULOS_ESTAGIO[c] || c; }).join(', ')
+                    : (Array.isArray(valor) ? valor.join(', ') : valor)));
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
@@ -688,6 +724,8 @@
                     document.getElementById('f-' + chave).checked = false;
                 } else if (chave === 'tipo_bl') {
                     marcaTiposBl([]);
+                } else if (chave === 'estagio') {
+                    marcaEstagios([]);
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
@@ -737,8 +775,36 @@
                 '<div class="rotulo-etapa">' + etapa.rotulo + '</div>' +
                 '<div class="data-etapa">' + (dataFormatada || 'Não ocorrido') + '</div>' +
                 '<div class="recinto-etapa">' + montaRecinto(dados) + '</div>' +
+                (dados && dados.implicita
+                    ? '<span class="implicita-etapa" title="O recinto não informou a entrada: deduzida da ' +
+                      escapeAttr(IMPLICITA[dados.implicita] || dados.implicita) + ' no recinto">entrada deduzida (' +
+                      escapeHtml(IMPLICITA[dados.implicita] || dados.implicita) + ')</span>'
+                    : '') +
             '</div>'
         );
+    }
+
+    function montaSituacao(card) {
+        if (!card.motivo) { return ''; }   // só o ciclo de vida v2 tem situação/motivo
+        return '<div class="situacao-ciclo"><i class="fas fa-flag" aria-hidden="true"></i> <strong>' +
+            escapeHtml(card.estagio ? card.estagio.rotulo : 'Situação') + ':</strong> ' + escapeHtml(card.motivo) + '</div>';
+    }
+
+    function montaEscaneamentos(card) {
+        var lista = card.escaneamentos || [];
+        if (!lista.length) { return ''; }
+        var tags = lista.map(function (e) {
+            var texto = (formatarDataHora(e.data) || '--') +
+                (e.recinto ? ' · ' + escapeHtml(e.nomeRecinto || e.recinto) : '') +
+                (e.confianca ? ' · confiança ' + escapeHtml(CONFIANCA[e.confianca] || e.confianca) : '') +
+                (e.fora ? ' · fora' : '');
+            var titulo = [e.recinto ? 'Recinto ' + e.recinto : '', e.motivo || '',
+                          e.fora ? 'escaneado fora, antes da entrada no recinto seco (terceirizado)' : '',
+                          e.temImagem ? 'com imagem' : 'sem imagem'].filter(Boolean).join(' · ');
+            return '<span class="tag-escaneamento' + (e.fora ? ' fora' : '') + '" title="' + escapeAttr(titulo) + '">' +
+                texto + '</span>';
+        }).join('');
+        return '<div class="escaneamentos-card"><span class="rotulo-mini">Escaneamentos</span>' + tags + '</div>';
     }
 
     function montaRecinto(dados) {
@@ -768,7 +834,9 @@
     function montaTimeline(card) {
         if (card.cicloDeVidaLocalizado === false) { return montaAvisoSemCiclo(card); }
         var linha = card.linhaDoTempo || {};
-        var etapas = ETAPAS_TIMELINE.map(function (etapa) {
+        var etapas = ETAPAS_TIMELINE.filter(function (etapa) {
+            return !etapa.opcional || (linha[etapa.chave] && linha[etapa.chave].data);
+        }).map(function (etapa) {
             return montaEtapaTimeline(etapa, linha[etapa.chave]);
         }).join('');
         var familia = card.cicloPorCE
@@ -776,7 +844,8 @@
               'pelo CE <span class="texto-mono">' + escapeHtml(card.cicloPorCE) + '</span>, da mesma família ' +
               '(master/filhote) — o contêiner consta nos dois.</div>'
             : '';
-        return '<div class="timeline-navii">' + etapas + '</div>' + familia;
+        return '<div class="timeline-navii">' + etapas + '</div>' + montaSituacao(card) + montaEscaneamentos(card) +
+            familia;
     }
 
     function montaTipoConteiner(tipo, codigo) {
@@ -883,7 +952,9 @@
     function montaCard(card) {
         var div = document.createElement('div');
         var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
-        var textoStatus = { 'sem-ciclo': 'Sem ciclo de vida', concluido: 'Entregue ao importador', aberto: 'Em monitoramento' }[classeStatus];
+        var textoStatus = classeStatus === 'sem-ciclo' ? 'Sem ciclo de vida'
+            : (card.estagio ? card.estagio.rotulo : 'Em monitoramento');
+        var tituloStatus = card.estagio ? card.estagio.descricao : '';
         div.className = 'br-card card-navii ' + classeStatus;
 
         var painelImagens = montaPainelImagens(card);
@@ -903,7 +974,7 @@
                                 montaTipoConteiner(card.tipoConteiner, card.isoCode) +
                             '</div>' +
                         '</div>' +
-                        '<span class="status-navii">' + textoStatus + '</span>' +
+                        '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
                     '</div>' +
 
                     '<div class="rota-navii">' + montaPorto(card.portoOrigemCarga, card.nomePortoOrigemCarga) + ' → ' +
@@ -1220,6 +1291,8 @@
         if (ncmsMax > 0) { filtros.ncms_max = ncmsMax; }
         var tiposBl = tiposBlMarcados();
         if (tiposBl.length) { filtros.tipo_bl = tiposBl; }
+        var estagios = estagiosMarcados();
+        if (estagios.length) { filtros.estagio = estagios; }
         CHECKBOXES.forEach(function (campo) {
             if (document.getElementById('f-' + campo).checked) { filtros[campo] = 1; }
         });
@@ -1242,6 +1315,8 @@
         document.getElementById('valor-ncms_max').textContent = ncmsMax > 0 ? ncmsMax : 'Sem limite';
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
         marcaTiposBl(filtros.tipo_bl || []);
+        // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
+        marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));
     }
 
     function aplicaFiltros() {

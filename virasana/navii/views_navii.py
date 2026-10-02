@@ -20,6 +20,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request, url
 from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
+from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import filtros_salvos, referencias
 from virasana.navii.busca_navii import (
     CAMPOS_LISTA, CAMPOS_MARCAVEIS, busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
@@ -52,13 +53,15 @@ def _serializa_valor(v):
         return v.strftime('%Y-%m-%d %H:%M:%S')
     if isinstance(v, dict):
         return {k: _serializa_valor(sub) for k, sub in v.items()}
+    if isinstance(v, list):
+        return [_serializa_valor(sub) for sub in v]
     if isinstance(v, (set, tuple)):
         return sorted(v)
     return v
 
 
 def _serializa_card(card: dict) -> dict:
-    """Converte datetimes (inclusive dentro da linha do tempo) para string, para virar JSON."""
+    """Converte datetimes (inclusive dentro da linha do tempo e dos escaneamentos) para string, para virar JSON."""
     return {k: _serializa_valor(v) for k, v in card.items()}
 
 
@@ -81,6 +84,7 @@ def index():
         defaults_periodo=_defaults_periodo(),
         porto_escala_padrao=PORTO_ESCALA_PADRAO,
         tipos_bl=referencias.tipos_bl(),
+        estagios=estagios_ciclo.lista(),
     )
 
 

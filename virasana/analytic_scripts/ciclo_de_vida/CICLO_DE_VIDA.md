@@ -545,10 +545,12 @@ números mudam à medida que os ciclos viram v2:
   do filhote e deixam de achar o do master (o card do master ainda mostra o ciclo pela família).
   "Concluído" passa a incluir passagem/baldeação (embarque) e incompleto.
 
-Ajustes propostos (aguardando aprovação): completude usar `fluxo` dos ciclos v2; NAVI-I ligar filtros e
-janela "efetiva" pela `ciclodevida_ciclo_ce` (pendência 3a do CONTEXTO.md); mostrar situação/motivo,
-entrada implícita, escaneamento fora e confiança no card e no detalhe da completude; decidir se o filtro
-"concluído" do NAVI-I significa "encerrado" ou "entregue" (situação concluído com fluxo operador/TRA).
+Ajustes APROVADOS e feitos em 02/10/2026: completude usa `fluxo` dos ciclos v2 (reembarcados fora da
+"entrega pelo operador"); NAVI-I liga filtros e janela "efetiva" pela `ciclodevida_ciclo_ce`
+(`LIGACAO_FAMILIA`, desligável por `NAVII_LIGACAO_FAMILIA=0`; medir antes com `diagnostico_sql.py
+--so-ciclo [--sem-familia]`); card e detalhe da completude mostram estágio/situação/motivo, entrada
+implícita, escaneamento fora e confiança; filtro de **estágio** (`estagios_ciclo.py`) — "concluído" =
+**entregue** (decisão do usuário), com os demais estágios como opção. Ver CONTEXTO.md do NAVI-I.
 
 Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
 novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).
