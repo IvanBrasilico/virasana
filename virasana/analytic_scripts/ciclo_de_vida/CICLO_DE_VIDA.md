@@ -298,6 +298,25 @@ Log: `virasana/ciclo_de_vida_sombra_20261002_090605.log` (desembarques de 26/08 
 - **Irmãos na família**: 799 irmãos carregados; os escaneamentos perdidos caíram de 19 para 13.
 - **Mongo**: a defasagem por recinto se manteve (+3 h / +0 h, resíduo ≤ 10 min).
 
+## Sexta medição — quarta rodada da sombra (02/10/2026, entrada implícita e passagens rápidas)
+
+Log: `virasana/ciclo_de_vida_sombra_20261002_095406.log` (mesma amostra da quinta medição).
+
+- **Entrada implícita**: 25 entradas no seco deduzidas de inspeção/pesagem (5.131 pesagens carregadas);
+  os alertas "saída em X sem entrada" da Transbrasa (26) e do Ecoporto (24) viraram "entrada não
+  informada — deduzida"; sobram poucos sem indício (8932794: 7).
+- **Escaneamentos perdidos: 13 → 4** — os 4 são inspeções em OUTROS portos (Rio, 0301304) depois do
+  reembarque, que o loop antigo tinha ligado: não ligar está certo. Confiança baixa: 4 inspeções.
+- **Passagens rápidas medidas** (entrada e saída em até 6 h, seguidas de outra entrada): Ecoporto 66
+  (63 em até 30 min, **64 com inspeção**) e Santos Brasil 23 (todas com inspeção) — confirmam o
+  escaneamento terceirizado. **MULTILOG não apareceu** nesta amostra (os 4 casos dela são outro
+  padrão), nem outro recinto do Ecoporto.
+- **Escala declarada no desembarque confere** com o manifesto do CE principal em 2.008 de 2.034 e com
+  o do vazio em 423 de 539 — bom corroborador (também para achar o manifesto do vazio).
+- **Tipo do contêiner**: 45G1 (1.297), 22G0, 45G0, 45R1...; open top 21 e plataforma 7 (potencial OOG,
+  16 sem escaneamento); **`22K1`/`22K2`/`22K0` (215 ciclos) não são da ISO 6346** — a confirmar.
+- Consulta de pesagens: 5–8 s por lote (a mais lenta da sombra) — atenção no serviço por eventos.
+
 ## Decisões do usuário (02/10/2026)
 
 - **Contêiner vazio**: também precisa ser escaneado, mas não tem CE — tem **manifesto**. Monitorar e

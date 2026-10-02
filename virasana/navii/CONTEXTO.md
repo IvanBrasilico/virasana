@@ -111,6 +111,16 @@ carregado sob demanda por `referencias/__init__.py` e gerado por `atualiza_refer
 | `portos_ajustes.json` | **mantido à mão**, tem precedência | códigos do Mercante que divergem do LOCODE |
 | `paises.json` | IBGE + Wikidata (territórios fora do IBGE: HK, TW, PR...) | 256 siglas ISO, em português |
 | `navios.json` | Wikidata (não oficial) | 89 mil números IMO → nome |
+| `tipos_conteiner.json` | **mantido à mão** — ISO 6346 (tamanho, grupo, detalhe) | tipo do contêiner, potencial OOG |
+| `tipos_bl.json` | **mantido à mão** — `TIPOS_BL` do Mercante | 10 BL único, 11 MBL, 12 HBL, 15 MHBL |
+
+**Tipos de contêiner e de BL (02/10/2026, pedido do usuário):** `referencias.tipo_conteiner(codigo)`
+reconhece o código ISO (`45G1` → "40' high cube, uso geral (dry)"), o numérico antigo (`2210`) e
+apelidos (`40HC`, `40OT`, `20FR`), com `oog` (open top `U` e plataforma/flat rack `P`: carga fora de
+gabarito pode não passar no escâner) e `confirmado`. O código `22K1`/`22K2`/`22K0` (6% dos ciclos na
+sombra de 02/10) **não é da ISO 6346:1995** e fica "tipo K, a confirmar" até o usuário dizer o que é.
+`referencias.descreve_tipo_bl`/`tipos_bl` dão sigla + descrição curta; código fora da tabela aparece
+só como código (confirmar no banco se existem outros além de 10/11/12/15).
 
 **Filtro de uso (pedido do usuário em 30/09/2026):** só interessam navios que operam contêineres
 (porta-contêineres, Ro-Ro/ConRo) e portos das rotas com o Brasil; as tabelas completas (89 mil
@@ -340,6 +350,18 @@ Outros fatos do diagnóstico com amostras:
   (BRSSZ, BRIOA, BRRIG) — confirma o critério de usar a escala do porto do usuário.
 - CEs recentes por tráfego: 5 (48%), 7 exportação (21%), 3 (15%), 9 (14%), 1 (2%).
 
+Em 02/10/2026 (pedido do usuário — tipos de contêiner/BL e família do CE):
+- **Card**: tipo de BL com sigla + descrição curta; tag "Master de N filhotes" (lista no `title`); tipo
+  do contêiner (`Item.isoCode`) com descrição e selo **Potencial OOG**, também na lista de contêineres.
+- **Família do CE** (`busca_familias_navii`: o CE, o master, os filhotes e os irmãos, uma consulta por
+  página pelo índice de `numeroCEMaster`): o ciclo de vida do card é procurado em qualquer CE da
+  família com o mesmo contêiner, preferindo o próprio (`busca_ciclos_navii(..., familias)`); quando
+  vem de outro CE, o card avisa (`cicloPorCE`). Resolve a pendência 3a **para o card**.
+- **Filtros**: `tipo_bl` (lista; caixas de marcar, "nenhum = todos") pelo `Conhecimento` (vale dentro
+  da janela) e `sem_oog` (exclui `Item.isoCode` de potencial OOG; sem tipo informado não é OOG).
+  Os dois são salvos nos filtros do usuário (`CAMPOS_MARCAVEIS`).
+- Testado também no navegador (servidor de demonstração com dados simulados).
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
@@ -357,8 +379,11 @@ Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amost
 3a. **Card do filhote sem ciclo/imagem** (medido em 01/10/2026, ver
    `analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md`): o contêiner consta nos itens do CE master E do
    filhote; o ciclo guarda um só CE (36% das vezes o master) e o NAVI-I liga card↔ciclo pelo CE exato
-   (`_mesmo_conteiner_do_ciclo`) — o card do filhote (importador real) fica sem ciclo/imagem. Resolver
-   no ciclo de vida (ligar o ciclo à família do CE) ou, enquanto isso, ligar pelo contêiner + família.
+   (`_mesmo_conteiner_do_ciclo`) — o card do filhote (importador real) fica sem ciclo/imagem.
+   **Resolvido no card em 02/10/2026** (ciclo procurado na família). Falta: a janela "efetiva" e os
+   filtros que dependem do ciclo ainda ligam pelo CE exato — o card do filhote só entra pela data
+   prevista. Resolver com a tabela ciclo↔CE do ciclo de vida v2 (`ddl_ciclo_de_vida_v2.sql`), sem
+   mexer no plano de execução da janela.
 3. **Ciclos sem CE**: avaliar se vale casar ciclo e Item só pelo contêiner + proximidade de data
    quando o CE do ciclo está vazio (não feito: risco de casar contêiner reutilizado).
 4. **Ponte recinto ↔ terminal do manifesto**: abandonada por decisão do usuário (decisão 4). As
