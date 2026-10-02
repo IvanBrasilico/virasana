@@ -551,6 +551,18 @@ e sem imagem por idade; (5) CE (confiança, sem CE por idade, papéis da famíli
 antigo por mês; (7) **alertas**. O que esperar com o serviço saudável: marcas gravadas há poucos minutos,
 fila ~0, nenhum sinal de outro gravador, semanas recentes com ~100% v2, nenhum aberto com mais de 93 dias.
 
+### Imagens que faltam (`diagnostico_imagens_ciclo.py`)
+
+No acompanhamento de 02/10/2026 só BTP (76%) e Embraport (84%) ficaram abaixo de ~100% de escaneamentos com
+imagem — como a sombra já tinha visto ("sem imagem em ±8 h: BTP 22%, Embraport 12%"). O diagnóstico (só lê)
+mostra a falta por dia e recinto, os atributos da inspeção (OCR, contingência, retificação) com x sem imagem e
+classifica uma amostra no Mongo: imagem que chegou DEPOIS (o ciclo não foi refeito), outra defasagem, só
+longe, número parecido (OCR), nenhuma imagem deste contêiner ou nenhuma imagem no horário (escâner parado).
+
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_imagens_ciclo.py --saida imagens.log
+```
+
 ### Efeitos nas telas (completude e NAVI-I) — 02/10/2026
 
 As telas continuam funcionando sem mudança (mesmas tabelas e IDs; colunas novas são ignoradas), mas os
