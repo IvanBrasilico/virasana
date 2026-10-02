@@ -277,6 +277,45 @@ Log: `virasana/ciclo_de_vida_sombra_20261001_173024.log` + `sombra.csv` (desemba
   (confiança média).
 - **Desempenho**: ~1 min no total (consultas de até 3 s; Mongo 18 s para 600 inspeções).
 
+## Quinta medição — terceira rodada da sombra (02/10/2026, núcleo com a volta ao operador e os irmãos)
+
+Log: `virasana/ciclo_de_vida_sombra_20261002_090605.log` (desembarques de 26/08 a 25/09; 3.005 ciclos,
+2.969 com ciclo atual).
+
+- **Atraso do loop antigo**: desta vez 0 dias (alcançou) — varia de 0 a ~5 dias entre as medições.
+- **Volta ao operador do desembarque**: 235 ciclos (8%) passam a fechar na saída (antes, uma parte ficava
+  "aberta no operador"). É o padrão "importou cheio, devolveu o vazio no mesmo terminal".
+- **CEs atuais "perdidos" (84)**: 83 são CEs de **exportação** que o loop antigo ligou a desembarques
+  (quase todos em passagem: o CE do reembarque) — o descarte está certo. Observação a confirmar: os
+  dígitos 5–6 do número do CE parecem indicar o tráfego (05 importação, 07 exportação, 03 cabotagem).
+- **"Outra família" eram números fora do Mercante**: 44 saídas, 9 inspeções, 2 entradas e 2 embarques
+  declaravam um número que nem existe no Mercante; os casos de fato "sem relação" são poucos (23
+  embarques com CE de **exportação** — reembarque, outra operação). Ajuste: CE declarado fora do
+  Mercante só não corrobora (confiança média); não derruba a ligação.
+- **Escaneamento fora antes do TRA não é só no Ecoporto**: passagens por operador — Ecoporto 88, Santos
+  Brasil 41, Embraport 31, BTP 3. O loop antigo grava essas passagens como "entrada no seco" (Embraport
+  42, Santos Brasil 53, Ecoporto 86, BTP 9 casos removidos/trocados pela nova).
+- **Irmãos na família**: 799 irmãos carregados; os escaneamentos perdidos caíram de 19 para 13.
+- **Mongo**: a defasagem por recinto se manteve (+3 h / +0 h, resíduo ≤ 10 min).
+
+## Decisões do usuário (02/10/2026)
+
+- **Contêiner vazio**: também precisa ser escaneado, mas não tem CE — tem **manifesto**. Monitorar e
+  completar o ciclo do vazio trocando o CE pelo manifesto (não é prioridade). Guardar no ciclo: **campo
+  de manifesto e de vazio**, **peso, tara, peso − tara**, e o **tipo do contêiner** — plataforma e open
+  top podem ser **OOG** (fora de gabarito: não passam nos gates padrão nem no escâner). **A interface deve
+  mostrar isso e permitir excluir** (ex.: tirar os potenciais OOG da cobrança de escaneamento).
+- **Entrada não informada**: se o recinto informa **pesagem ou escaneamento** e não informou a entrada
+  antes, considerar que houve uma entrada nele naquele momento. Implementado no núcleo para o trânsito,
+  quando o recinto informa depois a saída (fecha a estada); sem saída nem outro evento, a inspeção fica
+  ligada como "em trânsito" e o ciclo fecha pelo prazo — senão ficaria aberto até o abandono.
+- **Ecoporto / MULTILOG**: as passagens rápidas antes da entrada noutro TRA são o **escaneamento
+  terceirizado**. A linha do tempo mostra esse escaneamento (marcado "escaneamento fora") antes da
+  entrada no TRA; os **acessos** dessa passagem **não** entram no ciclo (omissões frequentes e poluiriam
+  a estrutura). No núcleo: passagem por operador (já existia) e estada curta (até 3 h) num recinto não
+  operador seguida de outra entrada em até 6 h. A sombra mede as passagens rápidas por recinto para
+  confirmar MULTILOG e o outro recinto do Ecoporto.
+
 ## Princípio geral da heurística (usuário, 01/10/2026)
 
 Contêiner + intervalo de datas **nunca basta** para dizer que um evento é do mesmo ciclo — sobretudo
@@ -372,7 +411,14 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
    virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py \
        --dias 30 --conteineres 3000 --mongo --csv sombra.csv
    ```
-4. **DDL aditiva** (usuário/DBA): situação, fluxo, motivo, confiança e origem das ligações, marcas d'água.
+4. **DDL aditiva — PROPOSTA PRONTA (02/10/2026), não executada**: `ddl_ciclo_de_vida_v2.sql` (para o
+   usuário/DBA; homologação primeiro). Colunas novas no ciclo (todas NULL — o loop antigo segue igual):
+   situação, fluxo, motivo, confiança do CE, **vazio, numeroManifesto**, escala declarada,
+   **tipoConteiner, oog, peso_balanca, peso_manifesto, tara, peso_menos_tara**, embarque, entrada no seco
+   implícita (origem), versão da heurística e data do processamento; nos escaneamentos: confiança, motivo,
+   recinto e "fora"; tabela **ciclo↔CE** (família, papel, principal) e tabela de **marcas d'água**.
+   ADD COLUMN com `ALGORITHM=INSTANT`, índices `INPLACE, LOCK=NONE`; rollback no fim do arquivo.
+   Depois (com o serviço gravando): telas mostram tipo/OOG/vazio e permitem excluir OOG da cobrança.
 5. **Troca do loop** para o processamento por eventos (o atual fica para rollback).
 6. **Reprocessamento** dos pendentes em lotes, com relatório.
 
