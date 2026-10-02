@@ -40,6 +40,16 @@ Exceções conhecidas (ainda NÃO tratadas pelo código):
 | **Cabotagem** (tipoTrafego 3) | escaneamento nem sempre obrigatório | conta como "sem escaneamento" |
 | **Permanência longa / abandono** | sem saída até 90 dias (depois, abandono — continua sem saída) | busca de saída só olha 72 h depois do desembarque |
 
+**Fonte oficial do abandono (informado pelo usuário em 02/10/2026):** os recintos são obrigados a informar os
+abandonos, e o AJNA consulta as **FMAs eletrônicas** (Fichas de Mercadoria Abandonada) na API da Janela
+Única Portuária. O script `bhadrasana2/bhadrasana/scripts/fma_update.py` (cron diário) abre uma **Ficha OVR por
+FMA**, com `tipooperacao = 0` ("Mercadoria Abandonada"), `numeroCEmercante`, `recinto_id` (= `Cod_Recinto` da
+FMA, código DTE), `dataentrada` (entrada no recinto) e `datahora` (emissão). A ficha acompanha o procedimento,
+que termina em **retomada** (o importador retira) ou **perdimento** (retirada para o depósito e destinação). A
+v2 hoje só DEDUZ o abandono por prazo (93 dias sem saída). A FMA pode confirmar ou antecipar o abandono e dar
+o desfecho, ligada pelo CE (a FMA não traz o contêiner). Antes de usar, conferir se `ovr_recintos.id`
+coincide com `cod_dte` e onde o desfecho fica registrado na OVR. Não implementado.
+
 ## Algoritmo atual (resumo de `manager_ciclo_de_vida.__main__`, a cada 10 min)
 
 1. `desembarques_novos` — cria um ciclo por desembarque novo (D) nos 3 operadores de Santos (`OPERADORES`).
