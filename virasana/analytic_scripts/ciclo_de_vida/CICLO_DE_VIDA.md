@@ -439,24 +439,79 @@ Etapas (cada uma testada, com aprovação antes de tocar o loop de produção):
    recinto e "fora"; tabela **ciclo↔CE** (família, papel, principal) e tabela de **marcas d'água**.
    ADD COLUMN com `ALGORITHM=INSTANT`, índices `INPLACE, LOCK=NONE`; rollback no fim do arquivo.
    Depois (com o serviço gravando): telas mostram tipo/OOG/vazio e permitem excluir OOG da cobrança.
-5. **Troca do loop** para o processamento por eventos (o atual fica para rollback).
-6. **Reprocessamento** dos pendentes em lotes, com relatório.
+   **DDL aplicada em homologação em 02/10/2026** (pelo usuário).
+5. **Serviço por eventos — PRONTO (02/10/2026), ainda não ativado**: `servico_ciclo_de_vida.py`, com
+   `carga_ciclo.py` (carga compartilhada com a sombra), `gravacao_ciclo.py` (tabelas v2 no SQLAlchemy Core,
+   conferidas contra a DDL nos testes) e `imagens_ciclo.py` (imagem no Mongo pela defasagem do recinto);
+   testes em `tests/test_servico_ciclo_de_vida.py`; programas do supervisor em `supervisor_ciclo_de_vida.conf`
+   (raiz do virasana). Ver "Serviço por eventos" abaixo. O loop atual fica para rollback.
+6. **Reprocessamento** dos pendentes do loop antigo: `servico_ciclo_de_vida.py --reprocessa N` (N
+   contêineres por vez, os mais recentes primeiro; o log diz quantos pendentes antigos restam).
+
+### Serviço por eventos (`servico_ciclo_de_vida.py`)
+
+A cada volta: (1) lê os eventos NOVOS de `apirecintos_embarquedesembarque`, `apirecintos_acessosveiculo`
+(só `operacao = 'C'`), `apirecintos_inspecoesnaoinvasivas` e `apirecintos_pesagensveiculo` pela marca
+d'água de cada tabela (`ciclodevida_marca_dagua`; lotes de 20 mil ids; sem marca, começa nos eventos dos
+últimos 7 dias ou de `--desde`); (2) junta os contêineres a revisitar — ciclos v2 abertos processados há
+mais de 6 h (prazos: trânsito de 48 h, estada curta, abandono) e ciclos v2 dos últimos 30 dias sem CE e
+sem ser vazio, há mais de 24 h (o CE chega depois ao Mercante); (3) por lotes de 500 contêineres, numa
+transação cada: carrega todos os eventos dos últimos 100 dias, refaz a linha do tempo e os CEs e grava;
+(4) avança as marcas. Com fila (lote cheio), a próxima volta começa logo; senão, espera 5 min.
+
+Gravação (`gravacao_ciclo.py`), por `desembarque_id`:
+- a linha que já existe — inclusive a do loop antigo — é **atualizada no mesmo ID** (as telas continuam
+  achando o ciclo); a que não existe é inserida (ex.: Ecoporto, que o loop antigo não cobria);
+- `numeroCEmercante` = CE principal (filhote); a família vai para `ciclodevida_ciclo_ce`;
+- `concluido` = situação diferente de "aberto" (concluído, incompleto ou abandono); o detalhe fica em
+  `situacao`/`fluxo`/`motivo`;
+- ligações de confiança **baixa** (CE declarado de outra família) **não são gravadas** — nem etapa nem
+  escaneamento;
+- entrada no seco **implícita** (deduzida de inspeção/pesagem): `entrada_seco_id` NULL, com
+  `data_entrada_seco`, `codigoRecintoArmazenagem` e `entrada_seco_implicita_de`;
+- escaneamentos do ciclo substituídos pelos da v2 (mantém a imagem já achada; procura no Mongo só as que
+  faltam), com `confianca`, `motivo`, `codigoRecinto` e `fora` (escaneamento terceirizado antes do TRA);
+- `numeroManifesto` só para o contêiner vazio; `peso_menos_tara` pela balança e, sem ela, pelo manifesto;
+- `versao_heuristica = 'v2'` e `processado_em`.
+
+Limitação conhecida: se o loop antigo criou um ciclo para um desembarque depois RETIFICADO (outro id, mesma
+data/recinto), essa linha antiga não é atualizada (a v2 usa a retificação). A medição mostrou retificações
+quase inexistentes.
+
+### Validação em homologação (antes da troca em produção)
+
+```
+cd /home/ajna/apps/ajna/virasana
+SERVICO=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py
+virasana-venv/bin/python $SERVICO --homologacao --uma-vez --simula    # 1. mede: processa e desfaz
+virasana-venv/bin/python $SERVICO --homologacao --uma-vez             # 2. uma volta gravando
+virasana-venv/bin/python $SERVICO --homologacao --reprocessa 2000 --simula   # 3. reprocessamento (mede)
+```
+
+Depois de (2), conferir no banco de homologação: `SELECT situacao, fluxo, COUNT(*) FROM
+ciclodevida_ciclo_de_vida_importacao WHERE versao_heuristica = 'v2' GROUP BY 1, 2`, os escaneamentos com
+`confianca`/`imagem_id`, `ciclodevida_ciclo_ce` e `ciclodevida_marca_dagua`; e abrir o NAVI-I e a
+completude de homologação. O banco de homologação precisa ter os eventos da API e o Mercante atualizados
+para a volta fazer sentido.
 
 ### Ativação no Servidor (supervisor)
 
 Hoje o loop antigo roda sob o supervisor como
 `python virasana/analytic_scripts/ciclo_de_vida/manager_ciclo_de_vida.py` (variáveis de ambiente do
-`ajna_commons`; não há `.conf` dele no repositório). Até a etapa 5 **nada muda no Servidor**: o
-`manager_ciclo_de_vida.py` continua sendo o ponto de entrada em produção, e a sombra é rodada à mão
-(só lê; grava apenas o log/CSV no diretório corrente).
+`ajna_commons`; não há `.conf` dele no repositório). O ponto de entrada **muda**: o serviço novo é
+`servico_ciclo_de_vida.py`, com dois programas em `supervisor_ciclo_de_vida.conf` (raiz do virasana),
+ambos `autostart=false`: `ciclo_de_vida_v2_hom` (`--homologacao`) e `ciclo_de_vida_v2` (produção).
 
-Na etapa 5 o ponto de entrada **muda**: um script novo (proposta:
-`virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py`, orientado a eventos com marcas
-d'água) vira um **programa novo do supervisor**, no padrão de `supervisor_virasana_periodic.conf`
-(`directory` = raiz do virasana, `command` = `virasana-venv/bin/python <script>`, `autostart`,
-`autorestart`, `user=ajna`, logs em `/var/log/virasana/ciclo_de_vida/`). Troca: `supervisorctl stop`
-do programa antigo → `supervisorctl start` do novo. Rollback: o inverso (o `manager_ciclo_de_vida.py`
-não será alterado nem apagado). Os dois nunca devem rodar juntos gravando nas mesmas tabelas.
+1. Logs: `sudo mkdir -p /var/log/virasana/ciclo_de_vida && sudo chown ajna /var/log/virasana/ciclo_de_vida`.
+2. Copiar/incluir o `.conf` na configuração do supervisor, `supervisorctl reread` e `supervisorctl update`.
+3. Homologação (contínuo): `supervisorctl start ciclo_de_vida_v2_hom`; acompanhar `hom_access.log`.
+4. Produção — **troca**: `supervisorctl stop <programa do loop antigo>` e só então
+   `supervisorctl start ciclo_de_vida_v2`. Na primeira volta, sem marcas, ele lê os eventos dos últimos
+   7 dias (ou `--desde`, no `command`). Depois, reprocessar os pendentes antigos aos poucos com
+   `--reprocessa N` (à mão, fora do pico).
+5. **Rollback**: `supervisorctl stop ciclo_de_vida_v2` e `start` do programa antigo — o
+   `manager_ciclo_de_vida.py` não foi alterado. As colunas novas ficam como estão (o loop antigo as
+   ignora). Os dois nunca devem rodar juntos gravando nas mesmas tabelas.
 
 Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
 novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).

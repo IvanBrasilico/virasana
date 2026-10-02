@@ -51,7 +51,7 @@ import argparse
 import csv
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Set
 
@@ -60,6 +60,9 @@ from sqlalchemy import create_engine
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
+from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
+    CargaCiclo, _ano_do_ce, _texto, manifesto_vazio,
+)
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (  # noqa: E402
     JANELA_ESCALA_DIAS, TRAFEGO_EXPORTACAO, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
 )
@@ -69,12 +72,9 @@ from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import Di
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_conteiner  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noqa: E402
 
-UNIDADE_SANTOS = '0817800'
-PORTO_SANTOS = 'BRSSZ'
 HORAS_JANELA_ANTIGA = 72
 JANELA_MONGO_HORAS = 8      # a 1ª sombra mostrou que o +3 h não vale para todos: medir por recinto
 RESIDUO_MONGO_MINUTOS = 10
-MARGEM_EVENTOS_DIAS = 2
 DIAS_ATRASO_LOOP = 7        # o loop antigo cria os ciclos com dias de atraso (medido: ~5)
 SIM, NAO = 'sim', 'não'
 TRAFEGOS = {'3': 'cabotagem', '5': 'importação', '7': 'exportação', '9': 'passagem'}
@@ -163,41 +163,9 @@ def _compara_conjuntos(atuais: set, novos: set) -> str:
 
 # ---------------------------------------------------------------------- carregamento (só leitura)
 
-def _bool(valor) -> Optional[bool]:
-    return None if valor is None else bool(valor)
-
-
-def _texto(valor) -> Optional[str]:
-    return str(valor).strip() or None if valor is not None else None
-
-
-def _unidade(valor) -> str:
-    """Código da unidade com 7 dígitos (o banco pode guardar como número: 817800)."""
-    return str(valor or '').strip().zfill(7)
-
-
-def _ano_do_ce(ce: str) -> Optional[int]:
-    return 2000 + int(ce[2:4]) if ce and len(ce) == 15 and ce[2:4].isdigit() else None
-
-
-class Carregador:
-    """Lê do banco, em lote e por contêiner (índices de numeroConteiner), o que o núcleo precisa."""
-
-    def __init__(self, diag: Diagnostico, inicio: datetime, fim: datetime):
-        self.diag, self.inicio, self.fim = diag, inicio, fim
-        self.desde = inicio - timedelta(days=MARGEM_EVENTOS_DIAS)
-        self.estatisticas = Counter()
-        self.info: Dict[str, dict] = {}   # CE -> master, tráfego, manifesto (Mercante)
-        self.desembarques: Dict[int, dict] = {}   # id -> peso, tara, peso de manifesto, tipo, escala
-        self.tipos: Dict[str, Counter] = defaultdict(Counter)   # contêiner -> tipos informados nos eventos
-
-    def operadores(self):
-        """(escopo Santos, todos os operadores, {código: nome})."""
-        linhas = self.diag.consulta('SELECT cod_siscomex, nome, e_operador, cod_unidade FROM ovr_recintos '
-                                    "WHERE cod_siscomex IS NOT NULL AND cod_siscomex <> ''")
-        escopo = {cod for cod, _, e_op, unidade in linhas if e_op and _unidade(unidade) == UNIDADE_SANTOS}
-        todos = {cod for cod, _, e_op, _ in linhas if e_op}
-        return escopo, todos, {cod: nome for cod, nome, _, _ in linhas}
+class Carregador(CargaCiclo):
+    """A carga do núcleo (`carga_ciclo.CargaCiclo`, compartilhada com o serviço) mais as consultas só da
+    sombra: amostra de contêineres, volume por dia, ciclos atuais e o Mercante dos CEs atuais."""
 
     def conteineres(self, escopo: Set[str], limite: int) -> List[str]:
         if not escopo:
@@ -227,98 +195,6 @@ class Carregador:
             '(SELECT MAX(desembarque_id) FROM ciclodevida_ciclo_de_vida_importacao)')
         return _dt(linhas[0][0]) if linhas else None
 
-    def eventos(self, conteineres: List[str]):
-        """({contêiner: [Evento]}, recintos com embarque/desembarque); guarda em `self.desembarques` os dados de
-        cada desembarque/embarque e em `self.tipos` os tipos de contêiner informados."""
-        eventos, portuarios = defaultdict(list), set()
-        params = {'desde': self.desde}
-        for id_, cont, data, recinto, tipo, ce, peso, tara, manifesto, tipo_cont, escala in self.diag._por_lotes(
-                'SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, embarqueDesembarque, '
-                'numeroConhecimento, pesoBrutoBalanca, taraConteiner, pesoBrutoManifesto, tipoConteiner, escala '
-                'FROM apirecintos_embarquedesembarque WHERE numeroConteiner IN :conteineres '
-                'AND dataHoraOcorrencia >= :desde', 'conteineres', conteineres, params):
-            tipo_evento = ldt.EMBARQUE if tipo == 'E' else ldt.DESEMBARQUE
-            eventos[cont].append(ldt.Evento(tipo_evento, id_, _dt(data), recinto, None, normaliza_ce(ce)))
-            self.desembarques[id_] = {'peso': peso, 'tara': tara, 'manifesto': manifesto,
-                                      'tipo': _texto(tipo_cont), 'escala': _texto(escala)}
-            self._tipo(cont, tipo_cont)
-            portuarios.add(recinto)
-        for id_, cont, data, recinto, direcao, vazio, ce, tipo_cont in self.diag._por_lotes(
-                'SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, direcao, vazioConteiner, '
-                'numeroConhecimento, tipoConteiner FROM apirecintos_acessosveiculo '
-                "WHERE numeroConteiner IN :conteineres AND operacao = 'C' AND dataHoraOcorrencia >= :desde",
-                'conteineres', conteineres, params):
-            tipo_evento = ldt.ENTRADA if direcao == 'E' else ldt.SAIDA
-            eventos[cont].append(ldt.Evento(tipo_evento, id_, _dt(data), recinto, _bool(vazio), normaliza_ce(ce)))
-            self._tipo(cont, tipo_cont)
-        for id_, cont, data, recinto, vazio, ce, tipo_cont in self.diag._por_lotes(
-                'SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, vazio, numeroConhecimento, '
-                'tipoConteiner FROM apirecintos_inspecoesnaoinvasivas WHERE numeroConteiner IN :conteineres '
-                'AND dataHoraOcorrencia >= :desde', 'conteineres', conteineres, params):
-            eventos[cont].append(ldt.Evento(ldt.INSPECAO, id_, _dt(data), recinto, _bool(vazio), normaliza_ce(ce)))
-            self._tipo(cont, tipo_cont)
-        for id_, cont, data, recinto in self.diag._por_lotes(
-                'SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto FROM apirecintos_pesagensveiculo '
-                'WHERE numeroConteiner IN :conteineres AND dataHoraOcorrencia >= :desde', 'conteineres',
-                conteineres, params):
-            eventos[cont].append(ldt.Evento(ldt.PESAGEM, id_, _dt(data), recinto))
-            self.estatisticas['pesagens'] += 1
-        return eventos, portuarios
-
-    def _tipo(self, conteiner: str, tipo):
-        if _texto(tipo):
-            self.tipos[conteiner][_texto(tipo)] += 1
-
-    def tipo_do(self, conteiner: str, desembarque_id: int) -> Optional[str]:
-        """Tipo informado no desembarque; sem ele, o mais informado nos outros eventos do contêiner."""
-        tipo = (self.desembarques.get(desembarque_id) or {}).get('tipo')
-        if tipo:
-            return tipo
-        return self.tipos[conteiner].most_common(1)[0][0] if self.tipos.get(conteiner) else None
-
-    def manifestos_das_escalas(self, escalas) -> Dict[str, Set[str]]:
-        """{escala: manifestos} (escalamanifestoresumo) — para conferir a escala declarada no desembarque."""
-        resultado = defaultdict(set)
-        for escala, manifesto in self.diag._por_lotes(
-                'SELECT escala, manifesto FROM escalamanifestoresumo WHERE escala IN :escalas', 'escalas', escalas):
-            resultado[_texto(escala)].add(_texto(manifesto))
-        return resultado
-
-    def candidatos(self, conteineres: List[str]) -> Dict[str, List[CandidatoCE]]:
-        """CEs do Mercante cujo Item tem o contêiner (só de anos recentes), com master, tráfego e escalas,
-        mais os irmãos (filhotes do mesmo master) sem o contêiner nos itens (`tem_conteiner=False`)."""
-        por_conteiner = self._ces_dos_itens(conteineres)
-        ces = {ce for lista in por_conteiner.values() for ce in lista}
-        self.info_de(ces)
-        escalas = self._escalas({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
-        irmaos = self._irmaos({self.info[ce]['master'] for ce in ces if ce in self.info} | ces)
-        resultado = {}
-        for cont, lista in por_conteiner.items():
-            proprios = [CandidatoCE(ce, self.info[ce]['master'], self.info[ce]['trafego'],
-                                    tuple(escalas.get(self.info[ce]['manifesto'], ())))
-                        for ce in sorted(lista) if ce in self.info]
-            resultado[cont] = proprios + irmaos_de(proprios, irmaos)
-        self.estatisticas['irmãos sem o contêiner (família)'] = sum(
-            1 for lista in resultado.values() for c in lista if not c.tem_conteiner)
-        return resultado
-
-    def info_de(self, ces):
-        """Carrega master, tráfego e manifesto dos CEs que ainda não estão em `self.info`."""
-        for ce, master, trafego, manifesto in self.diag._por_lotes(
-                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego, manifestoCE FROM conhecimentosresumo '
-                'WHERE numeroCEmercante IN :ces', 'ces', {ce for ce in ces if ce and ce not in self.info}):
-            self.info[normaliza_ce(ce)] = {'master': normaliza_ce(master), 'trafego': _texto(trafego),
-                                           'manifesto': _texto(manifesto)}
-
-    def _irmaos(self, masters) -> Dict[str, List[tuple]]:
-        """{master: [(filhote, tráfego)]} — todos os filhotes dos masters (índice numeroCEMaster)."""
-        por_master = defaultdict(list)
-        for ce, master, trafego in self.diag._por_lotes(
-                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego FROM conhecimentosresumo '
-                'WHERE numeroCEMaster IN :masters', 'masters', {m for m in masters if m}):
-            por_master[normaliza_ce(master)].append((normaliza_ce(ce), _texto(trafego)))
-        return por_master
-
     def itens_de(self, ces) -> Set[tuple]:
         """{(CE, contêiner)} dos itens dos CEs (sem filtro de ano)."""
         return {(normaliza_ce(ce), _texto(cont)) for ce, cont in self.diag._por_lotes(
@@ -328,45 +204,6 @@ class Carregador:
         """{CE: datas de escala do manifesto} (CEs já em `self.info`)."""
         escalas = self._escalas({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
         return {ce: escalas.get(self.info[ce]['manifesto'], []) for ce in ces if ce in self.info}
-
-    def _ces_dos_itens(self, conteineres: List[str]) -> Dict[str, Set[str]]:
-        anos = set(range(self.inicio.year - 1, self.fim.year + 1))
-        por_conteiner = defaultdict(set)
-        for ce, cont in self.diag._por_lotes(
-                'SELECT numeroCEmercante, codigoConteiner FROM itensresumo WHERE codigoConteiner IN :conteineres',
-                'conteineres', conteineres):
-            ce = normaliza_ce(ce)
-            self.estatisticas['itens com o contêiner (todos os anos)'] += 1
-            if _ano_do_ce(ce) in anos:
-                por_conteiner[_texto(cont)].add(ce)
-        self.estatisticas['CEs dos anos do período'] = len({ce for lista in por_conteiner.values() for ce in lista})
-        return por_conteiner
-
-    def vazios(self, conteineres: List[str]) -> Dict[str, Dict[str, List[date]]]:
-        """{contêiner: {manifesto: datas de escala}} dos manifestos em que o contêiner consta VAZIO."""
-        manifestos = defaultdict(set)
-        for manifesto, cont in self.diag._por_lotes(
-                'SELECT manifesto, idConteinerVazio FROM conteinervazioresumo WHERE idConteinerVazio IN :conteineres',
-                'conteineres', conteineres):
-            manifestos[_texto(cont)].add(_texto(manifesto))
-        escalas = self._escalas({m for lista in manifestos.values() for m in lista if m})
-        return {cont: {m: escalas.get(m, []) for m in lista if m} for cont, lista in manifestos.items()}
-
-    def _escalas(self, manifestos) -> Dict[str, List[date]]:
-        """Datas previstas de atracação por manifesto: as de Santos; sem escala em Santos, todas."""
-        santos, todas = defaultdict(list), defaultdict(list)
-        for manifesto, data, porto in self.diag._por_lotes(
-                'SELECT em.manifesto, e.dataPrevistaAtracacao, e.portoDaEscala FROM escalamanifestoresumo em '
-                'JOIN escalasresumo e ON e.numeroDaEscala = em.escala WHERE em.manifesto IN :manifestos',
-                'manifestos', manifestos):
-            try:
-                dia = datetime.strptime(str(data)[:10], '%Y-%m-%d').date()
-            except ValueError:
-                continue
-            todas[manifesto].append(dia)
-            if porto == PORTO_SANTOS:
-                santos[manifesto].append(dia)
-        return {m: santos.get(m) or todas[m] for m in todas}
 
     def ciclos_atuais(self, desembarques: Set[int]) -> Dict[int, dict]:
         atuais = {}
@@ -424,7 +261,7 @@ class Sombra(Diagnostico):
         self.inspecoes = {e.id: e for e in todos if e.tipo == ldt.INSPECAO}
         candidatos = carregador.candidatos(conteineres)
         vazios = carregador.vazios(conteineres)
-        conhecidos = self._ces_conhecidos(carregador, todos)
+        conhecidos = carregador.conhecidos(todos)
         self.manifestos_escala = carregador.manifestos_das_escalas(
             {d['escala'] for d in carregador.desembarques.values() if d['escala']})
         self.operadores = operadores | portuarios
@@ -448,15 +285,6 @@ class Sombra(Diagnostico):
             self.ciclos[ciclo.desembarque.id] = ciclo
             self.linhas.append(self._linha(conteiner, ciclo, ces, candidatos.get(conteiner, []),
                                            vazios.get(conteiner, {})))
-
-    @staticmethod
-    def _ces_conhecidos(carregador: 'Carregador', eventos: List[ldt.Evento]) -> Set[str]:
-        """CEs declarados nos eventos que existem no Mercante (os outros não desconfiam)."""
-        declarados = {e.ce_declarado for e in eventos if e.ce_declarado}
-        carregador.info_de(declarados)
-        carregador.estatisticas['CEs declarados nos eventos'] = len(declarados)
-        carregador.estatisticas['declarados fora do Mercante'] = len(declarados - set(carregador.info))
-        return set(carregador.info)
 
     def _linha(self, conteiner, ciclo, ces, candidatos, vazios) -> dict:
         atual = self.atuais.get(ciclo.desembarque.id)
@@ -722,15 +550,6 @@ class Sombra(Diagnostico):
             escritor.writerows(self.linhas)
 
 
-def manifesto_vazio(escalas_por_manifesto: Dict[str, List[date]], desembarque: datetime,
-                    janela_dias: int = JANELA_ESCALA_DIAS) -> Optional[str]:
-    """Manifesto em que o contêiner consta VAZIO com a escala mais perto do desembarque (até a janela)."""
-    distancias = {m: min(abs((dia - desembarque.date()).days) for dia in dias)
-                  for m, dias in (escalas_por_manifesto or {}).items() if dias}
-    perto = [m for m, d in distancias.items() if d <= janela_dias]
-    return min(perto, key=lambda m: (distancias[m], m)) if perto else None
-
-
 def confere_escala(escala: Optional[str], manifestos_escala: Dict[str, Set[str]], manifesto: Optional[str]) -> str:
     """A escala declarada no desembarque contém o manifesto do CE principal (ou do vazio)?"""
     if not escala:
@@ -768,14 +587,6 @@ def passagens_rapidas(eventos: List[ldt.Evento], limite_horas: float = LIMITE_ES
             inspecao = any(e.tipo == ldt.INSPECAO and entrada.data <= e.data <= proxima.data for e in ordenados)
             contagem[(entrada.recinto, _faixa_estada(estada), inspecao)] += 1
     return contagem
-
-
-def irmaos_de(proprios: List[CandidatoCE], irmaos_por_master: Dict[str, List[tuple]]) -> List[CandidatoCE]:
-    """Filhotes dos masters da família que não têm o contêiner nos itens (só corroboram)."""
-    conhecidos = {c.ce for c in proprios}
-    masters = ({c.master for c in proprios if c.master} | conhecidos) & set(irmaos_por_master)
-    return [CandidatoCE(ce, master, trafego, (), tem_conteiner=False)
-            for master in sorted(masters) for ce, trafego in irmaos_por_master[master] if ce not in conhecidos]
 
 
 def motivo_ce_atual(ce: str, conteiner: str, info: Dict[str, dict], itens: Set[tuple],

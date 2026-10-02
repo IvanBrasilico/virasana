@@ -29,6 +29,7 @@ from datetime import date, datetime, timedelta
 import mongomock
 from sqlalchemy import text
 
+from virasana.analytic_scripts.ciclo_de_vida import carga_ciclo as carga
 from virasana.analytic_scripts.ciclo_de_vida import dados_conteiner
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida import sombra_ciclo_de_vida as sombra
@@ -209,8 +210,8 @@ class TestFuncoes(unittest.TestCase):
         self.assertEqual(sombra._faixa_idade(3), '< 7 dias (atraso do loop)')
         self.assertEqual(sombra._faixa_idade(10), '7 a 30 dias')
         self.assertEqual(sombra._faixa_idade(100), '>= 93 dias')
-        self.assertEqual(sombra._unidade(817800), '0817800')
-        self.assertEqual(sombra._unidade(' 0817800 '), '0817800')
+        self.assertEqual(carga._unidade(817800), '0817800')
+        self.assertEqual(carga._unidade(' 0817800 '), '0817800')
         self.assertEqual(sombra._ano_do_ce(M), 2026)
         self.assertIsNone(sombra._ano_do_ce('123'))
         self.assertIsNone(sombra._texto('  '))
@@ -222,10 +223,10 @@ class TestFuncoes(unittest.TestCase):
         self.assertEqual(sombra.compara_id(7, implicita), 'diferente (implícita)')   # id de outra tabela
 
     def test_manifesto_vazio(self):
-        self.assertEqual(sombra.manifesto_vazio({'MANV': [date(2026, 3, 12)]}, d(12)), 'MANV')
-        self.assertIsNone(sombra.manifesto_vazio({'MAN9': [date(2025, 12, 1)], 'MAN8': [date(2026, 2, 1)]}, d(3)))
-        self.assertIsNone(sombra.manifesto_vazio({}, d(3)))
-        self.assertEqual(sombra.manifesto_vazio({'A': [date(2026, 3, 10)], 'B': [date(2026, 3, 4)]}, d(3)), 'B')
+        self.assertEqual(carga.manifesto_vazio({'MANV': [date(2026, 3, 12)]}, d(12)), 'MANV')
+        self.assertIsNone(carga.manifesto_vazio({'MAN9': [date(2025, 12, 1)], 'MAN8': [date(2026, 2, 1)]}, d(3)))
+        self.assertIsNone(carga.manifesto_vazio({}, d(3)))
+        self.assertEqual(carga.manifesto_vazio({'A': [date(2026, 3, 10)], 'B': [date(2026, 3, 4)]}, d(3)), 'B')
 
     def test_confere_escala(self):
         escalas = {'E1': {'MAN1'}}
@@ -259,9 +260,9 @@ class TestFuncoes(unittest.TestCase):
     def test_irmaos_de(self):
         proprios = [sombra.CandidatoCE(H1, M, '5', ())]
         irmaos = {M: [(H1, '5'), (H2, '5')], X: [(Y, '5')]}
-        self.assertEqual(sombra.irmaos_de(proprios, irmaos),
+        self.assertEqual(carga.irmaos_de(proprios, irmaos),
                          [sombra.CandidatoCE(H2, M, '5', (), tem_conteiner=False)])
-        self.assertEqual(sombra.irmaos_de([sombra.CandidatoCE(M, None, '5', ())], irmaos)[0].ce, H1)
+        self.assertEqual(carga.irmaos_de([sombra.CandidatoCE(M, None, '5', ())], irmaos)[0].ce, H1)
 
     def test_motivo_ce_atual(self):
         info = {M: {'trafego': '5', 'manifesto': 'MAN1'}, EXPORTACAO: {'trafego': '7', 'manifesto': 'MAN2'},
