@@ -22,7 +22,7 @@ from werkzeug.routing import BuildError
 
 from virasana.navii import filtros_salvos, referencias
 from virasana.navii.busca_navii import (
-    CAMPOS_LISTA, busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
+    CAMPOS_LISTA, CAMPOS_MARCAVEIS, busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
     PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
 )
 
@@ -52,6 +52,8 @@ def _serializa_valor(v):
         return v.strftime('%Y-%m-%d %H:%M:%S')
     if isinstance(v, dict):
         return {k: _serializa_valor(sub) for k, sub in v.items()}
+    if isinstance(v, (set, tuple)):
+        return sorted(v)
     return v
 
 
@@ -78,6 +80,7 @@ def index():
         imagem_url_template=_imagem_url_template(),
         defaults_periodo=_defaults_periodo(),
         porto_escala_padrao=PORTO_ESCALA_PADRAO,
+        tipos_bl=referencias.tipos_bl(),
     )
 
 
@@ -92,7 +95,7 @@ def _filtros_da_requisicao() -> dict:
         valor = (request.args.get(campo) or '').strip()
         if valor:
             filtros[campo] = valor
-    for campo in ('concluido', 'com_imagem'):
+    for campo in CAMPOS_MARCAVEIS:
         if request.args.get(campo) in ('1', 'true', 'True'):
             filtros[campo] = True
     ncms_max = request.args.get('ncms_max', type=int)

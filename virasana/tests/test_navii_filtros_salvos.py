@@ -97,13 +97,13 @@ class TestFiltrosSalvos(unittest.TestCase):
     def test_so_campos_conhecidos_sem_datas_e_normalizados(self):
         salvo = filtros_salvos.salva(self.col, 'ana', '  eletrônicos   da China ', 'efetiva', {
             'ncm': '8471.30, 8517', 'porto_escala': 'brssz', 'produto': ' notebook ', 'empresa': '',
-            'ncms_max': '3', 'concluido': 1, 'com_imagem': False,
+            'ncms_max': '3', 'concluido': 1, 'com_imagem': False, 'tipo_bl': '11, 12', 'sem_oog': 'true',
             'data_inicio': '2026-01-01', 'data_fim': '2026-01-31', 'qualquer': 'x',
         })
         self.assertEqual(salvo['nome'], 'eletrônicos da China')
         self.assertEqual(salvo['filtros'], {
             'ncm': ['847130', '8517'], 'porto_escala': ['BRSSZ'], 'produto': 'notebook',
-            'ncms_max': 3, 'concluido': True,
+            'ncms_max': 3, 'concluido': True, 'tipo_bl': ['11', '12'], 'sem_oog': True,
         })
 
     def test_validacoes(self):

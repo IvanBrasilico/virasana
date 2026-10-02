@@ -11,6 +11,8 @@ Cenário (período 01 a 07/03/2026):
     O2 BTP, saída 06/03, SEM escaneamento
     O3 BTP, saída 06/03, NÃO concluído (o loop ainda espera a entrada no seco) -> fora
     O4 8939999 (sem cadastro), saída 04/03, SEM escaneamento
+Tipo do contêiner no desembarque (API): T1 45G1, T2 42U1 (open top: potencial OOG), O2 22G1; os demais
+sem evento de desembarque.
 """
 import os
 import unittest
@@ -27,6 +29,8 @@ from virasana.completude.views_completude import bp_completude
 from virasana.navii.busca_navii import tabela_recintos
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 
+from bhadrasana.models.apirecintos import EmbarqueDesembarque  # noqa: I100
+
 INICIO, FIM = datetime(2026, 3, 1), datetime(2026, 3, 7, 23, 59, 59)
 AGORA = datetime(2026, 3, 10)
 SECO, BTP, SEM_CADASTRO = '8932000', '8931356', '8939999'
@@ -42,6 +46,11 @@ def ciclo(session, conteiner, imagens=None, **campos):
 
 
 def monta_cenario(session):
+    EmbarqueDesembarque.__table__.create(session.get_bind(), checkfirst=True)
+    for id_, conteiner, tipo in ((101, 'T1', '45G1'), (102, 'T2', '42U1'), (202, 'O2', '22G1')):
+        session.execute(EmbarqueDesembarque.__table__.insert(), {
+            'id': id_, 'numeroConteiner': conteiner, 'tipoConteiner': tipo, 'embarqueDesembarque': 'D',
+            'codigoRecinto': BTP, 'dataHoraOcorrencia': datetime(2026, 3, 1)})
     session.execute(tabela_recintos.insert(), [
         {'id': 1, 'nome': 'BTP', 'cod_siscomex': BTP, 'cod_carga': 'T01'},
         {'id': 2, 'nome': 'EADI SANTOS', 'cod_siscomex': SECO, 'cod_carga': None},
@@ -49,14 +58,14 @@ def monta_cenario(session):
     tra = dict(codigoRecintoDesembarque=BTP, codigoRecintoArmazenagem=SECO, data_desembarque=datetime(2026, 3, 1),
                data_saida=datetime(2026, 3, 1, 20))
     ciclo(session, 'T1', ['5f00000000000000000000a1'], data_entrada_seco=datetime(2026, 3, 2),
-          data_saida_seco=datetime(2026, 3, 4), concluido=True, **tra)
+          data_saida_seco=datetime(2026, 3, 4), concluido=True, desembarque_id=101, **tra)
     ciclo(session, 'T2', None, data_entrada_seco=datetime(2026, 3, 3), data_saida_seco=datetime(2026, 3, 5),
-          concluido=True, **tra)
+          concluido=True, desembarque_id=102, **tra)
     ciclo(session, 'T3', [None], data_entrada_seco=datetime(2026, 3, 3), **tra)
     ciclo(session, 'T4', None, data_entrada_seco=datetime(2026, 2, 20), **tra)
     operador = dict(codigoRecintoDesembarque=BTP, data_desembarque=datetime(2026, 3, 1))
     ciclo(session, 'O1', ['5f00000000000000000000b1'], data_saida=datetime(2026, 3, 2), concluido=True, **operador)
-    ciclo(session, 'O2', None, data_saida=datetime(2026, 3, 6), concluido=True, **operador)
+    ciclo(session, 'O2', None, data_saida=datetime(2026, 3, 6), concluido=True, desembarque_id=202, **operador)
     ciclo(session, 'O3', None, data_saida=datetime(2026, 3, 6), concluido=False, **operador)
     ciclo(session, 'O4', None, codigoRecintoDesembarque=SEM_CADASTRO, data_desembarque=datetime(2026, 3, 3),
           data_saida=datetime(2026, 3, 4), concluido=True)
@@ -114,6 +123,22 @@ class TestBusca(CompletudeTestCase):
         self.assertEqual(t1['imagens'], ['5f00000000000000000000a1'])
         self.assertEqual(len(bc.detalhe(self.session, 'operador', BTP, INICIO, FIM, AGORA)), 2)
 
+    def test_potencial_oog_contado_e_excluido(self):
+        p = bc.panorama(self.session, INICIO, FIM, AGORA)
+        self.assertEqual((p['tra']['totais']['oog'], p['tra']['totais']['oog_sem_escaneamento']), (1, 1))
+        self.assertEqual(p['operador']['totais']['oog'], 0)
+        sem_oog = bc.panorama(self.session, INICIO, FIM, AGORA, sem_oog=True)
+        self.assertEqual((sem_oog['tra']['totais']['total'], sem_oog['tra']['totais']['sem_escaneamento']), (2, 0))
+        self.assertEqual(sem_oog['operador']['totais']['total'], 3)   # sem tipo informado não é OOG
+
+    def test_detalhe_com_tipo_do_conteiner(self):
+        linhas = {lin['conteiner']: lin for lin in bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA)}
+        self.assertEqual((linhas['T2']['tipo']['curta'], linhas['T2']['oog']), ("40', open top", True))
+        self.assertEqual((linhas['T1']['tipo_codigo'], linhas['T1']['oog']), ('45G1', False))
+        self.assertIsNone(linhas['T3']['tipo'])
+        sem_oog = bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA, sem_oog=True)
+        self.assertEqual(sorted(lin['conteiner'] for lin in sem_oog), ['T1', 'T3'])
+
     def test_fluxo_invalido(self):
         with self.assertRaises(ValueError):
             bc.agregado(self.session, 'xpto', INICIO, FIM)
@@ -152,6 +177,17 @@ class TestTela(CompletudeTestCase):
         self.assertIn('/completude_escaneamentos/recinto/8932000?fluxo=tra', html)
         self.assertIn('/completude_escaneamentos/recinto/8931356?fluxo=operador', html)
         self.assertEqual(self.client.get('/completude_escaneamentos').status_code, 200)   # sem a barra
+        self.assertIn('Excluir potenciais OOG', html)
+        self.assertIn('Potencial OOG', html)
+
+    def test_tela_sem_oog_mantem_a_opcao_nos_links(self):
+        html = self.html('/completude_escaneamentos/', inicio='2026-03-01', fim='2026-03-07', sem_oog='1')
+        self.assertIn('sem_oog=1', html)
+        self.assertNotIn('<th class="numero">Potencial OOG</th>', html)
+        html = self.html(f'/completude_escaneamentos/recinto/{SECO}', fluxo='tra', inicio='2026-03-01',
+                         fim='2026-03-07', sem_oog='1')
+        self.assertNotIn('T2', html)
+        self.assertIn('Sem os potenciais OOG', html)
 
     def test_periodo_padrao_e_invalido(self):
         self.assertIn(str(date.today()), self.html('/completude_escaneamentos/'))
@@ -163,7 +199,8 @@ class TestTela(CompletudeTestCase):
         html = self.html(f'/completude_escaneamentos/recinto/{SECO}', fluxo='tra', inicio='2026-03-01',
                          fim='2026-03-07')
         for trecho in ('EADI SANTOS', 'T1', 'T2', 'sem escaneamento', 'sem imagem', 'Entrada no seco',
-                       '/mini1/5f00000000000000000000a1', '/file?_id=5f00000000000000000000a1'):
+                       '/mini1/5f00000000000000000000a1', '/file?_id=5f00000000000000000000a1',
+                       '42U1', "40&#39;, open top", 'potencial OOG', 'potenciais OOG (1 sem escaneamento)'):
             self.assertIn(trecho, html)
         html = self.html(f'/completude_escaneamentos/recinto/{BTP}', fluxo='operador', inicio='2026-03-01',
                          fim='2026-03-07')

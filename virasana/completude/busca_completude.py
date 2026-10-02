@@ -17,16 +17,31 @@ caminhos que o contêiner pode seguir depois do desembarque:
 
 Um ciclo tem escaneamento quando há linha em ..._escaneamentos; tem imagem
 quando alguma dessas linhas tem `imagem_id`. Somente leitura.
+
+Tipo do contêiner (pedido do usuário, 02/10/2026): vem do evento de DESEMBARQUE
+da API Recintos (`tipoConteiner`, pelo `desembarque_id` do ciclo) — vale também
+para o vazio, que não tem CE. Open top e plataforma/flat rack são POTENCIAL OOG
+(carga fora de gabarito, que não passa no escâner): a tela mostra quantos são e
+permite excluí-los da cobrança (`sem_oog`).
 """
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from sqlalchemy import and_, case, exists, func, select
+from sqlalchemy import and_, case, exists, func, not_, or_, select
 
 from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaImportacao as Ciclo, CicloDeVidaImportacaoEscaneamentos as Esc,
 )
+from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
+from virasana.navii import referencias
 from virasana.navii.busca_navii import tabela_recintos
+
+from bhadrasana.models.apirecintos import EmbarqueDesembarque  # noqa: I100 — sys.path ajustado acima
+
+# Só a tabela (Core), sem o mapper do bhadrasana: o tipo informado no desembarque do ciclo
+DESEMBARQUES = EmbarqueDesembarque.__table__
+TIPO = DESEMBARQUES.c.tipoConteiner
+OOG = expressao_oog(TIPO)
 
 HORAS_SEM_TEMPO_DE_ESCANEAR = 3
 LIMITE_DETALHE = 2000
@@ -67,11 +82,16 @@ def _criterios(fluxo: str, inicio: datetime, fim: datetime, agora: Optional[date
     _fluxo(fluxo)
 
 
+def _sem_oog():
+    """Critério "o contêiner não é potencial OOG" (sem tipo informado conta como não OOG)."""
+    return or_(TIPO.is_(None), not_(OOG))
+
+
 def _percentual(parte: int, total: int) -> float:
     return parte / total if total else 0.0
 
 
-def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc) -> dict:
+def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc, oog=0, oog_sem_esc=0) -> dict:
     total, sem_esc, sem_img = total or 0, sem_esc or 0, sem_img or 0
     saidas, saidas_sem_esc = saidas or 0, saidas_sem_esc or 0
     return {
@@ -80,14 +100,17 @@ def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc) -> dict
         'pct_sem_escaneamento': _percentual(sem_esc, total),
         'total_saidas': saidas, 'saidas_sem_escaneamento': saidas_sem_esc,
         'pct_saidas_sem_escaneamento': _percentual(saidas_sem_esc, saidas),
+        'oog': oog or 0, 'oog_sem_escaneamento': oog_sem_esc or 0,
     }
 
 
-def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Optional[datetime] = None) -> List[dict]:
+def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
+             sem_oog: bool = False) -> List[dict]:
     """Uma linha por recinto do fluxo, do maior para o menor % sem escaneamento.
 
     No fluxo TRA, "saídas" são as saídas do seco; no do operador toda entrega
-    já é uma saída (total_saidas = total).
+    já é uma saída (total_saidas = total). `oog`/`oog_sem_escaneamento`: potenciais
+    OOG pelo tipo do desembarque; `sem_oog` os tira da conta.
     """
     recinto = _fluxo(fluxo)['recinto']
     tem_escaneamento = exists().where(Esc.ciclo_de_vida_id == Ciclo.ID)
@@ -96,36 +119,41 @@ def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Option
     nomes = (select(tabela_recintos.c.cod_siscomex, func.max(tabela_recintos.c.nome).label('nome'))
              .where(tabela_recintos.c.cod_siscomex.isnot(None))
              .group_by(tabela_recintos.c.cod_siscomex).subquery('nomes'))
-    linhas = (
+    consulta = (
         session.query(
             recinto, func.max(nomes.c.nome), func.count(Ciclo.ID),
             func.sum(case((~tem_escaneamento, 1), else_=0)),
             func.sum(case((~tem_imagem, 1), else_=0)),
             func.sum(case((saiu, 1), else_=0)),
             func.sum(case((and_(saiu, ~tem_escaneamento), 1), else_=0)),
+            func.sum(case((OOG, 1), else_=0)),
+            func.sum(case((and_(OOG, ~tem_escaneamento), 1), else_=0)),
         )
         .outerjoin(nomes, nomes.c.cod_siscomex == recinto)
+        .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
         .filter(*_criterios(fluxo, inicio, fim, agora))
-        .group_by(recinto)
-        .all()
     )
-    resultados = [_item(*linha) for linha in linhas]
+    if sem_oog:
+        consulta = consulta.filter(_sem_oog())
+    resultados = [_item(*linha) for linha in consulta.group_by(recinto).all()]
     return sorted(resultados, key=lambda r: (-r['pct_sem_escaneamento'], -r['total']))
 
 
 def totais(resultados: List[dict]) -> dict:
     """Linha de TOTAL de uma tabela agregada."""
-    soma = {chave: sum(r[chave] for r in resultados)
-            for chave in ('total', 'sem_escaneamento', 'sem_imagem', 'total_saidas', 'saidas_sem_escaneamento')}
+    soma = {chave: sum(r.get(chave, 0) for r in resultados)
+            for chave in ('total', 'sem_escaneamento', 'sem_imagem', 'total_saidas', 'saidas_sem_escaneamento',
+                          'oog', 'oog_sem_escaneamento')}
     return _item(None, 'TOTAL', soma['total'], soma['sem_escaneamento'], soma['sem_imagem'],
-                 soma['total_saidas'], soma['saidas_sem_escaneamento'])
+                 soma['total_saidas'], soma['saidas_sem_escaneamento'], soma['oog'], soma['oog_sem_escaneamento'])
 
 
-def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime] = None) -> Dict[str, dict]:
+def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
+             sem_oog: bool = False) -> Dict[str, dict]:
     """Os dois fluxos lado a lado: tabela por recinto, totais e participação de cada um."""
     resultado = {}
     for fluxo in FLUXOS:
-        linhas = agregado(session, fluxo, inicio, fim, agora)
+        linhas = agregado(session, fluxo, inicio, fim, agora, sem_oog)
         resultado[fluxo] = {**FLUXOS[fluxo], 'linhas': linhas, 'totais': totais(linhas)}
     todos = sum(r['totais']['total'] for r in resultado.values())
     for dados in resultado.values():
@@ -134,20 +162,22 @@ def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime]
 
 
 def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: datetime,
-            agora: Optional[datetime] = None) -> List[dict]:
-    """Ciclos de um recinto no fluxo: uma linha por contêiner, com as datas e
-    os escaneamentos/imagens (os sem escaneamento primeiro)."""
-    ciclos = (
-        session.query(Ciclo)
+            agora: Optional[datetime] = None, sem_oog: bool = False) -> List[dict]:
+    """Ciclos de um recinto no fluxo: uma linha por contêiner, com as datas, o tipo do
+    contêiner e os escaneamentos/imagens (os sem escaneamento primeiro)."""
+    consulta = (
+        session.query(Ciclo, TIPO)
+        .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
         .filter(_fluxo(fluxo)['recinto'] == codigo_recinto, *_criterios(fluxo, inicio, fim, agora))
-        .order_by(FLUXOS[fluxo]['data'])
-        .limit(LIMITE_DETALHE)
-        .all()
     )
+    if sem_oog:
+        consulta = consulta.filter(_sem_oog())
     linhas = []
-    for ciclo in ciclos:
+    for ciclo, tipo in consulta.order_by(FLUXOS[fluxo]['data']).limit(LIMITE_DETALHE).all():
         escaneamentos = sorted(ciclo.escaneamentos, key=lambda e: e.data_escaneamento or datetime.min)
+        descricao_tipo = referencias.tipo_conteiner(tipo)
         linhas.append({
+            'tipo_codigo': tipo, 'tipo': descricao_tipo, 'oog': bool(descricao_tipo and descricao_tipo['oog']),
             'conteiner': ciclo.numeroConteiner, 'ce': ciclo.numeroCEmercante,
             'desembarque': ciclo.data_desembarque, 'saida': ciclo.data_saida,
             'entrada_seco': ciclo.data_entrada_seco, 'saida_seco': ciclo.data_saida_seco,

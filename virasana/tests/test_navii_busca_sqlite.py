@@ -27,7 +27,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from virasana.navii.busca_navii import (
-    busca_ces_navii, busca_ciclos_navii, busca_manifestos_navii,
+    busca_ces_navii, busca_ciclos_navii, busca_familias_navii, busca_manifestos_navii,
     busca_nomes_recintos, conta_conteineres_navii, monta_cards_navii,
     monta_query_navii, normaliza_filtros, tabela_recintos,
 )
@@ -40,6 +40,7 @@ from virasana.integracao.mercante.mercantealchemy import (
     Conhecimento, Enumerado, Escala, EscalaManifesto, Item, Manifesto, NCMItem,
 )
 from virasana.navii.views_navii import bp_navii
+from bhadrasana.models.apirecintos import EmbarqueDesembarque
 from bhadrasana.models.laudo import Empresa
 
 PERIODO = {'data_inicio': '2026-01-05', 'data_fim': '2026-01-15'}
@@ -47,7 +48,7 @@ PERIODO = {'data_inicio': '2026-01-05', 'data_fim': '2026-01-15'}
 TABELAS = [
     Enumerado, Escala, EscalaManifesto, Manifesto, Conhecimento, Item, NCMItem,
     CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos,
-    Empresa,
+    Empresa, EmbarqueDesembarque,   # desembarque: tipo do contêiner na completude
 ]
 
 
@@ -471,6 +472,87 @@ class TestEnriquecimento(NaviiSqliteTestCase):
         self.assertEqual(busca_nomes_recintos(self.session, [None, '']), {})
 
 
+class TestFamiliaTiposDeBLETipoDeConteiner(NaviiSqliteTestCase):
+    """Master CM (MBL) e filhotes CF (HBL, com o contêiner) e CF2 (irmão, sem o contêiner), no manifesto
+    M1 (escala no período). C8 é open top (42U1, potencial OOG) e está nos itens do master e do filhote; o
+    ciclo de vida foi gravado com o CE do MASTER (como o loop antigo faz em 36% dos casos)."""
+
+    def setUp(self):
+        super().setUp()
+        self.session.add_all([
+            Conhecimento(numeroCEmercante='CM', manifestoCE='M1', tipoBLConhecimento='11', tipoTrafego='5',
+                         descricao='CONSOLIDADO'),
+            Conhecimento(numeroCEmercante='CF', numeroCEMaster='CM', manifestoCE='M1', tipoBLConhecimento='12',
+                         tipoTrafego='5', descricao='MERCADORIA DO FILHOTE'),
+            Conhecimento(numeroCEmercante='CF2', numeroCEMaster='CM', manifestoCE='M1', tipoBLConhecimento='12',
+                         tipoTrafego='5'),
+            Item(numeroCEmercante='CM', codigoConteiner='C8', isoCode='42U1'),
+            Item(numeroCEmercante='CF', codigoConteiner='C8', isoCode='42U1'),
+        ])
+        self.session.query(Item).filter(Item.codigoConteiner == 'C1').update({'isoCode': '45G1'})
+        cria_ciclo(self.session, 'CM', 'C8', datetime(2026, 1, 11, 9, 0), '8931356',
+                   imagens=['5f0000000000000000000008'])
+        self.session.commit()
+
+    def cards(self, **filtros):
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, **filtros}, limit=50)
+        return {(c['numeroCEmercante'], c['numeroConteiner']): c for c in monta_cards_navii(self.session, resultados)}
+
+    def test_familia_com_irmaos(self):
+        conhecimentos = self.session.query(Conhecimento).filter(Conhecimento.numeroCEmercante.in_(['CM', 'CF'])).all()
+        familias = busca_familias_navii(self.session, conhecimentos)
+        self.assertEqual(familias['CM'], {'master': None, 'filhotes': ['CF', 'CF2'], 'familia': {'CM', 'CF', 'CF2'}})
+        self.assertEqual(familias['CF'], {'master': 'CM', 'filhotes': [], 'familia': {'CF', 'CM', 'CF2'}})
+
+    def test_card_do_filhote_acha_o_ciclo_gravado_com_o_master(self):
+        card = self.cards()[('CF', 'C8')]
+        self.assertTrue(card['cicloDeVidaLocalizado'])
+        self.assertEqual((card['cicloPorCE'], card['numeroCEMaster']), ('CM', 'CM'))
+        self.assertEqual(card['imagens_ids'], ['5f0000000000000000000008'])
+        self.assertIsNone(self.cards()[('CM', 'C8')]['cicloPorCE'])   # o do próprio CE
+
+    def test_ciclo_do_proprio_ce_tem_preferencia(self):
+        cria_ciclo(self.session, 'CF', 'C8', datetime(2026, 1, 10, 9, 0), '8932000')
+        self.session.commit()
+        item = self.session.query(Item).filter(Item.numeroCEmercante == 'CF').one()
+        ciclo = busca_ciclos_navii(self.session, [item], {'CF': {'CF', 'CM', 'CF2'}})[('CF', 'C8')]
+        self.assertEqual(ciclo.numeroCEmercante, 'CF')
+        # sem a família, só o CE exato
+        self.assertEqual(busca_ciclos_navii(self.session, [item]), {('CF', 'C8'): ciclo})
+
+    def test_tipo_de_bl_com_sigla_descricao_e_filhotes(self):
+        cards = self.cards()
+        master, filhote = cards[('CM', 'C8')], cards[('CF', 'C8')]
+        self.assertEqual((master['tipoBL'], master['tipoBLCodigo'], master['tipoBLDescricao']),
+                         ('MBL', '11', 'master (consolida filhotes)'))
+        self.assertEqual(master['filhotes'], ['CF', 'CF2'])
+        self.assertEqual((filhote['tipoBL'], filhote['filhotes']), ('HBL', []))
+
+    def test_tipo_do_conteiner_com_descricao_e_oog(self):
+        cards = self.cards()
+        self.assertEqual(cards[('CF', 'C8')]['tipoConteiner']['curta'], "40', open top")
+        self.assertTrue(cards[('CF', 'C8')]['tipoConteiner']['oog'])
+        self.assertFalse(cards[('CE1', 'C1')]['tipoConteiner']['oog'])
+        self.assertIsNone(cards[('CE1', 'C2')]['tipoConteiner'])   # sem isoCode no Mercante
+        conteiner = next(c for c in cards[('CE1', 'C1')]['conteineres'] if c['codigoConteiner'] == 'C1')
+        self.assertEqual(conteiner['tipoConteiner']['curta'], "40' high cube, uso geral (dry)")
+
+    def test_filtro_por_tipo_de_bl(self):
+        self.assertEqual(self.conteineres(tipo_bl=['11']), {'C8'})
+        self.assertEqual(self.total(tipo_bl='11'), 1)
+        self.assertEqual(self.total(tipo_bl=['11', '12']), 6)   # C1, C2, C4, C6 (HBL) + C8 do master e do filhote
+        self.assertEqual(self.total(tipo_bl=['10']), 0)
+
+    def test_filtro_sem_oog(self):
+        self.assertIn('C8', self.conteineres())
+        self.assertNotIn('C8', self.conteineres(sem_oog=True))
+        self.assertEqual(self.total(sem_oog=True), self.total() - 2)   # C8 do master e do filhote
+        self.assertIn('C2', self.conteineres(sem_oog=True))            # sem tipo informado: não é OOG
+
+    def test_normaliza_tipo_bl(self):
+        self.assertEqual(normaliza_filtros({'tipo_bl': ' 11, x12 '})['tipo_bl'], ['11', '12'])
+
+
 class TestTabelaRecintos(unittest.TestCase):
     """A tabela leve do NAVI-I tem que continuar batendo com o model real do bhadrasana2."""
 
@@ -527,6 +609,16 @@ class TestApiCes(NaviiSqliteTestCase):
 
     def test_janela_invalida_400(self):
         self.assertEqual(self.get(tipo_janela='xyz').status_code, 400)
+
+    def test_filtros_tipo_bl_e_sem_oog_pela_api(self):
+        self.session.add(Conhecimento(numeroCEmercante='CM', manifestoCE='M1', tipoBLConhecimento='11',
+                                      tipoTrafego='5'))
+        self.session.add(Item(numeroCEmercante='CM', codigoConteiner='C8', isoCode='22U1'))
+        self.session.commit()
+        dados = self.get(tipo_bl='11').get_json()
+        self.assertEqual((dados['total'], dados['cards'][0]['tipoBL']), (1, 'MBL'))
+        self.assertEqual(self.get(tipo_bl='11', sem_oog='1').get_json()['total'], 0)
+        self.assertTrue(dados['cards'][0]['tipoConteiner']['oog'])
 
 
 if __name__ == '__main__':

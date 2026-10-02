@@ -1,0 +1,89 @@
+{
+  "_fonte": "ISO 6346:1995 — códigos de tamanho (comprimento e altura) e de tipo (grupo + detalhe) do contêiner; descrições curtas em português. O 'grupo' e o potencial OOG (carga fora de gabarito: open top e plataforma/flat rack podem não passar nos gates padrão nem no escâner) são o que importa para o ciclo de vida. Códigos que não seguem a norma ficam em 'nao_iso' e são marcados 'a confirmar'; nenhum nome é inventado.",
+  "comprimentos": {
+    "1": "10'",
+    "2": "20'",
+    "3": "30'",
+    "4": "40'",
+    "B": "24'",
+    "C": "24'6\"",
+    "G": "41'",
+    "H": "43'",
+    "L": "45'",
+    "M": "48'",
+    "N": "49'"
+  },
+  "alturas": {
+    "0": {"curta": "", "descricao": "8' de altura"},
+    "2": {"curta": "", "descricao": "8'6\" de altura"},
+    "4": {"curta": "9'", "descricao": "9' de altura"},
+    "5": {"curta": "high cube", "descricao": "9'6\" de altura (high cube)"},
+    "6": {"curta": "extra alto", "descricao": "mais de 9'6\" de altura"},
+    "8": {"curta": "meia altura", "descricao": "4'3\" de altura (meia altura)"},
+    "9": {"curta": "meia altura", "descricao": "até 4' de altura"},
+    "C": {"curta": "largo", "descricao": "8'6\" de altura, largura de 2,44 a 2,5 m"},
+    "D": {"curta": "largo", "descricao": "9' de altura, largura de 2,44 a 2,5 m"},
+    "E": {"curta": "largo high cube", "descricao": "9'6\" de altura, largura de 2,44 a 2,5 m"},
+    "F": {"curta": "largo extra alto", "descricao": "mais de 9'6\" de altura, largura de 2,44 a 2,5 m"},
+    "L": {"curta": "largo", "descricao": "8'6\" de altura, largura acima de 2,5 m"},
+    "M": {"curta": "largo", "descricao": "9' de altura, largura acima de 2,5 m"},
+    "N": {"curta": "largo high cube", "descricao": "9'6\" de altura, largura acima de 2,5 m"},
+    "P": {"curta": "largo extra alto", "descricao": "mais de 9'6\" de altura, largura acima de 2,5 m"}
+  },
+  "grupos": {
+    "G": {"nome": "uso geral (dry)", "oog": false},
+    "V": {"nome": "ventilado", "oog": false},
+    "B": {"nome": "granel", "oog": false},
+    "S": {"nome": "carga especial (animais, veículos)", "oog": false},
+    "R": {"nome": "refrigerado (reefer)", "oog": false},
+    "H": {"nome": "isotérmico / aquecido", "oog": false},
+    "U": {"nome": "open top", "oog": true},
+    "P": {"nome": "plataforma / flat rack", "oog": true},
+    "T": {"nome": "tanque", "oog": false},
+    "A": {"nome": "aéreo / superfície", "oog": false}
+  },
+  "detalhes": {
+    "G0": "portas numa ou nas duas extremidades",
+    "G1": "com respiros (ventilação passiva)",
+    "R0": "refrigeração mecânica",
+    "R1": "refrigeração mecânica e aquecimento",
+    "U0": "aberturas numa ou nas duas extremidades",
+    "U1": "travessas removíveis nas extremidades",
+    "P1": "duas cabeceiras fixas",
+    "P3": "cabeceiras dobráveis"
+  },
+  "nao_iso": {
+    "K": {"nome": "tipo K (fora da ISO 6346, a confirmar)", "oog": false}
+  },
+  "numericos": {
+    "_fonte": "código numérico antigo (ISO 6346:1984): 1º dígito do código de tipo (3ª posição); só os grupos de correspondência segura",
+    "0": "G",
+    "1": "G",
+    "3": "R",
+    "5": "U",
+    "6": "P",
+    "7": "T",
+    "8": "B"
+  },
+  "apelidos": {
+    "_fonte": "apelidos comerciais (40HC, 40OT, 20FR...): as duas últimas posições",
+    "DC": "G",
+    "DV": "G",
+    "GP": "G",
+    "HC": "G",
+    "HQ": "G",
+    "ST": "G",
+    "OT": "U",
+    "FR": "P",
+    "FL": "P",
+    "PL": "P",
+    "PF": "P",
+    "RF": "R",
+    "RH": "R",
+    "RE": "R",
+    "TK": "T",
+    "TN": "T",
+    "BK": "B",
+    "VH": "V"
+  }
+}

@@ -65,6 +65,44 @@ class TestReferencias(unittest.TestCase):
         self.assertIsNone(referencias.nome_navio(None))
 
 
+class TestTiposConteinerEBL(unittest.TestCase):
+    """tipos_conteiner.json (ISO 6346, mantido à mão) e tipos_bl.json (Mercante)."""
+
+    def test_tipo_iso_com_tamanho_grupo_e_detalhe(self):
+        tipo = referencias.tipo_conteiner('45G1')
+        self.assertEqual((tipo['grupo'], tipo['curta'], tipo['oog'], tipo['confirmado']),
+                         ('G', "40' high cube, uso geral (dry)", False, True))
+        self.assertIn('ventilação passiva', tipo['descricao'])
+        self.assertEqual(referencias.tipo_conteiner('22g0')['curta'], "20', uso geral (dry)")
+        self.assertEqual(referencias.tipo_conteiner('45R1')['curta'], "40' high cube, refrigerado (reefer)")
+
+    def test_open_top_e_plataforma_sao_potencial_oog(self):
+        for codigo in ('42U1', '22U0', '42P1', '45P3', '2251', '4363', '40OT', '20FR'):
+            with self.subTest(codigo=codigo):
+                self.assertTrue(referencias.tipo_conteiner(codigo)['oog'])
+
+    def test_apelido_usa_os_pes_e_nao_o_codigo_de_tamanho(self):
+        self.assertEqual(referencias.tipo_conteiner('40HC')['curta'], "40' high cube, uso geral (dry)")
+        self.assertEqual(referencias.tipo_conteiner('OT')['curta'], 'open top')
+
+    def test_codigo_fora_da_norma_fica_a_confirmar(self):
+        tipo = referencias.tipo_conteiner('22K1')   # 6% dos ciclos na sombra de 02/10/2026
+        self.assertEqual((tipo['grupo'], tipo['confirmado'], tipo['oog']), ('K', False, False))
+        self.assertIn('a confirmar', tipo['curta'])
+
+    def test_desconhecido_nao_inventa(self):
+        for codigo in (None, '', 'XXXX', '22Z1', '2229'):
+            with self.subTest(codigo=codigo):
+                self.assertIsNone(referencias.tipo_conteiner(codigo))
+
+    def test_tipos_bl(self):
+        self.assertEqual(referencias.descreve_tipo_bl('12'),
+                         {'codigo': '12', 'sigla': 'HBL', 'descricao': 'house (filhote de um master)'})
+        self.assertEqual(referencias.descreve_tipo_bl(' 13 '), {'codigo': '13', 'sigla': '13', 'descricao': None})
+        self.assertIsNone(referencias.descreve_tipo_bl(None))
+        self.assertEqual([t['sigla'] for t in referencias.tipos_bl()], ['BL', 'MBL', 'HBL', 'MHBL'])
+
+
 class TestGeradores(unittest.TestCase):
     """Transformações do atualiza_referencias.py, com dados mínimos no formato das fontes."""
 

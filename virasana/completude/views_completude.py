@@ -53,6 +53,11 @@ def _intervalo(inicio: date, fim: date) -> tuple:
     return datetime.combine(inicio, time.min), datetime.combine(fim, time.max)
 
 
+def _sem_oog() -> bool:
+    """Excluir os potenciais OOG (open top/plataforma) da cobrança de escaneamento?"""
+    return request.args.get('sem_oog') in ('1', 'true', 'on')
+
+
 def _urls_imagem() -> dict:
     """Miniatura e visualização da imagem (rotas de virasana/views.py), com o prefixo da app."""
     return {'mini': request.script_root + '/mini1/', 'arquivo': request.script_root + '/file?_id='}
@@ -61,10 +66,11 @@ def _urls_imagem() -> dict:
 @bp_completude.route('/', strict_slashes=False)  # sem redirect da barra final (proxy; ver CLAUDE.md)
 @login_required
 def index():
-    contexto = {'erro': None, 'fluxos': None}
+    contexto = {'erro': None, 'fluxos': None, 'sem_oog': _sem_oog()}
     try:
         inicio, fim = periodo()
-        contexto['fluxos'] = panorama(current_app.config['db_session'], *_intervalo(inicio, fim))
+        contexto['fluxos'] = panorama(current_app.config['db_session'], *_intervalo(inicio, fim),
+                                      sem_oog=contexto['sem_oog'])
     except ParametrosInvalidos as err:
         contexto['erro'] = str(err)
         inicio, fim = date.today() - timedelta(days=DIAS_PADRAO), date.today()
@@ -82,13 +88,15 @@ def recinto(codigo):
     except ParametrosInvalidos as err:
         return str(err), 400
     session = current_app.config['db_session']
-    linhas = detalhe(session, fluxo, codigo, *_intervalo(inicio, fim))
+    sem_oog = _sem_oog()
+    linhas = detalhe(session, fluxo, codigo, *_intervalo(inicio, fim), sem_oog=sem_oog)
     resumo = totais([{
         'total': 1, 'sem_escaneamento': int(not lin['escaneamentos']), 'sem_imagem': int(not lin['imagens']),
         'total_saidas': int(bool(lin['saida_seco'] if fluxo == 'tra' else lin['saida'])),
         'saidas_sem_escaneamento': int(bool(lin['saida_seco'] if fluxo == 'tra' else lin['saida'])
                                        and not lin['escaneamentos']),
+        'oog': int(lin['oog']), 'oog_sem_escaneamento': int(lin['oog'] and not lin['escaneamentos']),
     } for lin in linhas])
     return render_template('navii_completude_detalhe.html', fluxo=fluxo, dados_fluxo=FLUXOS[fluxo], codigo=codigo,
                            nome=nome_recinto(session, codigo), linhas=linhas, resumo=resumo,
-                           inicio=inicio, fim=fim, urls_imagem=_urls_imagem())
+                           inicio=inicio, fim=fim, urls_imagem=_urls_imagem(), sem_oog=sem_oog)

@@ -206,6 +206,21 @@
             background: #FFF4E5; color: #A15C00; font-size: .625rem; font-weight: 700;
             padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
         }
+        .tag-filhotes {
+            background: #E8F0FB; color: #1351B4; font-size: .625rem; font-weight: 700; cursor: help;
+            padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
+        }
+        .tag-tipo {
+            background: #F0F0F0; color: #333; font-size: .6875rem; font-weight: 600; cursor: help;
+            padding: .125rem .5rem; border-radius: 999px;
+        }
+        .tag-oog {
+            background: #FDE7E4; color: #B3261E; font-size: .625rem; font-weight: 700; cursor: help;
+            padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
+        }
+        .descricao-bl { display: block; font-size: .6875rem; font-weight: 400; color: #666; }
+        .aviso-familia { margin-top: .5rem; font-size: .6875rem; color: #555; }
+        .grupo-marcaveis { display: flex; flex-direction: column; gap: .25rem; }
 
         .status-navii {
             display: inline-block; font-size: .75rem; font-weight: 700;
@@ -415,6 +430,24 @@
                 <input id="f-ncms_max" type="range" min="0" max="20" step="1" value="0" />
             </div>
 
+            <div class="campo">
+                <span class="rotulo-campo">Tipo de BL</span>
+                <div class="grupo-marcaveis" id="f-tipo_bl">
+                    {% for tipo in tipos_bl %}
+                    <div class="campo-checkbox">
+                        <input id="f-tipo_bl-{{ tipo.codigo }}" type="checkbox" value="{{ tipo.codigo }}" />
+                        <label for="f-tipo_bl-{{ tipo.codigo }}">{{ tipo.sigla }}{% if tipo.descricao %} — {{ tipo.descricao }}{% endif %}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="dica-lista">Nenhum marcado = todos.</div>
+            </div>
+
+            <div class="campo campo-checkbox">
+                <input id="f-sem_oog" type="checkbox" />
+                <label for="f-sem_oog" title="Open top e plataforma/flat rack podem levar carga fora de gabarito (OOG), que não passa nos gates padrão nem no escâner">Excluir potenciais OOG (open top, plataforma)</label>
+            </div>
+
             <div class="campo campo-checkbox">
                 <input id="f-com_imagem" type="checkbox" />
                 <label for="f-com_imagem">Somente com imagem de escaneamento</label>
@@ -487,6 +520,9 @@
     var SUGESTOES_URL = {{ url_for('navii.api_sugestoes') | tojson }};
     var FILTROS_SALVOS_URL = {{ url_for('navii.api_filtros_salvos') | tojson }};
     var PORTO_ESCALA_PADRAO = {{ porto_escala_padrao | tojson }};
+    var TIPOS_BL = {{ tipos_bl | tojson }};
+    var SIGLAS_BL = {};
+    TIPOS_BL.forEach(function (t) { SIGLAS_BL[t.codigo] = t.sigla; });
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 
     // Campos com lista de códigos (vale qualquer um) e campos de texto livre
@@ -496,9 +532,9 @@
         porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', concluido: 'Entregue ao importador',
-        com_imagem: 'Com imagem de escaneamento'
+        com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG'
     };
-    var CHECKBOXES = ['concluido', 'com_imagem'];
+    var CHECKBOXES = ['concluido', 'com_imagem', 'sem_oog'];
 
     var DICAS_PERIODO = {
         prevista: 'Data prevista de atracação do navio (escala do manifesto do CE).',
@@ -538,6 +574,21 @@
         var div = document.createElement('div');
         div.textContent = texto === null || texto === undefined ? '' : texto;
         return div.innerHTML;
+    }
+
+    function escapeAttr(texto) {
+        return escapeHtml(texto).replace(/"/g, '&quot;');
+    }
+
+    function tiposBlMarcados() {
+        return Array.prototype.map.call(
+            document.querySelectorAll('#f-tipo_bl input:checked'), function (input) { return input.value; });
+    }
+
+    function marcaTiposBl(codigos) {
+        document.querySelectorAll('#f-tipo_bl input').forEach(function (input) {
+            input.checked = codigos.indexOf(input.value) >= 0;
+        });
     }
 
     function formatarDataHora(valor) {
@@ -624,7 +675,9 @@
         el.chips.innerHTML = '';
         Object.keys(estadoBusca.filtros).forEach(function (chave) {
             var valor = estadoBusca.filtros[chave];
-            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : (Array.isArray(valor) ? valor.join(', ') : valor);
+            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : (chave === 'tipo_bl'
+                ? valor.map(function (c) { return SIGLAS_BL[c] || c; }).join(', ')
+                : (Array.isArray(valor) ? valor.join(', ') : valor));
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
@@ -633,6 +686,8 @@
                 delete estadoBusca.filtros[chave];
                 if (CHECKBOXES.indexOf(chave) >= 0) {
                     document.getElementById('f-' + chave).checked = false;
+                } else if (chave === 'tipo_bl') {
+                    marcaTiposBl([]);
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
@@ -716,7 +771,28 @@
         var etapas = ETAPAS_TIMELINE.map(function (etapa) {
             return montaEtapaTimeline(etapa, linha[etapa.chave]);
         }).join('');
-        return '<div class="timeline-navii">' + etapas + '</div>';
+        var familia = card.cicloPorCE
+            ? '<div class="aviso-familia"><i class="fas fa-sitemap" aria-hidden="true"></i> Ciclo de vida localizado ' +
+              'pelo CE <span class="texto-mono">' + escapeHtml(card.cicloPorCE) + '</span>, da mesma família ' +
+              '(master/filhote) — o contêiner consta nos dois.</div>'
+            : '';
+        return '<div class="timeline-navii">' + etapas + '</div>' + familia;
+    }
+
+    function montaTipoConteiner(tipo, codigo) {
+        if (!tipo && !codigo) { return ''; }
+        var texto = tipo ? escapeHtml(tipo.codigo) + ' · ' + escapeHtml(tipo.curta) : escapeHtml(codigo);
+        var titulo = tipo ? tipo.descricao : 'Tipo de contêiner não reconhecido';
+        return '<span class="tag-tipo" title="' + escapeAttr(titulo) + '">' + texto + '</span>' +
+            (tipo && tipo.oog ? ' <span class="tag-oog" title="Open top / plataforma: pode ser carga fora de ' +
+                'gabarito (OOG), que não passa nos gates padrão nem no escâner">Potencial OOG</span>' : '');
+    }
+
+    function montaFilhotes(card) {
+        var filhotes = card.filhotes || [];
+        if (!filhotes.length) { return ''; }
+        return '<span class="tag-filhotes" title="Filhotes: ' + escapeAttr(filhotes.join(', ')) + '">Master de ' +
+            filhotes.length + ' filhote' + (filhotes.length > 1 ? 's' : '') + '</span>';
     }
 
     function montaConteineres(card) {
@@ -748,7 +824,10 @@
                 '<div class="conteiner-item">' +
                     '<div class="conteiner-cabecalho">' +
                         '<span class="codigo">' + escapeHtml(c.codigoConteiner || '--') + '</span>' +
-                        (c.isoCode ? '<span class="detalhe">Tipo <strong>' + escapeHtml(c.isoCode) + '</strong></span>' : '') +
+                        (c.isoCode ? '<span class="detalhe" title="' + escapeAttr(c.tipoConteiner ? c.tipoConteiner.descricao : '') +
+                            '">Tipo <strong>' + escapeHtml(c.isoCode) + '</strong>' +
+                            (c.tipoConteiner ? ' ' + escapeHtml(c.tipoConteiner.curta) : '') + '</span>' : '') +
+                        (c.tipoConteiner && c.tipoConteiner.oog ? '<span class="tag-oog">Potencial OOG</span>' : '') +
                         (c.tipoCarga ? '<span class="detalhe">Carga <strong>' + escapeHtml(c.tipoCarga) + '</strong></span>' : '') +
                         '<span class="detalhe">Peso <strong>' + formatarPeso(c.pesoBruto) + '</strong></span>' +
                         (c.tara !== null && c.tara !== undefined ? '<span class="detalhe">Tara <strong>' + formatarPeso(c.tara) + '</strong></span>' : '') +
@@ -820,6 +899,8 @@
                             '<div class="ce-subtitulo">' +
                                 '<span class="texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
                                 (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
+                                montaFilhotes(card) +
+                                montaTipoConteiner(card.tipoConteiner, card.isoCode) +
                             '</div>' +
                         '</div>' +
                         '<span class="status-navii">' + textoStatus + '</span>' +
@@ -840,7 +921,8 @@
                         '<div><span class="rotulo-mini"><i class="fas fa-weight-hanging" aria-hidden="true"></i>Peso bruto total</span><span class="valor-mini">' + formatarPeso(card.pesoBrutoTotal) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-tags" aria-hidden="true"></i>NCMs distintos</span><span class="valor-mini">' + (card.qtdNcmsDistintos || 0) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-route" aria-hidden="true"></i>Tráfego</span><span class="valor-mini">' + escapeHtml(card.tipoTrafego || '--') + '</span></div>' +
-                        '<div><span class="rotulo-mini"><i class="fas fa-file-alt" aria-hidden="true"></i>Tipo BL</span><span class="valor-mini">' + escapeHtml(card.tipoBL || '--') + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-file-alt" aria-hidden="true"></i>Tipo BL</span><span class="valor-mini">' + escapeHtml(card.tipoBL || '--') +
+                            (card.tipoBLDescricao ? '<span class="descricao-bl">' + escapeHtml(card.tipoBLDescricao) + '</span>' : '') + '</span></div>' +
                         (card.manifesto ? '<div><span class="rotulo-mini"><i class="fas fa-clipboard-list" aria-hidden="true"></i>Manifesto</span><span class="valor-mini texto-mono">' + escapeHtml(card.manifesto.numero || '--') + '</span></div>' : '') +
                     '</div>' +
 
@@ -1136,6 +1218,8 @@
         });
         var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
         if (ncmsMax > 0) { filtros.ncms_max = ncmsMax; }
+        var tiposBl = tiposBlMarcados();
+        if (tiposBl.length) { filtros.tipo_bl = tiposBl; }
         CHECKBOXES.forEach(function (campo) {
             if (document.getElementById('f-' + campo).checked) { filtros[campo] = 1; }
         });
@@ -1157,6 +1241,7 @@
         document.getElementById('f-ncms_max').value = ncmsMax;
         document.getElementById('valor-ncms_max').textContent = ncmsMax > 0 ? ncmsMax : 'Sem limite';
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
+        marcaTiposBl(filtros.tipo_bl || []);
     }
 
     function aplicaFiltros() {

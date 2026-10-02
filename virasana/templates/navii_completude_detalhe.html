@@ -49,18 +49,21 @@
         .miniaturas { display: flex; gap: .375rem; flex-wrap: wrap; }
         .miniaturas img { width: 7rem; height: 4rem; object-fit: cover; border-radius: 4px; border: 1px solid #DDD; }
         .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+        .selo.oog { background: #FDE7E4; color: #B3261E; }
+        .tipo { white-space: nowrap; }
     </style>
 </head>
 <body>
 <div class="container-pagina py-4">
 
-    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim) }}">
+    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None) }}">
         <i class="fas fa-arrow-left" aria-hidden="true"></i> Completude de escaneamentos</a>
     <div class="cabecalho-pagina">
         <h1><span class="marca">{{ 'TRA' if fluxo == 'tra' else 'OPERADOR' }}</span>
             {{ codigo }} {% if nome %}— {{ nome }}{% endif %}</h1>
         <p class="page-subtitle text-down-01 mb-0 mt-1">{{ dados_fluxo.titulo }}: {{ dados_fluxo.caminho }}.
-            Período de {{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}.</p>
+            Período de {{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}.
+            {% if sem_oog %}Sem os potenciais OOG (open top, plataforma).{% endif %}</p>
     </div>
 
     <div class="painel">
@@ -69,6 +72,7 @@
             <div class="item"><strong class="{{ 'alerta' if resumo.sem_escaneamento }}">{{ resumo.sem_escaneamento }}</strong>sem escaneamento</div>
             <div class="item"><strong>{{ '%.1f' | format(resumo.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
             <div class="item"><strong>{{ resumo.sem_imagem }}</strong>sem imagem</div>
+            {% if not sem_oog %}<div class="item"><strong>{{ resumo.oog }}</strong>potenciais OOG ({{ resumo.oog_sem_escaneamento }} sem escaneamento)</div>{% endif %}
             {% if fluxo == 'tra' %}
             <div class="item"><strong>{{ resumo.total_saidas }}</strong>saídas do seco</div>
             <div class="item"><strong>{{ resumo.saidas_sem_escaneamento }}</strong>saídas sem escaneamento</div>
@@ -82,7 +86,7 @@
             <table class="dados">
                 <thead>
                     <tr>
-                        <th>Contêiner / CE</th><th>Desembarque</th><th>Saída do operador</th>
+                        <th>Contêiner / CE</th><th>Tipo</th><th>Desembarque</th><th>Saída do operador</th>
                         {% if fluxo == 'tra' %}<th>Entrada no seco</th><th>Saída do seco</th>{% endif %}
                         <th>Escaneamento</th><th>Imagens</th>
                     </tr>
@@ -91,6 +95,8 @@
                 {% for lin in linhas %}
                     <tr class="{{ '' if lin.escaneamentos else 'sem-escaneamento' }}">
                         <td class="mono">{{ lin.conteiner }}<span class="secundario">{{ lin.ce or '' }}</span></td>
+                        <td class="tipo">{% if lin.tipo %}<span title="{{ lin.tipo.descricao }}"><span class="mono">{{ lin.tipo.codigo }}</span>
+                            <span class="secundario">{{ lin.tipo.curta }}</span></span>{% if lin.oog %} <span class="selo oog" title="Open top / plataforma: pode ser carga fora de gabarito, que não passa no escâner">potencial OOG</span>{% endif %}{% elif lin.tipo_codigo %}<span class="mono">{{ lin.tipo_codigo }}</span>{% else %}—{% endif %}</td>
                         <td class="mono">{{ lin.desembarque.strftime('%d/%m/%Y %H:%M') if lin.desembarque else '—' }}</td>
                         <td class="mono">{{ lin.saida.strftime('%d/%m/%Y %H:%M') if lin.saida else '—' }}</td>
                         {% if fluxo == 'tra' %}

@@ -13,9 +13,18 @@ carga ainda nem desembarcou. Por isso a busca parte do CE declarado e o ciclo
 imagem", "entregue ao importador") restringem aos contêineres que o têm.
 
 Suporta filtros sucessivos (NCM, rota, porto de baldeação do manifesto,
-produto na descrição do CE, recinto — portos, NCM e recinto aceitam lista —,
-empresa, ciclo concluído/"entregue ao importador", quantidade máxima de NCMs
-distintos, somente com imagem de escaneamento), contagem total do filtro e paginação por cursor (Item.ID decrescente).
+produto na descrição do CE, recinto, tipo de BL — portos, NCM, recinto e tipo de
+BL aceitam lista —, empresa, ciclo concluído/"entregue ao importador",
+quantidade máxima de NCMs distintos, somente com imagem de escaneamento, sem
+contêiner de potencial OOG), contagem total do filtro e paginação por cursor
+(Item.ID decrescente).
+
+Família do CE (sombra do ciclo de vida, 01–02/10/2026): o contêiner consta nos
+itens do master E do(s) filhote(s), e o ciclo de vida guarda um só desses CEs.
+Por isso o ciclo do card é procurado na FAMÍLIA do CE (o próprio, o master, os
+filhotes e os irmãos), e o card mostra o tipo de BL e os filhotes do master. A
+janela "efetiva" e os filtros que dependem do ciclo ainda ligam pelo CE exato
+(desempenho; a tabela ciclo<->CE do ciclo de vida v2 vai resolver).
 A janela de dias (`_janela_previsao`/`_janela_efetiva`) é apenas a *sugestão*
 de período inicial — `data_inicio`/`data_fim` em `filtros` sobrescrevem essa
 sugestão.
@@ -56,6 +65,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from bhadrasana.models.laudo import Empresa
 from virasana.navii import referencias
+from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
 # declarada aqui só com as colunas lidas pelo NAVI-I. Importar o model de lá
@@ -91,7 +101,9 @@ PORTO_ESCALA_PADRAO = 'BRSSZ'
 
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
-CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto')
+CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl')
+# Filtros de marcar (sim/não)
+CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
 _CAMPOS_PORTO = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao')
 
 
@@ -189,7 +201,7 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
         for codigo in _lista_de_codigos(filtros[campo]):
             if campo in _CAMPOS_PORTO:
                 codigo = codigo.upper()
-            elif campo == 'ncm':
+            elif campo in ('ncm', 'tipo_bl'):
                 codigo = re.sub(r'\D', '', codigo)
             if codigo and codigo not in codigos:
                 codigos.append(codigo)
@@ -340,6 +352,10 @@ def monta_query_navii(
               secundário: o terminal do Manifesto (cod_carga) não é usado, só
               existe para operadores portuários e deixaria recintos de fora.
             - empresa (str): busca textual em embarcador ou consignatário
+            - tipo_bl (str | lista): tipo de BL do CE (Conhecimento.tipoBLConhecimento:
+              10 BL único, 11 MBL master, 12 HBL house, 15 MHBL — ver referencias)
+            - sem_oog (bool): exclui os contêineres de potencial OOG (open top e
+              plataforma/flat rack, pelo Item.isoCode — podem não passar no escâner)
             - concluido (bool): só contêineres com ciclo de vida concluído
               ("entregue ao importador") — exige ciclo de vida
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
@@ -390,6 +406,8 @@ def _criterios_ce(filtros: dict) -> list:
         criterios_ce.append(Conhecimento.manifestoCE.in_(
             select(Manifesto.numero).where(_algum_porto(Manifesto.portoCarregamento, filtros['porto_baldeacao']))
         ))
+    if filtros.get('tipo_bl'):
+        criterios_ce.append(Conhecimento.tipoBLConhecimento.in_(filtros['tipo_bl']))
     if filtros.get('produto'):
         criterios_ce.append(Conhecimento.descricao.ilike(f"%{filtros['produto'].strip()}%"))
     if filtros.get('empresa'):
@@ -420,6 +438,9 @@ def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
             NCMItem.codigoConteiner == Item.codigoConteiner,
             or_(*[NCMItem.identificacaoNCM.like(f'{ncm}%') for ncm in filtros['ncm']]),
         ))
+
+    if filtros.get('sem_oog'):
+        q = q.filter(or_(Item.isoCode.is_(None), not_(expressao_oog(Item.isoCode))))
 
     if filtros.get('recinto'):
         recintos = filtros['recinto']
@@ -452,6 +473,7 @@ class ResultadoNavii(NamedTuple):
     manifesto: Optional[Manifesto]
     embarcacao: Optional[str]
     data_prevista_atracacao: Optional[str]
+    familia: Optional[dict] = None   # ver `busca_familias_navii`
 
 
 def busca_ces_navii(
@@ -483,7 +505,9 @@ def busca_ces_navii(
         q = q.filter(Item.ID < cursor_id)
     linhas = q.order_by(Item.ID.desc()).limit(limit).all()
 
-    ciclos = busca_ciclos_navii(session, [item for item, _ in linhas])
+    familias = busca_familias_navii(session, [ce for _, ce in linhas])
+    ciclos = busca_ciclos_navii(session, [item for item, _ in linhas],
+                                {numero: dados['familia'] for numero, dados in familias.items()})
     manifestos = busca_manifestos_navii(
         session, [ce.manifestoCE for _, ce in linhas], normaliza_filtros(filtros).get('porto_escala'),
     )
@@ -497,6 +521,7 @@ def busca_ces_navii(
             manifesto=dados_manifesto.get('manifesto'),
             embarcacao=dados_manifesto.get('embarcacao'),
             data_prevista_atracacao=dados_manifesto.get('dataPrevistaAtracacao'),
+            familia=familias.get(ce.numeroCEmercante),
         ))
     logger.info(
         f'busca_ces_navii: janela={tipo_janela} filtros={filtros} '
@@ -517,23 +542,66 @@ def conta_conteineres_navii(
     return q.with_entities(func.count(Item.ID)).scalar() or 0
 
 
-def busca_ciclos_navii(session, itens: List[Item]) -> Dict[Tuple[str, str], CicloDeVidaImportacao]:
-    """Ciclos de vida dos contêineres da página, em lote, por (CE, contêiner).
+def _master_do(conhecimento: Conhecimento) -> Optional[str]:
+    """CE master do conhecimento; o CE único costuma repetir o próprio número — não é vínculo."""
+    master = conhecimento.numeroCEMaster
+    return master if master and master != conhecimento.numeroCEmercante else None
 
-    Quando há mais de um ciclo para o mesmo contêiner/CE (ex.: vários
-    desembarques informados), prevalece o mais recente (maior ID).
-    Contêiner sem ciclo simplesmente não aparece no dict.
+
+def busca_familias_navii(session, conhecimentos: List[Conhecimento]) -> Dict[str, dict]:
+    """Família master/filhote dos CEs da página, em lote (índice de numeroCEMaster):
+
+        {CE: {'master': CE master | None, 'filhotes': [CEs filhotes deste CE],
+              'familia': {o CE, o master, os filhotes e os irmãos (filhotes do mesmo master)}}}
+
+    A família serve para achar o ciclo de vida (que guarda um só dos CEs) e para o card mostrar os
+    filhotes de um master.
     """
-    numeros_ce = {item.numeroCEmercante for item in itens if item.numeroCEmercante}
-    if not numeros_ce:
+    masters = {ce.numeroCEmercante: _master_do(ce) for ce in conhecimentos if ce.numeroCEmercante}
+    if not masters:
         return {}
-    ciclos = (
-        session.query(CicloDeVidaImportacao)
-        .filter(CicloDeVidaImportacao.numeroCEmercante.in_(numeros_ce))
-        .order_by(CicloDeVidaImportacao.ID)
-        .all()
-    )
-    return {(ciclo.numeroCEmercante, ciclo.numeroConteiner): ciclo for ciclo in ciclos}
+    filhotes: Dict[str, List[str]] = {}
+    chaves = set(masters) | {m for m in masters.values() if m}
+    for filhote, master in (session.query(Conhecimento.numeroCEmercante, Conhecimento.numeroCEMaster)
+                            .filter(Conhecimento.numeroCEMaster.in_(chaves))):
+        if filhote != master:
+            filhotes.setdefault(master, []).append(filhote)
+    familias = {}
+    for numero, master in masters.items():
+        proprios = sorted(filhotes.get(numero, []))
+        familias[numero] = {'master': master, 'filhotes': proprios,
+                            'familia': {numero, *proprios, *([master] + filhotes.get(master, []) if master else [])}}
+    return familias
+
+
+def busca_ciclos_navii(session, itens: List[Item],
+                       familias: Optional[Dict[str, set]] = None) -> Dict[Tuple[str, str], CicloDeVidaImportacao]:
+    """Ciclos de vida dos contêineres da página, em lote, por (CE do item, contêiner).
+
+    `familias` ({CE: CEs da família}, ver `busca_familias_navii`): o ciclo pode ter sido gravado com o
+    master, um filhote ou um irmão — vale qualquer CE da família com o mesmo contêiner, preferindo o
+    do próprio CE. Sem `familias`, só o CE exato. Com mais de um ciclo (ex.: vários desembarques
+    informados), prevalece o mais recente (maior ID). Contêiner sem ciclo não aparece no dict.
+    """
+    familias = familias or {}
+    pares = [(item.numeroCEmercante, item.codigoConteiner) for item in itens
+             if item.numeroCEmercante and item.codigoConteiner]
+    if not pares:
+        return {}
+    ces = {ce for ce, _ in pares} | {c for ce, _ in pares for c in familias.get(ce, ())}
+    por_chave = {}
+    for ciclo in (session.query(CicloDeVidaImportacao)
+                  .filter(CicloDeVidaImportacao.numeroConteiner.in_({c for _, c in pares}),
+                          CicloDeVidaImportacao.numeroCEmercante.in_(ces))
+                  .order_by(CicloDeVidaImportacao.ID)):
+        por_chave[(ciclo.numeroCEmercante, ciclo.numeroConteiner)] = ciclo
+    resultado = {}
+    for ce, conteiner in pares:
+        da_familia = [por_chave[(c, conteiner)] for c in familias.get(ce, ()) if (c, conteiner) in por_chave]
+        ciclo = por_chave.get((ce, conteiner)) or max(da_familia, key=lambda c: c.ID, default=None)
+        if ciclo is not None:
+            resultado[(ce, conteiner)] = ciclo
+    return resultado
 
 
 def busca_manifestos_navii(
@@ -648,7 +716,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
               'pesoBrutoTotal': float | None,
               'qtdNcmsDistintos': int,
               'conteineres': [
-                  {'codigoConteiner': str, 'isoCode': str,
+                  {'codigoConteiner': str, 'isoCode': str, 'tipoConteiner': dict | None,
                    'pesoBruto': float | None, 'tara': float | None, 'lacre': str,
                    'tipoCarga': str | None,
                    'ncms': [{'identificacaoNCM': str, 'descritivo': str,
@@ -685,6 +753,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
         conteineres[item.codigoConteiner] = {
             'codigoConteiner': item.codigoConteiner,
             'isoCode': item.isoCode,
+            'tipoConteiner': referencias.tipo_conteiner(item.isoCode),
             'pesoBruto': _texto_para_float(item.pesoBruto),
             'tara': _texto_para_float(item.tara),
             'lacre': item.lacre,
@@ -706,7 +775,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
             # cria uma entrada mínima para não perder a informação do NCM.
             conteiner = conteineres.setdefault(ncm_item.codigoConteiner, {
                 'codigoConteiner': ncm_item.codigoConteiner,
-                'isoCode': None, 'pesoBruto': None, 'tara': None, 'lacre': None,
+                'isoCode': None, 'tipoConteiner': None, 'pesoBruto': None, 'tara': None, 'lacre': None,
                 'tipoCarga': None, 'ncms': [],
             })
         conteiner['ncms'].append({
@@ -754,6 +823,27 @@ def busca_nomes_empresas(session, valores: List[str]) -> Dict[str, str]:
     }
 
 
+def _dados_bl_e_familia(conhecimento: Conhecimento, ciclo: Optional[CicloDeVidaImportacao],
+                        familia: Optional[dict]) -> dict:
+    """Tipo de BL (sigla + descrição curta), filhotes do master e de que CE da família veio o ciclo."""
+    tipo_bl = referencias.descreve_tipo_bl(conhecimento.tipoBLConhecimento) or {}
+    outro_ce = ciclo is not None and ciclo.numeroCEmercante != conhecimento.numeroCEmercante
+    return {
+        'tipoBL': tipo_bl.get('sigla'),
+        'tipoBLCodigo': tipo_bl.get('codigo'),
+        'tipoBLDescricao': tipo_bl.get('descricao'),
+        'filhotes': (familia or {}).get('filhotes', []),
+        # o ciclo de vida foi achado por outro CE da família (master/filhote/irmão)
+        'cicloPorCE': ciclo.numeroCEmercante if outro_ce else None,
+    }
+
+
+def _dados_tipo_conteiner(item: Optional[Item]) -> dict:
+    """Tipo do contêiner declarado no Mercante (Item.isoCode), com descrição e potencial OOG."""
+    iso_code = item.isoCode if item is not None else None
+    return {'isoCode': iso_code, 'tipoConteiner': referencias.tipo_conteiner(iso_code)}
+
+
 def monta_card_navii(
     ciclo: Optional[CicloDeVidaImportacao],
     conhecimento: Conhecimento,
@@ -766,6 +856,7 @@ def monta_card_navii(
     data_prevista_atracacao: Optional[str] = None,
     nomes_recintos: Optional[Dict[str, str]] = None,
     nomes_terminais: Optional[Dict[str, str]] = None,
+    familia: Optional[dict] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
@@ -782,14 +873,14 @@ def monta_card_navii(
     `nome_consignatario` vêm de `busca_nomes_empresas` (ou None se o valor
     guardado não bateu com nenhum CNPJ conhecido). `nomes_recintos`/
     `nomes_terminais` vêm de `busca_nomes_recintos` (por cod_siscomex/cod_carga).
+    `familia` vem de `busca_familias_navii` (filhotes do master); o ciclo pode ter vindo de outro CE da
+    família (`cicloPorCE`).
     """
     nomes_recintos = nomes_recintos or {}
     nomes_terminais = nomes_terminais or {}
     imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None] if ciclo else []
     itens = itens or {'pesoBrutoTotal': None, 'qtdNcmsDistintos': 0, 'conteineres': []}
-    numero_ce_master = conhecimento.numeroCEMaster
-    if numero_ce_master == conhecimento.numeroCEmercante:
-        numero_ce_master = None  # CE único costuma repetir o próprio número; não é um vínculo real
+    numero_ce_master = _master_do(conhecimento)
 
     dados_manifesto = None
     if manifesto is not None:
@@ -833,7 +924,8 @@ def monta_card_navii(
         'portoDestFinal': conhecimento.portoDestFinal,
         'nomePortoDestFinal': referencias.descreve_porto(conhecimento.portoDestFinal),
         'tipoTrafego': conhecimento.get_tipoTrafego(),
-        'tipoBL': conhecimento.get_tipoBL(),
+        **_dados_bl_e_familia(conhecimento, ciclo, familia),
+        **_dados_tipo_conteiner(item),
         'numConhecimento': conhecimento.numConhecimento,
         'embarcacao': embarcacao,  # número IMO (ou inscrição nacional), não o nome
         'nomeEmbarcacao': referencias.nome_navio(embarcacao),
@@ -885,6 +977,7 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
             data_prevista_atracacao=r.data_prevista_atracacao,
             nomes_recintos=nomes_recintos,
             nomes_terminais=nomes_terminais,
+            familia=r.familia,
         )
         for r in resultados
     ]
