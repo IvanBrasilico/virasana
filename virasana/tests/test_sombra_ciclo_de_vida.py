@@ -2,14 +2,18 @@
 
 Cenário (SQLite, desembarques de março/2026, agora = 10/04/2026):
   escopo: BTP e Ecoporto (e_operador, unidade 0817800); fora: Multirio (operador do Rio) e EADI (seco)
-  CTRA: desembarque na BTP declarando o MASTER; inspeção declarando um IRMÃO (filhote do mesmo master sem
-        o contêiner nos itens) e saída declarando o FILHOTE; entrada e saída no EADI. Ciclo atual: CE
-        master, concluído pelo operador (perdeu o seco) -> TRA, CE da família
+  CTRA: desembarque na BTP declarando o MASTER (tipo 45G1, escala E1); inspeção declarando um IRMÃO
+        (filhote do mesmo master sem o contêiner nos itens), outra declarando um número que não existe no
+        Mercante, e saída declarando o FILHOTE; entrada e saída no EADI. Ciclo atual: CE master, concluído
+        pelo operador (perdeu o seco) -> TRA, CE da família
   CTRB: desembarque no ECOPORTO, sem ciclo atual; CE simples + um CE de exportação (descartado)
   CTRC: saída 15 dias após o desembarque (além das 72 h do algoritmo antigo); ciclo atual pendente, com
         um CE de exportação (perdido)
-  CTRE: inspeção declarando CE de OUTRA família (confiança baixa); o ciclo atual a tinha ligado
-  CTRV: contêiner VAZIO no manifesto do Mercante (escala no dia), peso zero na balança, sem CE nem ciclo
+  CTRE: inspeção declarando CE de OUTRA família, que existe no Mercante (confiança baixa); o ciclo atual a
+        tinha ligado; a escala declarada (E9) não tem o manifesto do CE
+  CTRV: contêiner VAZIO (open top 22U1) no manifesto do Mercante (escala E4 no dia, declarada), peso zero
+        na balança, sem CE nem ciclo
+  CTRT: sai da BTP e é pesado na TRANSBRASA, que informa a saída mas não a entrada (entrada implícita)
   CTRP: ciclo atual com CE cuja escala está a 63 dias do desembarque (perdido)
   CTRK: BTP -> Ecoporto (entra e sai em minutos) -> EADI; o ciclo atual tomou o Ecoporto como "seco"
   CTRR: desembarque no Rio (fora do escopo)
@@ -25,6 +29,7 @@ from datetime import date, datetime, timedelta
 import mongomock
 from sqlalchemy import text
 
+from virasana.analytic_scripts.ciclo_de_vida import dados_conteiner
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida import sombra_ciclo_de_vida as sombra
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import CEsResolvidos
@@ -36,11 +41,14 @@ from virasana.integracao.mercante.mercantealchemy import (
 )
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 
-from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva  # noqa: I100
+from bhadrasana.models.apirecintos import (  # noqa: I100
+    AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva, PesagemVeiculo,
+)
 
 M, H1, H2, ANTIGO, Z = '152600000000001', '152600000000002', '152600000000003', '152400000000005', '122600000000050'
 S, EXPORTACAO, X, Y = '152600000000010', '152600000000040', '152600000000020', '152600000000030'
-BTP, ECOPORTO, EADI, RIO = '8931359', '8931318', '8932000', '8911101'
+FORA_DO_MERCANTE = '152600000000077'
+BTP, ECOPORTO, EADI, RIO, TRANSBRASA = '8931359', '8931318', '8932000', '8911101', '8931305'
 INICIO, FIM, AGORA = datetime(2026, 3, 1), datetime(2026, 4, 1), datetime(2026, 4, 10)
 
 
@@ -62,6 +70,7 @@ def _mercante(session):
     ce(S, 'MAN2', ['CTRB'])
     ce(EXPORTACAO, 'MAN2', ['CTRB'], trafego='7')
     ce(X, 'MAN3', ['CTRE'])
+    ce(Y, 'MAN5', [])   # existe no Mercante, sem relação com o CE do CTRE
     session.add_all([Manifesto(numero=m) for m in ('MAN0', 'MAN1', 'MAN2', 'MAN3', 'MAN4', 'MANV', 'MAN9')])
     ConteinerVazio.__table__.create(session.get_bind(), checkfirst=True)
     session.add_all([ConteinerVazio(manifesto='MANV', idConteinerVazio='CTRV'),
@@ -89,39 +98,43 @@ def monta(session):
     _mercante(session)
     _recintos(session)
     ids = iter(range(1, 1000))
-    eventos = {EmbarqueDesembarque: [], AcessoVeiculo: [], InspecaoNaoInvasiva: []}
+    eventos = {EmbarqueDesembarque: [], AcessoVeiculo: [], InspecaoNaoInvasiva: [], PesagemVeiculo: []}
 
     def novo(modelo, conteiner, data, recinto, ce=None, **campos):
         linha = dict(id=next(ids), numeroConteiner=conteiner, dataHoraOcorrencia=data, codigoRecinto=recinto,
-                     tipoOperacao='I', numeroConhecimento=ce, **campos)
+                     tipoOperacao='I', **campos)
+        if modelo is not PesagemVeiculo:
+            linha['numeroConhecimento'] = ce
         eventos[modelo].append(linha)
         return linha['id']
 
     def desembarque(conteiner, data, recinto, ce=None, **pesos):
         return novo(EmbarqueDesembarque, conteiner, data, recinto, ce, embarqueDesembarque='D', **pesos)
 
-    def acesso(conteiner, data, recinto, direcao, ce=None, operacao='C'):
+    def acesso(conteiner, data, recinto, direcao, ce=None, operacao='C', **campos):
         return novo(AcessoVeiculo, conteiner, data, recinto, ce, direcao=direcao, operacao=operacao,
-                    vazioConteiner=False)
+                    vazioConteiner=False, **campos)
 
     def inspecao(conteiner, data, recinto, ce=None):
         return novo(InspecaoNaoInvasiva, conteiner, data, recinto, ce, vazio=False)
 
     ids_ = {}
     ids_['da'] = desembarque('CTRA', d(2), BTP, M, pesoBrutoBalanca=25000, taraConteiner=3800,
-                             pesoBrutoManifesto=21000)
+                             pesoBrutoManifesto=21000, tipoConteiner='45G1', escala='E1')
     ids_['ia'] = inspecao('CTRA', d(2, 12), BTP, H2)
+    ids_['ia2'] = inspecao('CTRA', d(2, 13), BTP, FORA_DO_MERCANTE)
     acesso('CTRA', d(3), BTP, 'S', operacao='G')  # agendamento: ignorado
     ids_['sa'] = acesso('CTRA', d(4), BTP, 'S', H1)
     acesso('CTRA', d(4, 11), EADI, 'E')
     acesso('CTRA', d(8), EADI, 'S')
     ids_['db'] = desembarque('CTRB', d(3), ECOPORTO)
-    acesso('CTRB', d(5), ECOPORTO, 'S')
-    ids_['dc'] = desembarque('CTRC', d(5), BTP)
+    acesso('CTRB', d(5), ECOPORTO, 'S', tipoConteiner='22G1')
+    ids_['dc'] = desembarque('CTRC', d(5), BTP, escala='ZZZ')
     acesso('CTRC', d(20), BTP, 'S')
-    ids_['de'] = desembarque('CTRE', d(9), BTP, X, pesoBrutoBalanca=3800, taraConteiner=3800)
+    ids_['de'] = desembarque('CTRE', d(9), BTP, X, pesoBrutoBalanca=3800, taraConteiner=3800, escala='E9')
     ids_['ie'] = inspecao('CTRE', d(9, 14), BTP, Y)
-    ids_['dv'] = desembarque('CTRV', d(12), BTP, pesoBrutoBalanca=0, taraConteiner=2200)
+    ids_['dv'] = desembarque('CTRV', d(12), BTP, pesoBrutoBalanca=0, taraConteiner=2200, tipoConteiner='22U1',
+                             escala='E4')
     ids_['dp'] = desembarque('CTRP', d(14), BTP)
     ids_['dk'] = desembarque('CTRK', d(15), BTP)
     acesso('CTRK', d(16, 8), BTP, 'S')
@@ -129,6 +142,10 @@ def monta(session):
     ids_['sk'] = acesso('CTRK', d(16, 8) + timedelta(minutes=40), ECOPORTO, 'S')
     acesso('CTRK', d(16, 9), EADI, 'E')
     desembarque('CTRR', d(6), RIO)
+    ids_['dt'] = desembarque('CTRT', d(17), BTP)
+    acesso('CTRT', d(18, 8), BTP, 'S')
+    novo(PesagemVeiculo, 'CTRT', d(18, 9), TRANSBRASA, numeroConhecimento=None)
+    acesso('CTRT', d(22), TRANSBRASA, 'S')
     for modelo, linhas in eventos.items():
         modelo.__table__.create(session.get_bind(), checkfirst=True)
         for linha in linhas:  # uma a uma: nem todas têm as mesmas colunas (pesos)
@@ -147,6 +164,7 @@ def monta(session):
     ciclo(X, 'CTRE', ids_['de'], d(9), escaneamentos=[ids_['ie']])
     ciclo(Z, 'CTRP', ids_['dp'], d(14))
     ciclo(None, 'CTRK', ids_['dk'], d(15), concluido=True, entrada_seco_id=ids_['ek'], saida_seco_id=ids_['sk'])
+    ciclo(None, 'CTRT', ids_['dt'], d(17))
     session.commit()
     return ids_
 
@@ -198,11 +216,45 @@ class TestFuncoes(unittest.TestCase):
         self.assertIsNone(sombra._texto('  '))
         self.assertEqual(sombra._texto(7), '7')
 
+    def test_compara_entrada_implicita(self):
+        implicita = ldt.Ligacao(ldt.Evento(ldt.ENTRADA, 7, d(1), BTP, implicita_de=ldt.PESAGEM), ldt.MEDIA)
+        self.assertEqual(sombra.compara_id(None, implicita), 'nova (implícita)')
+        self.assertEqual(sombra.compara_id(7, implicita), 'diferente (implícita)')   # id de outra tabela
 
-    def test_vazio_no_manifesto(self):
-        self.assertEqual(sombra.vazio_no_manifesto([date(2026, 3, 12)], d(12)), sombra.SIM)
-        self.assertEqual(sombra.vazio_no_manifesto([date(2025, 12, 1), date(2026, 2, 1)], d(3)), sombra.NAO)
-        self.assertEqual(sombra.vazio_no_manifesto([], d(3)), sombra.NAO)
+    def test_manifesto_vazio(self):
+        self.assertEqual(sombra.manifesto_vazio({'MANV': [date(2026, 3, 12)]}, d(12)), 'MANV')
+        self.assertIsNone(sombra.manifesto_vazio({'MAN9': [date(2025, 12, 1)], 'MAN8': [date(2026, 2, 1)]}, d(3)))
+        self.assertIsNone(sombra.manifesto_vazio({}, d(3)))
+        self.assertEqual(sombra.manifesto_vazio({'A': [date(2026, 3, 10)], 'B': [date(2026, 3, 4)]}, d(3)), 'B')
+
+    def test_confere_escala(self):
+        escalas = {'E1': {'MAN1'}}
+        casos = [(None, 'MAN1', 'sem escala declarada'), ('E7', 'MAN1', 'escala fora do Mercante'),
+                 ('E1', None, 'sem CE nem manifesto de vazio'), ('E1', 'MAN1', 'confere'), ('E1', 'MAN2', 'não confere')]
+        for escala, manifesto, esperado in casos:
+            with self.subTest(escala=escala, manifesto=manifesto):
+                self.assertEqual(sombra.confere_escala(escala, escalas, manifesto), esperado)
+
+    def test_passagens_rapidas(self):
+        def ev(tipo, hora, minuto, recinto):
+            return ldt.Evento(tipo, hora * 100 + minuto, d(2, hora) + timedelta(minutes=minuto), recinto)
+
+        eventos = [ev(ldt.SAIDA, 7, 0, BTP), ev(ldt.ENTRADA, 8, 0, ECOPORTO), ev(ldt.INSPECAO, 8, 10, EADI),
+                   ev(ldt.SAIDA, 8, 25, ECOPORTO), ev(ldt.ENTRADA, 9, 0, EADI), ev(ldt.SAIDA, 20, 0, EADI),
+                   ev(ldt.ENTRADA, 21, 0, TRANSBRASA)]
+        self.assertEqual(sombra.passagens_rapidas(eventos), {(ECOPORTO, '<= 30 min', True): 1})  # EADI: 11 h
+
+    def test_tipo_iso_e_potencial_oog(self):
+        casos = [('45G1', 'G', False), ('22U1', 'U', True), ('42P1', 'P', True), ('45R1', 'R', False),
+                 ('2251', 'U', True), ('4363', 'P', True), ('2210', 'G', False), ('40HC', 'G', False),
+                 ('40OT', 'U', True), ('20FR', 'P', True), ('OT', 'U', True), ('', None, False), (None, None, False),
+                 ('XXXX', None, False)]
+        for tipo, grupo, oog in casos:
+            with self.subTest(tipo=tipo):
+                self.assertEqual((dados_conteiner.grupo_iso(tipo), dados_conteiner.potencial_oog(tipo)), (grupo, oog))
+        self.assertEqual(dados_conteiner.peso_menos_tara(25000, 3800), 21200)
+        self.assertIsNone(dados_conteiner.peso_menos_tara(0, 3800))
+        self.assertIsNone(dados_conteiner.peso_menos_tara(25000, None))
 
     def test_irmaos_de(self):
         proprios = [sombra.CandidatoCE(H1, M, '5', ())]
@@ -286,19 +338,19 @@ class TestSombra(unittest.TestCase):
     def test_escopo_so_operadores_de_santos(self):
         self.assertEqual(self.valores(BTP), ['BTP'])
         self.assertEqual(self.valores(ECOPORTO), ['ECOPORTO SANTOS'])
-        self.assertEqual(sorted(self.linhas), ['CTRA', 'CTRB', 'CTRC', 'CTRE', 'CTRK', 'CTRP', 'CTRV'])  # sem CTRR
+        self.assertEqual(sorted(self.linhas), ['CTRA', 'CTRB', 'CTRC', 'CTRE', 'CTRK', 'CTRP', 'CTRT', 'CTRV'])
 
     def test_amostra_espalhada_e_reprodutivel(self):
         """A amostra segue o hash do id (não os mais recentes): o limite pega os de menor hash."""
         carregador = sombra.Carregador(self.sombra, INICIO, FIM)
         ids = {'CTRA': self.ids['da'], 'CTRB': self.ids['db'], 'CTRC': self.ids['dc'], 'CTRE': self.ids['de'],
-               'CTRV': self.ids['dv'], 'CTRP': self.ids['dp'], 'CTRK': self.ids['dk']}
+               'CTRV': self.ids['dv'], 'CTRP': self.ids['dp'], 'CTRK': self.ids['dk'], 'CTRT': self.ids['dt']}
         esperado = sorted(ids, key=lambda c: (ids[c] * 2654435761) % 4294967291)[:2]
         self.assertEqual(carregador.conteineres({BTP, ECOPORTO}, 2), esperado)
         self.assertEqual(carregador.conteineres({BTP, ECOPORTO}, 2), esperado)
 
     def test_atraso_do_loop_antigo(self):
-        self.assertIn('Último desembarque com ciclo atual: 2026-03-15 08:00:00 (atraso: 25.7 dias)', self.log)
+        self.assertIn('Último desembarque com ciclo atual: 2026-03-17 08:00:00 (atraso: 23.7 dias)', self.log)
         self.assertEqual(self.valores('2026-03-02'), ['1', '1'])
         self.assertEqual(self.valores('2026-03-12'), ['1', '0'])
         self.assertEqual(self.valores('7 a 30 dias', sombra.SIM), ['1'])  # CTRV: vazio, sem ciclo atual
@@ -309,11 +361,14 @@ class TestSombra(unittest.TestCase):
         self.assertEqual((linha['situacao_atual'], linha['situacao_nova'], linha['fluxo_novo']),
                          ('concluído (saiu do operador)', ldt.CONCLUIDO, ldt.TRA))
         self.assertEqual((linha['saida'], linha['entrada_seco'], linha['saida_seco']), ('igual', 'nova', 'nova'))
-        self.assertEqual(linha['escaneamentos'], 'iguais')
-        # a inspeção declara um IRMÃO (sem o contêiner nos itens): é da família, confiança alta
-        [inspecao] = self.sombra.ciclos[self.ids['da']].escaneamentos
-        self.assertEqual(inspecao.confianca, ldt.ALTA)
+        self.assertEqual(linha['escaneamentos'], 'ganhou')
+        # a inspeção declara um IRMÃO (sem o contêiner nos itens): é da família, confiança alta; a outra, um
+        # número que não existe no Mercante: não corrobora nem desconfia (média)
+        irmao, fora = self.sombra.ciclos[self.ids['da']].escaneamentos
+        self.assertEqual((irmao.confianca, fora.confianca), (ldt.ALTA, ldt.MEDIA))
+        self.assertIn('CE declarado fora do Mercante', fora.motivos)
         self.assertIn("'irmãos sem o contêiner (família)': 1", self.log)
+        self.assertIn("'CEs declarados nos eventos': 6, 'declarados fora do Mercante': 1", self.log)
 
     def test_ce_master_vira_filhote_da_mesma_familia(self):
         linha = self.linhas['CTRA']
@@ -328,7 +383,7 @@ class TestSombra(unittest.TestCase):
                          (ldt.CONCLUIDO, ldt.OPERADOR, 'nova'))
         self.assertEqual((linha['ce_novo'], linha['ce_comparacao']), (S, 'novo'))  # exportação descartada
         self.assertEqual(self.valores(ECOPORTO, 'ECOPORTO SANTOS', colunas=5), ['1', '0', '1'])  # seção 1
-        self.assertEqual(self.valores(BTP, 'BTP', colunas=5), ['6', '5', '1'])
+        self.assertEqual(self.valores(BTP, 'BTP', colunas=5), ['7', '6', '1'])
 
     def test_saida_tardia(self):
         linha = self.linhas['CTRC']
@@ -354,7 +409,30 @@ class TestSombra(unittest.TestCase):
         self.assertEqual(self.valores('perdido', 'escala do CE atual a 31 a 90 dias'), ['1'])
 
     def test_conflito_de_ce_classificado(self):
-        self.assertEqual(self.valores(ldt.INSPECAO, 'declarado não está no Mercante'), ['-', '1'])
+        self.assertEqual(self.valores(ldt.INSPECAO, 'sem relação'), ['importação', '1'])
+
+    def test_entrada_implicita_pela_pesagem(self):
+        linha = self.linhas['CTRT']
+        self.assertEqual((linha['situacao_atual'], linha['situacao_nova'], linha['fluxo_novo']),
+                         ('pendente (sem saída)', ldt.CONCLUIDO, ldt.TRA))
+        self.assertEqual((linha['saida'], linha['entrada_seco'], linha['saida_seco'], linha['recinto_seco_novo']),
+                         ('nova', 'nova (implícita)', 'nova', TRANSBRASA))
+        self.assertIn('entrada em 8931305 não informada — deduzida da pesagem', linha['alertas'])
+        self.assertIn("'pesagens': 1", self.log)
+
+    def test_passagem_rapida_pelo_ecoporto_medida(self):
+        # seção 7: CTRK entrou e saiu do Ecoporto em 20 min e entrou no EADI 20 min depois
+        self.assertEqual(self.valores(ECOPORTO, 'ECOPORTO SANTOS', sombra.SIM), ['1', '1', '0', '0', '0', '0'])
+
+    def test_tipo_oog_e_escala_declarada(self):
+        self.assertEqual((self.linhas['CTRV']['tipo_conteiner'], self.linhas['CTRV']['oog']), ('22U1', sombra.SIM))
+        self.assertEqual((self.linhas['CTRA']['tipo_conteiner'], self.linhas['CTRA']['oog']), ('45G1', sombra.NAO))
+        self.assertEqual(self.linhas['CTRB']['tipo_conteiner'], '22G1')   # sem tipo no desembarque: o do acesso
+        self.assertEqual(self.linhas['CTRV']['manifesto_vazio'], 'MANV')
+        confere = {c: self.linhas[c]['escala_confere'] for c in ('CTRA', 'CTRV', 'CTRE', 'CTRC', 'CTRP')}
+        self.assertEqual(confere, {'CTRA': 'confere', 'CTRV': 'confere', 'CTRE': 'não confere',
+                                   'CTRC': 'escala fora do Mercante', 'CTRP': 'sem escala declarada'})
+        self.assertEqual(self.valores('open top', sombra.SIM, sombra.NAO), ['1'])
 
     def test_ecoporto_como_seco_no_ciclo_atual(self):
         linha = self.linhas['CTRK']
@@ -391,7 +469,7 @@ class TestSombra(unittest.TestCase):
         self.assertIn('--- entrada no seco removida/diferente: 1 amostra(s)', self.log)
         self.assertIn('--- escaneamento perdido: 1 amostra(s)', self.log)
         self.assertIn(f'   [atual] inspeção perdida: 2026-03-09 14:00:00 {BTP} CE {Y}', self.log)
-        self.assertIn('--- pendente hoje, concluído na nova: 1 amostra(s)', self.log)
+        self.assertIn('--- pendente hoje, concluído na nova: 2 amostra(s)', self.log)
         self.assertIn('--- concluído hoje, aberto na nova: 1 amostra(s)', self.log)
         self.assertIn('--- CE atual perdido: 2 amostra(s)', self.log)
 
@@ -401,7 +479,7 @@ class TestSombra(unittest.TestCase):
             self.sombra.grava_csv(caminho)
             with open(caminho, encoding='utf-8-sig') as arquivo:
                 linhas = list(csv.DictReader(arquivo, delimiter=';'))
-        self.assertEqual(len(linhas), 7)
+        self.assertEqual(len(linhas), 8)
         self.assertEqual(list(linhas[0]), sombra.COLUNAS_CSV)
 
 

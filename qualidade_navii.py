@@ -37,6 +37,7 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/ces_do_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/heuristica_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py',
+    'virasana/analytic_scripts/ciclo_de_vida/dados_conteiner.py',
 ]
 
 TESTES = [

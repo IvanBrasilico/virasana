@@ -14,6 +14,7 @@ from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_co
 
 SB, BTP, EMB, ECO, RIO = '8931356', '8931359', '8931404', '8931318', '7921303'   # operadores
 SECO, SECO2, DEPOT = '8931339', '8933001', '8939000'                             # não operadores
+TRANSBRASA, MULTILOG = '8931305', '8933201'                                      # não operadores
 ESCOPO = {SB, BTP, EMB, ECO}
 OPERADORES = ESCOPO | {RIO}
 AGORA = datetime(2026, 10, 1, 12)
@@ -43,6 +44,10 @@ def S(quando, recinto=SB, **kw):
 
 def INSP(quando, recinto, **kw):
     return ev(ldt.INSPECAO, quando, recinto, **kw)
+
+
+def PES(quando, recinto, **kw):
+    return ev(ldt.PESAGEM, quando, recinto, **kw)
 
 
 def t(mes, dia, hora=8, minuto=0):
@@ -167,6 +172,84 @@ class TestFluxos(unittest.TestCase):
         self.assertIn('aguardando', recente.motivo)
 
 
+class TestOmissoesEPassagens(unittest.TestCase):
+    """Decisões do usuário de 02/10/2026: entrada implícita e escaneamento fora antes do TRA."""
+
+    def test_entrada_implicita_pela_inspecao(self):
+        # Transbrasa: informa o escaneamento e a saída, mas não a entrada
+        inspecao = INSP(t(9, 2, 11), TRANSBRASA)
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), inspecao, S(t(9, 8), TRANSBRASA)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (ldt.TRA, ldt.CONCLUIDO,
+                                                                       'saída do recinto seco'))
+        self.assertEqual((ciclo.entrada_seco.evento.implicita_de, ciclo.entrada_seco.evento.data),
+                         (ldt.INSPECAO, inspecao.data))
+        self.assertEqual(ciclo.entrada_seco.confianca, ldt.MEDIA)
+        self.assertIn('entrada não informada — deduzida da inspeção no recinto', ciclo.entrada_seco.motivos)
+        [esc] = ciclo.escaneamentos
+        self.assertEqual((esc.evento, esc.confianca), (inspecao, ldt.ALTA))
+        self.assertIn('no recinto da etapa (entrada implícita)', esc.motivos)
+
+    def test_entrada_implicita_pela_pesagem(self):
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), PES(t(9, 2, 11), TRANSBRASA), S(t(9, 8), TRANSBRASA)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.CONCLUIDO))
+        self.assertEqual(ciclo.entrada_seco.evento.implicita_de, ldt.PESAGEM)
+        self.assertIn('entrada em 8931305 não informada — deduzida da pesagem', ciclo.alertas)
+        self.assertEqual(ciclo.escaneamentos, [])
+
+    def test_saida_sem_entrada_e_sem_indicio_continua_ignorada(self):
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), S(t(9, 8), TRANSBRASA)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.OPERADOR, ldt.CONCLUIDO))
+        self.assertIn('saida em 8931305 sem entrada — ignorado', ciclo.alertas)
+
+    def test_pesagem_fora_do_transito_nao_conta(self):
+        ciclo = um_ciclo([D(t(9, 1)), PES(t(9, 1, 12), TRANSBRASA), S(t(9, 2), TRANSBRASA)])
+        self.assertEqual((ciclo.situacao, ciclo.motivo), (ldt.ABERTO, 'no operador'))
+
+    def test_escaneamento_no_ecoporto_antes_do_tra_com_entrada_omitida(self):
+        # BTP -> Ecoporto (escaneia; a entrada não é informada) -> TRA
+        inspecao = INSP(t(9, 20, 18, 25), ECO, ce=X)
+        entrada_tra = ENT(t(9, 20, 18, 47), SECO)
+        ciclo = um_ciclo([D(t(9, 18), BTP), S(t(9, 20, 18, 9), BTP), inspecao, S(t(9, 20, 18, 35), ECO),
+                          entrada_tra])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.ABERTO))
+        self.assertIs(ciclo.entrada_seco.evento, entrada_tra)
+        self.assertIn('entrada em 8931318 não informada — deduzida da inspeção', ciclo.alertas)
+        [esc] = ciclo.escaneamentos
+        self.assertIs(esc.evento, inspecao)
+        self.assertIn('na passagem pelo operador 8931318 (escaneamento fora)', esc.motivos)
+
+    def test_passagem_rapida_por_recinto_nao_operador(self):
+        # BTP -> MULTILOG (entra, escaneia e sai em 30 min) -> TRA: o TRA é o segundo recinto
+        inspecao = INSP(t(9, 2, 10, 30), MULTILOG)
+        entrada_tra = ENT(t(9, 2, 11, 30), SECO)
+        ciclo = um_ciclo([D(t(9, 1), BTP), S(t(9, 2, 10), BTP), ENT(t(9, 2, 10, 20), MULTILOG), inspecao,
+                          S(t(9, 2, 10, 50), MULTILOG), entrada_tra, S(t(9, 9), SECO)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (ldt.TRA, ldt.CONCLUIDO,
+                                                                       'saída do recinto seco'))
+        self.assertIs(ciclo.entrada_seco.evento, entrada_tra)
+        self.assertEqual(ciclo.saida_seco.evento.recinto, SECO)
+        self.assertIn('passagem rápida pelo recinto 8933201', ciclo.alertas)
+        [esc] = ciclo.escaneamentos
+        self.assertIn('na passagem rápida pelo recinto 8933201 (escaneamento fora)', esc.motivos)
+
+    def test_estada_curta_sem_nova_entrada_e_o_tra(self):
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 11), SECO2), S(t(9, 2, 13), SECO2)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (ldt.TRA, ldt.CONCLUIDO,
+                                                                       'saída do recinto seco'))
+        # nova entrada VAZIA logo depois: a estada curta foi o TRA (o vazio é outra operação)
+        vazio = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 11), SECO2), S(t(9, 2, 13), SECO2),
+                          INSP(t(9, 2, 13, 50), DEPOT, vazio=True), ENT(t(9, 2, 14), DEPOT, vazio=True)])
+        self.assertEqual((vazio.fluxo, vazio.situacao, vazio.entrada_seco.evento.recinto),
+                         (ldt.TRA, ldt.CONCLUIDO, SECO2))
+        self.assertEqual(vazio.escaneamentos, [])   # o scanner do depósito é da outra operação
+
+    def test_estada_curta_recente_aguarda(self):
+        ciclo = ldt.ciclos_do_conteiner([D(t(10, 1, 1)), S(t(10, 1, 2)), ENT(t(10, 1, 3), SECO2),
+                                         S(t(10, 1, 4), SECO2)], ESCOPO, OPERADORES, t(10, 1, 6))[0]
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.ABERTO))
+        self.assertIn('estada curta', ciclo.motivo)
+
+
 class TestSegmentacaoEConfianca(unittest.TestCase):
 
     def test_cada_desembarque_abre_um_ciclo(self):
@@ -209,6 +292,22 @@ class TestSegmentacaoEConfianca(unittest.TestCase):
     def test_embarque_com_ce_de_outra_familia_e_incompleto(self):
         ciclo = um_ciclo([D(t(9, 1)), E(t(9, 20), ce=X)], familia={M, H1})
         self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.INDEFINIDO, ldt.INCOMPLETO))
+        # também depois de sair (baldeação) ou de entrar em outro operador
+        for eventos in ([D(t(9, 1)), S(t(9, 2)), E(t(9, 3), BTP, ce=X)],
+                        [D(t(9, 1)), S(t(9, 2)), ENT(t(9, 2, 5), BTP), E(t(9, 4), BTP, ce=X)]):
+            with self.subTest(eventos=len(eventos)):
+                self.assertEqual(um_ciclo(eventos, familia={M, H1}).situacao, ldt.INCOMPLETO)
+
+    def test_ce_declarado_fora_do_mercante_nao_e_outra_familia(self):
+        eventos = [D(t(9, 1)), INSP(t(9, 1, 12), SB, ce=X), S(t(9, 2), ce=X)]
+        familias = {eventos[0].id: {M, H1}}
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, ESCOPO, OPERADORES, AGORA, familias, conhecidos={M, H1})
+        self.assertEqual([lig.confianca for lig in ciclo.ligacoes()], [ldt.MEDIA, ldt.MEDIA])
+        self.assertIn('CE declarado fora do Mercante', ciclo.saida.motivos)
+        self.assertEqual(ciclo.situacao, ldt.CONCLUIDO)
+        # existe no Mercante, de outra família: desconfia
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, ESCOPO, OPERADORES, AGORA, familias, conhecidos={M, H1, X})
+        self.assertEqual(ciclo.saida.confianca, ldt.BAIXA)
 
 
 class TestCEsDoCiclo(unittest.TestCase):
