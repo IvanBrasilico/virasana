@@ -209,15 +209,19 @@ def _existe_ciclo(*criterios, escaneamentos: bool = False):
     """`_existe` para o ciclo de vida do contêiner: pelo CE gravado no ciclo (ciclos antigos e v2) OU, com
     `LIGACAO_FAMILIA`, por qualquer CE da família (v2). São dois acessos indexados por candidato — o segundo só
     quando o primeiro não acha e o CE não é BL único (`TIPO_BL_UNICO`; quem chama tem o `Conhecimento` do item
-    na consulta). `escaneamentos`: os critérios também olham os escaneamentos do ciclo."""
+    na consulta). `escaneamentos`: os critérios também olham os escaneamentos do ciclo.
+
+    O teste do BL único fica DENTRO da subconsulta da família (correlacionado ao `Conhecimento`): o MariaDB o
+    avalia antes de executá-la ("outer_ref_condition"). Fora dela, o otimizador antecipava a subconsulta para
+    o acesso a `itensresumo`, antes de juntar o CE, e o atalho se perdia (medição de 02/10/2026)."""
     direto = _existe(_CICLO_E_ESCANEAMENTOS if escaneamentos else CicloDeVidaImportacao,
                      _mesmo_conteiner_do_ciclo(), *criterios)
     if not LIGACAO_FAMILIA:
         return direto
-    pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
-                           _mesmo_conteiner_pela_familia(), *criterios)
     pode_ter_familia = or_(Conhecimento.tipoBLConhecimento.is_(None), Conhecimento.tipoBLConhecimento != TIPO_BL_UNICO)
-    return or_(direto, and_(pode_ter_familia, pela_familia))
+    pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
+                           pode_ter_familia, _mesmo_conteiner_pela_familia(), *criterios)
+    return or_(direto, pela_familia)
 
 
 def _lista_de_codigos(valor) -> List[str]:
@@ -308,7 +312,9 @@ def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto=None):
 def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime) -> list:
     """Consultas dos IDs de Item cujo ciclo de vida registra desembarque do contêiner no período: pelo CE
     gravado no ciclo e, com `LIGACAO_FAMILIA`, pelos OUTROS CEs da família (o principal já é o do ciclo).
-    Partem dos ciclos do período (índice de data) — a família entra pela chave única (ciclo, CE)."""
+    Partem dos ciclos do período (índice `ix_cdv_data_ce_conteiner`) — a família entra pela chave única
+    (ciclo, CE). STRAIGHT_JOIN (só MySQL/MariaDB): sem ele, o otimizador lia a `ciclodevida_ciclo_ce` INTEIRA
+    (custo que cresce com a tabela, não com o período — medição de 02/10/2026)."""
     no_periodo = CicloDeVidaImportacao.data_desembarque.between(inicio, fim)
     consultas = [select(Item.ID.label('item_id')).select_from(CicloDeVidaImportacao)
                  .join(Item, _mesmo_conteiner_do_ciclo()).where(no_periodo)]
@@ -317,7 +323,8 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime) -> list:
             select(Item.ID.label('item_id')).select_from(CicloDeVidaImportacao)
             .join(CicloDeVidaCE, CicloDeVidaCE.ciclo_de_vida_id == CicloDeVidaImportacao.ID)
             .join(Item, _mesmo_conteiner_pela_familia())
-            .where(no_periodo, CicloDeVidaCE.principal.is_(False)))
+            .where(no_periodo, CicloDeVidaCE.principal.is_(False))
+            .prefix_with('STRAIGHT_JOIN', dialect='mysql'))
     return consultas
 
 

@@ -640,6 +640,20 @@ class TestCicloV2(NaviiSqliteTestCase):
         self.session.commit()
         self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VM', 'C9'), ('VF', 'C9')})
 
+    def test_sql_do_mariadb_mantem_os_atalhos_de_desempenho(self):
+        """Medição de 02/10/2026: o teste do BL único tem de estar DENTRO da subconsulta da família (senão o MariaDB
+        a antecipa e o atalho se perde) e o ramo da família na janela começa pelos ciclos do período."""
+        from sqlalchemy.dialects import mysql
+        consulta = monta_query_navii(self.session, 'efetiva', {**PERIODO, 'estagio': ['entregue']})
+        sql = str(consulta.statement.compile(dialect=mysql.dialect()))
+        self.assertIn('SELECT STRAIGHT_JOIN itensresumo.`ID` AS item_id \nFROM ciclodevida_ciclo_de_vida_importacao '
+                      'INNER JOIN ciclodevida_ciclo_ce', sql)
+        subconsultas_da_familia = [trecho for trecho in sql.split('(SELECT ')[1:]
+                                   if trecho.split('\n')[1].startswith('FROM ciclodevida_ciclo_ce INNER JOIN')]
+        self.assertEqual(len(subconsultas_da_familia), 2)   # o "sem desembarque localizado" e o estágio
+        for trecho in subconsultas_da_familia:
+            self.assertIn('WHERE (conhecimentosresumo.`tipoBLConhecimento` IS NULL OR', trecho)
+
     def test_estagios(self):
         self.assertEqual(self.pares(estagio=['entregue']), {('CE1', 'C1')})   # ciclo antigo concluído
         self.assertEqual(self.pares(concluido=True), {('CE1', 'C1')})          # filtro antigo = entregue

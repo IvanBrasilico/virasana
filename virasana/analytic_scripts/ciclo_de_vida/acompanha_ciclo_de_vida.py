@@ -41,7 +41,7 @@ MARCA_PARADA_MINUTOS = 30        # o serviço grava as marcas a cada volta (5 mi
 FILTRO = {'apirecintos_acessosveiculo': " AND operacao = 'C'"}   # o que o serviço lê (EVENTOS_NOVOS)
 FILA_ALERTA = 20000              # eventos não lidos: um lote inteiro do serviço (lote_eventos)
 FILA_TETO = 1000000              # a contagem para aqui (é só para dar a ordem de grandeza)
-API_PARADA_HORAS = 24            # evento mais novo da tabela da API mais velho que isso: a API parou de receber?
+API_PARADA_HORAS = 6             # evento mais novo da tabela da API mais velho que isso: a API parou de receber?
 REVISITA_ATRASADA_HORAS = 12     # abertos são revisitados a cada 6 h
 IMAGEM_MINIMA = 0.5              # recinto com menos imagens que isso: conferir a defasagem (imagens_ciclo)
 ESCANEAMENTOS_MINIMOS = 20       # ... desde que tenha escaneamentos suficientes para medir
@@ -184,12 +184,28 @@ class Acompanhamento(Diagnostico):
             f"SELECT COUNT(*) FROM {CICLO} c WHERE c.situacao = 'aberto' AND {V2} AND "  # nosec B608
             '((c.data_saida IS NULL AND c.data_entrada_seco IS NULL AND c.data_desembarque < :d93) '
             'OR c.data_entrada_seco < :d93)', limites)
+        self._abertos_no_operador(limites)
         if sem_abandono:
             self.alertas.append(f'{sem_abandono} ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais '
                                 'de 93 dias — deviam ser abandono')
         if atrasados:
             self.alertas.append(f'{atrasados} ciclos v2 abertos sem revisita há mais de {REVISITA_ATRASADA_HORAS} h '
                                 '(fila de revisita maior que 2.000 por volta?)')
+
+    def _abertos_no_operador(self, limites):
+        """Abertos ainda no operador do desembarque (sem saída), por operador: concentração num terminal pode ser
+        saída que ele não informa (o ciclo só fecharia no abandono)."""
+        nomes = dict(self.consulta('SELECT cod_siscomex, MIN(nome) FROM ovr_recintos GROUP BY cod_siscomex'))
+        linhas = self.consulta(
+            'SELECT c.codigoRecintoDesembarque, COUNT(*), SUM(CASE WHEN c.vazio = 1 THEN 1 ELSE 0 END), '  # nosec B608
+            'SUM(CASE WHEN c.data_desembarque < :d7 THEN 1 ELSE 0 END), '
+            'SUM(CASE WHEN c.data_desembarque < :d30 THEN 1 ELSE 0 END) '
+            f"FROM {CICLO} c WHERE c.situacao = 'aberto' AND {V2} AND c.data_saida IS NULL "
+            'AND c.data_entrada_seco IS NULL GROUP BY c.codigoRecintoDesembarque ORDER BY 2 DESC', limites)
+        self.escreve()
+        self.escreve('Ciclos v2 abertos ainda no operador do desembarque (sem saída), por operador:')
+        self.tabela(['operador', 'nome', 'abertos', 'vazios', 'desembarque há > 7 dias', 'há > 30 dias'],
+                    [(r, (nomes.get(r) or '')[:30], n, v, d7, d30) for r, n, v, d7, d30 in linhas])
 
     # ---------------------------------------------------------------- 4
     def secao_escaneamentos(self):

@@ -415,6 +415,16 @@ Conferir no banco que BL único nunca é membro NÃO principal de família:
 `SELECT cr.tipoBLConhecimento, cc.papel, cc.principal, COUNT(*) FROM ciclodevida_ciclo_ce cc JOIN
 conhecimentosresumo cr ON cr.numeroCEmercante = cc.numeroCEmercante GROUP BY 1, 2, 3`.
 
+**Quinta medição (02/10/2026, 16h; `com_familia2.log`, só 15 das 61 consultas — copiado com a rodada em
+andamento e com o `--reprocessa` gravando ao mesmo tempo):** com o índice `ix_cdv_data_ce_conteiner` (criado
+pelo usuário) a janela lê só o período (50 mil linhas em 20 ms, antes 366 mil e até 0,6 s); com o atalho do
+BL único, o segundo acesso do "sem desembarque localizado" caiu 58%. Página com filtro do ciclo ~3,7 s
+(sem família 3,4 s; antes 4,9 s); contagem ~6,2 s (sem família 4,9 s; antes 7,2 s). Sobras corrigidas em
+seguida: (1) na consulta principal o MariaDB antecipava a subconsulta da família para `itensresumo`, antes de
+juntar o CE, e o atalho se perdia (240 mil execuções na contagem) — o teste do BL único foi para DENTRO da
+subconsulta; (2) o ramo da família no `UNION` lia a `ciclodevida_ciclo_ce` inteira (192 mil linhas, dobrou com
+o reprocessamento) — agora `STRAIGHT_JOIN` a partir dos ciclos do período. **Medir de novo.**
+
 Achado à parte (vale com ou sem família): o ramo do desembarque efetivo varre o índice
 `ix_ciclo_ce_conteiner` do ciclo INTEIRO (366 mil linhas, 0,2–0,6 s; eram 281 mil em 30/09) em vez de ler
 só o período — o índice de data não cobre CE e contêiner. Índice sugerido (DBA; medir antes/depois):

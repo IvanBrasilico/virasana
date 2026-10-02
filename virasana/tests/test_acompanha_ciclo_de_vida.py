@@ -118,6 +118,11 @@ class TestAlertas(AcompanhamentoTestCase):
         _, alertas = self.relatorio(secao='secao_situacao')
         self.assertFalse([a for a in alertas if 'abandono' in a])
 
+    def test_abertos_no_operador_por_operador(self):
+        texto, _ = self.relatorio(secao='secao_situacao')
+        # CTRV (vazio, BTP, desembarque 10/03): aberto no operador há mais de 7 dias
+        self.assertRegex(texto, r'8931359\s+\|\s+BTP\s+\|\s+1\s+\|\s+1\s+\|\s+1\s+\|\s+0')
+
     def test_sem_ce_por_fluxo(self):
         texto, _ = self.relatorio(secao='secao_ce')
         self.assertRegex(texto, r'aberto\s+\|\s+indefinido\s+\|\s+1')   # CTRC, aguardando entrada em seco
