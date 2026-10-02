@@ -250,6 +250,48 @@ class TestOmissoesEPassagens(unittest.TestCase):
         self.assertIn('estada curta', ciclo.motivo)
 
 
+class TestRemocaoABordo(unittest.TestCase):
+    """Desembarque -> embarque -> novo desembarque no mesmo operador, logo depois e sem gate no meio: o contêiner não
+    saiu da operação (pedido do usuário, 02/10/2026)."""
+
+    def ciclos(self, eventos):
+        return ldt.ciclos_do_conteiner(eventos, ESCOPO, OPERADORES, AGORA)
+
+    def test_remocao_continua_o_ciclo_do_primeiro_desembarque(self):
+        inspecao, saida, entrada = INSP(t(9, 20, 10), SB), S(t(9, 24), SB), ENT(t(9, 24, 12), SECO)
+        segundo = D(t(9, 21, 14), SB)
+        [ciclo] = self.ciclos([D(t(9, 20)), inspecao, E(t(9, 21, 8), SB), segundo, saida, entrada])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (ldt.TRA, ldt.ABERTO, 'no recinto seco'))
+        self.assertIsNone(ciclo.embarque)
+        self.assertEqual([lig.evento for lig in ciclo.escaneamentos], [inspecao])   # o escaneamento não se perde
+        self.assertEqual((ciclo.saida.evento, ciclo.entrada_seco.evento), (saida, entrada))
+        self.assertEqual(ciclo.remocoes, [segundo])
+        self.assertIn('remoção a bordo em 8931356: embarque e novo desembarque em 6 h — o ciclo continua',
+                      ciclo.alertas)
+
+    def test_remocoes_encadeadas_e_depois_embarque_de_verdade(self):
+        embarque = E(t(9, 25), SB)
+        [ciclo] = self.ciclos([D(t(9, 20)), E(t(9, 20, 10), SB), D(t(9, 20, 12), SB), E(t(9, 21, 9), SB),
+                               D(t(9, 21, 10), SB), embarque])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.embarque.evento), (ldt.PASSAGEM, ldt.CONCLUIDO, embarque))
+        self.assertEqual(len(ciclo.remocoes), 2)
+
+    def test_novo_desembarque_depois_do_prazo_e_outra_operacao(self):
+        ciclos = self.ciclos([D(t(9, 20)), E(t(9, 21), SB), D(t(9, 22, 9), SB)])   # 25 h depois do embarque
+        self.assertEqual([(c.fluxo, c.situacao) for c in ciclos],
+                         [(ldt.PASSAGEM, ldt.CONCLUIDO), (ldt.INDEFINIDO, ldt.ABERTO)])
+        self.assertEqual([c.remocoes for c in ciclos], [[], []])
+
+    def test_com_gate_no_meio_ou_em_outro_operador_nao_e_remocao(self):
+        # saiu e voltou ao operador antes do embarque: o novo desembarque é outra operação
+        ciclos = self.ciclos([D(t(9, 1)), S(t(9, 2)), ENT(t(9, 20), SB), E(t(9, 20, 6), SB), D(t(9, 20, 9), SB)])
+        self.assertEqual(len(ciclos), 2)
+        # embarque num operador e desembarque em outro
+        self.assertEqual(len(self.ciclos([D(t(9, 20)), E(t(9, 21), SB), D(t(9, 21, 3), BTP)])), 2)
+        # sem desembarque antes, o embarque e o desembarque seguintes não são remoção
+        self.assertEqual(len(self.ciclos([E(t(9, 21), SB), D(t(9, 21, 3), SB)])), 1)
+
+
 class TestSegmentacaoEConfianca(unittest.TestCase):
 
     def test_cada_desembarque_abre_um_ciclo(self):

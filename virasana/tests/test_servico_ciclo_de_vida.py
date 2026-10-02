@@ -230,6 +230,39 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual(self.ciclo('CTRB')['processado_em'], AGORA)
         self.assertEqual(self.ciclo('CTRC')['processado_em'], AGORA + timedelta(hours=12))
 
+    def test_remocao_a_bordo_apaga_o_ciclo_do_novo_desembarque(self):
+        """CTRV (no operador BTP desde 10/03): embarque e novo desembarque na BTP 6 h depois — o loop antigo já
+        tinha criado uma linha para o novo desembarque (ID 500), que é apagada; o ciclo do 1º desembarque continua."""
+        with self.engine.begin() as c:
+            c.execute(text("INSERT INTO apirecintos_embarquedesembarque (id, numeroConteiner, dataHoraOcorrencia, "
+                           "codigoRecinto, tipoOperacao, embarqueDesembarque) VALUES "
+                           "(106, 'CTRV', '2026-03-12 08:00:00', '8931359', 'I', 'E'), "
+                           "(107, 'CTRV', '2026-03-12 14:00:00', '8931359', 'I', 'D')"))
+            c.execute(gc.CICLOS.insert(), dict(ID=500, desembarque_id=107, numeroConteiner='CTRV',
+                                               data_desembarque=d(12, 14), codigoRecintoDesembarque=BTP,
+                                               concluido=False))
+        self.relogio.agora = AGORA + timedelta(hours=1)
+        estatisticas, _ = self.servico.uma_volta(DESDE)
+        self.assertEqual(estatisticas['ciclos de remoção a bordo apagados'], 1)
+        ciclo = self.ciclo('CTRV')   # um só
+        self.assertEqual((ciclo['desembarque_id'], ciclo['situacao'], ciclo['embarque_id']), (103, 'aberto', None))
+
+    def test_aberto_alem_da_janela_de_eventos_continua_sendo_refeito(self):
+        """O CTRA (aberto no EADI, desembarque em 02/03) com uma janela de eventos de só 10 dias: a carga recua até
+        o desembarque do ciclo aberto — senão ele nunca mais seria refeito."""
+        self.relogio.agora = AGORA + timedelta(hours=7)
+        servico = sv.Servico(self.engine, self.mongo, dias_eventos=10, relogio=self.relogio)
+        with self.engine.connect() as c:
+            self.assertEqual(servico._desde_do_lote(c, ['CTRA', 'CTRB'], None), d(2))
+            self.assertEqual(servico._desde_do_lote(c, ['CTRB'], None), self.relogio.agora - timedelta(days=10))
+        estatisticas = servico.processa(['CTRA'])
+        self.assertEqual(estatisticas['ciclos atualizados'], 1)
+        ciclo = self.ciclo('CTRA')
+        self.assertEqual((ciclo['processado_em'], ciclo['situacao'], ciclo['ID']), (self.relogio.agora, 'aberto', 77))
+        limitado = sv.Servico(self.engine, self.mongo, dias_eventos=10, dias_maximos_aberto=15, relogio=self.relogio)
+        with self.engine.connect() as c:
+            self.assertEqual(limitado._desde_do_lote(c, ['CTRA'], None), self.relogio.agora - timedelta(days=15))
+
     def test_reprocessa_pendente_antigo(self):
         estatisticas = self.servico.reprocessa(10)
         ciclo = self.ciclo('CTRO')

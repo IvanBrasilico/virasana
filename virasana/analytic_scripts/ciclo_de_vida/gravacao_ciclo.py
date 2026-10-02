@@ -178,10 +178,24 @@ class Gravador:
     def grava(self, itens: List[ItemGravacao]) -> Counter:
         if not itens:
             return self.estatisticas
+        self._apaga_remocoes([d.id for item in itens for d in item.ciclo.remocoes])
         ids = self._grava_ciclos(itens)
         self._grava_escaneamentos(itens, ids)
         self._grava_ces(itens, ids)
         return self.estatisticas
+
+    def _apaga_remocoes(self, desembarques: List[int]):
+        """Apaga o ciclo (com escaneamentos e CEs) gravado para um desembarque que se revelou REMOÇÃO A BORDO —
+        ele continua no ciclo do primeiro desembarque. É dado derivado: refazer o contêiner o recria se preciso."""
+        if not desembarques:
+            return
+        ids = [id_ for id_, in self.conexao.execute(
+            select(CICLOS.c.ID).where(CICLOS.c.desembarque_id.in_(desembarques)))]
+        if ids:
+            self.conexao.execute(ESCANEAMENTOS.delete().where(ESCANEAMENTOS.c.ciclo_de_vida_id.in_(ids)))
+            self.conexao.execute(CICLO_CE.delete().where(CICLO_CE.c.ciclo_de_vida_id.in_(ids)))
+            self.conexao.execute(CICLOS.delete().where(CICLOS.c.ID.in_(ids)))
+        self.estatisticas['ciclos de remoção a bordo apagados'] += len(ids)
 
     def _ids_por_desembarque(self, desembarques) -> Dict[int, int]:
         return dict(self.conexao.execute(

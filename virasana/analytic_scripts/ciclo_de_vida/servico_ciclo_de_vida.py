@@ -14,8 +14,9 @@ A cada volta:
      abandono em 93 dias), processados há mais de 6 h, e ciclos v2 dos últimos 30 dias sem CE (o CE chega
      depois ao Mercante), há mais de 24 h;
   3. para cada lote de contêineres, numa transação: carrega TODOS os eventos dos últimos dias
-     (`carga_ciclo`), refaz a linha do tempo e os CEs (`heuristica_ciclo`) e grava (`gravacao_ciclo`) —
-     o resultado depende só dos eventos e de "agora", então refazer é seguro;
+     (`carga_ciclo`; recuando até o desembarque dos ciclos ainda abertos do lote, que podem passar disso), refaz
+     a linha do tempo e os CEs (`heuristica_ciclo`) e grava (`gravacao_ciclo`) — o resultado depende só dos
+     eventos e de "agora", então refazer é seguro;
   4. avança as marcas d'água. Se uma tabela tinha mais eventos que o lote, a próxima volta começa logo;
      senão, espera o intervalo.
 
@@ -89,9 +90,10 @@ class Servico:
     def __init__(self, engine, mongo_db=None, simula: bool = False, dias_eventos: int = 100,
                  lote_eventos: int = 20000, lote_conteineres: int = 500, revisita_horas: float = 6,
                  revisita_sem_ce_horas: float = 24, revisita_limite: int = 2000, dias_sem_ce: int = 30,
-                 relogio: Callable[[], datetime] = datetime.now):
+                 dias_maximos_aberto: int = 400, relogio: Callable[[], datetime] = datetime.now):
         self.engine, self.mongo_db, self.simula = engine, mongo_db, simula
         self.dias_eventos, self.lote_eventos, self.lote_conteineres = dias_eventos, lote_eventos, lote_conteineres
+        self.dias_maximos_aberto = dias_maximos_aberto
         self.revisita_horas, self.revisita_sem_ce_horas = revisita_horas, revisita_sem_ce_horas
         self.revisita_limite, self.dias_sem_ce = revisita_limite, dias_sem_ce
         self.relogio = relogio
@@ -177,9 +179,24 @@ class Servico:
         estatisticas['contêineres'] += len(conteineres)
         return estatisticas
 
+    def _desde_do_lote(self, conexao, conteineres: List[str], desde: Optional[datetime]) -> datetime:
+        """Início da carga de eventos do lote: `desde` (ou `dias_eventos` atrás), recuando até o desembarque mais
+        antigo dos ciclos v2 ainda ABERTOS desses contêineres — o abandono conta do início da estada atual (ex.:
+        a entrada no seco), então um ciclo pode ficar aberto bem mais que `dias_eventos` depois do desembarque;
+        sem o desembarque na carga, ele não seria mais refeito (e nunca fecharia). Limite: `dias_maximos_aberto`."""
+        agora = self.relogio()
+        inicio = desde or agora - timedelta(days=self.dias_eventos)
+        mais_antigo = _data(conexao.execute(
+            select(func.min(CICLOS.c.data_desembarque))
+            .where(CICLOS.c.numeroConteiner.in_(conteineres), CICLOS.c.situacao == ldt.ABERTO,
+                   CICLOS.c.versao_heuristica == VERSAO)).scalar())
+        if mais_antigo is None:
+            return inicio
+        return min(inicio, max(mais_antigo, agora - timedelta(days=self.dias_maximos_aberto)))
+
     def _processa_lote(self, conexao, conteineres: List[str], desde: Optional[datetime]) -> Counter:
         agora = self.relogio()
-        carga = CargaCiclo(ConsultaSQL(conexao), desde or agora - timedelta(days=self.dias_eventos), agora)
+        carga = CargaCiclo(ConsultaSQL(conexao), self._desde_do_lote(conexao, conteineres, desde), agora)
         escopo, operadores, _ = carga.operadores()
         eventos, portuarios = carga.eventos(conteineres)
         candidatos, vazios = carga.candidatos(conteineres), carga.vazios(conteineres)

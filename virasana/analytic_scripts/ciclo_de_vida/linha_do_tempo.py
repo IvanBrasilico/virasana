@@ -15,6 +15,13 @@ linha do tempo continuar sem um evento-FRONTEIRA que abra outra operação:
   - entrada no OPERADOR DO DESEMBARQUE depois de sair dele (o contêiner voltou: outra operação).
 Com a fronteira, a próxima operação nunca é confundida com esta, mesmo com prazos longos.
 
+Exceção ao "novo desembarque" e ao "embarque" — REMOÇÃO A BORDO (pedido do usuário, 02/10/2026): desembarque,
+embarque e novo desembarque no MESMO operador, o novo desembarque em até `remocao_horas` depois do embarque e
+sem acesso de gate no meio (ex.: contêiner tirado do navio para remover outro e devolvido; correção do
+operador). O contêiner não saiu da operação: o embarque e o novo desembarque são ignorados, o ciclo do primeiro
+desembarque continua, e o novo desembarque fica em `CicloCalculado.remocoes` (a gravação apaga o ciclo que
+tenha sido criado para ele).
+
 Estados: no OPERADOR do desembarque -> em TRÂNSITO (saiu) -> em OUTRO OPERADOR (passagem/baldeação;
 `ovr_recintos.e_operador`) ou no SECO (TRA, recinto não operador) -> fim.
 
@@ -59,6 +66,7 @@ class Parametros:
     dias_abandono: float = 93               # sem saída: abandono (prazo de 90 dias + margem)
     passagem_rapida_horas: float = 3        # estada curta num seco seguida de outra entrada: só passou
     passagem_ate_entrada_horas: float = 6   # ... desde que a outra entrada venha até este prazo
+    remocao_horas: float = 24               # embarque e novo desembarque no mesmo operador: remoção a bordo
 
 
 @dataclass(frozen=True)
@@ -91,6 +99,7 @@ class CicloCalculado:
     situacao: str = ABERTO
     motivo: str = ''
     alertas: List[str] = field(default_factory=list)
+    remocoes: List[Evento] = field(default_factory=list)   # desembarques de remoção a bordo absorvidos
 
     @property
     def concluido(self) -> bool:
@@ -415,6 +424,25 @@ class _Percurso:
         return self.ciclo
 
 
+def _remocoes(eventos: List[Evento], params: Parametros) -> Dict[int, Evento]:
+    """{id do novo desembarque: embarque} das remoções a bordo (ver docstring do módulo): desembarque -> embarque
+    -> novo desembarque, os três no mesmo recinto, sem ENTRADA/SAÍDA de gate desde o primeiro desembarque e o
+    novo desembarque em até `remocao_horas` depois do embarque. Encadeia (várias remoções seguidas)."""
+    remocoes, ultimo_desembarque, embarque = {}, None, None
+    for evento in eventos:
+        if evento.tipo == DESEMBARQUE:
+            if (embarque is not None and evento.recinto == embarque.recinto
+                    and _horas(evento.data, embarque.data) <= params.remocao_horas):
+                remocoes[evento.id] = embarque
+            ultimo_desembarque, embarque = evento, None
+        elif evento.tipo == EMBARQUE:
+            mesmo = ultimo_desembarque is not None and evento.recinto == ultimo_desembarque.recinto
+            embarque = evento if mesmo else None
+        elif evento.tipo in (ENTRADA, SAIDA):
+            ultimo_desembarque, embarque = None, None
+    return remocoes
+
+
 def ciclos_do_conteiner(eventos: Iterable[Evento], operadores_escopo: Set[str], operadores: Set[str],
                         agora: datetime, familias: Optional[Dict[int, Set[str]]] = None,
                         params: Parametros = Parametros(),
@@ -427,14 +455,28 @@ def ciclos_do_conteiner(eventos: Iterable[Evento], operadores_escopo: Set[str], 
     verificar, todo declarado fora da família desconfia).
     """
     eventos = sem_retificacoes(eventos)
+    remocoes = _remocoes(eventos, params)
+    embarques_de_remocao = {e.id for e in remocoes.values()}
+
+    def de_remocao(e: Evento) -> bool:
+        return (e.tipo == DESEMBARQUE and e.id in remocoes) or (e.tipo == EMBARQUE and e.id in embarques_de_remocao)
+
     resultado = []
     for i, evento in enumerate(eventos):
-        if evento.tipo != DESEMBARQUE or evento.recinto not in operadores_escopo:
+        if evento.tipo != DESEMBARQUE or evento.recinto not in operadores_escopo or evento.id in remocoes:
             continue
-        fim = next((j for j in range(i + 1, len(eventos)) if eventos[j].tipo == DESEMBARQUE), len(eventos))
+        fim = next((j for j in range(i + 1, len(eventos))
+                    if eventos[j].tipo == DESEMBARQUE and eventos[j].id not in remocoes), len(eventos))
         tolerancia = timedelta(hours=params.tolerancia_relogio_horas)
         anteriores = [e for e in eventos[:i] if e.tipo == INSPECAO and evento.data - tolerancia <= e.data]
         familia = (familias or {}).get(evento.id, set())
         percurso = _Percurso(evento, operadores, agora, familia, params, conhecidos)
-        resultado.append(percurso.percorre(anteriores + eventos[i + 1:fim]))
+        segmento = eventos[i + 1:fim]
+        ciclo = percurso.percorre(anteriores + [e for e in segmento if not de_remocao(e)])
+        for desembarque in (e for e in segmento if e.tipo == DESEMBARQUE):
+            horas = _horas(desembarque.data, remocoes[desembarque.id].data)
+            ciclo.remocoes.append(desembarque)
+            ciclo.alertas.append(f'remoção a bordo em {desembarque.recinto}: embarque e novo desembarque em '
+                                 f'{horas:.0f} h — o ciclo continua')
+        resultado.append(ciclo)
     return resultado

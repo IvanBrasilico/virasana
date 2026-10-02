@@ -40,6 +40,15 @@ Exceções conhecidas (ainda NÃO tratadas pelo código):
 | **Cabotagem** (tipoTrafego 3) | escaneamento nem sempre obrigatório | conta como "sem escaneamento" |
 | **Permanência longa / abandono** | sem saída até 90 dias (depois, abandono — continua sem saída) | busca de saída só olha 72 h depois do desembarque |
 
+**Remoção a bordo (pedido do usuário, 02/10/2026):** desembarque -> embarque -> novo desembarque no MESMO
+operador, o novo desembarque em até 24 h depois do embarque e sem acesso de gate desde o primeiro desembarque
+(ex.: contêiner tirado do navio para remover outro e devolvido). Antes, o embarque fechava o ciclo como
+passagem e o novo desembarque abria outro ciclo (os escaneamentos de antes do embarque ficavam no primeiro).
+Agora o ciclo do primeiro desembarque continua (`Parametros.remocao_horas`), o novo desembarque fica em
+`CicloCalculado.remocoes`, e a gravação APAGA o ciclo que existia para ele (do loop antigo ou da v2), com os
+escaneamentos e os CEs. Embarque seguido de desembarque depois de 24 h, em outro operador ou com gate no
+meio continua sendo outra operação.
+
 **Fonte oficial do abandono (informado pelo usuário em 02/10/2026):** os recintos são obrigados a informar os
 abandonos, e o AJNA consulta as **FMAs eletrônicas** (Fichas de Mercadoria Abandonada) na API da Janela
 Única Portuária. O script `bhadrasana2/bhadrasana/scripts/fma_update.py` (cron diário) abre uma **Ficha OVR por
@@ -469,6 +478,7 @@ mais de 6 h (prazos: trânsito de 48 h, estada curta, abandono) e ciclos v2 dos 
 sem ser vazio, há mais de 24 h (o CE chega depois ao Mercante); (3) por lotes de 500 contêineres, numa
 transação cada: carrega todos os eventos dos últimos 100 dias, refaz a linha do tempo e os CEs e grava;
 (4) avança as marcas. Com fila (lote cheio), a próxima volta começa logo; senão, espera 5 min.
+A carga de cada lote recua até o desembarque mais antigo dos ciclos v2 ainda ABERTOS dos seus contêineres (limite 400 dias): o abandono conta do início da estada atual (ex.: entrada no seco), então um ciclo pode ficar aberto bem mais que 100 dias depois do desembarque — sem isso ele deixava de ser refeito e travava a fila de revisita (achado no acompanhamento de 02/10/2026, corrigido no mesmo dia).
 
 Gravação (`gravacao_ciclo.py`), por `desembarque_id`:
 - a linha que já existe — inclusive a do loop antigo — é **atualizada no mesmo ID** (as telas continuam

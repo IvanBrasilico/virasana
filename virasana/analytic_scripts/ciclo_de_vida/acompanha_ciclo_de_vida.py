@@ -41,6 +41,7 @@ MARCA_PARADA_MINUTOS = 30        # o serviço grava as marcas a cada volta (5 mi
 FILTRO = {'apirecintos_acessosveiculo': " AND operacao = 'C'"}   # o que o serviço lê (EVENTOS_NOVOS)
 FILA_ALERTA = 20000              # eventos não lidos: um lote inteiro do serviço (lote_eventos)
 FILA_TETO = 1000000              # a contagem para aqui (é só para dar a ordem de grandeza)
+API_PARADA_HORAS = 24            # evento mais novo da tabela da API mais velho que isso: a API parou de receber?
 REVISITA_ATRASADA_HORAS = 12     # abertos são revisitados a cada 6 h
 IMAGEM_MINIMA = 0.5              # recinto com menos imagens que isso: conferir a defasagem (imagens_ciclo)
 ESCANEAMENTOS_MINIMOS = 20       # ... desde que tenha escaneamentos suficientes para medir
@@ -99,8 +100,18 @@ class Acompanhamento(Diagnostico):
                                 'ou volta demorada (ver error.log/access.log)')
         if fila is not None and fila >= FILA_ALERTA:
             self.alertas.append(f'{tabela}: {fila}{"+" * (fila == FILA_TETO)} eventos ainda não lidos (fila)')
+        self._alerta_api_parada(tabela, maior)
         return (tabela.replace('apirecintos_', ''), ultimo_id, maior, f'{fila}+' if fila == FILA_TETO else fila,
                 self._data_do_evento(tabela, ultimo_id), None if parada is None else f'{parada * 60:.0f} min')
+
+    def _alerta_api_parada(self, tabela, maior):
+        """O evento mais novo da tabela (maior id) é velho: a API Recintos parou de receber essa tabela? O ciclo de
+        vida não fica mais atual que a API (ex.: sem pesagens, não há entrada implícita por pesagem)."""
+        mais_novo = self._data_do_evento(tabela, maior)
+        horas = _horas(self.agora, mais_novo)
+        if horas is not None and horas > API_PARADA_HORAS:
+            self.alertas.append(f'{tabela}: o evento mais novo é de {mais_novo:%d/%m/%Y %H:%M} — a API Recintos '
+                                'parou de receber esta tabela?')
 
     def _data_do_evento(self, tabela, id_):
         if id_ is None:
@@ -165,12 +176,17 @@ class Acompanhamento(Diagnostico):
             "THEN '3) 7 a 30 dias' WHEN c.data_desembarque >= :d93 THEN '4) 30 a 93 dias' ELSE '5) > 93 dias' END "
             'AS idade, COUNT(*), SUM(CASE WHEN c.processado_em < :revisita THEN 1 ELSE 0 END) '
             f"FROM {CICLO} c WHERE c.situacao = 'aberto' AND {V2} GROUP BY idade ORDER BY idade", limites)
-        self.escreve('Ciclos v2 abertos (todos) por idade do desembarque:')
+        self.escreve('Ciclos v2 abertos (todos) por idade do DESEMBARQUE (o abandono conta do início da estada atual — '
+                     'ex.: entrada no seco —, por isso pode haver aberto com desembarque há mais de 93 dias):')
         self.tabela(['idade', 'abertos', f'sem revisita há > {REVISITA_ATRASADA_HORAS} h'], linhas)
-        velhos = sum(int(n or 0) for idade, n, _ in linhas if idade.startswith('5'))
         atrasados = sum(int(n or 0) for _, _, n in linhas)
-        if velhos:
-            self.alertas.append(f'{velhos} ciclos v2 abertos com desembarque há mais de 93 dias (deviam ser abandono)')
+        sem_abandono = self.numero(
+            f"SELECT COUNT(*) FROM {CICLO} c WHERE c.situacao = 'aberto' AND {V2} AND "  # nosec B608
+            '((c.data_saida IS NULL AND c.data_entrada_seco IS NULL AND c.data_desembarque < :d93) '
+            'OR c.data_entrada_seco < :d93)', limites)
+        if sem_abandono:
+            self.alertas.append(f'{sem_abandono} ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais '
+                                'de 93 dias — deviam ser abandono')
         if atrasados:
             self.alertas.append(f'{atrasados} ciclos v2 abertos sem revisita há mais de {REVISITA_ATRASADA_HORAS} h '
                                 '(fila de revisita maior que 2.000 por volta?)')
@@ -181,21 +197,24 @@ class Acompanhamento(Diagnostico):
         nomes = dict(self.consulta('SELECT cod_siscomex, MIN(nome) FROM ovr_recintos GROUP BY cod_siscomex'))
         de_ciclos_v2 = (f'FROM ciclodevida_ciclo_de_vida_importacao_escaneamentos e JOIN {CICLO} c '
                         f'ON c.ID = e.ciclo_de_vida_id WHERE {CICLO_EM_PERIODO} AND {V2}')
+        limites = {'h6': self.agora - timedelta(hours=6), 'd1': self.agora - timedelta(days=1),
+                   'd3': self.agora - timedelta(days=3)}
         linhas = []
-        for recinto, total, imagens, fora, alta, media in self.consulta(
+        for recinto, total, imagens, sem_ha_3_dias, fora, alta, media in self.consulta(
                 'SELECT e.codigoRecinto, COUNT(*), SUM(CASE WHEN e.imagem_id IS NOT NULL THEN 1 ELSE 0 END), '
+                'SUM(CASE WHEN e.imagem_id IS NULL AND e.data_escaneamento < :d3 THEN 1 ELSE 0 END), '
                 "SUM(CASE WHEN e.fora = 1 THEN 1 ELSE 0 END), SUM(CASE WHEN e.confianca = 'alta' THEN 1 ELSE 0 END), "
                 "SUM(CASE WHEN e.confianca = 'media' THEN 1 ELSE 0 END) " + de_ciclos_v2 +  # nosec B608
-                ' GROUP BY e.codigoRecinto ORDER BY 2 DESC'):
+                ' GROUP BY e.codigoRecinto ORDER BY 2 DESC', limites):
             total, imagens = int(total or 0), int(imagens or 0)
-            linhas.append((recinto, (nomes.get(recinto) or '')[:30], total, _pct(imagens, total), fora, alta, media))
+            linhas.append((recinto, (nomes.get(recinto) or '')[:30], total, _pct(imagens, total), sem_ha_3_dias,
+                           fora, alta, media))
             if total >= ESCANEAMENTOS_MINIMOS and imagens < IMAGEM_MINIMA * total:
                 self.alertas.append(f'recinto {recinto}: só {_pct(imagens, total)} dos escaneamentos com imagem — '
                                     'conferir a defasagem de horário (imagens_ciclo.DEFASAGEM_HORAS)')
-        self.tabela(['recinto', 'nome', 'escaneamentos', 'com imagem', 'fora', 'conf. alta', 'conf. média'], linhas)
+        self.tabela(['recinto', 'nome', 'escaneamentos', 'com imagem', 'sem imagem há > 3 dias', 'fora', 'conf. alta',
+                     'conf. média'], linhas)
         self.escreve()
-        limites = {'h6': self.agora - timedelta(hours=6), 'd1': self.agora - timedelta(days=1),
-                   'd3': self.agora - timedelta(days=3)}
         self.escreve('Escaneamentos SEM imagem por idade do escaneamento (imagem que chega depois ao Mongo só é '
                      'procurada de novo quando o contêiner é reprocessado):')
         self.tabela(['idade', 'sem imagem', 'em ciclos já encerrados'], self.consulta(
@@ -218,6 +237,11 @@ class Acompanhamento(Diagnostico):
             "WHEN c.data_desembarque >= :d7 THEN '2) 2 a 7 dias' ELSE '3) > 7 dias' END AS idade, COUNT(*) "
             f'FROM {CICLO} c WHERE {CICLO_EM_PERIODO} AND {V2} AND c.numeroCEmercante IS NULL '
             'AND (c.vazio IS NULL OR c.vazio = 0) GROUP BY idade ORDER BY idade', limites))
+        self.escreve()
+        self.tabela(['sem CE (não vazio, desembarque há > 2 dias): situação', 'fluxo', 'ciclos'], self.consulta(
+            f'SELECT c.situacao, c.fluxo, COUNT(*) FROM {CICLO} c WHERE {CICLO_EM_PERIODO} AND {V2} '  # nosec B608
+            'AND c.numeroCEmercante IS NULL AND (c.vazio IS NULL OR c.vazio = 0) AND c.data_desembarque < :d2 '
+            'GROUP BY c.situacao, c.fluxo ORDER BY 3 DESC', limites))
         self.escreve()
         self.tabela(['papel na família', 'CEs', 'principal'], self.consulta(
             'SELECT cc.papel, COUNT(*), SUM(CASE WHEN cc.principal = 1 THEN 1 ELSE 0 END) '  # nosec B608

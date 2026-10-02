@@ -37,7 +37,8 @@ class AcompanhamentoTestCase(unittest.TestCase):
 class TestRelatorio(AcompanhamentoTestCase):
 
     def test_todas_as_secoes_sem_erro_e_sem_alerta(self):
-        texto, alertas = self.relatorio()
+        with mock.patch.object(ac, 'API_PARADA_HORAS', 10 ** 6):   # o cenário tem eventos de dias atrás
+            texto, alertas = self.relatorio()
         self.assertNotIn('ERRO', texto)
         for titulo in ('1. SERVIÇO', '2. COBERTURA', '3. SITUAÇÃO', '4. ESCANEAMENTOS', '5. CE', '6. PENDENTES',
                        '7. ALERTAS'):
@@ -64,7 +65,7 @@ class TestRelatorio(AcompanhamentoTestCase):
         self.assertRegex(texto, r'concluido\s+\|\s+operador\s+\|\s+1')       # CTRB, Ecoporto
         self.assertRegex(texto, r'aberto\s+\|\s+tra\s+\|\s+1')               # CTRA no EADI
         texto, _ = self.relatorio(secao='secao_escaneamentos')
-        self.assertRegex(texto, r'8931359\s+\|\s+BTP\s+\|\s+1\s+\|\s+1 \(100%\)')
+        self.assertRegex(texto, r'8931359\s+\|\s+BTP\s+\|\s+1\s+\|\s+1 \(100%\)\s+\|\s+0 ')
 
     def test_pendentes_antigos(self):
         texto, _ = self.relatorio(secao='secao_pendentes_antigos')
@@ -102,6 +103,24 @@ class TestAlertas(AcompanhamentoTestCase):
                                                        confianca='alta') for i in range(ac.ESCANEAMENTOS_MINIMOS)])
         _, alertas = self.relatorio(secao='secao_escaneamentos')
         self.assertTrue(any(a.startswith('recinto 8931318: só 0 (0%)') for a in alertas))
+
+    def test_api_parada(self):
+        _, alertas = self.relatorio(secao='secao_servico')   # agora = 20/03; pesagem mais nova em 10/03
+        self.assertIn('apirecintos_pesagensveiculo: o evento mais novo é de 10/03/2026 09:00 — a API Recintos '
+                      'parou de receber esta tabela?', alertas)
+
+    def test_abertos_que_deviam_ser_abandono(self):
+        # 90 dias depois: CTRV no operador sem saída (desembarque 10/03) e CTRA no EADI (entrada 04/03) passam de
+        # 93 dias; o CTRC (saiu do operador, em trânsito) não conta
+        _, alertas = self.relatorio(agora=AGORA + timedelta(days=90), secao='secao_situacao')
+        self.assertIn('2 ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais de 93 dias — deviam '
+                      'ser abandono', alertas)
+        _, alertas = self.relatorio(secao='secao_situacao')
+        self.assertFalse([a for a in alertas if 'abandono' in a])
+
+    def test_sem_ce_por_fluxo(self):
+        texto, _ = self.relatorio(secao='secao_ce')
+        self.assertRegex(texto, r'aberto\s+\|\s+indefinido\s+\|\s+1')   # CTRC, aguardando entrada em seco
 
     def test_aberto_sem_revisita(self):
         _, alertas = self.relatorio(agora=AGORA + timedelta(hours=13), secao='secao_situacao')
