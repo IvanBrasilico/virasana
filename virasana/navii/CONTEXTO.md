@@ -383,6 +383,15 @@ Em 02/10/2026 (ciclo de vida v2 em produção; decisões do usuário):
   `ciclodevida_ciclo_ce`. `test_estagios_ciclo` confere ORM x tabelas do serviço e SQL x Python dos
   estágios.
 
+Em 02/10/2026 (fim do dia; pedido do usuário) — **Fichas OVR** no card e na completude
+(`navii/fichas_ovr.py`): fichas do sistema Fichas (bhadrasana2, `ovr_ovrs`) pelo CE do card, pelos outros
+CEs da família e — só as ABERTAS (fase Iniciada/Ativa/Suspensa) — pelo contêiner da RVF
+(`ovr_verificacoesfisicas.numerolote`; o número do contêiner se repete em outras operações). FMA
+(`tipooperacao = 0`) = abandono informado pelo recinto (`fma_update.py`). Card: selos "Ficha OVR aberta" e
+"FMA (abandono)" e a lista com link `/bhadrasana2/ovr?id=` (URL montada no servidor). Completude (detalhe):
+coluna Ficha OVR e contagem "com Ficha OVR (N com FMA)". Uma consulta por página (CE e contêiner, por
+índice); sem filtro por ficha (não pedido — avaliar desempenho antes, se vier).
+
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
 Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache

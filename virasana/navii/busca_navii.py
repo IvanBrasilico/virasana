@@ -68,7 +68,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from bhadrasana.models.laudo import Empresa
-from virasana.navii import referencias
+from virasana.navii import fichas_ovr, referencias
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
@@ -949,6 +949,7 @@ def monta_card_navii(
     nomes_recintos: Optional[Dict[str, str]] = None,
     nomes_terminais: Optional[Dict[str, str]] = None,
     familia: Optional[dict] = None,
+    fichas: Optional[List[dict]] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
@@ -968,7 +969,8 @@ def monta_card_navii(
     guardado não bateu com nenhum CNPJ conhecido). `nomes_recintos`/
     `nomes_terminais` vêm de `busca_nomes_recintos` (por cod_siscomex/cod_carga).
     `familia` vem de `busca_familias_navii` (filhotes do master); o ciclo pode ter vindo de outro CE da
-    família (`cicloPorCE`).
+    família (`cicloPorCE`). `fichas`: Fichas OVR do CE, da família ou abertas pelo contêiner
+    (`fichas_ovr.fichas_do`), inclusive as FMAs (abandono).
     """
     nomes_recintos = nomes_recintos or {}
     nomes_terminais = nomes_terminais or {}
@@ -1024,6 +1026,7 @@ def monta_card_navii(
         **_dados_situacao(ciclo),
         'linhaDoTempo': _linha_do_tempo(ciclo, nomes_recintos),
         'escaneamentos': _escaneamentos_do_card(ciclo, nomes_recintos),
+        'fichasOvr': fichas or [],
     }
 
 
@@ -1047,6 +1050,10 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
         [r.manifesto.codigoTerminalDescarregamento for r in resultados if r.manifesto is not None],
         campo='cod_carga',
     )
+    familias = {r.conhecimento.numeroCEmercante: (r.familia or {}).get('familia', set()) for r in resultados}
+    fichas_por_ce, fichas_por_conteiner = fichas_ovr.busca_fichas(
+        session, {ce for numero, familia in familias.items() for ce in (numero, *familia)},
+        [r.item.codigoConteiner for r in resultados if r.item is not None])
     return [
         monta_card_navii(
             r.ciclo, r.conhecimento, r.embarcacao,
@@ -1058,6 +1065,10 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
             nomes_recintos=nomes_recintos,
             nomes_terminais=nomes_terminais,
             familia=r.familia,
+            fichas=fichas_ovr.fichas_do(r.conhecimento.numeroCEmercante,
+                                        r.item.codigoConteiner if r.item is not None else None,
+                                        fichas_por_ce, fichas_por_conteiner,
+                                        familias.get(r.conhecimento.numeroCEmercante, ())),
         )
         for r in resultados
     ]

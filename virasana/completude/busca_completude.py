@@ -39,7 +39,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo, linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
-from virasana.navii import referencias
+from virasana.navii import fichas_ovr, referencias
 from virasana.navii.busca_navii import tabela_recintos
 
 from bhadrasana.models.apirecintos import EmbarqueDesembarque  # noqa: I100 — sys.path ajustado acima
@@ -170,7 +170,8 @@ def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime]
 def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: datetime,
             agora: Optional[datetime] = None, sem_oog: bool = False) -> List[dict]:
     """Ciclos de um recinto no fluxo: uma linha por contêiner, com as datas, o tipo do
-    contêiner, o estágio/situação (v2) e os escaneamentos/imagens (os sem escaneamento primeiro)."""
+    contêiner, o estágio/situação (v2), os escaneamentos/imagens (os sem escaneamento primeiro) e as Fichas OVR
+    do CE ou abertas pelo contêiner (inclusive FMA — abandono)."""
     consulta = (
         session.query(Ciclo, TIPO)
         .options(undefer_group('v2'), selectinload(Ciclo.escaneamentos).undefer_group('v2'))
@@ -180,7 +181,10 @@ def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: dat
     if sem_oog:
         consulta = consulta.filter(_sem_oog())
     linhas = []
-    for ciclo, tipo in consulta.order_by(FLUXOS[fluxo]['data']).limit(LIMITE_DETALHE).all():
+    ciclos = consulta.order_by(FLUXOS[fluxo]['data']).limit(LIMITE_DETALHE).all()
+    por_ce, por_conteiner = fichas_ovr.busca_fichas(session, [c.numeroCEmercante for c, _ in ciclos],
+                                                    [c.numeroConteiner for c, _ in ciclos])
+    for ciclo, tipo in ciclos:
         escaneamentos = sorted(ciclo.escaneamentos, key=lambda e: e.data_escaneamento or datetime.min)
         descricao_tipo = referencias.tipo_conteiner(tipo)
         linhas.append({
@@ -196,6 +200,7 @@ def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: dat
                                'fora': bool(e.fora)}
                               for e in escaneamentos],
             'imagens': [e.imagem_id for e in escaneamentos if e.imagem_id],
+            'fichas': fichas_ovr.fichas_do(ciclo.numeroCEmercante, ciclo.numeroConteiner, por_ce, por_conteiner),
         })
     return sorted(linhas, key=lambda lin: bool(lin['escaneamentos']))
 

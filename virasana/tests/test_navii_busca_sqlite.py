@@ -27,7 +27,7 @@ from flask import Flask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from virasana.navii import busca_navii
+from virasana.navii import busca_navii, fichas_ovr
 from virasana.navii.busca_navii import (
     busca_ces_navii, busca_ciclos_navii, busca_familias_navii, busca_manifestos_navii,
     busca_nomes_recintos, conta_conteineres_navii, monta_cards_navii,
@@ -59,6 +59,8 @@ def cria_sessao():
     for modelo in TABELAS:
         modelo.__table__.create(engine)
     tabela_recintos.create(engine)
+    fichas_ovr.tabela_ovrs.create(engine)
+    fichas_ovr.tabela_rvfs.create(engine)
     return sessionmaker(bind=engine)()
 
 

@@ -51,6 +51,7 @@ TESTES = [
     'virasana/tests/test_navii_busca_sqlite.py',
     'virasana/tests/test_navii_referencias.py',
     'virasana/tests/test_navii_filtros_salvos.py',
+    'virasana/tests/test_navii_fichas_ovr.py',
     'virasana/tests/test_entregas_cnpj.py',
     'virasana/tests/test_dados_transporte_apreensoes.py',
     'virasana/tests/test_apreensoes_transporte_tela.py',

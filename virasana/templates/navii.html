@@ -230,6 +230,15 @@
         }
         .tag-escaneamento { background: #F0F0F0; color: #333; padding: .125rem .5rem; border-radius: 999px; cursor: help; }
         .tag-escaneamento.fora { background: #FFF5C2; color: #8A6D00; }
+        .tag-ficha {
+            background: #FDE7E4; color: #B3261E; font-size: .625rem; font-weight: 700; cursor: help;
+            padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
+        }
+        .tag-ficha.abandono { background: #3D2B1F; color: #fff; }
+        .fichas-card { margin-top: .5rem; display: flex; flex-wrap: wrap; gap: .375rem; align-items: center; font-size: .6875rem; }
+        .fichas-card a { background: #F0F0F0; color: #1351B4; padding: .125rem .5rem; border-radius: 999px; text-decoration: none; }
+        .fichas-card a.aberta { background: #FDE7E4; color: #B3261E; font-weight: 700; }
+        .fichas-card a.abandono { border: 1px solid #3D2B1F; }
 
         .status-navii {
             display: inline-block; font-size: .75rem; font-weight: 700;
@@ -857,6 +866,28 @@
                 'gabarito (OOG), que não passa nos gates padrão nem no escâner">Potencial OOG</span>' : '');
     }
 
+    function montaSelosFichas(card) {
+        var fichas = card.fichasOvr || [];
+        var abertas = fichas.filter(function (f) { return f.aberta && !f.abandono; });   // a FMA tem selo próprio
+        var abandonos = fichas.filter(function (f) { return f.abandono; });
+        return (abertas.length ? ' <span class="tag-ficha" title="Ficha OVR aberta para este CE ou contêiner">Ficha OVR aberta</span>' : '') +
+            (abandonos.length ? ' <span class="tag-ficha abandono" title="FMA: mercadoria abandonada informada pelo recinto">FMA (abandono)</span>' : '');
+    }
+
+    function montaFichas(card) {
+        var fichas = card.fichasOvr || [];
+        if (!fichas.length) { return ''; }
+        var VIA = { 'CE': 'pelo CE', 'família': 'por outro CE da família', 'contêiner': 'pelo contêiner (RVF)' };
+        var links = fichas.map(function (f) {
+            var titulo = [f.tipo || '', f.fase || '', VIA[f.via] || f.via, f.ce ? 'CE ' + f.ce : '',
+                          f.data ? formatarDataHora(f.data) : ''].filter(Boolean).join(' · ');
+            return '<a href="' + escapeAttr(f.url) + '" target="_blank" rel="noopener" class="' +
+                (f.aberta ? 'aberta' : '') + (f.abandono ? ' abandono' : '') + '" title="' + escapeAttr(titulo) + '">' +
+                (f.abandono ? 'FMA ' : 'Ficha ') + escapeHtml(f.numero) + ' · ' + escapeHtml(f.fase || '') + '</a>';
+        }).join('');
+        return '<div class="fichas-card"><span class="rotulo-mini">Fichas OVR</span>' + links + '</div>';
+    }
+
     function montaFilhotes(card) {
         var filhotes = card.filhotes || [];
         if (!filhotes.length) { return ''; }
@@ -972,6 +1003,7 @@
                                 (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
                                 montaFilhotes(card) +
                                 montaTipoConteiner(card.tipoConteiner, card.isoCode) +
+                                montaSelosFichas(card) +
                             '</div>' +
                         '</div>' +
                         '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
@@ -998,6 +1030,7 @@
                     '</div>' +
 
                     montaTimeline(card) +
+                    montaFichas(card) +
                     montaConteineres(card) +
                 '</div>' +
             '</div>';
