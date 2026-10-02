@@ -108,6 +108,10 @@ PORTO_ESCALA_PADRAO = 'BRSSZ'
 # filhote (e vice-versa). Custa um segundo acesso indexado por candidato quando o primeiro não acha. Para
 # medir/desligar sem mudar o código: NAVII_LIGACAO_FAMILIA=0 (ver diagnostico_sql.py --sem-familia).
 LIGACAO_FAMILIA = os.environ.get('NAVII_LIGACAO_FAMILIA', '1') != '0'
+# BL único (Conhecimento.tipoBLConhecimento '10', ~72% dos CEs) não tem master nem filhotes: a família dele é só
+# ele mesmo, que é o CE gravado no ciclo — o segundo acesso (pela família) é pulado. Medido em produção em
+# 02/10/2026: o segundo acesso por candidato era a maior parte do custo da família.
+TIPO_BL_UNICO = '10'
 
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
@@ -203,16 +207,17 @@ def _existe(origem, *criterios):
 
 def _existe_ciclo(*criterios, escaneamentos: bool = False):
     """`_existe` para o ciclo de vida do contêiner: pelo CE gravado no ciclo (ciclos antigos e v2) OU, com
-    `LIGACAO_FAMILIA`, por qualquer CE da família (v2). São dois acessos indexados por candidato — o segundo
-    (`ix_ciclo_ce_ce`) só conta quando o primeiro não acha. `escaneamentos`: os critérios também olham os
-    escaneamentos do ciclo."""
+    `LIGACAO_FAMILIA`, por qualquer CE da família (v2). São dois acessos indexados por candidato — o segundo só
+    quando o primeiro não acha e o CE não é BL único (`TIPO_BL_UNICO`; quem chama tem o `Conhecimento` do item
+    na consulta). `escaneamentos`: os critérios também olham os escaneamentos do ciclo."""
     direto = _existe(_CICLO_E_ESCANEAMENTOS if escaneamentos else CicloDeVidaImportacao,
                      _mesmo_conteiner_do_ciclo(), *criterios)
     if not LIGACAO_FAMILIA:
         return direto
     pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
                            _mesmo_conteiner_pela_familia(), *criterios)
-    return or_(direto, pela_familia)
+    pode_ter_familia = or_(Conhecimento.tipoBLConhecimento.is_(None), Conhecimento.tipoBLConhecimento != TIPO_BL_UNICO)
+    return or_(direto, and_(pode_ter_familia, pela_familia))
 
 
 def _lista_de_codigos(valor) -> List[str]:

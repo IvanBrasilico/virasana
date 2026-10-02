@@ -383,6 +383,35 @@ Em 02/10/2026 (ciclo de vida v2 em produção; decisões do usuário):
   `ciclodevida_ciclo_ce`. `test_estagios_ciclo` confere ORM x tabelas do serviço e SQL x Python dos
   estágios.
 
+### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
+
+Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache
+quente (página seguinte / contagem); a 1ª consulta de cada rodada pagou cache frio (25 s e 8,5 s):
+
+| Cenário (efetiva) | Sem família | Com família |
+|---|---|---|
+| porto BRSSZ, sem outros filtros | 2,4 s / 2,5 s | 3,0 s / 3,8 s |
+| filtros do ciclo (imagem, estágio, recinto), todos os portos | 3,2–3,5 s / 4,8–5,2 s | 4,5–5,0 s / 6,8–7,5 s |
+| prevista com filtros do ciclo | 0,9–1,0 s | 1,2–1,3 s |
+
+De onde veio o custo extra (ANALYZE, "entregues", todos os portos): (1) segundo acesso no "sem desembarque
+localizado" do ramo da atracação prevista — 218 mil candidatos, ~0,75 s; (2) ramo da família no `UNION`
+— ~0,3 s (lê a `ciclodevida_ciclo_ce` inteira, 97 mil linhas, que crescerá); (3) segundo acesso no filtro —
+~0,55 s, só na contagem (a página para nos 20 cards). O MariaDB faz o segundo acesso pelo índice de
+contêiner do ciclo e depois `uq_ciclo_ce` (eq_ref).
+
+Ajuste feito em seguida: **BL único (tipo 10, ~72% dos CEs) não faz o segundo acesso** (`TIPO_BL_UNICO`) — a
+família dele é só ele mesmo, já achado pelo CE do ciclo. Deve cortar (1) e (3) em ~70%. **Medir de novo.**
+Conferir no banco que BL único nunca é membro NÃO principal de família:
+`SELECT cr.tipoBLConhecimento, cc.papel, cc.principal, COUNT(*) FROM ciclodevida_ciclo_ce cc JOIN
+conhecimentosresumo cr ON cr.numeroCEmercante = cc.numeroCEmercante GROUP BY 1, 2, 3`.
+
+Achado à parte (vale com ou sem família): o ramo do desembarque efetivo varre o índice
+`ix_ciclo_ce_conteiner` do ciclo INTEIRO (366 mil linhas, 0,2–0,6 s; eram 281 mil em 30/09) em vez de ler
+só o período — o índice de data não cobre CE e contêiner. Índice sugerido (DBA; medir antes/depois):
+`ALTER TABLE ciclodevida_ciclo_de_vida_importacao ADD INDEX ix_cdv_data_ce_conteiner (data_desembarque,
+numeroCEmercante, numeroConteiner), ALGORITHM=INPLACE, LOCK=NONE;`
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e

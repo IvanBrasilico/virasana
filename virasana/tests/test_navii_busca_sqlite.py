@@ -627,6 +627,17 @@ class TestCicloV2(NaviiSqliteTestCase):
         with mock.patch.object(busca_navii, 'LIGACAO_FAMILIA', False):
             self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VF', 'C9')})
 
+    def test_bl_unico_nao_consulta_a_familia(self):
+        """BL único não tem master nem filhotes: nos filtros, só o próprio CE (atalho de desempenho)."""
+        self.session.query(Conhecimento).filter(Conhecimento.numeroCEmercante == 'VM').update(
+            {'tipoBLConhecimento': '10'}, synchronize_session=False)
+        self.session.commit()
+        self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VF', 'C9')})
+        self.session.query(Conhecimento).filter(Conhecimento.numeroCEmercante == 'VM').update(
+            {'tipoBLConhecimento': None}, synchronize_session=False)   # sem tipo informado: consulta
+        self.session.commit()
+        self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VM', 'C9'), ('VF', 'C9')})
+
     def test_estagios(self):
         self.assertEqual(self.pares(estagio=['entregue']), {('CE1', 'C1')})   # ciclo antigo concluído
         self.assertEqual(self.pares(concluido=True), {('CE1', 'C1')})          # filtro antigo = entregue
