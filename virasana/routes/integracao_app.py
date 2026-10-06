@@ -21,6 +21,11 @@ import pandas as pd
 import requests
 from flask import request, jsonify
 
+from virasana.integracao.dta.dta_manager import (
+    ErroIntegracaoDTA,
+    integra_dtas,
+)
+
 sys.path.append('.')
 sys.path.append('../bhadrasana2')
 sys.path.append('../ajna_docs/commons')
@@ -100,6 +105,79 @@ def configure(app):
             return jsonify(response), 200
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
+    
+
+    @app.route('/integracao/upload_dados_dta', methods=['POST'])
+    @csrf.exempt
+    def integracao_upload_dados_dta():
+        """Recebe registros de DTA do Contagil e grava no banco de dados."""
+        db_session = app.config['db_session']
+
+        try:
+            json_payload = request.get_json(silent=False)
+
+            if isinstance(json_payload, str):
+                json_payload = json.loads(json_payload)
+
+            if not isinstance(json_payload, dict):
+                return jsonify({
+                    'success': False,
+                    'error': 'O corpo da requisicao deve ser um objeto JSON.'
+                }), 400
+
+            registros = json_payload.get('registros')
+
+            if not isinstance(registros, list):
+                return jsonify({
+                    'success': False,
+                    'error': 'O campo "registros" deve ser uma lista.'
+                }), 400
+
+            if not registros:
+                return jsonify({
+                    'success': True,
+                    'recebidos': 0,
+                    'processados': 0,
+                    'colunas_ignoradas': []
+                }), 200
+
+            resultado = integra_dtas(
+                db_session=db_session,
+                registros=registros
+            )
+
+            logger.info(
+                '%s registros de DTA processados. Colunas ignoradas: %s',
+                resultado['processados'],
+                resultado['colunas_ignoradas']
+            )
+
+            return jsonify({
+                'success': True,
+                'recebidos': resultado['recebidos'],
+                'processados': resultado['processados'],
+                'colunas_ignoradas': resultado['colunas_ignoradas'],
+                'chaves': resultado['chaves']
+            }), 200
+
+        except ErroIntegracaoDTA as erro:
+            db_session.rollback()
+            logger.warning('Payload de DTA invalido: %s', erro)
+
+            return jsonify({
+                'success': False,
+                'error': str(erro)
+            }), 400
+
+        except Exception as erro:
+            db_session.rollback()
+            logger.exception('Falha no upload dos dados de DTA')
+
+            return jsonify({
+                'success': False,
+                'error': 'Falha ao persistir os dados de DTA.',
+                'detalhe': str(erro)
+            }), 500
 
 
     @app.route('/integracao/lista_ctrs_com_due', methods=['GET'])
