@@ -239,6 +239,11 @@ def _preparar_registros(tabela, registros):
                 indice,
             )
 
+        # Ausencia de ficha no historico representa indicador falso.
+        # A coluna e NOT NULL, portanto o valor correto e zero.
+        if preparado.get("historico_merc_perdim") is None:
+            preparado["historico_merc_perdim"] = 0
+
         ausentes = [
             nome for nome in chaves
             if preparado.get(nome) is None
