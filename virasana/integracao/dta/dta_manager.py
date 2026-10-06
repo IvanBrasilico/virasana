@@ -7,7 +7,7 @@ from sqlalchemy import Date, DateTime, MetaData, Numeric, Table
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 
-TABELA_DTA = "dados_dta"
+TABELA_DTA = "navii_dtas"
 SCHEMA_DTA = None  # Informe o schema caso a tabela nao esteja no banco padrao.
 CHUNK_SIZE_BANCO = 200
 
