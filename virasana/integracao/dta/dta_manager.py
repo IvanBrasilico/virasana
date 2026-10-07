@@ -16,13 +16,89 @@ class ErroIntegracaoDTA(ValueError):
     """Erro de validacao ou persistencia de dados de DTA."""
 
 
+# Caracteres de controle C1 frequentemente originados de textos
+# Windows-1252 interpretados como Unicode/Latin-1.
+#
+# O caractere U+0096 corresponde ao problema identificado no erro:
+#     Incorrect string value: '\xC2\x96SP...'
+#
+# Esses caracteres sao substituidos por representacoes seguras antes
+# da persistencia no MySQL/MariaDB.
+SUBSTITUICOES_CARACTERES_TEXTO = {
+    "\u0080": "EUR",
+    "\u0082": "'",
+    "\u0083": "'",
+    "\u0084": '"',
+    "\u0085": "...",
+    "\u0086": "+",
+    "\u0087": "+",
+    "\u0089": "%",
+    "\u008b": "<",
+    "\u0091": "'",
+    "\u0092": "'",
+    "\u0093": '"',
+    "\u0094": '"',
+    "\u0095": "-",
+    "\u0096": "-",
+    "\u0097": "-",
+    "\u009b": ">",
+}
+
+
+def _normalizar_texto_para_banco(valor):
+    """
+    Normaliza textos recebidos do Contagil antes da persistencia.
+
+    Preserva acentos e caracteres Unicode validos, substituindo somente
+    caracteres de controle C0 e C1 que podem causar erro 1366 no
+    MySQL/MariaDB.
+
+    O caractere U+0096, correspondente ao erro '\\xC2\\x96', e convertido
+    para um hifen ASCII comum.
+    """
+    if not isinstance(valor, str):
+        return valor
+
+    texto = valor
+
+    for caractere, substituto in SUBSTITUICOES_CARACTERES_TEXTO.items():
+        texto = texto.replace(caractere, substituto)
+
+    caracteres_normalizados = []
+
+    for caractere in texto:
+        codigo = ord(caractere)
+
+        # Preserva tabulacao e quebras de linha.
+        if codigo in (9, 10, 13):
+            caracteres_normalizados.append(caractere)
+
+        # Substitui caracteres de controle C0 restantes por espaco.
+        elif codigo < 32:
+            caracteres_normalizados.append(" ")
+
+        # Substitui caracteres de controle C1 que nao estavam no mapa.
+        elif 127 <= codigo <= 159:
+            caracteres_normalizados.append(" ")
+
+        else:
+            caracteres_normalizados.append(caractere)
+
+    return "".join(caracteres_normalizados)
+
+
 def _normalizar_vazio(valor):
-    """Converte textos vazios recebidos do Contagil em NULL."""
+    """
+    Normaliza textos recebidos do Contagil.
+
+    Remove caracteres de controle problematicos, elimina espacos nas
+    extremidades e converte textos vazios em NULL.
+    """
     if valor is None:
         return None
 
     if isinstance(valor, str):
-        valor = valor.strip()
+        valor = _normalizar_texto_para_banco(valor).strip()
         return valor if valor else None
 
     return valor
@@ -60,7 +136,8 @@ def _normalizar_data(valor, nome_coluna, indice_registro):
 
     raise ErroIntegracaoDTA(
         "Registro {}: data invalida para a coluna '{}': '{}'. "
-        "Formatos aceitos: DD/MM/AAAA, AAAA-MM-DD e formatos com horario.".format(
+        "Formatos aceitos: DD/MM/AAAA, AAAA-MM-DD e formatos com horario."
+        .format(
             indice_registro,
             nome_coluna,
             texto,
@@ -104,7 +181,8 @@ def _normalizar_data_hora(valor, nome_coluna, indice_registro):
             continue
 
     raise ErroIntegracaoDTA(
-        "Registro {}: data/hora invalida para a coluna '{}': '{}'.".format(
+        "Registro {}: data/hora invalida para a coluna '{}': '{}'."
+        .format(
             indice_registro,
             nome_coluna,
             texto,
@@ -130,9 +208,11 @@ def _normalizar_decimal(valor, nome_coluna, indice_registro):
 
     try:
         return Decimal(texto)
+
     except (InvalidOperation, ValueError):
         raise ErroIntegracaoDTA(
-            "Registro {}: numero invalido para a coluna '{}': '{}'.".format(
+            "Registro {}: numero invalido para a coluna '{}': '{}'."
+            .format(
                 indice_registro,
                 nome_coluna,
                 valor,
@@ -173,6 +253,7 @@ def _normalizar_valor_coluna(valor, coluna, indice_registro):
 
 
 def _carregar_tabela(db_session):
+    """Carrega a definicao real da tabela usando reflection do SQLAlchemy."""
     bind = db_session.get_bind()
     metadata = MetaData()
 
@@ -186,24 +267,38 @@ def _carregar_tabela(db_session):
 
 def _colunas_chave(tabela):
     """Define a chave natural usada para validar cada registro de DTA."""
-    chave_natural = ["codigo_declaracao_transito", "nr_ce"]
-    existentes = {coluna.name for coluna in tabela.columns}
+    chave_natural = [
+        "codigo_declaracao_transito",
+        "nr_ce",
+    ]
+
+    existentes = {
+        coluna.name
+        for coluna in tabela.columns
+    }
+
     ausentes = [
-        nome for nome in chave_natural
+        nome
+        for nome in chave_natural
         if nome not in existentes
     ]
 
     if ausentes:
         raise ErroIntegracaoDTA(
-            "A tabela nao possui as colunas da chave natural: {}.".format(
-                ", ".join(ausentes)
-            )
+            "A tabela nao possui as colunas da chave natural: {}."
+            .format(", ".join(ausentes))
         )
 
     return chave_natural
 
 
 def _preparar_registros(tabela, registros):
+    """
+    Valida e normaliza os registros antes da persistencia.
+
+    Colunas que nao existem na tabela sao ignoradas e informadas no
+    resultado da integracao.
+    """
     if not isinstance(registros, list) or not registros:
         raise ErroIntegracaoDTA(
             "'registros' deve ser uma lista nao vazia."
@@ -213,8 +308,10 @@ def _preparar_registros(tabela, registros):
         coluna.name: coluna
         for coluna in tabela.columns
     }
+
     colunas_tabela = set(colunas_por_nome)
     chaves = _colunas_chave(tabela)
+
     preparados = []
     ignoradas = set()
 
@@ -245,7 +342,8 @@ def _preparar_registros(tabela, registros):
             preparado["historico_merc_perdim"] = 0
 
         ausentes = [
-            nome for nome in chaves
+            nome
+            for nome in chaves
             if preparado.get(nome) is None
         ]
 
@@ -263,6 +361,7 @@ def _preparar_registros(tabela, registros):
 
 
 def _chunks(lista, tamanho):
+    """Divide uma lista em blocos com o tamanho informado."""
     if tamanho <= 0:
         raise ErroIntegracaoDTA(
             "CHUNK_SIZE_BANCO deve ser maior que zero."
@@ -277,13 +376,16 @@ def integra_dtas(db_session, registros):
     Executa UPSERT atomico em MySQL/MariaDB.
 
     A transacao inteira e confirmada somente depois que todos os blocos forem
-    processados. Em qualquer falha, todos os blocos da requisicao sao revertidos.
+    processados. Em qualquer falha, todos os blocos da requisicao sao
+    revertidos.
     """
     tabela = _carregar_tabela(db_session)
+
     preparados, ignoradas, chaves = _preparar_registros(
         tabela,
         registros,
     )
+
     total = 0
 
     try:
@@ -291,6 +393,7 @@ def integra_dtas(db_session, registros):
             comando = mysql_insert(tabela).values(bloco)
 
             nomes_presentes = set()
+
             for registro in bloco:
                 nomes_presentes.update(registro)
 
@@ -302,7 +405,9 @@ def integra_dtas(db_session, registros):
             }
 
             if atualizacoes:
-                comando = comando.on_duplicate_key_update(**atualizacoes)
+                comando = comando.on_duplicate_key_update(
+                    **atualizacoes
+                )
 
             db_session.execute(comando)
             total += len(bloco)
@@ -322,6 +427,7 @@ def integra_dtas(db_session, registros):
 
     except Exception as erro:
         db_session.rollback()
+
         raise ErroIntegracaoDTA(
             "Falha ao persistir os dados de DTA: {}".format(erro)
         )
