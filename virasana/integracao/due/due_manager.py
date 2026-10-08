@@ -418,18 +418,7 @@ def normaliza_datetime(valor, nome_campo):
 
 
 def sanitiza_texto_banco(valor):
-    """
-    Prepara texto para colunas legadas compativeis com latin1/MySQL.
-
-    Alem de substituir caracteres fora de latin1 e U+FFFD, remove o byte
-    nulo e substitui caracteres de controle C0/C1 por '?'. Os controles C1
-    (U+0080 a U+009F), embora representaveis pelo codec latin-1 do Python,
-    podem ser recusados pelo charset latin1 do MySQL. Exemplo: U+0094 e
-    transmitido em UTF-8 como C2 94 e causa o erro MySQL 1366 observado.
-
-    Tabulacao, quebra de linha e retorno de carro sao convertidos em espaco
-    para manter o texto legivel sem introduzir controles na persistencia.
-    """
+    """Prepara texto para colunas legadas compativeis com latin1/MySQL."""
     texto = str(valor).strip().replace('\x00', '')
     texto = texto.replace('\ufffd', '?')
 
@@ -518,11 +507,39 @@ def extrair_conteineres(valor):
     return resultado
 
 
+def limitar_campo_ao_modelo(dados, modelo, nome_campo):
+    """
+    Limita um campo textual ao tamanho declarado no modelo SQLAlchemy.
+
+    Retorna (truncado, tamanho_original, limite). Se a coluna nao possuir
+    limite textual, nenhum corte e realizado.
+    """
+    valor = dados.get(nome_campo)
+    if valor_nulo(valor):
+        dados[nome_campo] = None
+        return False, 0, None
+
+    coluna = modelo.__table__.columns.get(nome_campo)
+    limite = getattr(getattr(coluna, 'type', None), 'length', None)
+    texto = str(valor).strip()
+    tamanho_original = len(texto)
+
+    if limite and tamanho_original > limite:
+        dados[nome_campo] = texto[:limite]
+        return True, tamanho_original, limite
+
+    dados[nome_campo] = texto
+    return False, tamanho_original, limite
+
+
 def integra_dues(session, df_dues):
     """Faz UPSERT em lote de DUEs e retorna os numeros persistidos."""
     sucessos = []
     erros = []
     total_sanitizados = 0
+    total_listas_conteiner_truncadas = 0
+    maior_lista_conteiner = 0
+    limite_lista_conteiner = None
     logger.info('Iniciando UPSERT em lote de %s DUEs', len(df_dues))
 
     colunas_due = set(c.name for c in Due.__table__.columns)
@@ -555,8 +572,21 @@ def integra_dues(session, df_dues):
                     numero_due, len(campos_sanitizados),
                     ', '.join(campos_sanitizados))
 
+            # Os vinculos usam a lista completa antes do corte do campo legado.
+            # Assim, nenhum vinculo DUE-conteiner e perdido mesmo quando a coluna
+            # lista_id_conteiner precisa ser limitada para caber no banco.
             conteineres_por_due[numero_due] = extrair_conteineres(
                 dados.get('lista_id_conteiner'))
+
+            truncado, tamanho_original, limite = limitar_campo_ao_modelo(
+                dados, Due, 'lista_id_conteiner')
+            if limite is not None:
+                limite_lista_conteiner = limite
+            if truncado:
+                total_listas_conteiner_truncadas += 1
+                maior_lista_conteiner = max(
+                    maior_lista_conteiner, tamanho_original)
+
             dados = {k: v for k, v in dados.items() if k in colunas_due}
             registros.append((int(index), dados))
         except (ValueError, TypeError) as erro:
@@ -634,6 +664,13 @@ def integra_dues(session, df_dues):
         novos_conteineres.append({
             k: v for k, v in dados_conteiner.items() if k in colunas_conteiner
         })
+
+    if total_listas_conteiner_truncadas:
+        logger.warning(
+            'Campo lista_id_conteiner truncado em %s DUE(s): limite=%s, '
+            'maior_tamanho_recebido=%s. Os vinculos individuais foram preservados.',
+            total_listas_conteiner_truncadas, limite_lista_conteiner,
+            maior_lista_conteiner)
 
     logger.info(
         'DUEs preparadas para gravacao em lote: novas=%s, atualizacoes=%s, '
