@@ -347,35 +347,110 @@ def configure(app):
             return jsonify({'success': False, 'error': f'Erro crítico: {str(e)}'}), 500
 
     @app.route('/integracao/upload_dues', methods=['POST'])
-    # @login_required
     @csrf.exempt
     def integracao_upload_dues():
-        """Insere dados de dues e itens.
-
-        Provisório, pensar em utilizar REST
-
-        Recebe duas lista, uma com as DUEs e outra com os itens."""
-        mongodb = app.config['mongodb']  # Não usado aqui, mas padrão
+        """Recebe DUEs e itens, valida o payload e persiste sem logar dados sensiveis."""
         db_session = app.config['db_session']
-        processados = {'dues': 0, 'itens_dues': 0}
-        json_payload = request.get_json()
-        if isinstance(json_payload, str):
-            json_payload = json.loads(json_payload)
-        print(f'#####DUEs e Itens: {json_payload}')
-        if json_payload.get('dues'):
-            df_dues = pd.DataFrame(json_payload['dues'])
-            df_dues = df_dues.fillna('').drop_duplicates()
-            processados['dues'] = len(df_dues)
-            if integra_dues(db_session, df_dues):
-                logger.info(f'{len(df_dues)} DUEs inseridas')
-        if json_payload.get('itens_dues'):
-            df_itens_dues = pd.DataFrame(json_payload['itens_dues'])
-            df_itens_dues = df_itens_dues.fillna('').drop_duplicates()
-            processados['itens_dues'] = len(df_itens_dues)
-            if integra_dues_itens(db_session, df_itens_dues):
-                logger.info(f'{len(df_itens_dues)} Itens de DUE inseridos')
-        return jsonify({'success': True, 'processados': processados}), 200
 
+        try:
+            json_payload = request.get_json(silent=False)
+            if isinstance(json_payload, str):
+                json_payload = json.loads(json_payload)
+
+            if not isinstance(json_payload, dict):
+                return jsonify({
+                    'success': False,
+                    'error': 'O corpo da requisicao deve ser um objeto JSON.'
+                }), 400
+
+            dues_payload = json_payload.get('dues', [])
+            itens_payload = json_payload.get('itens_dues', [])
+
+            if not isinstance(dues_payload, list):
+                return jsonify({
+                    'success': False,
+                    'error': 'O campo "dues" deve ser uma lista.'
+                }), 400
+            if not isinstance(itens_payload, list):
+                return jsonify({
+                    'success': False,
+                    'error': 'O campo "itens_dues" deve ser uma lista.'
+                }), 400
+
+            logger.info('Upload de DUE recebido: dues=%s, itens=%s',
+                        len(dues_payload), len(itens_payload))
+
+            resultado_dues = {
+                'sucessos': [], 'erros': [], 'total_recebidos': 0,
+                'total_sucessos': 0, 'total_erros': 0,
+            }
+            resultado_itens = {
+                'sucessos': 0, 'erros': [], 'ignorados': [],
+                'total_recebidos': 0, 'total_sucessos': 0,
+                'total_erros': 0, 'total_ignorados': 0,
+            }
+
+            if dues_payload:
+                df_dues = pd.DataFrame(dues_payload).drop_duplicates()
+                resultado_dues = integra_dues(db_session, df_dues)
+
+            if itens_payload:
+                df_itens = pd.DataFrame(itens_payload).drop_duplicates()
+                resultado_itens = integra_dues_itens(
+                    db_session,
+                    df_itens,
+                    dues_permitidas=resultado_dues['sucessos']
+                )
+
+            resumo = {
+                'dues_recebidas': len(dues_payload),
+                'dues_persistidas': resultado_dues['total_sucessos'],
+                'dues_com_erro': resultado_dues['total_erros'],
+                'itens_recebidos': len(itens_payload),
+                'itens_persistidos': resultado_itens['total_sucessos'],
+                'itens_com_erro': resultado_itens['total_erros'],
+                'itens_ignorados': resultado_itens['total_ignorados'],
+            }
+            houve_falhas = bool(
+                resumo['dues_com_erro'] or resumo['itens_com_erro']
+                or resumo['itens_ignorados']
+            )
+
+            logger.info(
+                'Upload de DUE finalizado: dues=%s/%s, itens=%s/%s, '
+                'erros_dues=%s, erros_itens=%s, ignorados=%s',
+                resumo['dues_persistidas'], resumo['dues_recebidas'],
+                resumo['itens_persistidos'], resumo['itens_recebidos'],
+                resumo['dues_com_erro'], resumo['itens_com_erro'],
+                resumo['itens_ignorados'])
+
+            resposta = {
+                'success': not houve_falhas,
+                'processados': resumo,
+            }
+            if houve_falhas:
+                # Amostras limitadas evitam respostas e logs gigantes.
+                resposta['amostra_erros_dues'] = resultado_dues['erros'][:10]
+                resposta['amostra_erros_itens'] = resultado_itens['erros'][:10]
+                resposta['amostra_itens_ignorados'] = resultado_itens['ignorados'][:10]
+                resposta['mensagem'] = (
+                    'Processamento parcial. As listas de erros foram limitadas a 10 exemplos.'
+                )
+                return jsonify(resposta), 422
+
+            return jsonify(resposta), 200
+
+        except Exception as erro:
+            db_session.rollback()
+            mensagem = str(getattr(erro, 'orig', erro)).replace('\n', ' ').strip()
+            if len(mensagem) > 300:
+                mensagem = mensagem[:300] + '...'
+            logger.error('Falha no endpoint upload_dues: %s', mensagem)
+            return jsonify({
+                'success': False,
+                'error': 'Falha ao persistir DUEs e itens.',
+                'detalhe': mensagem,
+            }), 500
 
     @app.route('/integracao/lista_dues_sem_detalhes', methods=['GET'])
     # @login_required
