@@ -8,7 +8,7 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 
 TABELA_DTA = "navii_dtas"
-SCHEMA_DTA = None  # Informe o schema caso a tabela nao esteja no banco padrao.
+SCHEMA_DTA = None  
 CHUNK_SIZE_BANCO = 200
 
 
@@ -18,9 +18,6 @@ class ErroIntegracaoDTA(ValueError):
 
 # Caracteres de controle C1 frequentemente originados de textos
 # Windows-1252 interpretados como Unicode/Latin-1.
-#
-# O caractere U+0096 corresponde ao problema identificado no erro:
-#     Incorrect string value: '\xC2\x96SP...'
 #
 # Esses caracteres sao substituidos por representacoes seguras antes
 # da persistencia no MySQL/MariaDB.

@@ -313,7 +313,6 @@ def get_conteineres_escaneados_com_due(session, datainicio: datetime, datafim: d
         return lista_final
 
     # Passo 3 - Recupera imagens no Mongo.
-    # Importante: para o fluxo com DUE, não restringir a imagens sem metadata.due.
     griddata = raspa_container(
         list(conteineres_exportacao_escaneados),
         datainicio,
@@ -395,7 +394,7 @@ def valor_nulo(valor):
 
 
 def normaliza_datetime(valor, nome_campo):
-    """Converte datas usuais do payload; valor vazio vira NULL."""
+    """Converte datas usuais do payload; valor vazio vira NULL"""
     if valor_nulo(valor):
         return None
     if isinstance(valor, datetime):
@@ -418,7 +417,7 @@ def normaliza_datetime(valor, nome_campo):
 
 
 def sanitiza_texto_banco(valor):
-    """Prepara texto para colunas legadas compativeis com latin1/MySQL."""
+    """Prepara texto para colunas legadas compativeis com latin1/MySQL"""
     texto = str(valor).strip().replace('\x00', '')
     texto = texto.replace('\ufffd', '?')
 
@@ -437,7 +436,7 @@ def sanitiza_texto_banco(valor):
 
 
 def normaliza_registro(registro, campos_data=None):
-    """Normaliza nulos, datas e textos antes da persistencia."""
+    """Normaliza nulos, datas e textos antes da persistencia"""
     campos_data = campos_data or set()
     resultado = {}
     campos_sanitizados = []
@@ -485,7 +484,7 @@ def normaliza_inteiro(valor, nome_campo, obrigatorio=False):
 
 
 def resumo_erro(erro, limite=LIMITE_MENSAGEM_ERRO):
-    """Retorna somente a causa curta, sem SQL e parametros completos."""
+    """Retorna somente a causa curta, sem SQL e parametros completos"""
     mensagem = str(getattr(erro, 'orig', erro)).replace('\r', ' ').replace('\n', ' ').strip()
     while '  ' in mensagem:
         mensagem = mensagem.replace('  ', ' ')
