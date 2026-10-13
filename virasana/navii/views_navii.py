@@ -15,6 +15,7 @@ Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
 """
 from datetime import datetime
+from typing import Optional
 
 from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -23,8 +24,8 @@ from werkzeug.routing import BuildError
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import filtros_salvos, referencias
 from virasana.navii.busca_navii import (
-    CAMPOS_LISTA, CAMPOS_MARCAVEIS, busca_ces_navii, conta_conteineres_navii, monta_cards_navii,
-    PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
+    CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, busca_ces_navii, conta_conteineres_navii,
+    monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
 )
 
 bp_navii = Blueprint(
@@ -85,7 +86,31 @@ def index():
         porto_escala_padrao=PORTO_ESCALA_PADRAO,
         tipos_bl=referencias.tipos_bl(),
         estagios=estagios_ciclo.lista(),
+        filtros_iniciais=_filtros_iniciais(),
     )
+
+
+def _data_valida(valor: Optional[str]) -> bool:
+    try:
+        datetime.strptime(valor or '', '%Y-%m-%d')
+    except ValueError:
+        return False
+    return True
+
+
+def _filtros_iniciais() -> Optional[dict]:
+    """Tela aberta por um LINK (ex.: contêiner na completude ou no card): janela, período e filtros da URL, no
+    lugar dos padrões da tela (inclusive o porto de atracação sugerido). None quando a URL não traz filtros."""
+    filtros = _filtros_da_requisicao()
+    tipo_janela = request.args.get('tipo_janela')
+    inicio, fim = filtros.pop('data_inicio', None), filtros.pop('data_fim', None)
+    if not filtros and tipo_janela not in TIPOS_JANELA_VALIDOS:
+        return None
+    return {
+        'tipo_janela': tipo_janela if tipo_janela in TIPOS_JANELA_VALIDOS else 'efetiva',
+        'periodo': {'inicio': inicio, 'fim': fim} if _data_valida(inicio) and _data_valida(fim) else None,
+        'filtros': normaliza_filtros(filtros),
+    }
 
 
 def _filtros_da_requisicao() -> dict:

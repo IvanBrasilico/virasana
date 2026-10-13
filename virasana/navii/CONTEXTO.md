@@ -392,6 +392,15 @@ CEs da família e — só as ABERTAS (fase Iniciada/Ativa/Suspensa) — pelo con
 coluna Ficha OVR e contagem "com Ficha OVR (N com FMA)". Uma consulta por página (CE e contêiner, por
 índice); sem filtro por ficha (não pedido — avaliar desempenho antes, se vier).
 
+Em 13/10/2026 (pedido do usuário) — **links para diagnosticar a operação**:
+- Filtro `conteiner` (lista; normaliza para letras e dígitos; só vírgula/ponto e vírgula separam, porque o
+  número vem com espaço). Com ele, o índice de `itensresumo.codigoConteiner` dirige a busca e a janela vira
+  condição por candidato (`_janela_por_candidato`) — sem a tabela derivada da janela inteira.
+- A tela abre filtrada pela URL (`_filtros_iniciais`: `conteiner`, demais filtros, `tipo_janela`,
+  `data_inicio`/`data_fim`), no lugar dos padrões (sem o porto sugerido). O número do contêiner no card é link
+  para essa pesquisa (mesma janela e período, nova aba; `NAVII_URL` vem do servidor).
+- Completude (detalhe): o contêiner é link para o NAVI-I filtrado por ele, na janela do desembarque ±1 dia.
+
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
 Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache
@@ -424,6 +433,19 @@ seguida: (1) na consulta principal o MariaDB antecipava a subconsulta da famíli
 juntar o CE, e o atalho se perdia (240 mil execuções na contagem) — o teste do BL único foi para DENTRO da
 subconsulta; (2) o ramo da família no `UNION` lia a `ciclodevida_ciclo_ce` inteira (192 mil linhas, dobrou com
 o reprocessamento) — agora `STRAIGHT_JOIN` a partir dos ciclos do período. **Medir de novo.**
+
+**Sexta medição (02/10/2026, 16h53; `com_familia3.log`, completa, com o código de 005bcc6):** página com
+filtro do ciclo 3,6–3,9 s (sem família 3,2–3,5 s), contagem 6,2–6,9 s (sem família 4,8–5,2 s). O `STRAIGHT_JOIN`
+funcionou (ramo da família parte dos 50 mil ciclos do período; 0,45 s, igual, mas não cresce mais com a
+tabela). O teste do BL único DENTRO da subconsulta foi pior: o MariaDB deixou de antecipar "tem ciclo" para
+`itensresumo` e passou a juntar o CE dos 247 mil candidatos (+0,68 s) — voltou para FORA (como na quinta
+medição: só ~17 mil candidatos chegam ao CE na contagem). Custo da família que fica: ~+0,3–0,5 s por página e
+~+1,3 s na contagem. **O que mais pesa para o usuário é a contagem na MESMA requisição da 1ª página**
+(página + contagem ≈ 10 s com filtro do ciclo): proposta pendente de contagem assíncrona.
+
+**Sétima medição (13/10/2026, local, com o teste do BL único de volta para FORA):** página com filtro do ciclo
+3,3–3,6 s, contagem 5,4–6,5 s ("entregues": 5,6 s, contra 6,9 s com o teste dentro); só ~18 mil candidatos
+chegam à junção com o CE. Confirma a decisão. Cache frio na 1ª consulta da rodada (55 s) e na 1ª com imagem (18 s).
 
 Achado à parte (vale com ou sem família): o ramo do desembarque efetivo varre o índice
 `ix_ciclo_ce_conteiner` do ciclo INTEIRO (366 mil linhas, 0,2–0,6 s; eram 281 mil em 30/09) em vez de ler

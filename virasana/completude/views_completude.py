@@ -13,8 +13,9 @@ proxy — ver CLAUDE.md).
 """
 from datetime import date, datetime, time, timedelta
 
-from flask import Blueprint, abort, current_app, render_template, request
+from flask import Blueprint, abort, current_app, render_template, request, url_for
 from flask_login import login_required
+from werkzeug.routing import BuildError
 
 from virasana.completude.busca_completude import FLUXOS, detalhe, nome_recinto, panorama, totais
 
@@ -58,6 +59,19 @@ def _sem_oog() -> bool:
     return request.args.get('sem_oog') in ('1', 'true', 'on')
 
 
+def _com_cabotagem() -> bool:
+    """Incluir a cabotagem (escaneamento não obrigatório) na conta? Padrão: não."""
+    return request.args.get('com_cabotagem') in ('1', 'true', 'on')
+
+
+def _url_navii():
+    """URL da tela do NAVI-I (mesma app, com o prefixo); None se o blueprint não estiver registrado."""
+    try:
+        return url_for('navii.index')
+    except BuildError:
+        return None
+
+
 def _urls_imagem() -> dict:
     """Miniatura e visualização da imagem (rotas de virasana/views.py), com o prefixo da app."""
     return {'mini': request.script_root + '/mini1/', 'arquivo': request.script_root + '/file?_id='}
@@ -66,11 +80,11 @@ def _urls_imagem() -> dict:
 @bp_completude.route('/', strict_slashes=False)  # sem redirect da barra final (proxy; ver CLAUDE.md)
 @login_required
 def index():
-    contexto = {'erro': None, 'fluxos': None, 'sem_oog': _sem_oog()}
+    contexto = {'erro': None, 'fluxos': None, 'sem_oog': _sem_oog(), 'com_cabotagem': _com_cabotagem()}
     try:
         inicio, fim = periodo()
         contexto['fluxos'] = panorama(current_app.config['db_session'], *_intervalo(inicio, fim),
-                                      sem_oog=contexto['sem_oog'])
+                                      sem_oog=contexto['sem_oog'], com_cabotagem=contexto['com_cabotagem'])
     except ParametrosInvalidos as err:
         contexto['erro'] = str(err)
         inicio, fim = date.today() - timedelta(days=DIAS_PADRAO), date.today()
@@ -88,8 +102,8 @@ def recinto(codigo):
     except ParametrosInvalidos as err:
         return str(err), 400
     session = current_app.config['db_session']
-    sem_oog = _sem_oog()
-    linhas = detalhe(session, fluxo, codigo, *_intervalo(inicio, fim), sem_oog=sem_oog)
+    sem_oog, com_cabotagem = _sem_oog(), _com_cabotagem()
+    linhas = detalhe(session, fluxo, codigo, *_intervalo(inicio, fim), sem_oog=sem_oog, com_cabotagem=com_cabotagem)
     resumo = totais([{
         'total': 1, 'sem_escaneamento': int(not lin['escaneamentos']), 'sem_imagem': int(not lin['imagens']),
         'total_saidas': int(bool(lin['saida_seco'] if fluxo == 'tra' else lin['saida'])),
@@ -99,4 +113,5 @@ def recinto(codigo):
     } for lin in linhas])
     return render_template('navii_completude_detalhe.html', fluxo=fluxo, dados_fluxo=FLUXOS[fluxo], codigo=codigo,
                            nome=nome_recinto(session, codigo), linhas=linhas, resumo=resumo,
-                           inicio=inicio, fim=fim, urls_imagem=_urls_imagem(), sem_oog=sem_oog)
+                           inicio=inicio, fim=fim, urls_imagem=_urls_imagem(), sem_oog=sem_oog,
+                           com_cabotagem=com_cabotagem, url_navii=_url_navii())

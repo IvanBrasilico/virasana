@@ -89,9 +89,10 @@ CENARIOS = [
     ('recinto + com imagem', {'recinto': '8931404', 'com_imagem': True}),
     ('origem + NCM + até 3 NCMs', {'porto_origem': 'CNSHA', 'ncm': '8471', 'ncms_max': 3}),
     ('recinto + empresa + entregue', {'recinto': '8931356', 'empresa': 'comercio', 'estagio': ['entregue']}),
+    ('contêiner (link da completude / do card)', {'conteiner': ['MSCU1234567']}),
 ]
 # --so-ciclo: a janela efetiva sem filtros e as buscas com filtro do ciclo de vida (imagem, recinto, estágio)
-CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio')
+CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio', 'conteiner')
 CENARIOS_CICLO = [(d, f) for d, f in CENARIOS
                   if d == 'porto de atracação (padrão da tela)' or any(c in f for c in CAMPOS_DO_CICLO)]
 

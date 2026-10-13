@@ -272,6 +272,21 @@ class TestFiltros(NaviiSqliteTestCase):
     def test_somente_concluidos(self):
         self.assertEqual(self.conteineres(concluido=True), {'C1'})
 
+    def test_conteiner_na_janela_efetiva_e_na_prevista(self):
+        self.assertEqual(self.conteineres(conteiner=' c-1 '), {'C1'})        # normalizado
+        self.assertEqual(self.conteineres(conteiner=['C1', 'C4', 'C3']), {'C1', 'C4'})   # C3: desembarque fora
+        self.assertEqual(self.conteineres(conteiner='C6'), {'C6'})          # sem desembarque: pela escala prevista
+        self.assertEqual(self.conteineres('prevista', conteiner=['C3', 'C4']), {'C3'})
+        self.assertEqual(self.total(conteiner=['C1', 'C4']), 2)
+        self.assertEqual(normaliza_filtros({'conteiner': 'abcu 123456-7'})['conteiner'], ['ABCU1234567'])
+
+    def test_conteiner_dirige_a_busca_sem_a_janela_inteira(self):
+        from sqlalchemy.dialects import mysql
+        sql = str(monta_query_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1']})
+                  .statement.compile(dialect=mysql.dialect()))
+        self.assertNotIn('AS janela', sql)
+        self.assertIn('itensresumo.`codigoConteiner` IN', sql)
+
     def test_ncm_por_prefixo_no_conteiner(self):
         self.assertEqual(self.conteineres(ncm='8471'), {'C1'})
         self.assertEqual(self.conteineres('prevista', ncm='8471'), {'C1', 'C3'})
@@ -641,8 +656,8 @@ class TestCicloV2(NaviiSqliteTestCase):
         self.assertEqual(self.pares(com_imagem=True), {('CE1', 'C1'), ('VM', 'C9'), ('VF', 'C9')})
 
     def test_sql_do_mariadb_mantem_os_atalhos_de_desempenho(self):
-        """Medição de 02/10/2026: o teste do BL único tem de estar DENTRO da subconsulta da família (senão o MariaDB
-        a antecipa e o atalho se perde) e o ramo da família na janela começa pelos ciclos do período."""
+        """Medições de 02/10/2026: o teste do BL único fica FORA da subconsulta da família (dentro dela, o MariaDB
+        juntava o CE de todos os candidatos) e o ramo da família na janela começa pelos ciclos do período."""
         from sqlalchemy.dialects import mysql
         consulta = monta_query_navii(self.session, 'efetiva', {**PERIODO, 'estagio': ['entregue']})
         sql = str(consulta.statement.compile(dialect=mysql.dialect()))
@@ -652,7 +667,8 @@ class TestCicloV2(NaviiSqliteTestCase):
                                    if trecho.split('\n')[1].startswith('FROM ciclodevida_ciclo_ce INNER JOIN')]
         self.assertEqual(len(subconsultas_da_familia), 2)   # o "sem desembarque localizado" e o estágio
         for trecho in subconsultas_da_familia:
-            self.assertIn('WHERE (conhecimentosresumo.`tipoBLConhecimento` IS NULL OR', trecho)
+            self.assertNotIn('conhecimentosresumo', trecho.split(' LIMIT ')[0])
+        self.assertEqual(sql.count("conhecimentosresumo.`tipoBLConhecimento` != %s) AND (SELECT"), 2)
 
     def test_estagios(self):
         self.assertEqual(self.pares(estagio=['entregue']), {('CE1', 'C1')})   # ciclo antigo concluído

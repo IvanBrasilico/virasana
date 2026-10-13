@@ -84,6 +84,9 @@
             <label class="marcar" title="Open top e plataforma/flat rack podem levar carga fora de gabarito (OOG), que não passa nos gates padrão nem no escâner">
                 <input type="checkbox" name="sem_oog" value="1" {% if sem_oog %}checked{% endif %} />
                 Excluir potenciais OOG (open top, plataforma)</label>
+            <label class="marcar" title="Cabotagem (tráfego 3 no CE) não tem escaneamento obrigatório: por padrão fica fora da conta">
+                <input type="checkbox" name="com_cabotagem" value="1" {% if com_cabotagem %}checked{% endif %} />
+                Incluir cabotagem</label>
             <button class="br-button primary" type="submit">
                 <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
             </button>
@@ -91,7 +94,8 @@
         <p class="dica">TRA: data de <strong>entrada no recinto seco</strong> (entradas das últimas 3 h ficam de
             fora — ainda sem tempo de escanear). Operador: data de <strong>saída do operador</strong> dos ciclos
             concluídos sem entrada em recinto seco. Período máximo de 92 dias. Potencial OOG: tipo do contêiner
-            informado no desembarque é open top ou plataforma/flat rack (pode não passar no escâner).</p>
+            informado no desembarque é open top ou plataforma/flat rack (pode não passar no escâner). Cabotagem
+            (tráfego 3 no CE): fora da conta, a menos que marcada — na prática não é escaneada.</p>
         {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
             <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
     </form>
@@ -108,6 +112,7 @@
                 <div><strong class="{{ 'alerta' if f.totais.pct_sem_escaneamento > 0.05 }}">{{ '%.1f' | format(f.totais.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
                 <div><strong>{{ f.totais.sem_imagem }}</strong>sem imagem</div>
                 {% if not sem_oog %}<div><strong>{{ f.totais.oog }}</strong>potenciais OOG ({{ f.totais.oog_sem_escaneamento }} sem escaneamento)</div>{% endif %}
+                {% if f.cabotagem %}<div><strong>{{ f.cabotagem.total }}</strong>de cabotagem fora da conta ({{ f.cabotagem.sem_escaneamento }} sem escaneamento)</div>{% endif %}
             </div>
         </div>
         {% endfor %}
@@ -137,7 +142,8 @@
                 {% for item in f.linhas %}
                     <tr>
                         <td class="mono">{% if item.codigo_recinto %}<a href="{{ url_for('completude.recinto',
-                            codigo=item.codigo_recinto, fluxo=chave, inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None) }}">{{ item.codigo_recinto }}</a>{% else %}—{% endif %}</td>
+                            codigo=item.codigo_recinto, fluxo=chave, inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None,
+                            com_cabotagem=1 if com_cabotagem else None) }}">{{ item.codigo_recinto }}</a>{% else %}—{% endif %}</td>
                         <td>{{ item.nome_recinto }}</td>
                         <td class="numero">{{ item.total }}</td>
                         <td class="numero">{{ item.sem_escaneamento }}</td>

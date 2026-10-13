@@ -116,7 +116,7 @@ TIPO_BL_UNICO = '10'
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
 CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
-                'estagio')
+                'estagio', 'conteiner')
 # Filtros de marcar (sim/não). `concluido` é o filtro antigo "entregue ao importador" (links e filtros salvos
 # antigos): `normaliza_filtros` o converte no estágio "entregue".
 CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
@@ -211,28 +211,43 @@ def _existe_ciclo(*criterios, escaneamentos: bool = False):
     quando o primeiro não acha e o CE não é BL único (`TIPO_BL_UNICO`; quem chama tem o `Conhecimento` do item
     na consulta). `escaneamentos`: os critérios também olham os escaneamentos do ciclo.
 
-    O teste do BL único fica DENTRO da subconsulta da família (correlacionado ao `Conhecimento`): o MariaDB o
-    avalia antes de executá-la ("outer_ref_condition"). Fora dela, o otimizador antecipava a subconsulta para
-    o acesso a `itensresumo`, antes de juntar o CE, e o atalho se perdia (medição de 02/10/2026)."""
+    O teste do BL único fica FORA da subconsulta da família, de propósito (medições de 02/10/2026): assim o
+    MariaDB antecipa "tem ciclo pelo CE ou pela família" para a leitura de `itensresumo` e só junta o CE dos
+    candidatos que passam (na contagem, ~17 mil de 247 mil); o atalho vale no ramo da atracação prevista. Com
+    o teste DENTRO da subconsulta, ela dependia do CE: a junção passou a ser feita para todos os candidatos e
+    a contagem ficou ~0,7 s mais lenta."""
     direto = _existe(_CICLO_E_ESCANEAMENTOS if escaneamentos else CicloDeVidaImportacao,
                      _mesmo_conteiner_do_ciclo(), *criterios)
     if not LIGACAO_FAMILIA:
         return direto
-    pode_ter_familia = or_(Conhecimento.tipoBLConhecimento.is_(None), Conhecimento.tipoBLConhecimento != TIPO_BL_UNICO)
     pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
-                           pode_ter_familia, _mesmo_conteiner_pela_familia(), *criterios)
-    return or_(direto, pela_familia)
+                           _mesmo_conteiner_pela_familia(), *criterios)
+    pode_ter_familia = or_(Conhecimento.tipoBLConhecimento.is_(None), Conhecimento.tipoBLConhecimento != TIPO_BL_UNICO)
+    return or_(direto, and_(pode_ter_familia, pela_familia))
 
 
-def _lista_de_codigos(valor) -> List[str]:
+def _lista_de_codigos(valor, separadores: str = r'[,;\s]+') -> List[str]:
     """'CNSHA, cnngb;SGSIN' ou ['CNSHA', 'CNNGB SGSIN'] -> ['CNSHA', 'cnngb', 'SGSIN']."""
     if valor is None:
         return []
     partes = valor if isinstance(valor, (list, tuple, set)) else [valor]
     codigos = []
     for parte in partes:
-        codigos.extend(p for p in re.split(r'[,;\s]+', str(parte)) if p)
+        codigos.extend(p for p in re.split(separadores, str(parte)) if p.strip())
     return codigos
+
+
+def _normaliza_codigo(campo: str, codigo: str) -> str:
+    """Um código de um campo de CAMPOS_LISTA ('' = descartar)."""
+    if campo in _CAMPOS_PORTO:
+        return codigo.upper()
+    if campo in ('ncm', 'tipo_bl'):
+        return re.sub(r'\D', '', codigo)
+    if campo == 'conteiner':
+        return re.sub(r'[^A-Z0-9]', '', codigo.upper())
+    if campo == 'estagio':
+        return codigo.lower() if codigo.lower() in estagios_ciclo.ESTAGIOS else ''
+    return codigo
 
 
 def normaliza_filtros(filtros: Optional[dict]) -> dict:
@@ -248,13 +263,9 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
         if campo not in filtros:
             continue
         codigos = []
-        for codigo in _lista_de_codigos(filtros[campo]):
-            if campo in _CAMPOS_PORTO:
-                codigo = codigo.upper()
-            elif campo in ('ncm', 'tipo_bl'):
-                codigo = re.sub(r'\D', '', codigo)
-            elif campo == 'estagio':
-                codigo = codigo.lower() if codigo.lower() in estagios_ciclo.ESTAGIOS else ''
+        # o número do contêiner costuma vir com espaço ("ABCU 123456-7"): só vírgula/ponto e vírgula separam
+        for codigo in _lista_de_codigos(filtros[campo], r'[,;]+' if campo == 'conteiner' else r'[,;\s]+'):
+            codigo = _normaliza_codigo(campo, codigo)
             if codigo and codigo not in codigos:
                 codigos.append(codigo)
         if codigos:
@@ -328,8 +339,20 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime) -> list:
     return consultas
 
 
+def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None):
+    """A mesma janela de `_filtra_janela`, como CONDIÇÃO verificada por candidato (sem a tabela derivada):
+    para quando outro filtro já escolhe poucos itens — o contêiner, pelo índice de `codigoConteiner`."""
+    prevista = Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto))
+    if tipo_janela == 'prevista':
+        return prevista
+    inicio_dt = _parse_data(inicio)
+    fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
+    return or_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.between(inicio_dt, fim_dt)),
+               and_(not_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None))), prevista))
+
+
 def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
-                   criterios_ce=()):
+                   criterios_ce=(), conteineres=()):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -353,7 +376,12 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
     (ex.: exportação, ~1/3 dos manifestos) não custem a leitura dos seus itens
     nem a verificação do ciclo de vida — a tabela derivada é recalculada a
     cada página, e em Santos são ~200 mil contêineres por janela de 11 dias.
+
+    `conteineres` (filtro `conteiner`, 13/10/2026): o índice do contêiner escolhe os poucos itens e a janela vira
+    condição por candidato (`_janela_por_candidato`) — não calcula a janela inteira.
     """
+    if conteineres:
+        return q.filter(Item.codigoConteiner.in_(conteineres), _janela_por_candidato(tipo_janela, inicio, fim, porto))
     if tipo_janela == 'prevista':
         return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)))
     inicio_dt = _parse_data(inicio)
@@ -408,6 +436,8 @@ def monta_query_navii(
             - porto_baldeacao (str): código do porto de CARREGAMENTO do Manifesto
               (Manifesto.portoCarregamento) — quando difere do porto de origem do
               Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
+            - conteiner (str | lista): número do contêiner (só letras e dígitos, em maiúsculas) — todos os
+              cards do contêiner no período, com os escaneamentos de cada um; a busca parte do contêiner
             - recinto (str): código (cod_siscomex) do recinto de desembarque OU
               de armazenagem do ciclo de vida — exige ciclo de vida. Filtro
               secundário: o terminal do Manifesto (cod_carga) não é usado, só
@@ -449,7 +479,8 @@ def monta_query_navii(
     # Filtros que só dependem do Conhecimento: valem para a query principal e
     # também dentro da janela (ver `_filtra_janela`).
     criterios_ce = _criterios_ce(filtros)
-    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce)
+    q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce,
+                       filtros.get('conteiner'))
     q = q.filter(*criterios_ce)
     return _filtra_por_candidato(q, filtros, exigir_escaneamento)
 

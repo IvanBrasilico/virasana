@@ -551,6 +551,14 @@ e sem imagem por idade; (5) CE (confiança, sem CE por idade, papéis da famíli
 antigo por mês; (7) **alertas**. O que esperar com o serviço saudável: marcas gravadas há poucos minutos,
 fila ~0, nenhum sinal de outro gravador, semanas recentes com ~100% v2, nenhum aberto com mais de 93 dias.
 
+### Completude no operador: cabotagem (13/10/2026)
+
+Consulta do usuário (entregues pelo operador, 14 dias): importação 10.551 ciclos, 3,3% sem escaneamento;
+**cabotagem 3.206, 97,6% sem escaneamento** (88% de todos os sem escaneamento do fluxo); vazios e ciclos sem CE
+~1%. É dado real (cabotagem não é escaneada), não erro da lógica do ciclo. A completude passou a deixar a
+cabotagem (tráfego 3 no CE do ciclo) FORA da conta por padrão, mostrando quantos ficaram de fora, com a opção
+"Incluir cabotagem". Sem cabotagem, o operador fica em ~2,4% sem escaneamento.
+
 ### Imagens que faltam (`diagnostico_imagens_ciclo.py`)
 
 No acompanhamento de 02/10/2026 só BTP (76%) e Embraport (84%) ficaram abaixo de ~100% de escaneamentos com
@@ -558,6 +566,13 @@ imagem — como a sombra já tinha visto ("sem imagem em ±8 h: BTP 22%, Embrapo
 mostra a falta por dia e recinto, os atributos da inspeção (OCR, contingência, retificação) com x sem imagem e
 classifica uma amostra no Mongo: imagem que chegou DEPOIS (o ciclo não foi refeito), outra defasagem, só
 longe, número parecido (OCR), nenhuma imagem deste contêiner ou nenhuma imagem no horário (escâner parado).
+
+1ª rodada (13/10/2026, escaneamentos de 29/09 a 10/10): BTP 22–47% sem imagem por dia, Embraport 13–21%, Santos
+Brasil ~1% — mas em 09/10 e 10/10 os três foram a 39–100%: a CARGA das imagens no Mongo parou/atrasou por volta
+de 09/10. A amostra pegava os mais recentes (todos desse período) e saiu quase toda "nenhuma imagem no horário";
+corrigido: sorteio no período inteiro e contagem de imagens do Mongo por dia. Contêiner vazio aparece mais entre
+os sem imagem (BTP: 58% dos sem imagem, 40% dos com imagem). Imagens que chegam depois não são ligadas a
+ciclos já encerrados (o serviço só procura a imagem ao refazer o contêiner) — ver proposta de revisita de imagens.
 
 ```
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_imagens_ciclo.py --saida imagens.log

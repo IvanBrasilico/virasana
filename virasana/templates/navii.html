@@ -221,6 +221,8 @@
         .descricao-bl { display: block; font-size: .6875rem; font-weight: 400; color: #666; }
         .aviso-familia { margin-top: .5rem; font-size: .6875rem; color: #555; }
         .grupo-marcaveis { display: flex; flex-direction: column; gap: .25rem; }
+        .conteiner-titulo a { color: inherit; text-decoration: none; border-bottom: 1px dotted #1351B4; }
+        .conteiner-titulo a:hover { color: #1351B4; }
         .situacao-ciclo { margin-top: .5rem; font-size: .6875rem; color: #555; }
         .situacao-ciclo strong { color: #1c1c1c; }
         .etapa-timeline .implicita-etapa { display: block; font-size: .625rem; color: #8A6D00; text-align: center; cursor: help; }
@@ -426,6 +428,8 @@
                 {% if dica %}<div class="dica-lista">{{ dica }}</div>{% endif %}
             </div>
             {% endmacro %}
+            {{ campo_lista('conteiner', 'Contêiner', '', 'número do contêiner',
+                           'Todos os cards do contêiner no período, com os escaneamentos de cada um.') }}
             {{ campo_lista('porto_escala', 'Porto de atracação (escala)', 'porto', 'porto ou país',
                            'Vazio = todos os portos.') }}
             {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição') }}
@@ -544,6 +548,8 @@
     var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
     var DEFAULTS_PERIODO = {{ defaults_periodo | tojson }};
     var SUGESTOES_URL = {{ url_for('navii.api_sugestoes') | tojson }};
+    var NAVII_URL = {{ url_for('navii.index') | tojson }};
+    var FILTROS_INICIAIS = {{ filtros_iniciais | tojson }};
     var FILTROS_SALVOS_URL = {{ url_for('navii.api_filtros_salvos') | tojson }};
     var PORTO_ESCALA_PADRAO = {{ porto_escala_padrao | tojson }};
     var TIPOS_BL = {{ tipos_bl | tojson }};
@@ -557,10 +563,11 @@
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 
     // Campos com lista de códigos (vale qualquer um) e campos de texto livre
-    var CAMPOS_LISTA = ['porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'recinto'];
+    var CAMPOS_LISTA = ['conteiner', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
+                        'recinto'];
     var CAMPOS_TEXTO = ['produto', 'empresa'];
     var rotulos = {
-        porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+        conteiner: 'Contêiner', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', estagio: 'Estágio',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG'
@@ -980,6 +987,14 @@
         );
     }
 
+    function urlDoConteiner(numero) {
+        // a URL da tela vem do servidor (prefixo da app); aqui só se acrescentam os parâmetros
+        return NAVII_URL + '?' + new URLSearchParams({
+            conteiner: numero, tipo_janela: estadoBusca.tipo_janela,
+            data_inicio: estadoBusca.periodo.inicio, data_fim: estadoBusca.periodo.fim
+        }).toString();
+    }
+
     function montaCard(card) {
         var div = document.createElement('div');
         var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
@@ -997,7 +1012,11 @@
                 '<div class="bloco-dados">' +
                     '<div class="cabecalho-card">' +
                         '<div>' +
-                            '<h3 class="conteiner-titulo texto-mono">' + escapeHtml(card.numeroConteiner || '--') + '</h3>' +
+                            '<h3 class="conteiner-titulo texto-mono">' + (card.numeroConteiner
+                                ? '<a href="' + escapeAttr(urlDoConteiner(card.numeroConteiner)) + '" target="_blank" ' +
+                                  'rel="noopener" title="Todos os cards e escaneamentos deste contêiner no período (nova aba)">' +
+                                  escapeHtml(card.numeroConteiner) + '</a>'
+                                : '--') + '</h3>' +
                             '<div class="ce-subtitulo">' +
                                 '<span class="texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
                                 (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
@@ -1166,11 +1185,13 @@
         codigo = String(codigo).trim();
         if (campo === 'ncm') { return codigo.replace(/\D/g, ''); }
         if (campo === 'recinto') { return codigo; }
+        if (campo === 'conteiner') { return codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
         return codigo.toUpperCase();
     }
 
     function adicionaCodigos(campo, texto, descricao) {
-        String(texto).split(/[,;\s]+/).forEach(function (parte) {
+        // contêiner costuma vir com espaço ("ABCU 123456-7"): só vírgula/ponto e vírgula separam
+        String(texto).split(campo === 'conteiner' ? /[,;]+/ : /[,;\s]+/).forEach(function (parte) {
             var codigo = normalizaCodigo(campo, parte);
             if (!codigo) { return; }
             if (listas[campo].indexOf(codigo) < 0) { listas[campo].push(codigo); }
@@ -1258,7 +1279,7 @@
                 adicionaCodigos(campo, partes.join(','));
             }
             var termo = input.value.trim();
-            if (termo.length < 2) { fecha(); return; }
+            if (termo.length < 2 || !tipo) { fecha(); return; }   // campo sem sugestões (contêiner)
             temporizador = setTimeout(function () {
                 var meuPedido = ++pedido;
                 fetch(SUGESTOES_URL + '?' + new URLSearchParams({ campo: tipo, q: termo }).toString())
@@ -1479,7 +1500,26 @@
         if (entries[0].isIntersecting) { carregarPagina(); }
     }, { rootMargin: '200px' }).observe(el.sentinela);
 
-    aplicarDatasDefault(estadoBusca.tipo_janela);
+    function aplicaFiltrosIniciais(inicial) {
+        // tela aberta por um link (completude, card): janela, período e filtros da URL no lugar dos padrões
+        estadoBusca.tipo_janela = inicial.tipo_janela;
+        document.querySelectorAll('#toggle-janela button').forEach(function (b) {
+            b.classList.toggle('ativo', b.dataset.valor === inicial.tipo_janela);
+        });
+        aplicarDatasDefault(inicial.tipo_janela);
+        if (inicial.periodo) {
+            document.getElementById('f-data-inicio').value = inicial.periodo.inicio;
+            document.getElementById('f-data-fim').value = inicial.periodo.fim;
+            estadoBusca.periodo = { inicio: inicial.periodo.inicio, fim: inicial.periodo.fim };
+        }
+        preencheTela(inicial.filtros || {});
+    }
+
+    if (FILTROS_INICIAIS) {
+        aplicaFiltrosIniciais(FILTROS_INICIAIS);
+    } else {
+        aplicarDatasDefault(estadoBusca.tipo_janela);
+    }
     leFiltrosDaTela();
     montaChips();
     atualizaPeriodoAtivo();

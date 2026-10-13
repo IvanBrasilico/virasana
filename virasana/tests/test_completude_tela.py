@@ -178,6 +178,31 @@ class TestBusca(CompletudeTestCase):
         t1 = next(lin for lin in bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA) if lin['conteiner'] == 'T1')
         self.assertEqual((t1['estagio']['codigo'], t1['situacao']), ('entregue', None))   # loop antigo
 
+    def test_cabotagem_fora_da_conta_por_padrao(self):
+        from virasana.integracao.mercante.mercantealchemy import Conhecimento
+        self.session.add_all([Conhecimento(numeroCEmercante='CEO2', tipoTrafego='3'),     # O2: cabotagem
+                              Conhecimento(numeroCEmercante='CEO1', tipoTrafego='5')])    # O1: importação
+        self.session.commit()
+        linhas = {r['codigo_recinto']: r for r in bc.agregado(self.session, 'operador', INICIO, FIM, AGORA)}
+        self.assertEqual((linhas[BTP]['total'], linhas[BTP]['sem_escaneamento']), (1, 0))   # só O1
+        com = {r['codigo_recinto']: r for r in bc.agregado(self.session, 'operador', INICIO, FIM, AGORA,
+                                                            com_cabotagem=True)}
+        self.assertEqual((com[BTP]['total'], com[BTP]['sem_escaneamento']), (2, 1))
+        p = bc.panorama(self.session, INICIO, FIM, AGORA)
+        self.assertEqual(p['operador']['cabotagem'], {'total': 1, 'sem_escaneamento': 1})
+        self.assertEqual(p['tra']['cabotagem'], {'total': 0, 'sem_escaneamento': 0})
+        self.assertIsNone(bc.panorama(self.session, INICIO, FIM, AGORA, com_cabotagem=True)['operador']['cabotagem'])
+        self.assertEqual([lin['conteiner'] for lin in bc.detalhe(self.session, 'operador', BTP, INICIO, FIM, AGORA)],
+                         ['O1'])
+        [o2] = [lin for lin in bc.detalhe(self.session, 'operador', BTP, INICIO, FIM, AGORA, com_cabotagem=True)
+                if lin['conteiner'] == 'O2']
+        self.assertTrue(o2['cabotagem'])
+
+    def test_parametros_do_navii_na_janela_do_desembarque(self):
+        [t1] = [lin for lin in bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA) if lin['conteiner'] == 'T1']
+        self.assertEqual(t1['navii'], {'conteiner': 'T1', 'tipo_janela': 'efetiva', 'data_inicio': '2026-02-28',
+                                       'data_fim': '2026-03-02'})
+
     def test_fluxo_invalido(self):
         with self.assertRaises(ValueError):
             bc.agregado(self.session, 'xpto', INICIO, FIM)
@@ -262,6 +287,25 @@ class TestTela(CompletudeTestCase):
         for trecho in ('Ficha OVR', 'Ficha 77/2026', 'FMA 00123/2026', '/bhadrasana2/ovr?id=2',
                        '<strong>2</strong>com Ficha OVR', '(1 com FMA'):
             self.assertIn(trecho, html)
+
+    def test_cabotagem_na_tela(self):
+        from virasana.integracao.mercante.mercantealchemy import Conhecimento
+        self.session.add(Conhecimento(numeroCEmercante='CEO2', tipoTrafego='3'))
+        self.session.commit()
+        html = self.html('/completude_escaneamentos/', inicio='2026-03-01', fim='2026-03-07')
+        self.assertIn('Incluir cabotagem', html)
+        self.assertIn('<strong>1</strong>de cabotagem fora da conta (1 sem escaneamento)', html)
+        html = self.html('/completude_escaneamentos/', inicio='2026-03-01', fim='2026-03-07', com_cabotagem='1')
+        self.assertNotIn('de cabotagem fora da conta', html)
+        self.assertIn('com_cabotagem=1', html)   # mantida nos links do detalhe
+        html = self.html(f'/completude_escaneamentos/recinto/{BTP}', fluxo='operador', inicio='2026-03-01',
+                         fim='2026-03-07', com_cabotagem='1')
+        self.assertIn('cabotagem</span>', html)
+
+    def test_sem_o_navii_registrado_o_conteiner_nao_tem_link(self):
+        html = self.html(f'/completude_escaneamentos/recinto/{SECO}', fluxo='tra', inicio='2026-03-01',
+                         fim='2026-03-07')
+        self.assertNotIn('?conteiner=', html)
 
     def test_detalhe_v2(self):
         cria_t6(self.session)

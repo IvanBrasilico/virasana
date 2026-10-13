@@ -104,6 +104,34 @@ class TestPrefixoProxy(unittest.TestCase):
                          '/virasana/navii/api/filtros', '/virasana/mini1/imagem_id'):
             self.assertIn(f'"{esperado}"', html)
 
+    def test_navii_aberto_por_link_com_filtros_da_url(self):
+        html = self.get('/navii/?conteiner=abcu1234567&tipo_janela=prevista&data_inicio=2026-01-05'
+                        '&data_fim=2026-01-15').get_data(as_text=True)
+        self.assertIn('"filtros": {"conteiner": ["ABCU1234567"]}', html)
+        self.assertIn('"periodo": {"fim": "2026-01-15", "inicio": "2026-01-05"}', html)
+        self.assertIn('"tipo_janela": "prevista"', html)
+        self.assertIn('var NAVII_URL = "/virasana/navii/"', html)
+        self.assertIn('var FILTROS_INICIAIS = null', self.get('/navii/').get_data(as_text=True))
+        # data inválida: sem período (vale a sugestão da tela)
+        self.assertIn('"periodo": null', self.get('/navii/?conteiner=X1&data_inicio=xx&data_fim=yy')
+                      .get_data(as_text=True))
+
+    def test_link_da_completude_para_o_navii_com_o_prefixo(self):
+        from datetime import datetime
+        from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import CicloDeVidaImportacao
+        app = cria_app()
+        sessao = app.config['db_session']
+        sessao.add(CicloDeVidaImportacao(numeroConteiner='T1', numeroCEmercante='CET1', concluido=True,
+                                         codigoRecintoDesembarque='8931356', codigoRecintoArmazenagem='8932000',
+                                         data_desembarque=datetime(2026, 3, 1), data_saida=datetime(2026, 3, 1, 20),
+                                         data_entrada_seco=datetime(2026, 3, 2)))
+        sessao.commit()
+        cliente = Client(DispatcherMiddleware(NotFound(), {PREFIXO: app}))
+        html = cliente.get(PREFIXO + '/completude_escaneamentos/recinto/8932000?fluxo=tra&inicio=2026-03-01'
+                           '&fim=2026-03-07', environ_base={'HTTP_HOST': HOST_INTERNO}).get_data(as_text=True)
+        self.assertIn('href="/virasana/navii/?conteiner=T1&amp;tipo_janela=efetiva&amp;data_inicio=2026-02-28'
+                      '&amp;data_fim=2026-03-02"', html)
+
     def test_apis_respondem_sob_o_prefixo(self):
         for caminho in ('/navii/api/sugestoes?campo=porto&q=BRSSZ', '/navii/api/filtros'):
             with self.subTest(url=caminho):

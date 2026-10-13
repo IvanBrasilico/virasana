@@ -27,6 +27,14 @@ da API Recintos (`tipoConteiner`, pelo `desembarque_id` do ciclo) — vale tamb�
 para o vazio, que não tem CE. Open top e plataforma/flat rack são POTENCIAL OOG
 (carga fora de gabarito, que não passa no escâner): a tela mostra quantos são e
 permite excluí-los da cobrança (`sem_oog`).
+
+Cabotagem (13/10/2026, consulta do usuário: no operador, 3.129 de 3.206 contêineres de cabotagem sem
+escaneamento — 88% de todos os sem escaneamento do fluxo): na prática não é escaneada. Fica FORA da conta por
+padrão (`com_cabotagem=False`), pelo tipo de tráfego do CE do ciclo (3); a tela mostra quantos ficaram de fora
+e permite incluí-los. Ciclo sem CE continua na conta.
+
+No detalhe, cada contêiner traz os parâmetros para abrir o NAVI-I filtrado por ele, na janela do desembarque
+(`navii`): o usuário vê o card da operação (Mercante, linha do tempo, escaneamentos, fichas).
 """
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -39,6 +47,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo, linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
+from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.navii import fichas_ovr, referencias
 from virasana.navii.busca_navii import tabela_recintos
 
@@ -48,6 +57,8 @@ from bhadrasana.models.apirecintos import EmbarqueDesembarque  # noqa: I100 — 
 DESEMBARQUES = EmbarqueDesembarque.__table__
 TIPO = DESEMBARQUES.c.tipoConteiner
 OOG = expressao_oog(TIPO)
+TIPO_TRAFEGO_CABOTAGEM = '3'
+TRAFEGO = Conhecimento.tipoTrafego
 
 HORAS_SEM_TEMPO_DE_ESCANEAR = 3
 LIMITE_DETALHE = 2000
@@ -93,6 +104,15 @@ def _sem_oog():
     return or_(TIPO.is_(None), not_(OOG))
 
 
+def _sem_cabotagem():
+    """Critério "o CE do ciclo não é de cabotagem" (sem CE ou sem tráfego informado continua na conta)."""
+    return or_(TRAFEGO.is_(None), TRAFEGO != TIPO_TRAFEGO_CABOTAGEM)
+
+
+def _com_ce(consulta):
+    return consulta.outerjoin(Conhecimento, Conhecimento.numeroCEmercante == Ciclo.numeroCEmercante)
+
+
 def _percentual(parte: int, total: int) -> float:
     return parte / total if total else 0.0
 
@@ -111,12 +131,12 @@ def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc, oog=0, 
 
 
 def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
-             sem_oog: bool = False) -> List[dict]:
+             sem_oog: bool = False, com_cabotagem: bool = False) -> List[dict]:
     """Uma linha por recinto do fluxo, do maior para o menor % sem escaneamento.
 
     No fluxo TRA, "saídas" são as saídas do seco; no do operador toda entrega
     já é uma saída (total_saidas = total). `oog`/`oog_sem_escaneamento`: potenciais
-    OOG pelo tipo do desembarque; `sem_oog` os tira da conta.
+    OOG pelo tipo do desembarque; `sem_oog` os tira da conta. A cabotagem só entra com `com_cabotagem`.
     """
     recinto = _fluxo(fluxo)['recinto']
     tem_escaneamento = exists().where(Esc.ciclo_de_vida_id == Ciclo.ID)
@@ -141,6 +161,8 @@ def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Option
     )
     if sem_oog:
         consulta = consulta.filter(_sem_oog())
+    if not com_cabotagem:
+        consulta = _com_ce(consulta).filter(_sem_cabotagem())
     resultados = [_item(*linha) for linha in consulta.group_by(recinto).all()]
     return sorted(resultados, key=lambda r: (-r['pct_sem_escaneamento'], -r['total']))
 
@@ -154,54 +176,85 @@ def totais(resultados: List[dict]) -> dict:
                  soma['total_saidas'], soma['saidas_sem_escaneamento'], soma['oog'], soma['oog_sem_escaneamento'])
 
 
+def cabotagem_fora(session, fluxo: str, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
+                   sem_oog: bool = False) -> dict:
+    """Contêineres de cabotagem do fluxo no período (os que ficam fora da conta) e quantos sem escaneamento."""
+    tem_escaneamento = exists().where(Esc.ciclo_de_vida_id == Ciclo.ID)
+    consulta = _com_ce(session.query(func.count(Ciclo.ID), func.sum(case((~tem_escaneamento, 1), else_=0)))
+                       .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
+                       ).filter(*_criterios(fluxo, inicio, fim, agora), TRAFEGO == TIPO_TRAFEGO_CABOTAGEM)
+    if sem_oog:
+        consulta = consulta.filter(_sem_oog())
+    total, sem_escaneamento = consulta.one()
+    return {'total': total or 0, 'sem_escaneamento': sem_escaneamento or 0}
+
+
 def panorama(session, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
-             sem_oog: bool = False) -> Dict[str, dict]:
-    """Os dois fluxos lado a lado: tabela por recinto, totais e participação de cada um."""
+             sem_oog: bool = False, com_cabotagem: bool = False) -> Dict[str, dict]:
+    """Os dois fluxos lado a lado: tabela por recinto, totais e participação de cada um; sem a cabotagem, quantos
+    contêineres dela ficaram de fora (`cabotagem`)."""
     resultado = {}
     for fluxo in FLUXOS:
-        linhas = agregado(session, fluxo, inicio, fim, agora, sem_oog)
-        resultado[fluxo] = {**FLUXOS[fluxo], 'linhas': linhas, 'totais': totais(linhas)}
+        linhas = agregado(session, fluxo, inicio, fim, agora, sem_oog, com_cabotagem)
+        resultado[fluxo] = {**FLUXOS[fluxo], 'linhas': linhas, 'totais': totais(linhas),
+                            'cabotagem': None if com_cabotagem else cabotagem_fora(session, fluxo, inicio, fim, agora,
+                                                                                   sem_oog)}
     todos = sum(r['totais']['total'] for r in resultado.values())
     for dados in resultado.values():
         dados['participacao'] = _percentual(dados['totais']['total'], todos)
     return resultado
 
 
+def _navii(ciclo) -> Optional[dict]:
+    """Parâmetros para abrir o NAVI-I filtrado pelo contêiner, na janela do desembarque (±1 dia)."""
+    base = ciclo.data_desembarque or ciclo.data_saida or ciclo.data_entrada_seco
+    if base is None or not (ciclo.numeroConteiner or '').strip():
+        return None
+    return {'conteiner': ciclo.numeroConteiner.strip(), 'tipo_janela': 'efetiva',
+            'data_inicio': f'{base - timedelta(days=1):%Y-%m-%d}', 'data_fim': f'{base + timedelta(days=1):%Y-%m-%d}'}
+
+
+def _linha_detalhe(ciclo, tipo: Optional[str], trafego: Optional[str], fichas: List[dict]) -> dict:
+    escaneamentos = sorted(ciclo.escaneamentos, key=lambda e: e.data_escaneamento or datetime.min)
+    descricao_tipo = referencias.tipo_conteiner(tipo)
+    return {
+        'tipo_codigo': tipo, 'tipo': descricao_tipo, 'oog': bool(descricao_tipo and descricao_tipo['oog']),
+        'conteiner': ciclo.numeroConteiner, 'ce': ciclo.numeroCEmercante,
+        'cabotagem': trafego == TIPO_TRAFEGO_CABOTAGEM, 'navii': _navii(ciclo),
+        'desembarque': ciclo.data_desembarque, 'saida': ciclo.data_saida,
+        'entrada_seco': ciclo.data_entrada_seco, 'saida_seco': ciclo.data_saida_seco,
+        'entrada_implicita': ciclo.entrada_seco_implicita_de,
+        'estagio': estagios_ciclo.descreve(estagios_ciclo.estagio_do_ciclo(ciclo)),
+        'situacao': ciclo.situacao, 'motivo': ciclo.motivo,
+        'escaneamentos': [{'id': e.escaneamento_id, 'data': e.data_escaneamento, 'imagem_id': e.imagem_id,
+                           'recinto': e.codigoRecinto, 'confianca': e.confianca, 'motivo': e.motivo,
+                           'fora': bool(e.fora)}
+                          for e in escaneamentos],
+        'imagens': [e.imagem_id for e in escaneamentos if e.imagem_id],
+        'fichas': fichas,
+    }
+
+
 def detalhe(session, fluxo: str, codigo_recinto: str, inicio: datetime, fim: datetime,
-            agora: Optional[datetime] = None, sem_oog: bool = False) -> List[dict]:
+            agora: Optional[datetime] = None, sem_oog: bool = False, com_cabotagem: bool = False) -> List[dict]:
     """Ciclos de um recinto no fluxo: uma linha por contêiner, com as datas, o tipo do
     contêiner, o estágio/situação (v2), os escaneamentos/imagens (os sem escaneamento primeiro) e as Fichas OVR
     do CE ou abertas pelo contêiner (inclusive FMA — abandono)."""
-    consulta = (
-        session.query(Ciclo, TIPO)
+    consulta = _com_ce(
+        session.query(Ciclo, TIPO, TRAFEGO)
         .options(undefer_group('v2'), selectinload(Ciclo.escaneamentos).undefer_group('v2'))
         .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
-        .filter(_fluxo(fluxo)['recinto'] == codigo_recinto, *_criterios(fluxo, inicio, fim, agora))
-    )
+    ).filter(_fluxo(fluxo)['recinto'] == codigo_recinto, *_criterios(fluxo, inicio, fim, agora))
     if sem_oog:
         consulta = consulta.filter(_sem_oog())
-    linhas = []
+    if not com_cabotagem:
+        consulta = consulta.filter(_sem_cabotagem())
     ciclos = consulta.order_by(FLUXOS[fluxo]['data']).limit(LIMITE_DETALHE).all()
-    por_ce, por_conteiner = fichas_ovr.busca_fichas(session, [c.numeroCEmercante for c, _ in ciclos],
-                                                    [c.numeroConteiner for c, _ in ciclos])
-    for ciclo, tipo in ciclos:
-        escaneamentos = sorted(ciclo.escaneamentos, key=lambda e: e.data_escaneamento or datetime.min)
-        descricao_tipo = referencias.tipo_conteiner(tipo)
-        linhas.append({
-            'tipo_codigo': tipo, 'tipo': descricao_tipo, 'oog': bool(descricao_tipo and descricao_tipo['oog']),
-            'conteiner': ciclo.numeroConteiner, 'ce': ciclo.numeroCEmercante,
-            'desembarque': ciclo.data_desembarque, 'saida': ciclo.data_saida,
-            'entrada_seco': ciclo.data_entrada_seco, 'saida_seco': ciclo.data_saida_seco,
-            'entrada_implicita': ciclo.entrada_seco_implicita_de,
-            'estagio': estagios_ciclo.descreve(estagios_ciclo.estagio_do_ciclo(ciclo)),
-            'situacao': ciclo.situacao, 'motivo': ciclo.motivo,
-            'escaneamentos': [{'id': e.escaneamento_id, 'data': e.data_escaneamento, 'imagem_id': e.imagem_id,
-                               'recinto': e.codigoRecinto, 'confianca': e.confianca, 'motivo': e.motivo,
-                               'fora': bool(e.fora)}
-                              for e in escaneamentos],
-            'imagens': [e.imagem_id for e in escaneamentos if e.imagem_id],
-            'fichas': fichas_ovr.fichas_do(ciclo.numeroCEmercante, ciclo.numeroConteiner, por_ce, por_conteiner),
-        })
+    por_ce, por_conteiner = fichas_ovr.busca_fichas(session, [c.numeroCEmercante for c, _, _ in ciclos],
+                                                    [c.numeroConteiner for c, _, _ in ciclos])
+    linhas = [_linha_detalhe(ciclo, tipo, trafego,
+                             fichas_ovr.fichas_do(ciclo.numeroCEmercante, ciclo.numeroConteiner, por_ce, por_conteiner))
+              for ciclo, tipo, trafego in ciclos]
     return sorted(linhas, key=lambda lin: bool(lin['escaneamentos']))
 
 

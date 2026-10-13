@@ -62,14 +62,17 @@
 <body>
 <div class="container-pagina py-4">
 
-    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None) }}">
+    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None,
+                                     com_cabotagem=1 if com_cabotagem else None) }}">
         <i class="fas fa-arrow-left" aria-hidden="true"></i> Completude de escaneamentos</a>
     <div class="cabecalho-pagina">
         <h1><span class="marca">{{ 'TRA' if fluxo == 'tra' else 'OPERADOR' }}</span>
             {{ codigo }} {% if nome %}— {{ nome }}{% endif %}</h1>
         <p class="page-subtitle text-down-01 mb-0 mt-1">{{ dados_fluxo.titulo }}: {{ dados_fluxo.caminho }}.
             Período de {{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}.
-            {% if sem_oog %}Sem os potenciais OOG (open top, plataforma).{% endif %}</p>
+            {% if sem_oog %}Sem os potenciais OOG (open top, plataforma).{% endif %}
+            {% if not com_cabotagem %}Sem a cabotagem (escaneamento não obrigatório).{% endif %}
+            {% if url_navii %}Clique no contêiner para ver o card da operação no NAVI-I.{% endif %}</p>
     </div>
 
     <div class="painel">
@@ -105,7 +108,7 @@
                 <tbody>
                 {% for lin in linhas %}
                     <tr class="{{ '' if lin.escaneamentos else 'sem-escaneamento' }}">
-                        <td class="mono">{{ lin.conteiner }}<span class="secundario">{{ lin.ce or '' }}</span></td>
+                        <td class="mono">{% if url_navii and lin.navii %}<a href="{{ url_navii }}?{{ lin.navii | urlencode }}" target="_blank" rel="noopener" title="Abrir o card do contêiner no NAVI-I (nova aba)">{{ lin.conteiner }}</a>{% else %}{{ lin.conteiner }}{% endif %}<span class="secundario">{{ lin.ce or '' }}{% if lin.cabotagem %} · cabotagem{% endif %}</span></td>
                         <td class="tipo">{% if lin.tipo %}<span title="{{ lin.tipo.descricao }}"><span class="mono">{{ lin.tipo.codigo }}</span>
                             <span class="secundario">{{ lin.tipo.curta }}</span></span>{% if lin.oog %} <span class="selo oog" title="Open top / plataforma: pode ser carga fora de gabarito, que não passa no escâner">potencial OOG</span>{% endif %}{% elif lin.tipo_codigo %}<span class="mono">{{ lin.tipo_codigo }}</span>{% else %}—{% endif %}</td>
                         <td class="mono">{{ lin.desembarque.strftime('%d/%m/%Y %H:%M') if lin.desembarque else '—' }}</td>

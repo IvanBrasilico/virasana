@@ -71,8 +71,8 @@ class TestRelatorio(unittest.TestCase):
             di.roda(diag)
         texto = saida.getvalue()
         self.assertNotIn('ERRO', texto)
-        self.assertRegex(texto, r'2026-03-02 \| 0 / 1 \(0%\)')
-        self.assertRegex(texto, r'2026-03-05 \| 1 / 1 \(100%\)')
+        self.assertRegex(texto, r'2026-03-02 \| 0 / 1 \(0%\)\s+\| 1 ')     # 1 imagem no Mongo nesse dia
+        self.assertRegex(texto, r'2026-03-05 \| 1 / 1 \(100%\)\s+\| 0 ')
         self.assertRegex(texto, r'8931359 \| sem\s+\| 1\s+\| 1 ')                 # sem OCR
         self.assertRegex(texto, r'8931359 \| 3\) imagem do contêiner só a mais de 48 h\s+\| 1\s+\| 2.0 h')
         self.assertIn('CTRA inspeção 302 em 05/03 10:00 (ciclo aberto; OCR não) — 1 imagem(ns) em ±30 dias', texto)

@@ -3,11 +3,14 @@
 DIAGNÓSTICO das IMAGENS que faltam nos escaneamentos do Ciclo de Vida v2 (acompanhamento de 02/10/2026: BTP
 76% e Embraport 84% com imagem; os demais recintos ~100%). Somente leitura (SQL e Mongo).
 
-  1. Por DIA e recinto: escaneamentos e quantos sem imagem — falta concentrada em dias = escâner/envio parado;
+  1. Por DIA e recinto: escaneamentos e quantos sem imagem — falta concentrada em dias = escâner/envio parado —
+     e, com o Mongo, quantas imagens (de todos os recintos) há no dia: queda geral = a CARGA das imagens no Mongo
+     parou ou atrasou (13/10/2026: a 1ª rodada achou isso a partir de 09/10);
   2. Atributos da INSPEÇÃO (API Recintos) com x sem imagem: número sem OCR, contingência, retificação,
      contêiner vazio;
-  3. AMOSTRA no Mongo (só `metadata.numeroinformado` e `metadata.dataescaneamento`, regra do usuário), cada
-     escaneamento sem imagem classificado:
+  3. AMOSTRA no Mongo (só `metadata.numeroinformado` e `metadata.dataescaneamento`, regra do usuário), sorteada
+     no período inteiro (os mais recentes podiam ser todos de um dia de parada), cada escaneamento sem imagem
+     classificado:
        - existe na defasagem esperada (±15 min)   -> a imagem chegou DEPOIS ao Mongo e o ciclo não foi refeito;
        - existe só com outra defasagem             -> a tabela `imagens_ciclo.DEFASAGEM_HORAS` não vale sempre;
        - imagem do contêiner só a mais de 48 h     -> outra passagem pelo escâner;
@@ -23,6 +26,7 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     virasana-venv/bin/python $DIAG --recintos 8931359 8931404 8931356 --dias 14 --amostra 200 --saida imagens.log
 """
 import argparse
+import random
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -127,8 +131,18 @@ class DiagnosticoImagens(Diagnostico):
         for dia, recinto, total, sem in linhas:
             por_dia[str(dia)[:10]][recinto] = (int(total or 0), int(sem or 0))
         colunas = ['dia'] + [f'{r} (sem / total)' for r in self.recintos]
-        self.tabela(colunas, [[dia] + [self._celula(valores.get(r)) for r in self.recintos]
+        com_mongo = self.mongo_db is not None
+        if com_mongo:
+            colunas.append('imagens no Mongo (todas)')
+        self.tabela(colunas, [[dia] + [self._celula(valores.get(r)) for r in self.recintos] +
+                              ([self._imagens_no_dia(dia)] if com_mongo else [])
                               for dia, valores in sorted(por_dia.items())])
+
+    def _imagens_no_dia(self, dia: str) -> int:
+        """Imagens de todos os recintos no dia (`dataescaneamento`, como gravada no Mongo)."""
+        inicio = datetime.strptime(dia, '%Y-%m-%d')
+        return self.mongo_db['fs.files'].count_documents(
+            {'metadata.dataescaneamento': {'$gte': inicio, '$lt': inicio + timedelta(days=1)}})
 
     @staticmethod
     def _celula(valores) -> str:
@@ -149,15 +163,16 @@ class DiagnosticoImagens(Diagnostico):
             ' GROUP BY e.codigoRecinto, imagem ORDER BY e.codigoRecinto, imagem'))
 
     def amostra_sem_imagem(self) -> List[tuple]:
-        """[(escaneamento, data, recinto, contêiner, situação do ciclo, ocr, contingência, transmissão)]."""
-        linhas = []
+        """[(escaneamento, data, recinto, contêiner, situação do ciclo, ocr, contingência, transmissão)], sorteados
+        (semente fixa) entre TODOS os sem imagem do período de cada recinto — alguns milhares de linhas."""
+        sorteio, linhas = random.Random(42), []
         for recinto in self.recintos:
-            linhas += self.consulta(
+            candidatos = self.consulta(
                 'SELECT e.escaneamento_id, e.data_escaneamento, e.codigoRecinto, c.numeroConteiner, c.situacao, '
                 'i.ocrNumero, i.contingencia, i.dataHoraTransmissao ' + ESCANEAMENTOS_V2.replace(  # nosec B608
-                    'IN :recintos', '= :recinto') +
-                ' AND e.imagem_id IS NULL ORDER BY e.data_escaneamento DESC LIMIT :amostra',
-                {'recinto': recinto, 'amostra': self.amostra})
+                    'IN :recintos', '= :recinto') + ' AND e.imagem_id IS NULL', {'recinto': recinto})
+            escolhidos = sorteio.sample(candidatos, min(self.amostra, len(candidatos)))
+            linhas += sorted(escolhidos, key=lambda linha: str(linha[1]))
         return linhas
 
     def secao_mongo(self):
