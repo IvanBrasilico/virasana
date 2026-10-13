@@ -313,7 +313,6 @@ def get_conteineres_escaneados_com_due(session, datainicio: datetime, datafim: d
         return lista_final
 
     # Passo 3 - Recupera imagens no Mongo.
-    # Importante: para o fluxo com DUE, não restringir a imagens sem metadata.due.
     griddata = raspa_container(
         list(conteineres_exportacao_escaneados),
         datainicio,
@@ -360,97 +359,565 @@ def get_conteineres_escaneados_com_due(session, datainicio: datetime, datafim: d
 
 
 def update_instance(model_instance, update_dict):
+    """Atualiza somente atributos existentes no modelo SQLAlchemy."""
     for key, value in update_dict.items():
         if hasattr(model_instance, key):
             setattr(model_instance, key, value)
 
 
+CAMPOS_DATA_DUE = {
+    'data_criacao_due',
+    'data_registro_due',
+    'data_carga_apresentada_despacho',
+    'data_desembaraco',
+    'data_inicial_entrada_recinto',
+    'data_primeira_recepcao_nota_recinto',
+    'data_ultima_recepcao_nota_recinto',
+    'data_final_manifestacao_carga',
+}
+
+CAMPOS_DATA_ITEM_DUE = {'nfe_dt_emissao'}
+VALORES_TEXTUAIS_NULOS = {'', 'none', 'null', 'nan', 'nat'}
+LIMITE_MENSAGEM_ERRO = 300
+
+
+def valor_nulo(valor):
+    """Reconhece None, NaN, NaT e representacoes textuais vazias."""
+    if valor is None:
+        return True
+    try:
+        if valor != valor:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return isinstance(valor, str) and valor.strip().lower() in VALORES_TEXTUAIS_NULOS
+
+
+def normaliza_datetime(valor, nome_campo):
+    """Converte datas usuais do payload; valor vazio vira NULL"""
+    if valor_nulo(valor):
+        return None
+    if isinstance(valor, datetime):
+        return valor
+
+    texto = str(valor).strip()
+    formatos = (
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d',
+        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%dT%H:%M:%S',
+    )
+    for formato in formatos:
+        try:
+            return datetime.strptime(texto, formato)
+        except ValueError:
+            continue
+    raise ValueError('Data invalida em {}: {!r}'.format(nome_campo, valor))
+
+
+def sanitiza_texto_banco(valor):
+    """Prepara texto para colunas legadas compativeis com latin1/MySQL"""
+    texto = str(valor).strip().replace('\x00', '')
+    texto = texto.replace('\ufffd', '?')
+
+    caracteres = []
+    for caractere in texto:
+        codigo = ord(caractere)
+        if caractere in ('\t', '\n', '\r'):
+            caracteres.append(' ')
+        elif codigo < 32 or 127 <= codigo <= 159:
+            caracteres.append('?')
+        else:
+            caracteres.append(caractere)
+
+    texto = ''.join(caracteres)
+    return texto.encode('latin-1', 'replace').decode('latin-1')
+
+
+def normaliza_registro(registro, campos_data=None):
+    """Normaliza nulos, datas e textos antes da persistencia"""
+    campos_data = campos_data or set()
+    resultado = {}
+    campos_sanitizados = []
+
+    for chave, valor in registro.items():
+        if chave in campos_data:
+            resultado[chave] = normaliza_datetime(valor, chave)
+        elif valor_nulo(valor):
+            resultado[chave] = None
+        elif isinstance(valor, str):
+            texto_original = valor.strip().replace('\x00', '')
+            texto_normalizado = sanitiza_texto_banco(valor)
+            resultado[chave] = texto_normalizado
+            if texto_original != texto_normalizado:
+                campos_sanitizados.append(chave)
+        else:
+            resultado[chave] = valor
+
+    return resultado, campos_sanitizados
+
+
+def normaliza_identificador(valor, tamanho=None):
+    if valor_nulo(valor):
+        return None
+    texto = str(valor).strip()
+    if texto.endswith('.0') and texto[:-2].isdigit():
+        texto = texto[:-2]
+    if tamanho:
+        texto = texto[:tamanho].zfill(tamanho)
+    return texto
+
+
+def normaliza_inteiro(valor, nome_campo, obrigatorio=False):
+    if valor_nulo(valor):
+        if obrigatorio:
+            raise ValueError('{} nao informado'.format(nome_campo))
+        return None
+    try:
+        numero = float(valor)
+        if not numero.is_integer():
+            raise ValueError
+        return int(numero)
+    except (TypeError, ValueError):
+        raise ValueError('{} invalido: {!r}'.format(nome_campo, valor))
+
+
+def resumo_erro(erro, limite=LIMITE_MENSAGEM_ERRO):
+    """Retorna somente a causa curta, sem SQL e parametros completos"""
+    mensagem = str(getattr(erro, 'orig', erro)).replace('\r', ' ').replace('\n', ' ').strip()
+    while '  ' in mensagem:
+        mensagem = mensagem.replace('  ', ' ')
+    if len(mensagem) > limite:
+        return mensagem[:limite] + '...'
+    return mensagem
+
+
+def extrair_conteineres(valor):
+    if valor_nulo(valor):
+        return []
+    resultado = []
+    vistos = set()
+    for parte in str(valor).replace(';', ',').split(','):
+        conteiner = ''.join(parte.strip().upper().split())
+        if conteiner and len(conteiner) <= 11 and conteiner not in vistos:
+            resultado.append(conteiner)
+            vistos.add(conteiner)
+    return resultado
+
+
+def limitar_campo_ao_modelo(dados, modelo, nome_campo):
+    """
+    Limita um campo textual ao tamanho declarado no modelo SQLAlchemy.
+
+    Retorna (truncado, tamanho_original, limite). Se a coluna nao possuir
+    limite textual, nenhum corte e realizado.
+    """
+    valor = dados.get(nome_campo)
+    if valor_nulo(valor):
+        dados[nome_campo] = None
+        return False, 0, None
+
+    coluna = modelo.__table__.columns.get(nome_campo)
+    limite = getattr(getattr(coluna, 'type', None), 'length', None)
+    texto = str(valor).strip()
+    tamanho_original = len(texto)
+
+    if limite and tamanho_original > limite:
+        dados[nome_campo] = texto[:limite]
+        return True, tamanho_original, limite
+
+    dados[nome_campo] = texto
+    return False, tamanho_original, limite
+
+
 def integra_dues(session, df_dues):
-    erros = 0
-    df_dues['ni_declarante'] = df_dues['ni_declarante'].astype(str).str[:14].str.zfill(14)
-    df_dues['cnpj_estabelecimento_exportador'] = (
-        df_dues['cnpj_estabelecimento_exportador'].astype(str).str[:14].str.zfill(14))
-    logger.info(f'Iniciando "UPSERT" de {len(df_dues)} DUEs')
+    """Faz UPSERT em lote de DUEs e retorna os numeros persistidos."""
+    sucessos = []
+    erros = []
+    total_sanitizados = 0
+    total_listas_conteiner_truncadas = 0
+    maior_lista_conteiner = 0
+    limite_lista_conteiner = None
+    logger.info('Iniciando UPSERT em lote de %s DUEs', len(df_dues))
+
+    colunas_due = set(c.name for c in Due.__table__.columns)
+    colunas_conteiner = set(c.name for c in DueConteiner.__table__.columns)
+    registros = []
+    conteineres_por_due = {}
+
+    # 1. Mantem toda a normalizacao/validacao atual, agora em memoria.
     for index, row in df_dues.iterrows():
+        dados_brutos = row.to_dict()
+        numero_due = normaliza_identificador(dados_brutos.get('numero_due'))
+        if not numero_due:
+            erros.append({'indice': int(index), 'numero_due': None,
+                          'erro': 'numero_due nao informado'})
+            logger.warning('DUE ignorada no indice %s: numero_due ausente', index)
+            continue
         try:
-            with session.begin_nested():
-                due = session.query(Due).filter(Due.numero_due == row['numero_due']).one_or_none()
-                if due is None:
-                    due = Due()
-                update_instance(due, row.to_dict())
-                session.add(due)
-                session.flush()
-                # Passo 6b - popular DueConteiner
-                for conteiner in due.lista_id_conteiner.split(', '):
-                    conteiner = conteiner.strip()
-                    due_conteiner = session.query(DueConteiner). \
-                        filter(DueConteiner.numero_due == row['numero_due'],
-                               DueConteiner.numero_conteiner == conteiner).one_or_none()
-                    if due_conteiner is None:
-                        due_conteiner = DueConteiner()
-                    due_conteiner.numero_due = due.numero_due
-                    due_conteiner.numero_conteiner = conteiner.strip()
-                    session.add(due_conteiner)
-        except SQLAlchemyError as err:
-            erros += 1
-            logger.error(f'Erro na DUE {row.get("numero_due")}: {err}')
-            continue  # só sai deste item, o resto continua
+            dados, campos_sanitizados = normaliza_registro(
+                dados_brutos, CAMPOS_DATA_DUE)
+            dados['numero_due'] = numero_due
+            dados['ni_declarante'] = normaliza_identificador(
+                dados.get('ni_declarante'), 14)
+            dados['cnpj_estabelecimento_exportador'] = normaliza_identificador(
+                dados.get('cnpj_estabelecimento_exportador'), 14)
+
+            if campos_sanitizados:
+                total_sanitizados += 1
+                logger.warning(
+                    'DUE %s teve %s campo(s) textual(is) sanitizado(s): %s',
+                    numero_due, len(campos_sanitizados),
+                    ', '.join(campos_sanitizados))
+
+            # Os vinculos usam a lista completa antes do corte do campo legado.
+            # Assim, nenhum vinculo DUE-conteiner e perdido mesmo quando a coluna
+            # lista_id_conteiner precisa ser limitada para caber no banco.
+            conteineres_por_due[numero_due] = extrair_conteineres(
+                dados.get('lista_id_conteiner'))
+
+            truncado, tamanho_original, limite = limitar_campo_ao_modelo(
+                dados, Due, 'lista_id_conteiner')
+            if limite is not None:
+                limite_lista_conteiner = limite
+            if truncado:
+                total_listas_conteiner_truncadas += 1
+                maior_lista_conteiner = max(
+                    maior_lista_conteiner, tamanho_original)
+
+            dados = {k: v for k, v in dados.items() if k in colunas_due}
+            registros.append((int(index), dados))
+        except (ValueError, TypeError) as erro:
+            mensagem = resumo_erro(erro)
+            erros.append({'indice': int(index), 'numero_due': numero_due,
+                          'erro': mensagem})
+            logger.error('Falha na DUE %s, indice %s: %s',
+                         numero_due, index, mensagem)
+
+    if not registros:
+        logger.info(
+            'UPSERT de DUEs concluido: recebidas=%s, sucesso=0, erros=%s, sanitizadas=%s',
+            len(df_dues), len(erros), total_sanitizados)
+        return {
+            'sucessos': [], 'erros': erros,
+            'total_recebidos': len(df_dues), 'total_sucessos': 0,
+            'total_erros': len(erros), 'total_sanitizados': total_sanitizados,
+        }
+
+    # Ultima ocorrencia da mesma DUE no payload prevalece.
+    por_numero = {}
+    ordem = []
+    for index, dados in registros:
+        numero_due = dados['numero_due']
+        if numero_due not in por_numero:
+            ordem.append(numero_due)
+        por_numero[numero_due] = (index, dados)
+
+    numeros = set(ordem)
     try:
-        session.commit()
-        logger.info(f'Upsert de DUEs concluído com {len(df_dues) - erros} sucessos, {erros} erros')
-        return True
-    except Exception as err:
-        logger.error(err)
+        existentes = set(
+            linha[0] for linha in
+            session.query(Due.numero_due).filter(Due.numero_due.in_(numeros)).all()
+        )
+    except SQLAlchemyError as erro:
         session.rollback()
-        return False
+        logger.error('Falha ao consultar DUEs existentes: %s', resumo_erro(erro))
+        raise
+
+    inserts = []
+    updates = []
+    for numero_due in ordem:
+        _, dados = por_numero[numero_due]
+        if numero_due in existentes:
+            updates.append(dados)
+        else:
+            inserts.append(dados)
+
+    # 2. Prepara novos vinculos DUE-conteiner em memoria e busca os existentes
+    # em uma unica consulta para todo o lote.
+    pares_desejados = set()
+    for numero_due in ordem:
+        for conteiner in conteineres_por_due.get(numero_due, []):
+            pares_desejados.add((numero_due, conteiner))
+
+    pares_existentes = set()
+    if pares_desejados:
+        try:
+            linhas = session.query(
+                DueConteiner.numero_due, DueConteiner.numero_conteiner
+            ).filter(DueConteiner.numero_due.in_(numeros)).all()
+            pares_existentes = set((linha[0], linha[1]) for linha in linhas)
+        except SQLAlchemyError as erro:
+            session.rollback()
+            logger.error('Falha ao consultar vinculos DUE-conteiner: %s',
+                         resumo_erro(erro))
+            raise
+
+    novos_conteineres = []
+    for numero_due, conteiner in sorted(pares_desejados - pares_existentes):
+        dados_conteiner = {
+            'numero_due': numero_due,
+            'numero_conteiner': conteiner,
+        }
+        novos_conteineres.append({
+            k: v for k, v in dados_conteiner.items() if k in colunas_conteiner
+        })
+
+    if total_listas_conteiner_truncadas:
+        logger.warning(
+            'Campo lista_id_conteiner truncado em %s DUE(s): limite=%s, '
+            'maior_tamanho_recebido=%s. Os vinculos individuais foram preservados.',
+            total_listas_conteiner_truncadas, limite_lista_conteiner,
+            maior_lista_conteiner)
+
+    logger.info(
+        'DUEs preparadas para gravacao em lote: novas=%s, atualizacoes=%s, '
+        'duplicadas_no_payload=%s, novos_vinculos_conteiner=%s',
+        len(inserts), len(updates), len(registros) - len(ordem),
+        len(novos_conteineres))
+
+    # 3. Grava em blocos. A ordem e proposital: DUEs antes dos vinculos,
+    # preservando a integridade referencial existente.
+    tamanho_bloco = 500
+    try:
+        for inicio in range(0, len(inserts), tamanho_bloco):
+            bloco = inserts[inicio:inicio + tamanho_bloco]
+            if bloco:
+                session.bulk_insert_mappings(Due, bloco)
+
+        for inicio in range(0, len(updates), tamanho_bloco):
+            bloco = updates[inicio:inicio + tamanho_bloco]
+            if bloco:
+                session.bulk_update_mappings(Due, bloco)
+
+        for inicio in range(0, len(novos_conteineres), tamanho_bloco):
+            bloco = novos_conteineres[inicio:inicio + tamanho_bloco]
+            if bloco:
+                session.bulk_insert_mappings(DueConteiner, bloco)
+
+        session.commit()
+        sucessos = list(ordem)
+    except Exception as erro:
+        session.rollback()
+        logger.error('Falha no UPSERT em lote das DUEs: %s', resumo_erro(erro))
+        raise
+
+    logger.info(
+        'UPSERT de DUEs concluido: recebidas=%s, sucesso=%s, erros=%s, sanitizadas=%s',
+        len(df_dues), len(sucessos), len(erros), total_sanitizados)
+    return {
+        'sucessos': sucessos,
+        'erros': erros,
+        'total_recebidos': len(df_dues),
+        'total_sucessos': len(sucessos),
+        'total_erros': len(erros),
+        'total_sanitizados': total_sanitizados,
+    }
+
+def trunca_descricao(dados, nome_campo, tamanho=1000):
+    descricao = dados.get(nome_campo)
+    if valor_nulo(descricao):
+        dados[nome_campo] = None
+        return
+    descricao = str(descricao).strip()
+    if len(descricao) > tamanho:
+        logger.warning('Campo %s truncado de %s para %s caracteres',
+                       nome_campo, len(descricao), tamanho)
+        descricao = descricao[:tamanho]
+    dados[nome_campo] = descricao
 
 
-def trunca_descricao(row, nomecampo, tamanho=1000):
-    descricao = row.get(nomecampo)
-    if descricao is None:
-        row[nomecampo] = ''
-    else:
-        descricao = str(descricao).strip()
-        if len(descricao) > tamanho:
-            logger.error(f'{nomecampo} excede {tamanho} caracteres: {descricao}')
-            row[nomecampo] = descricao[:tamanho]
+def integra_dues_itens(session, df_itens_dues, dues_permitidas=None):
+    """Faz UPSERT em lote apenas dos itens cuja DUE-pai foi persistida.
 
+    Mantem as mesmas regras de normalizacao, sanitizacao, truncamento e
+    validacao do fluxo anterior, mas elimina SELECT, SAVEPOINT e FLUSH por
+    item. A existencia das DUEs-pai e dos itens ja gravados e consultada em
+    lote; inserts e updates tambem sao enviados ao SQLAlchemy em lote.
+    """
+    sucessos = 0
+    erros = []
+    ignorados = []
+    total_sanitizados = 0
+    permitidas = set(dues_permitidas) if dues_permitidas is not None else None
+    logger.info('Iniciando UPSERT em lote de %s itens de DUE', len(df_itens_dues))
 
-def integra_dues_itens(session, df_itens_dues):
-    logger.info(f'Iniciando "UPSERT" de {len(df_itens_dues)} Itens de DUEs')
-    erros = 0
+    # 1. Normaliza/valida em memoria. Erros de dados continuam isolados por item.
+    registros = []
     for index, row in df_itens_dues.iterrows():
+        dados_brutos = row.to_dict()
+        nr_due = normaliza_identificador(dados_brutos.get('nr_due'))
+        if not nr_due:
+            erros.append({'indice': int(index), 'nr_due': None,
+                          'erro': 'nr_due nao informado'})
+            continue
+        if permitidas is not None and nr_due not in permitidas:
+            ignorados.append({'indice': int(index), 'nr_due': nr_due,
+                              'motivo': 'DUE-pai nao persistida neste lote'})
+            continue
         try:
-            with session.begin_nested():
-                trunca_descricao(row, 'descricao_complementar_item')
-                trunca_descricao(row, 'descricao_item')
-                try:
-                    row['nfe_nr_item'] = int(row['nfe_nr_item'])
-                except (ValueError, TypeError) as err:
-                    logger.error(err)
-                    erros += 1
-                    continue
-                dueitem = session.query(DueItem).filter(
-                    DueItem.nr_due == row['nr_due'],
-                    DueItem.due_nr_item == row['due_nr_item']).one_or_none()
-                if dueitem is None:
-                    dueitem = DueItem()
-                update_instance(dueitem, row.to_dict())
-                session.add(dueitem)
-                session.flush()
-        except SQLAlchemyError as err:
-            erros += 1
-            logger.error(f'Erro no item índice {index}, DUE {row.get("nr_due")}: {err}')
-            continue  # só sai deste item, o resto continua
-    try:
-        session.commit()
-        logger.info(f'Upsert de itens concluído com {len(df_itens_dues) - erros} sucessos, {erros} erros')
-        return True
-    except Exception as err:
-        session.rollback()
-        logger.error(err)
-        return False
+            dados, campos_sanitizados = normaliza_registro(
+                dados_brutos, CAMPOS_DATA_ITEM_DUE)
+            dados['nr_due'] = nr_due
+            dados['due_nr_item'] = normaliza_inteiro(
+                dados.get('due_nr_item'), 'due_nr_item', obrigatorio=True)
+            dados['nfe_nr_item'] = normaliza_inteiro(
+                dados.get('nfe_nr_item'), 'nfe_nr_item')
+            trunca_descricao(dados, 'descricao_complementar_item')
+            trunca_descricao(dados, 'descricao_item')
 
+            # Descarta chaves que nao pertencem ao modelo, como fazia
+            # update_instance no fluxo anterior.
+            colunas_modelo = set(c.name for c in DueItem.__table__.columns)
+            dados = {k: v for k, v in dados.items() if k in colunas_modelo}
+
+            if campos_sanitizados:
+                total_sanitizados += 1
+                logger.warning(
+                    'Item %s da DUE %s teve %s campo(s) sanitizado(s): %s',
+                    dados['due_nr_item'], nr_due, len(campos_sanitizados),
+                    ', '.join(campos_sanitizados))
+            registros.append((int(index), dados))
+        except (ValueError, TypeError) as erro:
+            mensagem = resumo_erro(erro)
+            erros.append({'indice': int(index), 'nr_due': nr_due,
+                          'erro': mensagem})
+            logger.error('Falha no item indice %s, DUE %s: %s',
+                         index, nr_due, mensagem)
+
+    if not registros:
+        logger.info(
+            'UPSERT de itens concluido: recebidos=%s, sucesso=0, erros=%s, '
+            'ignorados=%s, sanitizados=%s',
+            len(df_itens_dues), len(erros), len(ignorados), total_sanitizados)
+        return {
+            'sucessos': 0,
+            'erros': erros,
+            'ignorados': ignorados,
+            'total_recebidos': len(df_itens_dues),
+            'total_sucessos': 0,
+            'total_erros': len(erros),
+            'total_ignorados': len(ignorados),
+            'total_sanitizados': total_sanitizados,
+        }
+
+    # 2. Confere todas as DUEs-pai com UMA consulta, em vez de uma por item.
+    numeros_due = set(dados['nr_due'] for _, dados in registros)
+    try:
+        dues_existentes = set(
+            valor[0] for valor in
+            session.query(Due.numero_due).filter(Due.numero_due.in_(numeros_due)).all()
+        )
+    except SQLAlchemyError as erro:
+        session.rollback()
+        logger.error('Falha ao consultar DUEs-pai dos itens: %s', resumo_erro(erro))
+        raise
+
+    registros_validos = []
+    for index, dados in registros:
+        if dados['nr_due'] not in dues_existentes:
+            mensagem = 'DUE-pai {} nao existe'.format(dados['nr_due'])
+            erros.append({'indice': index, 'nr_due': dados['nr_due'],
+                          'erro': mensagem})
+            logger.error('Falha no item indice %s, DUE %s: %s',
+                         index, dados['nr_due'], mensagem)
+        else:
+            registros_validos.append((index, dados))
+
+    if not registros_validos:
+        logger.info(
+            'UPSERT de itens concluido: recebidos=%s, sucesso=0, erros=%s, '
+            'ignorados=%s, sanitizados=%s',
+            len(df_itens_dues), len(erros), len(ignorados), total_sanitizados)
+        return {
+            'sucessos': 0,
+            'erros': erros,
+            'ignorados': ignorados,
+            'total_recebidos': len(df_itens_dues),
+            'total_sucessos': 0,
+            'total_erros': len(erros),
+            'total_ignorados': len(ignorados),
+            'total_sanitizados': total_sanitizados,
+        }
+
+    # 3. Busca as chaves existentes em UMA consulta por conjunto de DUEs.
+    # Como a chave logica e (nr_due, due_nr_item), nao precisamos carregar
+    # todas as colunas dos objetos existentes.
+    numeros_validos = set(dados['nr_due'] for _, dados in registros_validos)
+    try:
+        existentes = set(
+            (linha[0], linha[1]) for linha in
+            session.query(DueItem.nr_due, DueItem.due_nr_item).filter(
+                DueItem.nr_due.in_(numeros_validos)
+            ).all()
+        )
+    except SQLAlchemyError as erro:
+        session.rollback()
+        logger.error('Falha ao consultar itens de DUE existentes: %s', resumo_erro(erro))
+        raise
+
+    # Se o mesmo item vier repetido no proprio payload, a ultima ocorrencia
+    # prevalece, equivalente ao efeito final dos UPSERTs sequenciais.
+    por_chave = {}
+    ordem = []
+    for index, dados in registros_validos:
+        chave = (dados['nr_due'], dados['due_nr_item'])
+        if chave not in por_chave:
+            ordem.append(chave)
+        por_chave[chave] = (index, dados)
+
+    inserts = []
+    updates = []
+    for chave in ordem:
+        _, dados = por_chave[chave]
+        if chave in existentes:
+            updates.append(dados)
+        else:
+            inserts.append(dados)
+
+    logger.info(
+        'Itens preparados para gravacao em lote: novos=%s, atualizacoes=%s, '
+        'duplicados_no_payload=%s',
+        len(inserts), len(updates), len(registros_validos) - len(ordem))
+
+    # 4. Grava em blocos. bulk_* evita ORM, SELECT e FLUSH por registro.
+    # 500 limita o tamanho de cada comando/transacao interna sem voltar ao
+    # custo de centenas de round-trips individuais.
+    tamanho_bloco = 500
+    try:
+        for inicio in range(0, len(inserts), tamanho_bloco):
+            bloco = inserts[inicio:inicio + tamanho_bloco]
+            if bloco:
+                session.bulk_insert_mappings(DueItem, bloco)
+
+        for inicio in range(0, len(updates), tamanho_bloco):
+            bloco = updates[inicio:inicio + tamanho_bloco]
+            if bloco:
+                session.bulk_update_mappings(DueItem, bloco)
+
+        session.commit()
+        sucessos = len(ordem)
+    except Exception as erro:
+        session.rollback()
+        logger.error('Falha no UPSERT em lote dos itens de DUE: %s', resumo_erro(erro))
+        raise
+
+    logger.info(
+        'UPSERT de itens concluido: recebidos=%s, sucesso=%s, erros=%s, '
+        'ignorados=%s, sanitizados=%s',
+        len(df_itens_dues), sucessos, len(erros), len(ignorados),
+        total_sanitizados)
+    return {
+        'sucessos': sucessos,
+        'erros': erros,
+        'ignorados': ignorados,
+        'total_recebidos': len(df_itens_dues),
+        'total_sucessos': sucessos,
+        'total_erros': len(erros),
+        'total_ignorados': len(ignorados),
+        'total_sanitizados': total_sanitizados,
+    }
 
 def get_dados(session, grid_data):
     try:
