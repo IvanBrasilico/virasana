@@ -115,7 +115,9 @@ Módulo próprio em `virasana/risco_historico/` (o serviço do ciclo, no F3, só
 - **Lote 2a — `extracao.py`** (sinais): CEs novos pela marca no ID; alterados pela `create_date` (= última
   alteração), em páginas (create_date, ID), re-extraindo só se mudou desde `ce_alterado_em`; NCMs novas pela marca
   no ID do `ncmitemresumo`, re-extraindo só se a NCM é mais nova que `ncm_id`. Nada depende do relógio desta
-  máquina. Marca inicial: menor ID dos CEs com `dataEmissao` nos últimos 30 dias (recusa faixa > 30 mil IDs/dia).
+  máquina. Marca inicial: ID no 1º percentil dos CEs com `dataEmissao` nos últimos 30 dias — o menor ID não
+  serve: há CEs antigos com `dataEmissao` recente (produção, 14/10/2026: "IDs a carregar mais que o limite").
+  Recusa ainda faixa > 30 mil IDs/dia e ID acima do último do Mercante.
 - **Lote 1 — `parametros.py`**: fichas positivas → `calculo.historico` → população da própria `risco_historico_ce`
   (`criado_em` nos últimos 90 dias) → pesos → nova versão. Só quando muda a assinatura das fichas positivas ou a
   última versão passa de 30 dias (ou `--forca`). Leva segundos: cabe no laço do ciclo (F3).

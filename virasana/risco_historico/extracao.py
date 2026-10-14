@@ -12,9 +12,11 @@ incrementalmente (ver CONTEXTO.md). Três marcas d'água (`risco_historico_marca
   - NCMs que chegam depois do CE: ID do ncmitemresumo; só re-extrai o CE se a
     NCM é mais nova que a maior usada nos sinais dele (`ncm_id`).
 
-Marca inicial: o menor ID dos CEs emitidos (dataEmissao, com índice) nos últimos
-N dias (decisão do usuário: 1 mês), ou um ID informado; recusa se a faixa de IDs
-for grande demais (dataEmissao errada num CE antigo puxaria a marca para trás).
+Marca inicial: entre os CEs emitidos (dataEmissao, com índice) nos últimos N dias
+(decisão do usuário: 1 mês), o ID no 1º percentil — e não o menor: há CEs antigos
+com dataEmissao recente ou errada, que puxavam a marca meses para trás (produção,
+14/10/2026: "IDs a carregar mais que o limite"). Ou um ID informado. Recusa ainda
+faixa de IDs grande demais e ID acima do último do Mercante.
 
 Re-extrair é seguro: os sinais dependem só do Mercante. Quem chama controla a
 transação (a linha de comando faz uma por volta; --simula desfaz).
@@ -33,6 +35,7 @@ MARCA_INICIAL, MARCA_CE, MARCA_ALTERACAO, MARCA_NCM = 'ce_id_inicial', 'ce_id', 
 TRAFEGO_EXPORTACAO = '7'
 LIMITE_CES_POR_DIA = 30000          # ~13 mil CEs novos por dia no F0 (com exportação)
 SOBREPOSICAO = timedelta(minutes=5)  # transação do ETL que grava depois com hora anterior
+QUANTIL_INICIAL = 0.01               # ignora o 1% de IDs mais baixos entre os CEs emitidos no período
 PAGINAS_ALTERADOS = 5                # páginas (create_date, ID) por volta
 COLUNAS_SINAIS = ('ce_id', 'dataEmissao', 'sinais', 'ce_alterado_em', 'ncm_id', 'sinais_em')
 
@@ -47,8 +50,10 @@ SQL_ALTERADOS = text(f'SELECT {CAMPOS_CE} FROM conhecimentosresumo '  # nosec B6
 SQL_CES_POR_NUMERO = text(f'SELECT {CAMPOS_CE} FROM conhecimentosresumo '  # nosec B608
                           'WHERE numeroCEmercante IN :ces').bindparams(bindparam('ces', expanding=True))
 SQL_NCMS_NOVAS = text('SELECT ID, numeroCEMercante FROM ncmitemresumo WHERE ID > :marca ORDER BY ID LIMIT :lote')
-SQL_PRIMEIRO_EMITIDO = text('SELECT MIN(ID) FROM conhecimentosresumo '
-                            'WHERE dataEmissao >= :desde AND dataEmissao <= :ate')
+SQL_EMITIDOS = text('SELECT COUNT(*), MIN(ID) FROM conhecimentosresumo '
+                    'WHERE dataEmissao >= :desde AND dataEmissao <= :ate')
+SQL_ID_NO_QUANTIL = text('SELECT ID FROM conhecimentosresumo WHERE dataEmissao >= :desde AND dataEmissao <= :ate '
+                         'ORDER BY ID LIMIT 1 OFFSET :pular')
 SQL_MAIOR_CE = text('SELECT MAX(ID), MAX(create_date) FROM conhecimentosresumo')
 SQL_MAIOR_NCM = text('SELECT MAX(ID) FROM ncmitemresumo')
 SQL_GRAVADOS = select(CES.c.numeroCEmercante, CES.c.ce_alterado_em, CES.c.ncm_id).where(
@@ -91,14 +96,18 @@ class Extracao:
         if self.conexao.execute(MARCAS.update().where(MARCAS.c.nome == nome).values(**valores)).rowcount == 0:
             self.conexao.execute(MARCAS.insert().values(nome=nome, **valores))
 
-    def _primeiro_emitido(self, desde_dias: int) -> int:
+    def _primeiro_emitido(self, desde_dias: int) -> Tuple[int, dict]:
+        """(ID inicial, detalhes): o ID no QUANTIL_INICIAL dos CEs emitidos no período."""
         agora = self.relogio()
-        desde_id = self.conexao.execute(SQL_PRIMEIRO_EMITIDO, {
-            'desde': (agora - timedelta(days=desde_dias)).strftime('%Y-%m-%d'),
-            'ate': agora.strftime('%Y-%m-%d')}).scalar()
-        if desde_id is None:
+        periodo = {'desde': (agora - timedelta(days=desde_dias)).strftime('%Y-%m-%d'),
+                   'ate': agora.strftime('%Y-%m-%d')}
+        total, menor = self.conexao.execute(SQL_EMITIDOS, periodo).one()
+        if not total:
             raise ErroInicio(f'nenhum CE emitido nos últimos {desde_dias} dias')
-        return int(desde_id)
+        pular = int(total * QUANTIL_INICIAL)
+        desde_id = self.conexao.execute(SQL_ID_NO_QUANTIL, {**periodo, 'pular': pular}).scalar()
+        return int(desde_id), {'CEs emitidos no período': int(total), 'menor ID entre eles': int(menor),
+                               'IDs mais baixos ignorados': pular}
 
     def inicia(self, desde_dias: int = 30, desde_id: Optional[int] = None, reinicia: bool = False) -> Optional[dict]:
         """Grava as marcas iniciais, se ainda não existem; devolve o que fez (None se já havia marcas).
@@ -113,7 +122,10 @@ class Extracao:
                 raise ErroInicio(f'as marcas já existem (início no ID {marcas[MARCA_INICIAL][0]}): o --desde-id '
                                  'não é aplicado. Para recomeçar, use --reinicia.')
             return None
-        desde_id = self._primeiro_emitido(desde_dias) if desde_id is None else int(desde_id)
+        detalhes: dict = {}
+        if desde_id is None:
+            desde_id, detalhes = self._primeiro_emitido(desde_dias)
+        desde_id = int(desde_id)
         maior_id, maior_data = self.conexao.execute(SQL_MAIOR_CE).one()
         if desde_id > int(maior_id or 0):
             raise ErroInicio(f'o ID inicial {desde_id} é maior que o último ID do Mercante ({maior_id})')
@@ -127,7 +139,7 @@ class Extracao:
         self.grava_marca(MARCA_CE, ultimo_id=int(desde_id) - 1)
         self.grava_marca(MARCA_ALTERACAO, ultima_data=_data(maior_data))
         self.grava_marca(MARCA_NCM, ultimo_id=int(self.conexao.execute(SQL_MAIOR_NCM).scalar() or 0))
-        return {'marca inicial (ID)': int(desde_id), 'IDs a carregar': a_carregar}
+        return {'marca inicial (ID)': desde_id, 'IDs a carregar': a_carregar, **detalhes}
 
     # ---------------------------------------------------------------- gravação
     def _gravados(self, numeros) -> Dict[str, dict]:

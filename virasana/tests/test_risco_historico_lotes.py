@@ -62,7 +62,9 @@ class TestExtracao(unittest.TestCase):
 
     def test_marca_inicial_pela_emissao_e_carga(self):
         e = extracao(self.conexao)
-        self.assertEqual(e.inicia(desde_dias=30), {'marca inicial (ID)': 6, 'IDs a carregar': 12})
+        self.assertEqual(e.inicia(desde_dias=30), {'marca inicial (ID)': 6, 'IDs a carregar': 12,
+                                                   'CEs emitidos no período': 11, 'menor ID entre eles': 6,
+                                                   'IDs mais baixos ignorados': 0})
         self.assertIsNone(e.inicia(desde_dias=30))                      # já iniciada: não mexe
         estatisticas, cheio = e.uma_volta()
         self.assertFalse(cheio)
@@ -80,6 +82,14 @@ class TestExtracao(unittest.TestCase):
         self.assertFalse(cheio)
         self.assertEqual((estatisticas['CEs novos lidos'], estatisticas['CEs alterados re-extraídos']), (0, 0))
         self.assertEqual(e.situacao(), {'CEs na tabela': 11, 'IDs do Mercante ainda não lidos': 0})
+
+    def test_ce_antigo_com_emissao_recente_nao_puxa_a_marca(self):
+        self.conexao.execute(text("UPDATE conhecimentosresumo SET dataEmissao = :d WHERE ID = 2"),   # CE2, antigo
+                             {'d': RECENTE.strftime('%Y-%m-%d')})
+        with mock.patch.object(ext, 'QUANTIL_INICIAL', 0.1):
+            inicio = extracao(self.conexao).inicia(desde_dias=30)
+        self.assertEqual((inicio['marca inicial (ID)'], inicio['menor ID entre eles'], inicio['IDs mais baixos ignorados']),
+                         (6, 2, 1))
 
     def test_lotes_e_fila(self):
         e = extracao(self.conexao, lote_ces=5)
