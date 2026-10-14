@@ -297,15 +297,21 @@ def _empresas(conexao, fichas: Dict[int, dict], ces: dict) -> Dict[str, str]:
     return empresas
 
 
-def extrai(conexao, tipos=TIPOS_PADRAO, inicio=None, fim=None, incluir_exportacao=False) -> dict:
-    """Fichas do universo com seus sinais. Returns:
+def extrai(conexao, tipos=TIPOS_PADRAO, inicio=None, fim=None, incluir_exportacao=False,
+           fichas: Optional[Iterable[dict]] = None) -> dict:
+    """Fichas do universo com seus sinais. `fichas` (opcional) substitui a busca
+    por tipo de resultado — ex.: as fichas positivas do risco por CE
+    (`risco_historico.fichas_positivas`); `tipos` continua dizendo quais
+    resultados entram em `resultados`/`valor`. Returns:
         {'fichas': [ {id, numero, datahora, resultados, perdimento, apreensao, valor,
                       ces, exportacao, sinais: {dimensao: set(valores)}} ],
          'descartadas_exportacao': int, 'ces_no_mercante': int, 'ces': int,
          'empresas': {raiz: nome}}
     """
+    if fichas is None:
+        fichas = busca_fichas(conexao, tipos, inicio, fim)
     fichas = {f['id']: {**f, 'sinais': {chave: set() for chave, _, _ in DIMENSOES}, 'ces': set(),
-                        'resultados': [], 'valor': 0.0} for f in busca_fichas(conexao, tipos, inicio, fim)}
+                        'resultados': [], 'valor': 0.0} for f in fichas}
     if not fichas:
         return {'fichas': [], 'descartadas_exportacao': 0, 'ces_no_mercante': 0, 'ces': 0, 'empresas': {}}
     _sinais_dos_textos(fichas, _sinais_do_fichas(conexao, fichas, tipos))
