@@ -93,8 +93,19 @@ class TestExtracao(unittest.TestCase):
         with mock.patch.object(ext, 'LIMITE_CES_POR_DIA', 1):
             with self.assertRaisesRegex(ext.ErroInicio, '12 IDs a carregar'):
                 extracao(self.conexao).inicia(desde_dias=1, desde_id=6)
+        with self.assertRaisesRegex(ext.ErroInicio, 'maior que o último ID do Mercante'):
+            extracao(self.conexao).inicia(desde_id=999)                  # erro de digitação
         with self.assertRaisesRegex(ext.ErroInicio, 'sem marcas'):
             extracao(self.conexao).uma_volta()
+
+    def test_desde_id_com_marcas_gravadas_e_reinicio(self):
+        e = extracao(self.conexao)
+        e.inicia(desde_id=16)
+        e.uma_volta()
+        with self.assertRaisesRegex(ext.ErroInicio, 'use --reinicia'):
+            e.inicia(desde_id=6)                                         # não é ignorado em silêncio
+        self.assertEqual(e.inicia(desde_id=6, reinicia=True)['marca inicial (ID)'], 6)
+        self.assertEqual(e.uma_volta()[0]['CEs novos gravados'], 11)     # P1..P10 e PZ (PZ refeito)
 
     def _altera(self, ids, consignatario, quando):
         self.conexao.execute(text('UPDATE conhecimentosresumo SET consignatario = :c, create_date = :d '
@@ -208,13 +219,20 @@ class TestLinhaDeComando(unittest.TestCase):
 
     def args(self, **opcoes):
         return Namespace(**{'desde_dias': 30, 'desde_id': None, 'lote': 5, 'simula': False, 'uma_vez': False,
-                            **opcoes})
+                            'reinicia': False, **opcoes})
 
     def test_voltas_ate_alcancar(self):
         engine = banco()
         self.assertEqual(lotes.sinais(engine, self.args(), relogio=lambda: AGORA), 3)   # 5 + 5 + 2 IDs
         with engine.connect() as conexao:
             self.assertEqual(conexao.execute(select(CES.c.ID)).fetchall().__len__(), 11)
+
+    def test_desde_id_so_na_primeira_volta(self):
+        engine = banco()
+        self.assertEqual(lotes.sinais(engine, self.args(desde_id=6), relogio=lambda: AGORA), 3)
+        self.assertEqual(lotes.sinais(engine, self.args(desde_id=6, reinicia=True), relogio=lambda: AGORA), 3)
+        with self.assertRaises(ext.ErroInicio):
+            lotes.sinais(engine, self.args(desde_id=7), relogio=lambda: AGORA)
 
     def test_simula_nao_grava_nada(self):
         engine = banco()

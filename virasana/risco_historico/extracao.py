@@ -91,19 +91,33 @@ class Extracao:
         if self.conexao.execute(MARCAS.update().where(MARCAS.c.nome == nome).values(**valores)).rowcount == 0:
             self.conexao.execute(MARCAS.insert().values(nome=nome, **valores))
 
-    def inicia(self, desde_dias: int = 30, desde_id: Optional[int] = None) -> Optional[dict]:
-        """Grava as marcas iniciais, se ainda não existem; devolve o que fez (None se já havia marcas)."""
-        if MARCA_CE in self.marcas():
-            return None
+    def _primeiro_emitido(self, desde_dias: int) -> int:
         agora = self.relogio()
+        desde_id = self.conexao.execute(SQL_PRIMEIRO_EMITIDO, {
+            'desde': (agora - timedelta(days=desde_dias)).strftime('%Y-%m-%d'),
+            'ate': agora.strftime('%Y-%m-%d')}).scalar()
         if desde_id is None:
-            desde_id = self.conexao.execute(SQL_PRIMEIRO_EMITIDO, {
-                'desde': (agora - timedelta(days=desde_dias)).strftime('%Y-%m-%d'),
-                'ate': agora.strftime('%Y-%m-%d')}).scalar()
-            if desde_id is None:
-                raise ErroInicio(f'nenhum CE emitido nos últimos {desde_dias} dias')
+            raise ErroInicio(f'nenhum CE emitido nos últimos {desde_dias} dias')
+        return int(desde_id)
+
+    def inicia(self, desde_dias: int = 30, desde_id: Optional[int] = None, reinicia: bool = False) -> Optional[dict]:
+        """Grava as marcas iniciais, se ainda não existem; devolve o que fez (None se já havia marcas).
+        `reinicia` apaga as marcas antes (os sinais já gravados ficam e são refeitos se lidos de novo). Um
+        `desde_id` com marcas já gravadas é erro — não é ignorado em silêncio."""
+        marcas = self.marcas()
+        if reinicia:
+            self.conexao.execute(MARCAS.delete())
+            marcas = {}
+        if MARCA_CE in marcas:
+            if desde_id is not None:
+                raise ErroInicio(f'as marcas já existem (início no ID {marcas[MARCA_INICIAL][0]}): o --desde-id '
+                                 'não é aplicado. Para recomeçar, use --reinicia.')
+            return None
+        desde_id = self._primeiro_emitido(desde_dias) if desde_id is None else int(desde_id)
         maior_id, maior_data = self.conexao.execute(SQL_MAIOR_CE).one()
-        a_carregar = int(maior_id or 0) - int(desde_id) + 1
+        if desde_id > int(maior_id or 0):
+            raise ErroInicio(f'o ID inicial {desde_id} é maior que o último ID do Mercante ({maior_id})')
+        a_carregar = int(maior_id) - desde_id + 1
         limite = max(desde_dias, 1) * LIMITE_CES_POR_DIA
         if a_carregar > limite:
             raise ErroInicio(f'{a_carregar} IDs a carregar a partir do ID {desde_id}: mais que {limite} '

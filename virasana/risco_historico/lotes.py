@@ -9,6 +9,9 @@ serviço do ciclo de vida). Ver virasana/risco_historico/CONTEXTO.md.
                 enquanto houver fila (--uma-vez: só uma).
   --parametros  nova versão dos parâmetros (lote 1), se as fichas positivas
                 mudaram ou a última venceu (--forca: sempre).
+  --reinicia    com --sinais: apaga as marcas e recomeça (com --desde-dias ou
+                --desde-id). Os sinais já gravados ficam e são refeitos se lidos de
+                novo. Sem ele, --desde-id com marcas já gravadas é recusado.
   --situacao    marcas e quanto falta.
   --simula      cada volta numa transação desfeita no fim: mede sem gravar (com
                 --sinais, faz uma volta só).
@@ -66,11 +69,14 @@ def _transacao(engine, simula: bool, funcao):
 
 def sinais(engine, args, relogio=datetime.now) -> int:
     """Voltas da extração; devolve quantas fez."""
+    primeira = {'desde_id': args.desde_id, 'reinicia': getattr(args, 'reinicia', False)}
+
     def volta(conexao):
         extracao = Extracao(conexao, relogio, lote_ces=args.lote)
-        inicio = extracao.inicia(args.desde_dias, args.desde_id)
+        inicio = extracao.inicia(args.desde_dias, **primeira)
         if inicio:
             logger.info(f'marcas iniciais: {inicio}')
+        primeira.update(desde_id=None, reinicia=False)   # só na primeira volta
         return extracao.uma_volta()
 
     voltas = 0
@@ -96,6 +102,7 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     parser.add_argument('--uma-vez', action='store_true', help='--sinais: uma volta só')
     parser.add_argument('--desde-dias', type=int, default=30, help='marca inicial: CEs emitidos nos últimos N dias')
     parser.add_argument('--desde-id', type=int, help='marca inicial: a partir deste conhecimentosresumo.ID')
+    parser.add_argument('--reinicia', action='store_true', help='--sinais: apaga as marcas e recomeça')
     parser.add_argument('--lote', type=int, default=10000, help='--sinais: CEs novos por volta (padrão 10000)')
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s', stream=sys.stdout)

@@ -119,7 +119,10 @@ Módulo próprio em `virasana/risco_historico/` (o serviço do ciclo, no F3, só
 - **Lote 1 — `parametros.py`**: fichas positivas → `calculo.historico` → população da própria `risco_historico_ce`
   (`criado_em` nos últimos 90 dias) → pesos → nova versão. Só quando muda a assinatura das fichas positivas ou a
   última versão passa de 30 dias (ou `--forca`). Leva segundos: cabe no laço do ciclo (F3).
-- **`lotes.py`**: linha de comando dos lotes (`--sinais`, `--parametros`, `--situacao`, `--simula`).
+- **`lotes.py`**: linha de comando dos lotes (`--sinais`, `--parametros`, `--situacao`, `--simula`). As marcas
+  ficam em `risco_historico_marca`: depois de gravadas, `--desde-id` é recusado (antes era ignorado em
+  silêncio — caso real em 14/10/2026, ID digitado errado); `--reinicia` apaga as marcas e recomeça; ID inicial
+  acima do último do Mercante é recusado.
 - **Lote 2b — `pontuacao.py` (F3)**: sinais × parâmetros da versão atual, em Python; versão nova re-pontua os
   CEs em lotes, **sem reler o Mercante**.
 - **No serviço do ciclo (F3)**: uma etapa no fim de cada volta, em transação própria e `try/except` (erro só vai
