@@ -61,6 +61,7 @@ TESTES = [
     'virasana/tests/test_dados_risco_perdimentos.py',
     'virasana/tests/test_risco_historico_tela.py',
     'virasana/tests/test_risco_historico_ce.py',
+    'virasana/tests/test_risco_historico_lotes.py',
     'virasana/tests/test_completude_tela.py',
     'virasana/tests/test_diagnostico_ciclo_de_vida.py',
     'virasana/tests/test_diagnostico_ces_ciclo_de_vida.py',

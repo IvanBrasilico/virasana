@@ -2,8 +2,9 @@
 """
 Blueprint da tela "Risco histórico das Fichas".
 
-  GET /risco_historico/          -> tela (filtros + resumo + uma tabela por dimensão)
-  GET /risco_historico/planilha  -> mesma extração, em planilha Excel
+  GET /risco_historico/            -> tela (filtros + resumo + uma tabela por dimensão)
+  GET /risco_historico/planilha    -> mesma extração, em planilha Excel
+  GET /risco_historico/parametros  -> parâmetros em uso do risco por CE (última versão; ver CONTEXTO.md)
 
 Só extração e visualização (não altera outras telas). A lógica é a do script
 `analytic_scripts/dados_risco_perdimentos.py`. Rotas sem redirect da barra
@@ -17,10 +18,12 @@ from datetime import date, datetime, timedelta
 
 from flask import Blueprint, current_app, render_template, request, send_file
 from flask_login import login_required
+from sqlalchemy.exc import SQLAlchemyError
 
 from virasana.analytic_scripts.dados_risco_perdimentos import (
     DIMENSOES, TIPOS_PADRAO, TIPOS_RESULTADO, extrai, indicadores, planilha_xlsx, resumo,
 )
+from virasana.risco_historico import parametros as parametros_ce
 
 bp_risco_historico = Blueprint('risco_historico', __name__, url_prefix='/risco_historico')
 
@@ -123,3 +126,18 @@ def planilha():
         io.BytesIO(planilha_xlsx(extracao(p), descricao)), as_attachment=True, download_name=nome,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
+
+
+@bp_risco_historico.route('/parametros', strict_slashes=False)  # sem redirect da barra final (proxy)
+@login_required
+def parametros_em_uso():
+    """Parâmetros em uso do risco histórico por CE: a "regra" que pontua cada CE."""
+    session = current_app.config['db_session']
+    contexto = {'dados': None, 'erro': None}
+    try:
+        contexto['dados'] = parametros_ce.para_tela(session.connection(), request.args.get('todos') == '1')
+    except SQLAlchemyError:   # tabelas ainda não criadas (ddl_risco_historico.sql)
+        session.rollback()
+        contexto['erro'] = ('As tabelas do risco por CE ainda não existem neste banco '
+                            '(virasana/risco_historico/ddl_risco_historico.sql).')
+    return render_template('risco_historico_parametros.html', **contexto)

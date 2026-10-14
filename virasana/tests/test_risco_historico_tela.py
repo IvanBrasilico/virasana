@@ -93,5 +93,55 @@ class TestTelaRiscoHistorico(unittest.TestCase):
         self.assertEqual(self.client.get('/risco_historico/planilha?inicio=x').status_code, 400)
 
 
+class TestTelaParametros(unittest.TestCase):
+    """Página "Parâmetros do risco por CE" (cenário de test_risco_historico_lotes)."""
+
+    def cliente(self, com_tabelas=True):
+        from virasana.risco_historico.extracao import Extracao
+        from virasana.tests.test_risco_historico_lotes import AGORA, banco
+        engine = banco() if com_tabelas else create_engine('sqlite://')
+        self.session = sessionmaker(bind=engine)()
+        if com_tabelas:
+            conexao = self.session.connection()
+            extracao = Extracao(conexao, relogio=lambda: AGORA)
+            extracao.inicia()
+            extracao.uma_volta()
+            from virasana.risco_historico import parametros
+            parametros.atualiza(conexao, AGORA)
+            self.session.commit()
+        pasta_templates = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
+        app = Flask(__name__, template_folder=pasta_templates)
+        app.config.update(LOGIN_DISABLED=True, TESTING=True, db_session=self.session)
+        LoginManager(app).request_loader(lambda req: Usuario())
+        app.register_blueprint(vrh.bp_risco_historico)
+        return app.test_client()
+
+    def tearDown(self):
+        self.session.close()
+
+    def test_parametros_em_uso(self):
+        cliente = self.cliente()
+        html = cliente.get('/risco_historico/parametros').get_data(as_text=True)
+        self.assertIn('Parâmetros do risco por CE', html)
+        self.assertIn('IMPORTADORA ALFA LTDA', html)
+        self.assertIn('href="/bhadrasana2/ovr?id=2"', html)
+        self.assertIn('Como o peso é calculado', html)
+        self.assertIn('CNPJ citado em ficha positiva', html)
+        self.assertNotIn('menos de 3 fichas', html)                      # só os que contam
+        self.assertIn('menos de 3 fichas', cliente.get('/risco_historico/parametros?todos=1').get_data(as_text=True))
+        self.assertEqual(cliente.get('/risco_historico/parametros/').status_code, 200)   # sem redirect
+
+    def test_abas_nas_duas_paginas(self):
+        cliente = self.cliente()
+        for url in ('/risco_historico/', '/risco_historico/parametros'):
+            html = cliente.get(url).get_data(as_text=True)
+            self.assertIn('href="/risco_historico/parametros"', html)
+            self.assertIn('Fichas com resultado', html)
+
+    def test_sem_as_tabelas(self):
+        html = self.cliente(com_tabelas=False).get('/risco_historico/parametros').get_data(as_text=True)
+        self.assertIn('ainda não existem neste banco', html)
+
+
 if __name__ == '__main__':
     unittest.main()

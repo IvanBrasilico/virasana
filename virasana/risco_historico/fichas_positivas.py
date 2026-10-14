@@ -8,7 +8,8 @@ Decisões do usuário (14/10/2026):
     outro órgão (7). Apreensão fica de fora (quase toda de cocaína: perfil
     logístico, não do importador); Sanção e DARF também;
   - TG de alto valor (soma dos TGs da ficha >= R$ 100 mil) conta mesmo sem esses
-    resultados, e pesa o dobro;
+    resultados; a ficha pesa o dobro a partir de R$ 1 mi (ajuste depois do F0: 85%
+    das fichas com TG passam de R$ 100 mil, e o dobro ali não distinguia nada);
   - FMA (tipo de operação 0, Mercadoria Abandonada) fica de fora: abandono é outro
     risco. As fichas de exportação (tipos 2 e 4) também.
 
@@ -21,7 +22,8 @@ from typing import List, Optional
 from sqlalchemy import bindparam, text
 
 RESULTADOS_POSITIVOS = (2, 3, 6, 7)        # Perdimento, Crédito, Multa RFB, Multa outro órgão
-TG_ALTO_VALOR = 100000.0                   # R$
+TG_ALTO_VALOR = 100000.0                   # R$: entra como positiva
+TG_PESO_DOBRADO = 1000000.0                # R$: pesa o dobro
 TIPOS_OPERACAO_EXCLUIDOS = (0, 2, 4)       # FMA (abandono); exportação
 PESO_FICHA, PESO_TG_ALTO = 1.0, 2.0
 
@@ -47,8 +49,8 @@ def motivo(ficha: dict, limiar: float = TG_ALTO_VALOR) -> str:
     return 'tg'
 
 
-def peso(ficha: dict, limiar: float = TG_ALTO_VALOR) -> float:
-    return PESO_TG_ALTO if float(ficha.get('valor_tg') or 0) >= limiar else PESO_FICHA
+def peso(ficha: dict) -> float:
+    return PESO_TG_ALTO if float(ficha.get('valor_tg') or 0) >= TG_PESO_DOBRADO else PESO_FICHA
 
 
 def busca(conexao, inicio: Optional[datetime] = None, fim: Optional[datetime] = None,
@@ -72,6 +74,6 @@ def busca(conexao, inicio: Optional[datetime] = None, fim: Optional[datetime] = 
         ficha = dict(linha._mapping)
         ficha['valor_tg'] = float(ficha['valor_tg'] or 0)
         ficha['motivo'] = motivo(ficha, limiar)
-        ficha['peso'] = peso(ficha, limiar)
+        ficha['peso'] = peso(ficha)
         fichas.append(ficha)
     return fichas

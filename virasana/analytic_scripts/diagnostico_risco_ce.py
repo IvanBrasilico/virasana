@@ -8,7 +8,7 @@ do cálculo (fichas_positivas, sinais, calculo):
   2. tipo de operação x resultado (quanto é FMA, quanto é exportação);
   3. valor dos TGs por ficha (limiar de alto valor);
   4. fichas positivas (definição do usuário) e os sinais delas;
-  5. população: CEs criados nos últimos N dias — tempo de cada etapa (com
+  5. população: CEs alterados (create_date = última alteração) nos últimos N dias — tempo de cada etapa (com
      estimativa para 365 dias), quantos valores do histórico aparecem e PRÉVIA
      dos pesos e dos pontos com as constantes provisórias de calculo.py;
   6. incremento: CEs por dia, marca inicial, atraso entre a emissão e a chegada
@@ -183,9 +183,9 @@ class DiagnosticoRiscoCE(Diagnostico):
     # ---------------------------------------------------------------- 5
     def secao_populacao(self):
         desde = self.agora - timedelta(days=self.dias_populacao)
-        self.titulo(f'5. POPULAÇÃO: CEs criados desde {desde:%Y-%m-%d} ({self.dias_populacao} dias, sem exportação)')
+        self.titulo(f'5. POPULAÇÃO: CEs alterados desde {desde:%Y-%m-%d} ({self.dias_populacao} dias, sem exportação)')
         sinais_ces, tempos = sinais.sinais_do_periodo(self.conexao, desde, self.agora)
-        contagens, total_n = sinais.conta(sinais_ces), len(sinais_ces)
+        contagens, total_n = sinais.conta(sinais_ces.values()), len(sinais_ces)
         escala = 365 / self.dias_populacao
         self.tabela(['etapa', 'segundos', 'estimativa p/ 365 dias'],
                     [(nome, f'{s:.1f}', f'{s * escala:.0f}') for nome, s in tempos.items()])
@@ -239,7 +239,8 @@ class DiagnosticoRiscoCE(Diagnostico):
     # ---------------------------------------------------------------- 6
     def secao_incremento(self):
         desde = self.agora - timedelta(days=self.dias_incremento)
-        self.titulo(f'6. INCREMENTO: CEs criados desde {desde:%Y-%m-%d} ({self.dias_incremento} dias)')
+        self.titulo(f'6. INCREMENTO: CEs com create_date (última alteração) desde {desde:%Y-%m-%d} '
+                    f'({self.dias_incremento} dias)')
         params = {'desde': desde}
         dias = self.consulta(
             'SELECT SUBSTR(CAST(create_date AS CHAR), 1, 10) AS dia, COUNT(*), '

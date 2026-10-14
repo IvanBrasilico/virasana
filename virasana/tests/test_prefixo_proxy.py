@@ -36,6 +36,7 @@ TELAS = [
     ('/entregas_cnpj', 'Entregas por CNPJ'),
     ('/apreensoes_transporte', 'Transporte das apreensões'),
     ('/risco_historico', 'Risco histórico das Fichas'),
+    ('/risco_historico/parametros', 'Parâmetros do risco por CE'),
     ('/completude_escaneamentos', 'Completude de escaneamentos'),
 ]
 

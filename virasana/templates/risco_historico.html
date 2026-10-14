@@ -9,64 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
 
-    <style>
-        /* Mesma linguagem visual das telas do NAVI-I, Entregas e Apreensões */
-        *, *::before, *::after { box-sizing: border-box; }
-        body { background: #F8F8F8; }
-        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
-        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
-        .cabecalho-pagina h1 {
-            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
-            display: flex; align-items: center; gap: .625rem;
-        }
-        .marca {
-            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
-            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
-        }
-        .page-subtitle { color: #666; }
-        .painel {
-            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
-        }
-        .form-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
-        .form-linha .br-input { flex: 1 1 10rem; margin: 0; }
-        .grupo-tipos { flex: 2 1 22rem; }
-        .grupo-tipos .rotulo { display: block; font-size: .875rem; font-weight: 600; color: #333; margin-bottom: .375rem; }
-        .grupo-tipos .opcoes { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
-        .opcao { display: inline-flex; align-items: center; gap: .375rem; font-size: .8125rem; }
-        .opcao input { width: 1rem; height: 1rem; }
-        .form-linha .botoes { display: flex; gap: .5rem; flex-wrap: wrap; }
-        .dica { font-size: .75rem; color: #777; margin-top: .75rem; line-height: 1.4; }
-        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; }
-        .resumo .item { font-size: .875rem; color: #555; }
-        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
-        details.dimensao { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; margin: .75rem 0; }
-        details.dimensao > summary {
-            cursor: pointer; padding: .875rem 1.25rem; font-weight: 700; color: #1c1c1c;
-            display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
-        }
-        details.dimensao > summary .contagem { font-weight: 400; color: #666; font-size: .8125rem; }
-        details.dimensao > summary .selo {
-            font-size: .625rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-            padding: .125rem .5rem; border-radius: 999px; background: #E8EEF9; color: #0C326F;
-        }
-        details.dimensao > summary .selo.contexto { background: #F3F3F3; color: #666; }
-        .conteudo-dimensao { padding: 0 1.25rem 1rem; }
-        .tabela-rolavel { overflow-x: auto; }
-        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
-        table.dados th {
-            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
-            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
-        }
-        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
-        table.dados tr:hover td { background: #F5F8FD; }
-        table.dados td.numero { text-align: right; white-space: nowrap; }
-        .mono { font-family: monospace; white-space: nowrap; }
-        .descricao { color: #555; max-width: 28rem; }
-        .fichas a { font-family: monospace; margin-right: .375rem; }
-        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
-        .aviso { color: #A15C00; font-size: .8125rem; margin-top: .75rem; }
-    </style>
+    {% include 'risco_historico_estilo.html' %}
 </head>
 <body>
 <div class="container-pagina py-4">
@@ -80,6 +23,7 @@
             candidatos a filtros de risco para os CEs que chegam.
         </p>
     </div>
+    {% with aba = 'fichas' %}{% include 'risco_historico_abas.html' %}{% endwith %}
 
     <form class="painel" method="get" action="{{ url_for('risco_historico.index') }}">
         <input type="hidden" name="pesquisar" value="1" />

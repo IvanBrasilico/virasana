@@ -5,7 +5,7 @@ Cenário (agora = 14/10/2026):
   fichas 1 e 2 — importador A, embarcador NINGBO TOYS, rota CNNGB > BRSSZ (Perdimento; Crédito);
                  a 1 cita o CNPJ C e o próprio CNPJ de A nas observações
   ficha 3 — FMA com perdimento (fora); 4 — só apreensão (fora); 6 — TG de 50 mil (fora);
-  ficha 7 — exportação (tipo 2, fora); 5 — sem resultado, TGs somando 150 mil (entra pelo TG, peso 2);
+  ficha 7 — exportação (tipo 2, fora); 5 — sem resultado, TGs somando R$ 1,5 mi (entra pelo TG, peso 2);
   ficha 8 — Multa RFB + TG de 200 mil, mas com CE só de exportação (descartada na extração);
   ficha 9 — Multa de outro órgão, sem CE.
   População (30 dias, sem exportação): P1 (A, NINGBO, com baldeação), P2 (C), P3..P10 (rota comum).
@@ -68,7 +68,7 @@ def _fichas(con):
         {'id': 7, 'ovr_id': 9, 'tipo_resultado': 7},
     ])
     insere(con, 'ovr_tgovr', [
-        {'id': 1, 'ovr_id': 5, 'valor': 100000}, {'id': 2, 'ovr_id': 5, 'valor': 50000},
+        {'id': 1, 'ovr_id': 5, 'valor': 1000000}, {'id': 2, 'ovr_id': 5, 'valor': 500000},
         {'id': 3, 'ovr_id': 6, 'valor': 50000}, {'id': 4, 'ovr_id': 8, 'valor': 200000},
         {'id': 5, 'ovr_id': 3, 'valor': 300000},
     ])
@@ -102,8 +102,8 @@ def _mercante(con):
     ])
 
 
-def monta_banco():
-    engine = create_engine('sqlite://')
+def monta_banco(engine=None):
+    engine = engine or create_engine('sqlite://')
     with engine.begin() as con:
         for ddl in DDL:
             con.execute(text(ddl))
@@ -125,8 +125,9 @@ class TestFichasPositivas(unittest.TestCase):
         self.assertEqual(set(fichas), {1, 2, 5, 8, 9})   # sem FMA, apreensão, TG < 100 mil e exportação
         self.assertEqual({i: f['motivo'] for i, f in fichas.items()},
                          {1: 'resultado', 2: 'resultado', 5: 'tg', 8: 'ambos', 9: 'resultado'})
-        self.assertEqual(fichas[5]['valor_tg'], 150000.0)   # soma dos TGs da ficha
-        self.assertEqual({i: f['peso'] for i, f in fichas.items()}, {1: 1.0, 2: 1.0, 5: 2.0, 8: 2.0, 9: 1.0})
+        self.assertEqual(fichas[5]['valor_tg'], 1500000.0)   # soma dos TGs da ficha
+        # peso 2 só a partir de R$ 1 mi (a ficha 8 tem TG de 200 mil: entra, mas pesa 1)
+        self.assertEqual({i: f['peso'] for i, f in fichas.items()}, {1: 1.0, 2: 1.0, 5: 2.0, 8: 1.0, 9: 1.0})
 
     def test_periodo_e_limiar(self):
         self.assertEqual({f['id'] for f in fichas_positivas.busca(self.conexao, inicio=datetime(2026, 1, 1))},
@@ -168,7 +169,7 @@ class TestSinais(unittest.TestCase):
         self.assertEqual(por_ce['P2']['ncm_declarado'], {'8471'})          # NCM gravada 2 h depois do CE
         self.assertEqual(set(tempos), {'CEs do período', 'portos de carregamento (manifestos)', 'NCMs',
                                        'sinais (Python)'})
-        contagens = sinais.conta(por_ce)
+        contagens = sinais.conta(por_ce.values())
         self.assertEqual(contagens['rota']['CNNGB > BRSSZ'], 9)
         self.assertEqual(contagens[sinais.CITADO]['11444777'], 1)
         conexao.close()
@@ -187,13 +188,35 @@ class TestCalculo(unittest.TestCase):
         p = calculo.peso('importador', 2, 2.0, 5.0, 1, 10)
         self.assertAlmostEqual(p.vezes, 2.0)
         self.assertAlmostEqual(p.peso, math.log(2))
-        self.assertEqual(calculo.peso('importador', 1, 1.0, 5.0, 1, 10).peso, 0.0)       # mínimo de 2 fichas
-        self.assertGreater(calculo.peso(sinais.CITADO, 1, 1.0, 5.0, 1, 10).peso, 0.0)    # citado: 1 basta
-        self.assertEqual(calculo.peso('rota', 2, 2.0, 5.0, 9, 10).peso, 0.0)            # rota comum: abaixo da média
-        raro = calculo.peso('importador', 5, 5.0, 5.0, 0, 10 ** 7)
-        self.assertEqual(raro.peso, calculo.TETO_PADRAO)
-        self.assertEqual(calculo.peso(sinais.CITADO, 5, 5.0, 5.0, 0, 10 ** 7).peso, calculo.TETO[sinais.CITADO])
+        self.assertEqual(p.motivo, '')
+        self.assertGreater(calculo.peso('importador', 1, 1.0, 5.0, 1, 100).peso, 0.0)    # identidade: 1 ficha basta
+        rota_comum = calculo.peso('rota', 3, 3.0, 5.0, 9, 10, importadores=3)
+        self.assertEqual((rota_comum.peso, rota_comum.motivo), (0.0, 'não passa da média'))
+        self.assertEqual(calculo.peso('rota', 2, 2.0, 5.0, 1, 10 ** 6, importadores=2).motivo, 'menos de 3 fichas')
+        uma_empresa = calculo.peso('ncm_declarado', 3, 3.0, 5.0, 1, 10 ** 6, importadores=1)
+        self.assertEqual((uma_empresa.peso, uma_empresa.motivo), (0.0, 'fichas de menos de 2 importadores'))
+        self.assertEqual(calculo.peso('rota', 3, 3.0, 5.0, 1, 10 ** 6, importadores=2).peso, 3.0)   # teto do contexto
+        self.assertEqual(calculo.peso('importador', 5, 5.0, 5.0, 0, 10 ** 7).peso, 5.0)
+        self.assertEqual(calculo.peso(sinais.CITADO, 5, 5.0, 5.0, 0, 10 ** 7).peso, 8.0)
         self.assertEqual(calculo.peso('importador', 2, 2.0, 0.0, 1, 10).peso, 0.0)
+
+    def test_grupos_contam_uma_vez(self):
+        p = calculo.Peso(3, 2, 3.0, 5.0, 1, 100, 10.0, 2.0)
+        q = calculo.Peso(3, 2, 3.0, 5.0, 1, 100, 20.0, 2.5)
+        pesos = {d: {} for d in sinais.DIMENSOES}
+        pesos['ncm_declarado']['6108'], pesos['pais_ncm']['CN 6108'] = p, q
+        pontos, parcelas = calculo.pontua({'ncm_declarado': {'6108'}, 'pais_ncm': {'CN 6108'}}, pesos)
+        self.assertEqual((pontos, [(d, v) for d, v, _ in parcelas]), (2.5, [('pais_ncm', 'CN 6108')]))
+
+    def test_importadores_distintos_e_embarcador_longo(self):
+        longo = 'X' * 300
+        hist = calculo.historico([
+            {'id': 1, 'peso': 1.0, 'sinais': {'importador': {'11111111'}, 'rota': {'A > B'}, 'embarcador': {longo}}},
+            {'id': 2, 'peso': 1.0, 'sinais': {'importador': {'11111111'}, 'rota': {'A > B'}}},
+            {'id': 3, 'peso': 2.0, 'sinais': {'rota': {'A > B'}}}])                       # sem importador conhecido
+        self.assertEqual(hist.total, 4.0)
+        self.assertEqual(hist.importadores['rota']['A > B'], {'11111111', 'ficha 3'})
+        self.assertIn('X' * 255, hist.k['embarcador'])
 
     def test_pontos_sao_a_soma_das_parcelas(self):
         conexao = monta_banco().connect()
@@ -204,7 +227,7 @@ class TestCalculo(unittest.TestCase):
         self.assertEqual(sorted(hist.fichas['importador']['11222333']), [1, 2])
         self.assertEqual(hist.fichas[sinais.CITADO], {'11444777': [1]})
         por_ce, _ = sinais.sinais_do_periodo(conexao, AGORA - timedelta(days=30), AGORA)
-        pesos = calculo.tabela_de_pesos(hist, sinais.conta(por_ce), len(por_ce))
+        pesos = calculo.tabela_de_pesos(hist, sinais.conta(por_ce.values()), len(por_ce))
         pontos, parcelas = calculo.pontua(sinais.pontuaveis(por_ce['P1']), pesos)
         self.assertEqual({d for d, _, _ in parcelas}, {'importador', 'embarcador'})   # rota comum e NCM em 1 ficha: 0
         self.assertAlmostEqual(pontos, 2 * math.log(2), places=4)
@@ -231,7 +254,7 @@ class TestDiagnostico(unittest.TestCase):
         for secao in ('1. ESTRUTURA', '2. TIPO DE OPERAÇÃO', '3. VALOR DOS TGs', '4. FICHAS POSITIVAS',
                       '5. POPULAÇÃO', '6. INCREMENTO'):
             self.assertIn(secao, log)
-        self.assertIn('Total: 5 fichas (só resultado 3, só TG alto 1, ambos 1); soma dos pesos 7', log)
+        self.assertIn('Total: 5 fichas (só resultado 3, só TG alto 1, ambos 1); soma dos pesos 6', log)
         self.assertIn('Descartadas por terem só CEs de exportação: 1', log)
         self.assertIn('N (CEs na população): 10', log)
         self.assertIn('CNNGB > BRSSZ', log)
