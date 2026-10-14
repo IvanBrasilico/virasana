@@ -1,0 +1,4 @@
+<nav class="abas" aria-label="Páginas do risco histórico">
+    <a href="{{ url_for('risco_historico.index') }}" class="{{ 'ativa' if aba == 'fichas' else '' }}">Fichas com resultado</a>
+    <a href="{{ url_for('risco_historico.parametros_em_uso') }}" class="{{ 'ativa' if aba == 'parametros' else '' }}">Parâmetros do risco por CE</a>
+</nav>

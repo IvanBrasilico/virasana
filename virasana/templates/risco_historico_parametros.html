@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Parâmetros do risco por CE</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    {% include 'risco_historico_estilo.html' %}
+</head>
+<body>
+{% macro num(valor, casas=0) -%}
+{{ ('{:,.' ~ casas ~ 'f}').format(valor or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+{%- endmacro %}
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">HISTÓRICO</span> Parâmetros do risco por CE</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            O peso de cada importador, embarcador, CNPJ citado, rota e NCM no risco calculado para cada CE, a partir
+            das Fichas de importação com Perdimento, Crédito, Multa RFB, Multa de outro órgão ou TG de alto valor.
+        </p>
+    </div>
+    {% with aba = 'parametros' %}{% include 'risco_historico_abas.html' %}{% endwith %}
+
+    {% if erro %}
+    <div class="br-message warning mt-3" role="alert">
+        <div class="content"><span class="message-body">{{ erro }}</span></div></div>
+    {% elif not dados %}
+    <div class="painel"><p class="vazio mb-0">Ainda não há versão dos parâmetros. Ela é calculada em lote
+        (<span class="mono">virasana/risco_historico/lotes.py --parametros</span>) depois da extração dos sinais
+        dos CEs.</p></div>
+    {% else %}
+    {% set v = dados.versao %}
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ v.ID }}</strong>versão</div>
+            <div class="item"><strong>{{ v.criado_em.strftime('%d/%m/%Y %H:%M') }}</strong>calculada em — {{ v.motivo }}</div>
+            <div class="item"><strong>{{ v.fichas }}</strong>fichas positivas</div>
+            <div class="item"><strong>{{ num(v.total_k) }}</strong>soma dos pesos das fichas (K)</div>
+            <div class="item"><strong>{{ num(v.total_n) }}</strong>CEs na população (N), desde {{ v.populacao_desde.strftime('%d/%m/%Y') }}</div>
+        </div>
+        <details class="mt-3">
+            <summary class="text-weight-semi-bold">Como o peso é calculado</summary>
+            <p class="dica">Para cada valor (ex.: um importador): <strong>vezes a média</strong> = fatia das fichas
+                positivas que têm o valor ÷ fatia dos CEs da população que têm o valor. Com poucas fichas, a fatia é
+                puxada para a média (suavização m = {{ v.constantes.m }}). <strong>Peso</strong> = logaritmo natural
+                de "vezes a média", até o teto. Ficha com TG a partir de R$ 1 milhão vale 2.
+                Os <strong>pontos de um CE</strong> são a soma, por grupo, do maior peso entre os valores do CE
+                (NCM e país + NCM são um grupo; rota e baldeação, outro).</p>
+            <dl class="regras">
+                {% for grupo in dados.grupos %}{% for dimensao, regra in grupo.regras.items() %}
+                <dt>{{ grupo.rotulo }}{% if grupo.regras | length > 1 %} — {{ dimensao }}{% endif %}</dt>
+                <dd>mínimo de {{ regra.minimo_fichas }} ficha(s){% if regra.minimo_importadores > 1 %} de
+                    {{ regra.minimo_importadores }}+ importadores diferentes{% endif %}; teto {{ num(regra.teto, 1) }}</dd>
+                {% endfor %}{% endfor %}
+            </dl>
+        </details>
+        <p class="dica">
+            {% if dados.todos %}Mostrando todos os valores do histórico, inclusive os que não contam (com o motivo).
+            <a href="{{ url_for('risco_historico.parametros_em_uso') }}">Mostrar só os que contam</a>.
+            {% else %}Mostrando só os valores que contam (peso maior que zero).
+            <a href="{{ url_for('risco_historico.parametros_em_uso', todos=1) }}">Mostrar todos, com o motivo dos que não contam</a>.
+            {% endif %}
+        </p>
+    </div>
+
+    {% for grupo in dados.grupos %}
+    <details class="dimensao" {% if grupo.identidade and grupo.linhas %}open{% endif %}>
+        <summary>{{ grupo.rotulo }}
+            <span class="selo {{ '' if grupo.identidade else 'contexto' }}">{{ 'identidade' if grupo.identidade else 'contexto' }}</span>
+            <span class="contagem">{{ grupo.linhas | length }} {{ 'valor' if grupo.linhas | length == 1 else 'valores' }}</span>
+        </summary>
+        <div class="conteudo-dimensao">
+            {% if grupo.linhas %}
+            <div class="tabela-rolavel">
+                <table class="dados">
+                    <thead>
+                        <tr>{% if grupo.regras | length > 1 %}<th>Dimensão</th>{% endif %}<th>Valor</th><th>Descrição</th>
+                            <th>Fichas</th><th>Importadores</th><th>CEs</th><th>% dos CEs</th><th>× média</th>
+                            <th>Peso</th>{% if dados.todos %}<th>Por que não conta</th>{% endif %}<th>Fichas (mais recentes)</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for linha in grupo.linhas %}
+                        <tr>
+                            {% if grupo.regras | length > 1 %}<td>{{ linha.rotulo }}</td>{% endif %}
+                            <td class="mono">{{ linha.valor }}</td>
+                            <td class="descricao">{{ linha.descricao or '' }}</td>
+                            <td class="numero">{{ linha.fichas }}</td>
+                            <td class="numero">{{ linha.importadores }}</td>
+                            <td class="numero">{{ num(linha.n) }}</td>
+                            <td class="numero">{{ num(linha.pct, 3) }}</td>
+                            <td class="numero">{{ num(linha.vezes, 1) }}</td>
+                            <td class="numero {{ 'peso' if linha.peso > 0 else 'zero' }}">{{ num(linha.peso, 2) }}</td>
+                            {% if dados.todos %}<td class="descricao">{{ linha.motivo or '' }}</td>{% endif %}
+                            <td class="fichas">{% for ficha in linha.fichas_lista %}<a
+                                href="/bhadrasana2/ovr?id={{ ficha }}" target="_blank">{{ ficha }}</a>{% endfor %}
+                                {% if linha.fichas > linha.fichas_lista | length %}…{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="vazio">Nenhum valor {{ '' if dados.todos else 'com peso ' }}neste grupo.</p>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+    <p class="aviso"><i class="fas fa-user-shield" aria-hidden="true"></i>
+        Contém CNPJs: use e compartilhe conforme as regras de sigilo fiscal e a LGPD.</p>
+    {% endif %}
+</div>
+</body>
+</html>
