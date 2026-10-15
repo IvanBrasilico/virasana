@@ -42,16 +42,18 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 sys.path.append('../bhadrasana2')
 
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
-from virasana.navii import busca_navii
+from virasana.navii import busca_navii, dta_navii
 from virasana.navii.busca_navii import (
     _periodo_navii, busca_ciclos_navii, busca_itens_navii,
     busca_manifestos_navii, busca_nomes_empresas, busca_nomes_recintos,
     monta_query_navii,
 )
-from virasana.integracao.mercante.mercantealchemy import Item
+from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
+
+SEM_DADOS = -1.0   # o ANALYZE não executou a consulta (ex.: valor que não existe no banco)
 
 TABELAS = [
     'itensresumo', 'conhecimentosresumo', 'ncmitemresumo', 'manifestosresumo',
@@ -246,9 +248,12 @@ class Diagnostico:
         saida = '\n'.join(linhas)
         self.escreve(saida)
         try:
-            return json.loads(saida)['query_block']['r_total_time_ms'] / 1000
+            bloco = json.loads(saida)['query_block']
         except Exception:  # noqa
             return None
+        if 'r_total_time_ms' not in bloco:   # ex.: "no matching row in const table" — a consulta nem rodou
+            return SEM_DADOS
+        return bloco['r_total_time_ms'] / 1000
 
     def secao_resumo(self):
         self.titulo('6. RESUMO DOS TEMPOS MEDIDOS (segundos; a 1ª execução de cada tabela paga o cache frio)')
@@ -262,10 +267,10 @@ class Diagnostico:
                 if linha:
                     self.escreve(linha)
                 atual, linha = cenario, cenario.ljust(largura)
-            tempo = 'ERRO' if segundos is None else f'{segundos:.1f}s'
+            tempo = 'ERRO' if segundos is None else ('sem dados' if segundos == SEM_DADOS else f'{segundos:.1f}s')
             linha += '  ' + f"{query.split(' (')[0][:22]}={tempo}".ljust(30)
         self.escreve(linha)
-        medidos = [segundos for _, _, segundos in self.tempos if segundos is not None]
+        medidos = [segundos for _, _, segundos in self.tempos if segundos is not None and segundos != SEM_DADOS]
         self.escreve()
         self.escreve(f'{len(medidos)} queries medidas, {sum(medidos):.0f}s no total; '
                      f'mais lenta: {max(medidos, default=0):.1f}s.')
@@ -336,11 +341,34 @@ class Diagnostico:
         self.executa('SELECT numeroCEmercante, codigoConteiner, tipoItemCarga, pesoBruto '
                      'FROM itensresumo ORDER BY ID DESC LIMIT 5')
 
+    def amostras_reais(self, session) -> dict:
+        """Um contêiner e um CE de importação recentes e a DTA mais recente, para os cenários de busca direta: com
+        os números de exemplo (inexistentes), o banco nem executa a consulta ("Impossible WHERE")."""
+        amostras = {}
+        try:
+            linha = session.execute(
+                select(Item.numeroCEmercante, Item.codigoConteiner)
+                .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
+                .where(Item.codigoConteiner != '', Conhecimento.tipoTrafego == '5')
+                .order_by(Item.ID.desc()).limit(1)).first()
+            if linha:
+                amostras['ce'], amostras['conteiner'] = [linha[0]], [linha[1]]
+            if dta_navii.disponivel(session):
+                numero = session.execute(select(dta_navii.DTAS.c.codigo_declaracao_transito)
+                                         .order_by(dta_navii.DTAS.c.id.desc()).limit(1)).scalar()
+                if numero:
+                    amostras['dta'] = [numero.strip()]
+        except Exception as err:  # noqa: sem amostras, ficam os números de exemplo
+            self.escreve(f'!! ERRO buscando amostras reais: {err}')
+        self.escreve(f'Amostras reais para os cenários de contêiner, CE e DTA: {amostras or "nenhuma"}')
+        return amostras
+
     def secao_buscas(self, session, periodos, cenarios=CENARIOS):
         self.titulo('4. BUSCAS SIMULADAS (SQL gerado pela tela + EXPLAIN)')
+        amostras = self.amostras_reais(session)
         for tipo_janela in ('efetiva', 'prevista'):
             for descricao, filtros in cenarios:
-                filtros = dict(filtros)
+                filtros = {**filtros, **{chave: valor for chave, valor in amostras.items() if chave in filtros}}
                 inicio, fim = periodos.get(tipo_janela) or (None, None)
                 if inicio and fim and 'ce' not in filtros and 'dta' not in filtros:   # CE/DTA: sem período
                     filtros.update(data_inicio=inicio, data_fim=fim)

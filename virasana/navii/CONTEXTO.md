@@ -443,6 +443,16 @@ Em 15/10/2026 (pedidos do usuário):
   risco (os cards não carregavam): `test_prefixo_proxy.test_script_do_navii_so_chama_funcoes_definidas` agora
   confere que toda função chamada no script da página existe.
 
+### Quinta medição (15/10/2026, `--analyze --so-ciclo`, filtros novos)
+
+Janela efetiva 30/09–10/10, porto BRSSZ (página / contagem): padrão 2,6 s / 3,0 s; **risco "só alto"** 2,6 / 3,5;
+**risco "com algum sinal"** 2,5 / 3,5; **com DTA** 2,6 / 3,4; **CORAD até alto** 1,7 / 2,3 (mais rápido: o critério
+entra também no ramo da atracação prevista). Janela prevista: tudo abaixo de 1,2 s. Os filtros novos custam no máximo
+~0,5 s na contagem. `risco_historico_ce` é utf8mb4 (key_len 60) e o `itensresumo` latin1: o índice único do risco é
+usado mesmo assim (ref "func": o valor latin1 é convertido). Os cenários de CE e de DTA usavam números de exemplo
+inexistentes ("Impossible WHERE", resumo dizia ERRO): o diagnóstico passou a usar um CE, um contêiner e uma DTA reais
+e recentes (`amostras_reais`) e marca "sem dados" quando o ANALYZE não executa.
+
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
 Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache

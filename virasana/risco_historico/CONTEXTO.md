@@ -245,3 +245,8 @@ Pendências do risco (observadas na página de 14/10/2026):
 Ativação do F3/F4: `git pull`; `lotes.py --pontos` (pontua os ~300 mil CEs; cria os limiares da versão 2);
 reiniciar o serviço do ciclo (a etapa entra sozinha) e o virasana web; conferir no NAVI-I e medir o filtro com
 `navii/diagnostico_sql.py --analyze --so-ciclo` (cenários "risco histórico").
+
+**F3/F4 ativos em produção (15/10/2026).** `--situacao` às 10:13: 311.521 CEs, extração em dia, fila da pontuação
+vazia; versão 3 (forçada às 09:47, já sem as raízes de dígitos iguais; N = 311.235; limiares alto 4,134 e médio
+2,751). Faixas: alto 3.126 (1,0%), médio 13.125 (4,2%), baixo 91.637 (29,4%), sem sinal 203.633 (65,4%). Filtro de
+risco no NAVI-I: +0,1 s na página e +0,5 s na contagem (ver navii/CONTEXTO.md, quinta medição).

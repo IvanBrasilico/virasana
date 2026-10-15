@@ -1029,5 +1029,24 @@ class TestExtrato(NaviiSqliteTestCase):
         self.assertIsNone(extrato_navii.monta_extrato(self.session, ''))
 
 
+class TestDiagnosticoSql(NaviiSqliteTestCase):
+    """diagnostico_sql.py: amostras reais para os cenários de busca direta e o resumo sem "ERRO" falso."""
+
+    def test_amostras_reais_e_resumo(self):
+        import io
+        from virasana.navii import diagnostico_sql as ds
+        monta_extrato_cenario(self.session)
+        saida = io.StringIO()
+        diagnostico = ds.Diagnostico(self.session.get_bind(), saida, analyze=False)
+        self.assertEqual(diagnostico.amostras_reais(self.session),
+                         {'ce': [CE_EXTRATO], 'conteiner': ['C9'], 'dta': ['2612345678']})
+        diagnostico.tempos = [('a', 'PÁGINA (20 cards)', 1.2), ('a', 'CONTAGEM TOTAL', ds.SEM_DADOS),
+                              ('b', 'PÁGINA (20 cards)', None)]
+        diagnostico.secao_resumo()
+        self.assertIn('CONTAGEM TOTAL=sem dados', saida.getvalue())
+        self.assertIn('PÁGINA=ERRO', saida.getvalue())
+        self.assertIn('1 queries medidas', saida.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()
