@@ -586,6 +586,37 @@ ciclos já encerrados (o serviço só procura a imagem ao refazer o contêiner) 
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_imagens_ciclo.py --saida imagens.log
 ```
 
+### Operador em papel de TRA (observação do usuário, 15/10/2026) — EM DIAGNÓSTICO
+
+Faltou na especificação inicial: um operador pode armazenar carga desembarcada em OUTRO operador, como TRA —
+desembarca na ECOPORTO, sai, entra na DPW/EMBRAPORT, escaneia e fica lá (DPW como TRA); ou desembarca na BTP,
+Santos Brasil ou DPW, sai, entra na ECOPORTO, escaneia e fica lá. O problema é a confusão com o **escaneamento
+terceirizado**, já tratado (BTP → ECOPORTO só para escanear → TRA não operador da 0817800, onde ficam a entrada e a
+saída do ciclo).
+
+**Como o núcleo trata hoje** (confirmado no cenário de `tests/test_diagnostico_operador_tra.py`): toda estada noutro
+operador é PASSAGEM (`_em_outro_operador`): a saída de lá volta ao trânsito, o escaneamento feito lá fica marcado
+"escaneamento fora" e, sem nova entrada em 48 h, o ciclo fecha como **operador/concluído — "entregue pelo operador"**
+(o do desembarque). Ainda dentro do outro operador: aberto "no operador X" até o abandono. Efeitos: a **completude do
+operador** cobra o escaneamento do operador do DESEMBARQUE (e o conta como escaneado se o outro escaneou); a
+**completude TRA** não vê o outro operador; o NAVI-I mostra "entregue" sem a estada de armazenagem.
+
+**Diagnóstico** (`diagnostico_operador_tra.py`, só leitura): candidatos = ciclos com entrada CHEIA noutro operador de
+Santos em até 30 dias do desembarque; para eles, o percurso estada por estada até a primeira fronteira, a classe de
+cada estada (passagem ≤ 6 h + nova entrada; final > 6 h sem nova entrada = "TRA?"; em aberto; baldeação; ...), por
+faixa de duração e par de operadores, como o ciclo gravado tratou, o efeito na completude, a duração de referência
+dos TRA não operadores, DTA dos CEs e exemplos.
+
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_operador_tra.py --saida operador_tra.log
+```
+
+Hipótese de regra (a decidir com os números): depois da saída do outro operador, **nova entrada cheia em até 6 h** =
+passagem (como hoje); **sem nova entrada em 48 h** (ou ainda lá depois de N horas) = o outro operador foi o TRA —
+`entrada_seco`/`saida_seco`/`codigoRecintoArmazenagem` = ele, fluxo `tra`, escaneamento de lá "no recinto da etapa"
+(não "fora"). Pontos a medir: estadas longas seguidas de outra entrada (dois estágios?), a duração que separa as
+duas classes, e como gravar enquanto o contêiner ainda está lá (TRA provisório, como o `pos_seco` dos não operadores).
+
 ### Efeitos nas telas (completude e NAVI-I) — 02/10/2026
 
 As telas continuam funcionando sem mudança (mesmas tabelas e IDs; colunas novas são ignoradas), mas os

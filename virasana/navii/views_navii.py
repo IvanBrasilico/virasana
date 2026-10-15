@@ -13,6 +13,8 @@ Expõe:
   GET|POST|DELETE /navii/api/filtros -> filtros salvos do usuário (MongoDB,
                              ver `filtros_salvos.py`)
 
+A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`).
+
 Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
 """
@@ -25,7 +27,7 @@ from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
-from virasana.navii import dta_navii, extrato_navii, filtros_salvos, referencias, risco_navii
+from virasana.navii import dta_navii, extrato_navii, filtros_salvos, referencias, risco_navii, uso_navii
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS, busca_ces_navii,
     conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
@@ -91,6 +93,8 @@ def _defaults_periodo():
 @bp_navii.route('/', strict_slashes=False)  # sem redirect da barra final (proxy; ver CLAUDE.md)
 @login_required
 def index():
+    # aberta por link (completude, card, extrato...): os parâmetros mostram de onde veio
+    uso_navii.registra('tela', _usuario(), link=request.args.to_dict(flat=False) or None)
     return render_template(
         'navii.html',
         imagem_url_template=_imagem_url_template(),
@@ -104,6 +108,7 @@ def index():
         rotulos_corad=ROTULOS_CORAD,
         opcoes_tem_dta=dta_navii.OPCOES_TEM_DTA,
         risco_parametros_url=_url_parametros_risco(),
+        segundos_lenta=uso_navii.SEGUNDOS_LENTA,
     )
 
 
@@ -119,7 +124,11 @@ def url_extrato_ce(numero: str) -> str:
 def extrato():
     """Extrato do CE (?CE=número): os dados do CE uma vez e um card por contêiner, com imagem e eventos."""
     numero = extrato_navii.normaliza_ce(request.args.get('CE') or request.args.get('ce'))
-    dados = extrato_navii.monta_extrato(current_app.config['db_session'], numero) if numero else None
+    dados, segundos = None, None
+    if numero:
+        dados, segundos = _cronometrado(extrato_navii.monta_extrato, current_app.config['db_session'], numero)
+    uso_navii.registra('extrato', _usuario(), segundos, ce=numero or request.args.get('CE') or '',
+                       conteineres=len(dados['conteineres']) if dados else 0)
     return render_template(
         'navii_extrato.html', numero=numero, dados=dados,
         extrato_url=url_for('navii.extrato'), navii_url=url_for('navii.index'),
@@ -187,6 +196,7 @@ def _filtros_da_requisicao() -> dict:
 @login_required
 def api_ces():
     session = current_app.config['db_session']
+    inicio = perf_counter()
 
     tipo_janela = request.args.get('tipo_janela', 'efetiva')
     cursor_id = request.args.get('cursor_id', type=int)
@@ -207,12 +217,17 @@ def api_ces():
         total, t_contagem = (None, None) if cursor_id else _cronometrado(
             conta_conteineres_navii, session, tipo_janela, filtros)
     except ValueError as err:
+        uso_navii.registra('pesquisa', _usuario(), perf_counter() - inicio, janela=tipo_janela, filtros=filtros,
+                           erro=str(err))
         return jsonify({'erro': str(err)}), 400
 
     montados, t_cards = _cronometrado(monta_cards_navii, session, resultados)
     cards = [_serializa_card(card) for card in montados]
     next_cursor = cards[-1]['item_id'] if len(cards) == limit else None
 
+    uso_navii.registra('pesquisa', _usuario(), perf_counter() - inicio, janela=tipo_janela,
+                       pagina='1' if not cursor_id else 'seguinte', filtros=filtros, total=total, n_cards=len(cards),
+                       t_consulta=t_consulta, t_contagem=t_contagem, t_cards=t_cards)
     return jsonify({
         'cards': cards,
         'next_cursor': next_cursor,

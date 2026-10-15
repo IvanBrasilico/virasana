@@ -1288,7 +1288,7 @@
     // Tempos da busca (custo das consultas), ao lado da contagem. A contagem é feita só na
     // primeira página; consulta e cards são da última página carregada; a resposta é o que o
     // navegador esperou até os cards aparecerem (inclui rede).
-    var SEGUNDOS_LENTO = 10;
+    var SEGUNDOS_LENTO = {{ segundos_lenta | default(10) | tojson }};  // uso_navii.SEGUNDOS_LENTA (log NAVII_LENTA)
     var AJUDA_TEMPOS = 'Contagem: total de contêineres do filtro (feita só na primeira página).\n' +
         'Consulta: busca da página de cards no banco.\n' +
         'Cards: montagem dos cards da página (imagens, ciclo de vida, fichas, risco, DTA e CORAD).\n' +

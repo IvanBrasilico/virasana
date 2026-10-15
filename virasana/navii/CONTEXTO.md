@@ -447,7 +447,16 @@ Em 15/10/2026 (pedidos do usuário):
   páginas seguintes). A tela acrescenta à linha da contagem "Tempos: contagem X s · consulta Y s + cards Z s ·
   resposta W s" — a resposta é medida no navegador (inclui rede e desenho dos cards); da 2ª página em diante,
   "última página: …" e a contagem continua a da 1ª. Resposta ≥ 10 s fica em destaque, com dica para restringir o
-  filtro. Os tempos não são gravados em log (se for útil acompanhar, logar só as respostas lentas).
+  filtro.
+- **Log de uso** (pedido do usuário, 15/10/2026): `uso_navii.py` grava uma linha por ação no log do servidor com o
+  selo `NAVII_USO` (`acao=tela|pesquisa|extrato usuario=... janela= pagina= filtros={json} total= n_cards=
+  t_consulta= t_contagem= t_cards= t_total=`; a tela aberta por link traz `link=`; pesquisa inválida traz `erro=`).
+  Com `t_total` >= `SEGUNDOS_LENTA` (10 s, o mesmo limite do destaque na tela, passado ao JS pelo template) sai em
+  WARNING e termina com `NAVII_LENTA` — a mesma linha, para o total de usos continuar sendo o total de `NAVII_USO`.
+  Valores com espaço vão entre aspas (JSON): a linha continua separável por espaço e um texto digitado não abre
+  outra linha no log. Logger próprio (`virasana.navii.uso`), sem handler: sai pelo handler raiz do
+  `ajna_commons.flask.log`. A linha antiga `busca_ces_navii: ...` (INFO, logger do ciclo de vida) virou DEBUG.
+  Exemplos de grep na Referência técnica do manual.
 
 ### Quinta medição (15/10/2026, `--analyze --so-ciclo`, filtros novos)
 

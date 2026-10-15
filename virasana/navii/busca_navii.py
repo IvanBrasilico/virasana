@@ -688,7 +688,7 @@ def busca_ces_navii(
             data_prevista_atracacao=dados_manifesto.get('dataPrevistaAtracacao'),
             familia=familias.get(ce.numeroCEmercante),
         ))
-    logger.info(
+    logger.debug(  # o uso da tela vai para o log com o selo NAVII_USO (uso_navii.py)
         f'busca_ces_navii: janela={tipo_janela} filtros={filtros} '
         f'cursor={cursor_id} -> {len(resultado)} contêineres retornados'
     )
