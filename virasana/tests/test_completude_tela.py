@@ -284,7 +284,9 @@ class TestTela(CompletudeTestCase):
         self.assertEqual([f['id'] for f in t1['fichas']], [1])
         html = self.html(f'/completude_escaneamentos/recinto/{SECO}', fluxo='tra', inicio='2026-03-01',
                          fim='2026-03-07')
-        for trecho in ('Ficha OVR', 'Ficha 77/2026', 'FMA 00123/2026', '/bhadrasana2/ovr?id=2',
+        # rótulo "Ficha <id>" (o número do Fichas fica na dica do link)
+        for trecho in ('Ficha OVR', 'Ficha 77/2026', 'FMA 00123/2026', '/bhadrasana2/ovr?id=2', '>Ficha 1</a>',
+                       '>Ficha 2 · FMA</a>',
                        '<strong>2</strong>com Ficha OVR', '(1 com FMA'):
             self.assertIn(trecho, html)
 

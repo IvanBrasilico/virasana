@@ -155,6 +155,21 @@ class TestPrefixoProxy(unittest.TestCase):
         self.assertIn('não encontrado no Mercante', get('/navii/extrato?CE=999'))
         self.assertIn('var EXTRATO_URL = "/virasana/navii/extrato"', get('/navii/'))
 
+    def test_script_do_navii_so_chama_funcoes_definidas(self):
+        """O JS dos cards vive no template e os testes não o executam: confere, sem strings nem comentários, que
+        toda função chamada está definida (em 15/10/2026 uma edição apagou funções do risco e quebrou os cards)."""
+        html = self.get('/navii/').get_data(as_text=True)
+        script = html[html.index('<script>\n(function'):html.rindex('</script>')]
+        codigo = re.sub(r'(^|\s)//[^\n]*', r'\1', script)                               # comentários
+        codigo = re.sub(r"'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"", "''", codigo)   # strings
+        codigo = re.sub(r'/(?:\\.|[^/\\\n])+/[gimsuy]*', '//', codigo)                 # expressões regulares
+        definidas = set(re.findall(r'function (\w+)\s*\(', codigo)) | set(re.findall(r'var (\w+) = function', codigo))
+        chamadas = set(re.findall(r'(?<![\w.$])([a-z]\w*)\s*\(', codigo))
+        nativas = {'if', 'for', 'while', 'switch', 'catch', 'function', 'return', 'typeof', 'fetch', 'parseInt',
+                   'parseFloat', 'isNaN', 'encodeURIComponent', 'setTimeout', 'clearTimeout'}
+        self.assertEqual(chamadas - definidas - nativas, set())
+        self.assertIn('montaSeloRisco', definidas)
+
     def test_apis_respondem_sob_o_prefixo(self):
         for caminho in ('/navii/api/sugestoes?campo=porto&q=BRSSZ', '/navii/api/filtros'):
             with self.subTest(url=caminho):
