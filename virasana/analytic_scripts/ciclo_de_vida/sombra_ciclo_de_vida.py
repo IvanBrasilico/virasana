@@ -18,7 +18,8 @@ Relatório:
   0. parâmetros e operadores do escopo;
   1. volume: desembarques por dia no escopo x ciclos atuais, atraso do loop antigo, ciclos novos com e
      sem ciclo atual por operador e por idade (ex.: Ecoporto);
-  2. situação nova x atual e motivos;
+  2. situação nova x atual e motivos; 2b. FLUXO gravado (v2) x novo — mede uma mudança do núcleo sobre os ciclos que
+     o serviço já gravou (ex.: operador em papel de TRA e fronteiras do trânsito, 15/10/2026);
   3. etapas (saída, entrada e saída do seco), só ciclos com ciclo atual: iguais, novas, removidas...;
      onde estava a entrada no seco do ciclo atual quando a nova a remove/troca;
   4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas;
@@ -81,7 +82,8 @@ TRAFEGOS = {'3': 'cabotagem', '5': 'importação', '7': 'exportação', '9': 'pa
 OUTRA_FAMILIA = 'CE declarado de OUTRA família'
 
 COLUNAS_CSV = ['conteiner', 'desembarque_id', 'data_desembarque', 'operador', 'ciclo_atual_id', 'situacao_atual',
-               'situacao_nova', 'fluxo_novo', 'motivo_novo', 'saida', 'entrada_seco', 'saida_seco',
+               'fluxo_atual', 'situacao_nova', 'fluxo_novo', 'operador_tra', 'motivo_novo', 'saida', 'entrada_seco',
+               'saida_seco',
                'escaneamentos', 'escaneamentos_ganhos', 'escaneamentos_perdidos', 'ce_atual', 'ce_novo',
                'ces_familia', 'ce_comparacao', 'ce_confianca', 'alertas', 'idade_dias', 'vazio_mercante',
                'peso_balanca', 'peso_manifesto', 'ce_atual_motivo', 'recinto_seco_atual', 'recinto_seco_novo',
@@ -138,6 +140,8 @@ def compara(conteiner: str, ciclo: ldt.CicloCalculado, ces: CEsResolvidos, candi
         'conteiner': conteiner, 'desembarque_id': ciclo.desembarque.id, 'data_desembarque': ciclo.desembarque.data,
         'operador': ciclo.desembarque.recinto, 'ciclo_atual_id': dados.get('id'),
         'situacao_atual': situacao_atual(atual), 'situacao_nova': ciclo.situacao, 'fluxo_novo': ciclo.fluxo,
+        'fluxo_atual': (dados.get('fluxo') or '-') if atual else 'sem ciclo atual',
+        'operador_tra': _sim(any('em papel de TRA' in alerta for alerta in ciclo.alertas)),
         'motivo_novo': ciclo.motivo,
         'saida': compara_id(dados.get('saida_id'), ciclo.saida),
         'entrada_seco': compara_id(dados.get('entrada_seco_id'), ciclo.entrada_seco),
@@ -207,12 +211,12 @@ class Carregador(CargaCiclo):
 
     def ciclos_atuais(self, desembarques: Set[int]) -> Dict[int, dict]:
         atuais = {}
-        for id_, desembarque_id, concluido, saida, entrada, saida_seco, ce in self.diag._por_lotes(
-                'SELECT ID, desembarque_id, concluido, saida_id, entrada_seco_id, saida_seco_id, numeroCEmercante '
-                'FROM ciclodevida_ciclo_de_vida_importacao WHERE desembarque_id IN :ids', 'ids', desembarques):
+        for id_, desembarque_id, concluido, saida, entrada, saida_seco, ce, fluxo in self.diag._por_lotes(
+                'SELECT ID, desembarque_id, concluido, saida_id, entrada_seco_id, saida_seco_id, numeroCEmercante, '
+                'fluxo FROM ciclodevida_ciclo_de_vida_importacao WHERE desembarque_id IN :ids', 'ids', desembarques):
             atuais[desembarque_id] = {'id': id_, 'concluido': bool(concluido), 'saida_id': saida,
                                       'entrada_seco_id': entrada, 'saida_seco_id': saida_seco,
-                                      'ce': (ce or '').strip() or None, 'escaneamentos': []}
+                                      'ce': (ce or '').strip() or None, 'fluxo': fluxo, 'escaneamentos': []}
         por_id = {a['id']: a for a in atuais.values()}
         for ciclo_id, escaneamento_id in self.diag._por_lotes(
                 'SELECT ciclo_de_vida_id, escaneamento_id FROM ciclodevida_ciclo_de_vida_importacao_escaneamentos '
@@ -361,6 +365,9 @@ class Sombra(Diagnostico):
                     self._conta('situacao_atual', 'situacao_nova', 'fluxo_novo'))
         self.escreve()
         self.tabela(['situação nova', 'motivo', 'ciclos'], self._conta('situacao_nova', 'motivo_novo'))
+        self.titulo('2b. FLUXO GRAVADO (v2) x NOVO — o que uma mudança do núcleo muda nos ciclos já gravados')
+        self.tabela(['fluxo gravado', 'fluxo novo', 'situação nova', 'operador em papel de TRA', 'ciclos'],
+                    self._conta('fluxo_atual', 'fluxo_novo', 'situacao_nova', 'operador_tra'))
 
     def secao_etapas(self):
         self.titulo('3. ETAPAS — atual x nova (só ciclos que têm ciclo atual)')

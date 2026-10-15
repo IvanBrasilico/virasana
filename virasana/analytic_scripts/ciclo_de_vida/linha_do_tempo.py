@@ -32,6 +32,19 @@ Omissões e escaneamento fora (decisões do usuário, 02/10/2026):
     recinto não operador seguida de outra entrada (ex.: MULTILOG) não é o TRA — a inspeção feita ali fica
     no ciclo, marcada "escaneamento fora"; os acessos dessa passagem não entram no ciclo.
 
+Operador em papel de TRA (usuário, 15/10/2026; medição em `diagnostico_operador_tra.py`): um operador pode armazenar
+a carga desembarcada em OUTRO operador (ex.: desembarca na Santos Brasil e fica na Embraport). A duração separa os
+dois casos: as passagens para escanear duram até 3 h; as armazenagens, mais de 6 h (mediana de 7 dias):
+  - estada no outro operador de mais de `estada_operador_tra_horas` (6 h) que termina em saída (ou em nova entrada,
+    com a saída omitida) = ele foi o TRA: entrada e saída do seco são as dele e o escaneamento de lá não é "fora";
+    até 6 h, continua passagem (escaneamento terceirizado). Embarque nele continua sendo baldeação;
+  - ainda lá há mais de 6 h: TRA provisório, mas só quando o CE do ciclo é de importação emitido em Santos
+    (`importacao`) — sem CE, cabotagem ou CE de outro porto, a medição mostrou que costuma ser baldeação esperando o
+    navio. Se embarcar depois, o ciclo refeito vira baldeação.
+Fronteiras do trânsito (achado da mesma medição): a entrada noutro OPERADOR também passa pelo teste do vazio e pelo
+prazo de trânsito (antes, uma devolução de vazio noutro terminal semanas depois virava "baldeação"), e um embarque
+em trânsito depois do prazo é outra operação.
+
 Confiança (só alta e média concluem o ciclo):
   - alta: evento no recinto esperado, ou CE declarado da família do CE do ciclo;
   - média: recinto diferente (ex.: escaneamento terceirizado), etapa anterior omitida, contêiner
@@ -67,6 +80,7 @@ class Parametros:
     passagem_rapida_horas: float = 3        # estada curta num seco seguida de outra entrada: só passou
     passagem_ate_entrada_horas: float = 6   # ... desde que a outra entrada venha até este prazo
     remocao_horas: float = 24               # embarque e novo desembarque no mesmo operador: remoção a bordo
+    estada_operador_tra_horas: float = 6    # estada noutro operador mais longa que isso: ele foi o TRA
 
 
 @dataclass(frozen=True)
@@ -130,10 +144,14 @@ class _Percurso:
     """Máquina de estados de UM ciclo (eventos do segmento do seu desembarque)."""
 
     def __init__(self, desembarque: Evento, operadores: Set[str], agora: datetime, familia: Set[str],
-                 params: Parametros, conhecidos: Optional[Set[str]] = None):
+                 params: Parametros, conhecidos: Optional[Set[str]] = None, importacao: bool = False):
         self.ciclo = CicloCalculado(desembarque)
         self.operadores, self.agora, self.familia, self.params = operadores, agora, familia, params
         self.conhecidos = conhecidos             # CEs que existem no Mercante (None: não verificar)
+        self.importacao = importacao             # CE de importação emitido em Santos (TRA provisório no operador)
+        self.entrada_outro: Optional[Evento] = None   # entrada no outro operador (vira entrada no seco se for o TRA)
+        self.transito_horas = 0.0
+        self.operador_tra = False
         self.estado = 'operador'
         self.recinto = desembarque.recinto
         self.desde = desembarque.data            # início do estado atual (para prazos)
@@ -269,12 +287,22 @@ class _Percurso:
         if evento.tipo == ENTRADA:
             self._entrada_apos_saida(evento)
         elif evento.tipo == EMBARQUE:
-            self._embarque(evento, MEDIA, BALDEACAO, 'embarque em outro operador',
-                           'entrada no operador do embarque não informada')
+            self._embarque_em_transito(evento)
         elif evento.tipo == SAIDA and self._indicio(evento.recinto):
             self._saida_sem_entrada(evento)
         else:
             self._alerta(f'{evento.tipo} em {evento.recinto} sem entrada — ignorado')
+
+    def _embarque_em_transito(self, evento: Evento):
+        horas = _horas(evento.data, self.desde)
+        if horas > self.params.prazo_transito_horas:
+            # semanas depois da saída: é outra operação (ex.: o contêiner reaproveitado na exportação)
+            self._libera_espera(evento, aceita_gate=False)
+            self._alerta(f'embarque em {evento.recinto} {horas:.0f} h depois da saída — outra operação')
+            self._entrega('entregue pelo operador')
+        else:
+            self._embarque(evento, MEDIA, BALDEACAO, 'embarque em outro operador',
+                           'entrada no operador do embarque não informada')
 
     def _indicio(self, recinto: str) -> Optional[Evento]:
         """Primeira inspeção/pesagem em trânsito no recinto (indício de entrada não informada)."""
@@ -300,10 +328,6 @@ class _Percurso:
             # sempre a devolução do vazio para exportar) — fronteira
             self._libera_espera(evento, aceita_gate=False)
             self._entrega('entregue pelo operador (depois voltou ao operador do desembarque)')
-        elif evento.recinto in self.operadores:
-            self.inicio_estada = len(self.ciclo.escaneamentos)
-            self._libera_espera(evento)
-            self.estado, self.recinto, self.desde = 'outro_operador', evento.recinto, evento.data
         elif evento.vazio:
             self._libera_espera(evento, aceita_gate=False)
             self._entrega('entregue pelo operador (entrada seguinte com o contêiner vazio)')
@@ -311,24 +335,43 @@ class _Percurso:
             self._libera_espera(evento, aceita_gate=False)
             self._alerta(f'entrada em {evento.recinto} {horas:.0f} h depois da saída — fora do prazo de trânsito')
             self._entrega('entregue pelo operador')
+        elif evento.recinto in self.operadores:
+            self.inicio_estada = len(self.ciclo.escaneamentos)
+            self._libera_espera(evento)
+            self.estado, self.recinto, self.desde = 'outro_operador', evento.recinto, evento.data
+            self.entrada_outro, self.transito_horas = evento, horas
         else:
             self._entrada_no_seco(evento, horas)
+
+    def _ligacao_entrada_seco(self, evento: Evento, horas: float, *extras: str) -> Ligacao:
+        motivos = ([f'trânsito de {horas:.0f} h'] if horas > self.params.transito_alerta_horas else []) + list(extras)
+        base = ALTA
+        if evento.implicita_de:
+            base = MEDIA
+            motivos.append(f'entrada não informada — deduzida da {_NOMES[evento.implicita_de]} no recinto')
+        return self._liga(evento, base, *motivos)
 
     def _entrada_no_seco(self, evento: Evento, horas: float):
         self.inicio_estada = len(self.ciclo.escaneamentos)
         self._libera_espera(evento)
-        base, motivos = ALTA, [f'trânsito de {horas:.0f} h'] if horas > self.params.transito_alerta_horas else []
-        if evento.implicita_de:
-            base = MEDIA
-            motivos.append(f'entrada não informada — deduzida da {_NOMES[evento.implicita_de]} no recinto')
-        self.ciclo.entrada_seco = self._liga(evento, base, *motivos)
+        self.ciclo.entrada_seco = self._ligacao_entrada_seco(evento, horas)
         self.estado, self.recinto, self.desde = 'seco', evento.recinto, evento.data
         self.ciclo.fluxo = TRA
 
+    def _operador_foi_tra(self):
+        """A estada no outro operador foi de armazenagem: a entrada nele é a entrada no seco (ver docstring)."""
+        papel = f'operador {self.recinto} em papel de TRA'
+        self.ciclo.entrada_seco = self._ligacao_entrada_seco(self.entrada_outro, self.transito_horas, papel)
+        self.ciclo.fluxo, self.operador_tra = TRA, True
+        self._alerta(papel)
+
     def _em_outro_operador(self, evento: Evento):
+        termina = evento.tipo == ENTRADA or (evento.tipo == SAIDA and evento.recinto == self.recinto)
         if evento.tipo == EMBARQUE:
             self._embarque(evento, ALTA if evento.recinto == self.recinto else MEDIA, BALDEACAO,
                            'embarque em outro operador')
+        elif termina and _horas(evento.data, self.desde) > self.params.estada_operador_tra_horas:
+            self._fim_do_operador_tra(evento)
         elif evento.tipo == SAIDA and evento.recinto == self.recinto:
             # só passou pelo outro operador (ex.: Ecoporto escaneando para o TRA): segue em trânsito
             self._alerta(f'passagem pelo operador {self.recinto}')
@@ -343,6 +386,19 @@ class _Percurso:
             self._em_transito(evento)
         else:
             self._alerta(f'{evento.tipo} em {evento.recinto} sem entrada — ignorado')
+
+    def _fim_do_operador_tra(self, evento: Evento):
+        """Estada longa no outro operador terminando em saída (TRA concluído) ou em nova entrada (saída omitida)."""
+        recinto = self.recinto
+        self._operador_foi_tra()
+        if evento.tipo == SAIDA:
+            motivos = ['saída do seco vazia (desunitização?)'] if evento.vazio else []
+            self.ciclo.saida_seco = self._liga(evento, ALTA, *motivos)
+            self._fim(TRA, CONCLUIDO, f'saída do recinto seco (operador {recinto} em papel de TRA)')
+        else:
+            onde = 'reentrada' if evento.recinto == recinto else 'entrada'
+            self._fim(TRA, INCOMPLETO, f'saída do recinto seco não informada ({onde} em {evento.recinto}; '
+                                       f'operador {recinto} em papel de TRA)')
 
     def _no_seco(self, evento: Evento):
         if evento.tipo == SAIDA and evento.recinto == self.recinto:
@@ -388,6 +444,9 @@ class _Percurso:
 
     def _fecha_por_prazo(self):
         horas = _horas(self.agora, self.desde)
+        if self.estado == 'outro_operador' and self.importacao and horas > self.params.estada_operador_tra_horas:
+            self._operador_foi_tra()   # TRA provisório: ainda lá, com CE de importação de Santos
+            self.estado = 'seco'
         if self.estado == 'transito':
             self._libera_espera()
             duvidosa = self.ciclo.saida and self.ciclo.saida.confianca == BAIXA
@@ -403,9 +462,13 @@ class _Percurso:
         elif horas / 24 > self.params.dias_abandono:
             self._fim(self.ciclo.fluxo, ABANDONO, f'sem saída em {horas / 24:.0f} dias')
         else:
-            rotulo = {'operador': 'no operador', 'outro_operador': f'no operador {self.recinto}',
-                      'seco': 'no recinto seco'}[self.estado]
-            self._fim(self.ciclo.fluxo, ABERTO, rotulo)
+            self._fim(self.ciclo.fluxo, ABERTO, self._rotulo_aberto())
+
+    def _rotulo_aberto(self) -> str:
+        if self.estado == 'seco' and self.operador_tra:
+            return f'no recinto seco (operador {self.recinto} em papel de TRA)'
+        return {'operador': 'no operador', 'outro_operador': f'no operador {self.recinto}',
+                'seco': 'no recinto seco'}[self.estado]
 
     def percorre(self, eventos: List[Evento]) -> CicloCalculado:
         acoes = {'operador': self._no_operador, 'transito': self._em_transito,
@@ -446,13 +509,16 @@ def _remocoes(eventos: List[Evento], params: Parametros) -> Dict[int, Evento]:
 def ciclos_do_conteiner(eventos: Iterable[Evento], operadores_escopo: Set[str], operadores: Set[str],
                         agora: datetime, familias: Optional[Dict[int, Set[str]]] = None,
                         params: Parametros = Parametros(),
-                        conhecidos: Optional[Set[str]] = None) -> List[CicloCalculado]:
+                        conhecidos: Optional[Set[str]] = None,
+                        importacao: Optional[Dict[int, bool]] = None) -> List[CicloCalculado]:
     """Um ciclo por desembarque do contêiner num operador do escopo (Santos).
 
     operadores: todos os recintos `e_operador` (entrada num deles não é TRA);
     familias: {id do desembarque: CEs da família do CE do ciclo} para corroborar o CE declarado;
     conhecidos: CEs que existem no Mercante — declarado fora dele não indica outra família (None: não
-    verificar, todo declarado fora da família desconfia).
+    verificar, todo declarado fora da família desconfia);
+    importacao: {id do desembarque: o CE principal é de importação emitido em Santos} — só com ele uma estada longa
+    AINDA em andamento noutro operador vira TRA provisório (ver docstring do módulo).
     """
     eventos = sem_retificacoes(eventos)
     remocoes = _remocoes(eventos, params)
@@ -470,7 +536,8 @@ def ciclos_do_conteiner(eventos: Iterable[Evento], operadores_escopo: Set[str], 
         tolerancia = timedelta(hours=params.tolerancia_relogio_horas)
         anteriores = [e for e in eventos[:i] if e.tipo == INSPECAO and evento.data - tolerancia <= e.data]
         familia = (familias or {}).get(evento.id, set())
-        percurso = _Percurso(evento, operadores, agora, familia, params, conhecidos)
+        percurso = _Percurso(evento, operadores, agora, familia, params, conhecidos,
+                             (importacao or {}).get(evento.id, False))
         segmento = eventos[i + 1:fim]
         ciclo = percurso.percorre(anteriores + [e for e in segmento if not de_remocao(e)])
         for desembarque in (e for e in segmento if e.tipo == DESEMBARQUE):

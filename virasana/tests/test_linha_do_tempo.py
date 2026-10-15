@@ -124,10 +124,16 @@ class TestFluxos(unittest.TestCase):
         self.assertEqual(ciclo.escaneamentos, [])   # nem o scanner do gate da volta nem o de depois
 
     def test_volta_ao_operador_do_desembarque_depois_de_outro_operador(self):
-        ciclo = um_ciclo([D(t(9, 1), BTP), S(t(9, 2), BTP), ENT(t(9, 2, 10), EMB), ENT(t(9, 12), BTP)])
+        # passagem curta pela Embraport (saída não informada) e volta à BTP: outra operação
+        ciclo = um_ciclo([D(t(9, 1), BTP), S(t(9, 2), BTP), ENT(t(9, 2, 10), EMB), ENT(t(9, 2, 13), BTP)])
         self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.OPERADOR, ldt.CONCLUIDO))
         self.assertIn('voltou ao operador do desembarque', ciclo.motivo)
         self.assertIn('saída do operador 8931404 não informada', ciclo.alertas)
+        # 10 dias na Embraport antes de voltar: ela foi o TRA, com a saída omitida (usuário, 15/10/2026)
+        longa = um_ciclo([D(t(9, 1), BTP), S(t(9, 2), BTP), ENT(t(9, 2, 10), EMB), ENT(t(9, 12), BTP)])
+        self.assertEqual((longa.fluxo, longa.situacao, longa.entrada_seco.evento.recinto),
+                         (ldt.TRA, ldt.INCOMPLETO, EMB))
+        self.assertIn('saída do recinto seco não informada (entrada em 8931359', longa.motivo)
 
     def test_transito_longo_ainda_tra(self):
         ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 20), SECO2)])
@@ -248,6 +254,104 @@ class TestOmissoesEPassagens(unittest.TestCase):
                                          S(t(10, 1, 4), SECO2)], ESCOPO, OPERADORES, t(10, 1, 6))[0]
         self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.ABERTO))
         self.assertIn('estada curta', ciclo.motivo)
+
+
+class TestOperadorEmPapelDeTRA(unittest.TestCase):
+    """Usuário, 15/10/2026 (diagnostico_operador_tra.py): estada de mais de 6 h noutro operador = ele foi o TRA;
+    até 6 h, passagem (escaneamento terceirizado)."""
+
+    def test_estada_longa_em_outro_operador_e_o_tra(self):
+        # amostra real (BAOU3800744): desembarca na Santos Brasil e fica 14 dias na Embraport, escaneado lá
+        entrada, inspecao = ENT(t(9, 25, 20, 52), EMB), INSP(t(9, 25, 21, 6), EMB)
+        ciclo = um_ciclo([D(t(9, 25, 3, 46)), S(t(9, 25, 19, 36)), entrada, inspecao, S(t(10, 9, 10, 14), EMB)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.CONCLUIDO))
+        self.assertEqual(ciclo.motivo, 'saída do recinto seco (operador 8931404 em papel de TRA)')
+        self.assertIs(ciclo.entrada_seco.evento, entrada)
+        self.assertEqual(ciclo.entrada_seco.confianca, ldt.ALTA)
+        self.assertIn('operador 8931404 em papel de TRA', ciclo.entrada_seco.motivos)
+        self.assertEqual(ciclo.saida_seco.evento.recinto, EMB)
+        [esc] = ciclo.escaneamentos
+        self.assertEqual((esc.evento, esc.confianca), (inspecao, ldt.ALTA))
+        self.assertFalse(any('fora' in m for m in esc.motivos))   # escaneamento no recinto da etapa
+
+    def test_ate_6_horas_continua_passagem(self):
+        inspecao = INSP(t(9, 2, 11), ECO)
+        ciclo = um_ciclo([D(t(9, 1), BTP), S(t(9, 2, 10), BTP), ENT(t(9, 2, 10, 30), ECO), inspecao,
+                          S(t(9, 2, 16, 29), ECO)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (ldt.OPERADOR, ldt.CONCLUIDO,
+                                                                       'entregue pelo operador'))
+        self.assertIsNone(ciclo.entrada_seco)
+        self.assertIn('na passagem pelo operador 8931318 (escaneamento fora)', ciclo.escaneamentos[0].motivos)
+
+    def test_estada_longa_e_saida_omitida(self):
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 12), EMB), ENT(t(9, 6), SECO2)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.entrada_seco.evento.recinto),
+                         (ldt.TRA, ldt.INCOMPLETO, EMB))
+        self.assertEqual(ciclo.motivo, 'saída do recinto seco não informada (entrada em 8933001; operador 8931404 '
+                                       'em papel de TRA)')
+
+    def test_embarque_depois_de_estada_longa_continua_baldeacao(self):
+        ciclo = um_ciclo([D(t(9, 1)), S(t(9, 2, 10)), ENT(t(9, 2, 12), EMB), E(t(9, 9), EMB)])
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.BALDEACAO, ldt.CONCLUIDO))
+        self.assertIsNone(ciclo.entrada_seco)
+
+    def _ainda_la(self, importacao, desde=t(9, 28, 12)):
+        eventos = [D(t(9, 27)), S(desde - timedelta(hours=2)), ENT(desde, EMB)]
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, ESCOPO, OPERADORES, AGORA,
+                                          importacao={eventos[0].id: importacao})
+        return ciclo
+
+    def test_ainda_la_com_ce_de_importacao_e_tra_provisorio(self):
+        ciclo = self._ainda_la(True)
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.entrada_seco.evento.recinto),
+                         (ldt.TRA, ldt.ABERTO, EMB))
+        self.assertEqual(ciclo.motivo, 'no recinto seco (operador 8931404 em papel de TRA)')
+
+    def test_ainda_la_sem_ce_de_importacao_ou_recente_continua_no_operador(self):
+        for ciclo in (self._ainda_la(False), self._ainda_la(True, desde=t(10, 1, 7))):   # 5 h antes de agora
+            with self.subTest(motivo=ciclo.motivo):
+                self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo),
+                                 (ldt.INDEFINIDO, ldt.ABERTO, 'no operador 8931404'))
+                self.assertIsNone(ciclo.entrada_seco)
+
+    def test_abandono_no_operador_em_papel_de_tra(self):
+        eventos = [D(t(5, 1)), S(t(5, 2, 10)), ENT(t(5, 2, 12), EMB)]
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, ESCOPO, OPERADORES, AGORA, importacao={eventos[0].id: True})
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.entrada_seco.evento.recinto),
+                         (ldt.TRA, ldt.ABANDONO, EMB))
+
+
+class TestFronteirasDoTransito(unittest.TestCase):
+    """Achado de 15/10/2026 (diagnostico_final_curta.py): a entrada noutro OPERADOR não passava pelo teste do vazio
+    nem pelo prazo de trânsito, e o embarque em trânsito não tinha prazo — devolução de vazio ou exportação semanas
+    depois viravam "baldeação"."""
+
+    PASSAGEM_ECOPORTO = (S(t(9, 2, 8), BTP), ENT(t(9, 2, 9), ECO), S(t(9, 2, 9, 6), ECO))
+
+    def ciclo(self, *depois):
+        return um_ciclo([D(t(9, 1), BTP), *self.PASSAGEM_ECOPORTO, *depois])
+
+    def test_vazio_noutro_operador_semanas_depois_nao_e_baldeacao(self):
+        ciclo = self.ciclo(ENT(t(9, 17), EMB, vazio=True), E(t(9, 20), EMB))
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo),
+                         (ldt.OPERADOR, ldt.CONCLUIDO, 'entregue pelo operador (entrada seguinte com o contêiner vazio)'))
+        self.assertIsNone(ciclo.embarque)
+
+    def test_entrada_cheia_noutro_operador_fora_do_prazo(self):
+        ciclo = self.ciclo(ENT(t(9, 17), EMB, vazio=False), E(t(9, 20), EMB))
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.OPERADOR, ldt.CONCLUIDO))
+        self.assertTrue(any('fora do prazo de trânsito' in a for a in ciclo.alertas))
+
+    def test_embarque_muito_depois_da_saida_e_outra_operacao(self):
+        ciclo = self.ciclo(E(t(9, 17), EMB))
+        self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo),
+                         (ldt.OPERADOR, ldt.CONCLUIDO, 'entregue pelo operador'))
+        self.assertIsNone(ciclo.embarque)
+        self.assertTrue(any('depois da saída — outra operação' in a for a in ciclo.alertas))
+
+    def test_embarque_no_prazo_continua_baldeacao(self):
+        ciclo = self.ciclo(E(t(9, 3), EMB))
+        self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.BALDEACAO, ldt.CONCLUIDO))
 
 
 class TestRemocaoABordo(unittest.TestCase):

@@ -617,6 +617,132 @@ passagem (como hoje); **sem nova entrada em 48 h** (ou ainda lá depois de N hor
 (não "fora"). Pontos a medir: estadas longas seguidas de outra entrada (dois estágios?), a duração que separa as
 duas classes, e como gravar enquanto o contêiner ainda está lá (TRA provisório, como o `pos_seco` dos não operadores).
 
+**1ª medição (15/10/2026, `virasana/operador_tra.log`; desembarques de 08/09 a 08/10; 4.000 de 16.078 contêineres
+candidatos — multiplicar por ~4 para o mês):**
+- 10–14% dos ciclos da Santos Brasil, BTP e Embraport entram cheios noutro operador em até 30 dias (Ecoporto quase
+  não desembarca: 639 ciclos). A consulta dos candidatos leva ~4 min.
+- **A duração separa sozinha passagem de armazenagem**: passagens 99,8% em até 3 h (mediana 12 min); "final (TRA?)"
+  todas com mais de 6 h (só 4 abaixo de 1 dia; mediana 6,9 dias — mesmo perfil dos TRA não operadores, 7,7 dias).
+  Entre 3 h e 6 h: 2 casos. O corte de 6 h (`passagem_ate_entrada_horas`) serve.
+- **Operador em papel de TRA existe e é frequente**: 317 estadas finais + 248 ainda lá + 23 recém-saídas na amostra
+  (~1.270 por mês terminadas e ~1.000 em andamento). Pares: Santos Brasil → Embraport 152, Embraport → Santos Brasil
+  66, BTP → Santos Brasil 48, BTP → Embraport 31, Santos Brasil → BTP 16; o **Ecoporto nunca é TRA** (4) — é passagem
+  para escanear (446 + 318 + 138), e o escaneamento do Ecoporto vem com o código do TRA de destino (8931339, 8931304).
+  A passagem pela Santos Brasil (8931356) escaneia para a Santos Brasil Logística (8933203). Já tratadas.
+- **Como fica gravado**: 82% das finais como operador/concluído "entregue pelo operador" (o do desembarque), com o
+  escaneamento do outro operador marcado "fora"; as em andamento como indefinido/aberto "no operador X" (estágio
+  "Em trânsito"). O outro operador escaneia em ~100% (inspeção lá: 100% nas finais) — o efeito na completude é de
+  ATRIBUIÇÃO (o operador do desembarque recebe o crédito; o outro não aparece como TRA), não de falta de escaneamento.
+- **Baldeação parecida durante a estada**: 260 estadas terminam em embarque no outro operador depois de 1–10 dias
+  (68% com inspeção lá) — a duração não separa da armazenagem enquanto o contêiner está lá. A seção 8b (tráfego e
+  origem do CE do ciclo por classe) foi acrescentada para ver se o CE separa; rodar de novo.
+- **"final curta" (191)**: passagem de minutos por outro operador (quase sempre o Ecoporto) sem nova entrada e quase
+  sem inspeção (2%); gravadas como entregue pelo operador do desembarque SEM escaneamento (97 de 104 da v2) —
+  destino desconhecido. Perguntado ao usuário.
+- Ruído do diagnóstico (não do núcleo): entradas em operador depois de uma estada longa num seco (reuso para
+  exportação) aparecem como "em aberto"/"baldeação" com o ciclo gravado tra/concluído — o percurso do diagnóstico não
+  corta depois do seco; o núcleo, sim. Ciclos do loop antigo (antes de 02/10) ainda trazem o Ecoporto como seco.
+
+**2ª rodada (15/10/2026, `virasana/operador_tra2.log`, mesma amostra + seção 8b)** — o CE do ciclo separa a
+baldeação da armazenagem enquanto o contêiner está no outro operador:
+
+| classe | estadas | sem CE | importação (5) | cabotagem (3) | CE emitido fora (≠ 15) |
+|---|---|---|---|---|---|
+| final (TRA?) | 318 | 26 | 292 | 0 | 0 |
+| em aberto | 248 | 42 | 198 | 8 | 3 |
+| baldeação | 260 | **150** | 88 | **22** | **31** |
+
+Armazenagem = CE de importação emitido em Santos (92%); baldeação = sobretudo sem CE (vazio reposicionado), cabotagem
+ou CE de outro porto. Tráfego 9 (passagem) não aparece em nenhuma classe. Também: 40 ciclos "final (TRA?)" estão
+gravados como baldeação/incompleto/aberto — no trânsito, o núcleo aceita um EMBARQUE a qualquer tempo como baldeação
+(sem prazo); com a regra A o ciclo termina na saída do outro operador e isso deixa de acontecer.
+
+**Proposta (aguardando aprovação)**: (A) saída do outro operador depois de mais de 6 h = ele foi o TRA (entrada e
+saída do seco = as dele, fluxo `tra`, escaneamento lá sem "fora"); até 6 h, passagem como hoje. (B) ainda lá há mais
+de 6 h E o CE principal do ciclo é de importação (tráfego 5) emitido em Santos (15...) = TRA provisório (aberto "no
+recinto seco"); sem CE, cabotagem ou CE de outro porto, continua "aberto no operador X" até a saída (A) ou o embarque
+(baldeação). Na amostra: 198 dos 248 em andamento viram TRA provisório; baldeações que pareceriam TRA enquanto
+esperam o navio: no máximo 57–88 (10–15% dos provisórios), corrigidas quando embarcam — a gravação limpa os campos do
+seco quando o ciclo refeito não tem entrada no seco (`gravacao_ciclo._entrada_seco`). O tráfego vem da segunda
+passagem de `heuristica_ciclo.processa_conteiner` (CE principal + `CandidatoCE.trafego`). (C) completude: a lista de
+TRA passa a ter operadores — marcar "operador em papel de TRA". (D) reprocessar os ciclos concluídos recentes com
+estada noutro operador (o serviço não revisita concluídos sem evento novo). Validar em homologação/`--simula` e com a
+sombra antes de produção. Usuário (15/10): seguir o plano passo a passo, MAS explicar antes a "final curta".
+
+**"Final curta" em investigação (`diagnostico_final_curta.py`)**: ~190 por 4.000 contêineres (~760/mês), 98% no
+Ecoporto, quase todas em até 30 min; ~390/mês gravadas como entregue pelo operador do desembarque SEM escaneamento —
+ordem de grandeza de METADE dos "sem escaneamento" da entrega pelo operador (consulta de 13/10: ~750 por 30 dias);
+mais 53 do loop antigo com o Ecoporto como "seco" sem escaneamento (cobradas do Ecoporto na completude TRA). O
+diagnóstico compara com as passagens que seguem para um TRA (controle) e testa: H1 escaneado sem inspeção
+transmitida (imagem no Mongo no horário; inspeção com outro código); H2 desembaraçado no operador e entregue
+(declaração DI/DUIMP na saída; devolução do vazio); H3 o destino leu o número errado (o MESMO caminhão, pela placa,
+entra noutro recinto em até 6 h com número parecido); H4 destino fora da API (o caminhão some; agendamento G).
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_final_curta.py --conteineres 20000 --mongo --saida final_curta.log
+```
+
+**1ª rodada (15/10/2026, `virasana/final_curta.log`, TODOS os 16.061 candidatos; desembarques 08/09–08/10)**: 761
+casos (748 Ecoporto, 13 Santos Brasil); controle = 761 passagens pelos mesmos recintos.
+- **Escaneados**: imagem no Mongo no horário da passagem em 99% (controle 98%). **Sem inspeção transmitida**: com o
+  código da passagem 2% e com outro código 1% — no controle, 17% e **80%** (nas passagens, a inspeção do Ecoporto vem
+  com o código do TRA de destino: quem transmite é o "cliente" do escâner). A 2ª rodada (seção 11b: horário da
+  imagem menos a defasagem do recinto) diz se a imagem é do escâner do Ecoporto ou da saída do operador de origem.
+- **Não é OCR nem TRA**: o MESMO caminhão (placa) entra noutro recinto em até 6 h SEM contêiner (61%, quase sempre de
+  volta a um terminal: BTP, Santos Brasil, Embraport), com outro contêiner (10%) ou some da API (29%); 0 números
+  parecidos. No controle, 100% dos caminhões entram no TRA com o próprio contêiner (o método funciona). O contêiner
+  reaparece 12–19 dias depois (vazio, de volta ao terminal, REDEX/depósito) ou nunca (358) — entrega ao importador.
+- Lotes: 424 CEs, 74 com 2+ contêineres (até 15 do mesmo CE em 1–2 dias). `tipoDeclaracao` dos acessos quase nunca
+  vem preenchido (também no controle) e não há agendamento (G).
+- **Leitura**: entrega pelo operador de origem com escaneamento terceirizado no Ecoporto, sem inspeção transmitida
+  por ninguém. Gravados: 467 entregue pelo operador (a maioria SEM escaneamento — ~metade ou mais dos "sem
+  escaneamento" da completude do operador), 175 do loop antigo (Ecoporto como "seco").
+- **Falha do núcleo achada**: 114 (75 baldeação, 31 "aberto no operador X", 8 incompleto) seguem além da fronteira —
+  em `_entrada_apos_saida`, entrada em OUTRO OPERADOR não passa pelo teste de vazio nem pelo prazo de trânsito de
+  48 h, e o EMBARQUE em trânsito não tem prazo. Conferido no núcleo: passagem pelo Ecoporto + vazio entrando na
+  Embraport 15 dias depois + embarque = "baldeação". Corrigir no passo 1 (vale para todo ciclo, não só a final curta).
+
+Opções para a final curta (decisão do usuário): (1) ligar a imagem como escaneamento ("imagem do escâner do Ecoporto
+sem inspeção transmitida", confiança média) + coluna de conformidade na completude — precisa de DDL aditiva
+(`escaneamento_id` é NOT NULL); (2) só marcar no motivo e mostrar à parte na completude; (3) só relatório de
+conformidade, sem mudar o ciclo.
+
+**Passo 1 — núcleo (15/10/2026, autorizado pelo usuário; NÃO está no Servidor até o commit/deploy):**
+`linha_do_tempo.py` — (a) fronteiras do trânsito: em `_entrada_apos_saida`, vazio e prazo de 48 h vêm ANTES do teste
+de operador; `_embarque_em_transito`: embarque depois do prazo = outra operação (entregue pelo operador, com alerta);
+(b) regra A: `_em_outro_operador` → `_fim_do_operador_tra` quando a estada passa de `estada_operador_tra_horas` (6 h)
+e termina em saída (TRA concluído, motivo "saída do recinto seco (operador X em papel de TRA)") ou em nova entrada
+(TRA incompleto, saída omitida); embarque continua baldeação; (c) regra B: `_fecha_por_prazo` — ainda no outro
+operador há mais de 6 h E `importacao` = TRA provisório ("no recinto seco (operador X em papel de TRA)");
+`ciclos_do_conteiner(..., importacao={id do desembarque: bool})` — por enquanto ninguém passa (passo 2: a heurística
+calcula pelo CE principal). Testes: `TestOperadorEmPapelDeTRA`, `TestFronteirasDoTransito` (test_linha_do_tempo); o
+teste da volta ao operador depois de outro operador foi dividido (estada curta = volta; 10 dias = TRA incompleto).
+Sombra: seção 2b (fluxo gravado x novo, com "operador em papel de TRA") e colunas `fluxo_atual`/`operador_tra` no CSV —
+é a simulação do passo 1 sobre os ciclos que o serviço já gravou:
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --dias 30 --conteineres 10000 --csv sombra_passo1.csv --saida sombra_passo1.log
+```
+
+**Simulação do passo 1 (15/10/2026, `virasana/sombra_passo1.log` + `.csv`; 10.017 ciclos de ~140 mil desembarques
+de 08/09 a 08/10 — multiplicar por ~14 para o mês)**: nada muda em operador→operador (2.842), passagem (2.377) e
+TRA (1.834 + 436 abertos). Mudanças:
+- fronteiras: **247 "baldeações" viram entregue pelo operador** (78% das 318 gravadas: 125 entrada noutro operador
+  fora do prazo, 102 entrada vazia, 20 embarque semanas depois) e 175 "indefinido/aberto" também; esses ciclos perdem
+  as ligações de escaneamento da OUTRA operação (161 + 86 ciclos);
+- regra A com entrada informada: Embraport 76, Santos Brasil 41, BTP 7 (gravados hoje como entrega pelo operador do
+  desembarque);
+- **a conferir: 121 "Ecoporto em papel de TRA" com a entrada DEDUZIDA da pesagem** (o Ecoporto não informa a entrada;
+  já visto na 4ª/6ª medição) — mesmo perfil dos outros (cheio, CE de importação), mas sem a linha do tempo não dá para
+  saber se é armazenagem real ou pesagem de uma passagem com a saída de outra hora. Ferramenta nova:
+  `eventos_conteiner.py` (eventos crus, intervalos, pesos, imagens e o ciclo do núcleo atual por contêiner):
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/eventos_conteiner.py --csv sombra_passo1.csv --filtro "8931318 em papel de TRA" --limite 20 --mongo --saida eventos_ecoporto.log
+```
+
+**Final curta — 2ª rodada (`virasana/final_curta2.log`, seção 11b)**: a imagem é do momento da passagem em 754 de 761
+(99%; mediana 4 min depois da entrada no Ecoporto), nenhuma na saída do operador de origem — é o escâner do Ecoporto
+(e o da Santos Brasil em 13 casos). H1 confirmada: escaneados, inspeção não transmitida por ninguém. Origem: BTP 469,
+Santos Brasil 253, Embraport 38.
+
 ### Efeitos nas telas (completude e NAVI-I) — 02/10/2026
 
 As telas continuam funcionando sem mudança (mesmas tabelas e IDs; colunas novas são ignoradas), mas os

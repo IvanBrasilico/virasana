@@ -36,6 +36,8 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ces_ciclo_de_vida.py',
     'virasana/analytic_scripts/ciclo_de_vida/linha_do_tempo.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_operador_tra.py',
+    'virasana/analytic_scripts/ciclo_de_vida/diagnostico_final_curta.py',
+    'virasana/analytic_scripts/ciclo_de_vida/eventos_conteiner.py',
     'virasana/analytic_scripts/ciclo_de_vida/ces_do_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/heuristica_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py',
@@ -74,6 +76,8 @@ TESTES = [
     'virasana/tests/test_estagios_ciclo.py',
     'virasana/tests/test_diagnostico_imagens_ciclo.py',
     'virasana/tests/test_diagnostico_operador_tra.py',
+    'virasana/tests/test_diagnostico_final_curta.py',
+    'virasana/tests/test_eventos_conteiner.py',
     'virasana/tests/test_prefixo_proxy.py',
 ]
 

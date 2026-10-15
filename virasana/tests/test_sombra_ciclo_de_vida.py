@@ -182,6 +182,18 @@ class TestFuncoes(unittest.TestCase):
             with self.subTest(atual=atual, novo=novo):
                 self.assertEqual(sombra.compara_id(atual, novo), esperado)
 
+    def test_compara_fluxo_gravado_e_operador_em_papel_de_tra(self):
+        # gravado pelo núcleo anterior como entrega pela BTP; o núcleo de 15/10/2026 vê a Embraport como o TRA
+        eventos = [ldt.Evento(ldt.DESEMBARQUE, 1, d(1), BTP), ldt.Evento(ldt.SAIDA, 2, d(2), BTP),
+                   ldt.Evento(ldt.ENTRADA, 3, d(2, 10), '8931404'), ldt.Evento(ldt.SAIDA, 4, d(9), '8931404')]
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, {BTP}, {BTP, '8931404'}, d(20))
+        atual = {'id': 9, 'concluido': True, 'saida_id': 2, 'entrada_seco_id': None, 'saida_seco_id': None,
+                 'ce': None, 'fluxo': ldt.OPERADOR, 'escaneamentos': []}
+        linha = sombra.compara('C1', ciclo, CEsResolvidos(), [], atual)
+        self.assertEqual((linha['fluxo_atual'], linha['fluxo_novo'], linha['operador_tra'], linha['entrada_seco']),
+                         (ldt.OPERADOR, ldt.TRA, sombra.SIM, 'nova'))
+        self.assertEqual(sombra.compara('C1', ciclo, CEsResolvidos(), [], None)['fluxo_atual'], 'sem ciclo atual')
+
     def test_compara_ce(self):
         ces = CEsResolvidos(principal=H1, ces={H1: 'filhote', M: 'master'})
         casos = [(None, ces, 'novo'), (None, CEsResolvidos(), 'nenhum'), (M, CEsResolvidos(), 'perdido'),

@@ -149,20 +149,22 @@ class TestRelatorio(unittest.TestCase):
         self.assertTrue(linha(self.texto, '8931359 BTP → 8931318 ECOPORTO', 2, '100%', 1, 1, 0, 0, 0, 0, 0))
 
     def test_como_foi_gravado_e_completude(self):
-        # o ECOPORTO como TRA: gravado como entregue pela BTP, com o escaneamento de lá marcado "fora"
-        self.assertTrue(linha(self.texto, 'final (TRA?)', 'operador/concluido', 1, 0, 1, 0, 0), self.texto)
+        # o ECOPORTO como TRA: com o núcleo de 15/10/2026 (operador em papel de TRA), gravado como TRA lá, com o
+        # escaneamento de lá na etapa (antes: entregue pela BTP, escaneamento "fora")
+        self.assertTrue(linha(self.texto, 'final (TRA?)', 'tra/concluido', 1, 1, 0, 1, 0), self.texto)
         self.assertTrue(linha(self.texto, 'passagem', 'tra/concluido', 1, 0, 1, 0, 0))
         self.assertTrue(linha(self.texto, 'em aberto', 'indefinido/aberto', 1, 0, 0, 0, 1))
-        self.assertTrue(linha(self.texto, '8931318 ECOPORTO', 'final (TRA?)', 1, 1, 1, 0, 0, 0))
+        self.assertTrue(linha(self.texto, '8931318 ECOPORTO', 'final (TRA?)', 1, 1, 0, 0, 1, 0))
         self.assertTrue(linha(self.texto, '8931359 BTP', 'em aberto', 1, 0, 0, 0, 0, 1))
 
     def test_referencia_padroes_dta_e_exemplos(self):
-        self.assertTrue(linha(self.texto, '1–3 dias', 1, '100%'))      # o EADI do CPAS
+        self.assertTrue(linha(self.texto, '1–3 dias', 1, '50%'))      # o EADI do CPAS
+        self.assertTrue(linha(self.texto, '3–10 dias', 1, '50%'))     # o ECOPORTO do COTR (operador em papel de TRA)
         self.assertTrue(linha(self.texto, 'OP → OP2(3–10 dias, insp)', 1))
         self.assertIn('(tabela navii_dtas não existe neste banco)', self.texto)
         self.assertIn('--- final (TRA?) em 8931318 ECOPORTO (3–10 dias)', self.texto)
         self.assertIn('COTR — desembarque 03/03 08:00 em 8931359 BTP; corte: eventos até hoje; gravado: '
-                      'operador/concluido — entregue pelo operador', self.texto)
+                      'tra/concluido — saída do recinto seco (operador 8931318 em papel de TRA)', self.texto)
         self.assertIn('04/03 11:00  inspecao    8931318 ECOPORTO', self.texto)
 
 
@@ -186,6 +188,32 @@ class TestDtas(unittest.TestCase):
             diag.monta_percursos(['COTR'])
             diag.secao_dtas()
         self.assertTrue(linha(saida.getvalue(), 'final (TRA?)', 1, 1, '100%', 'DTA - PASSAGEM (1)'), saida.getvalue())
+
+
+class TestTrafego(unittest.TestCase):
+    """CE do ciclo do COTR = filhote H1 (importação, emitido em Santos); do CABR, um CE de passagem emitido fora."""
+
+    def test_trafego_por_classe(self):
+        engine, mongo = monta_banco()
+        acrescenta_cenario(engine)
+        sv.Servico(engine, mongo, relogio=Relogio(AGORA)).uma_volta(DESDE)
+        with engine.begin() as c:
+            c.execute(text("INSERT INTO conhecimentosresumo (numeroCEmercante, tipoTrafego) "
+                           "VALUES ('072600000000009', '9')"))
+            for desembarque, ce in ((501, '152600000000002'), (503, '072600000000009'), (502, None)):
+                c.execute(text('UPDATE ciclodevida_ciclo_de_vida_importacao SET numeroCEmercante = :ce '
+                               'WHERE desembarque_id = :id'), {'ce': ce, 'id': desembarque})
+        saida = io.StringIO()
+        with engine.connect() as conexao:
+            diag = dot.DiagnosticoOperadorTra(conexao, saida, d(1), d(10), AGORA)
+            diag.monta_percursos(['COTR', 'CPAS', 'CABR'])
+            diag.secao_trafego()
+        texto = saida.getvalue()
+        self.assertNotIn('ERRO', texto)
+        #                         classe        estadas sem CE  imp. pass. cab. exp. outro fora
+        self.assertTrue(linha(texto, 'final (TRA?)', 1, 0, 1, 0, 0, 0, 0, 0), texto)
+        self.assertTrue(linha(texto, 'em aberto', 1, 0, 0, 1, 0, 0, 0, 1))
+        self.assertTrue(linha(texto, 'passagem', 1, 1, 0, 0, 0, 0, 0, 0))
 
 
 if __name__ == '__main__':

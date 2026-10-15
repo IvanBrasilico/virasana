@@ -33,7 +33,9 @@ outro operador como TRA. Este diagnóstico mede o tamanho disso e dá os número
   4. efeito na COMPLETUDE: estadas "final (TRA?)" contadas hoje como entrega pelo operador do desembarque, com e
      sem escaneamento gravado;
   5. referência: duração das estadas nos TRA (não operadores) já gravadas;
-  6. DTA dos CEs por classe (se existir `navii_dtas`), percursos mais comuns e exemplos para conferir à mão.
+  6. DTA dos CEs por classe (se existir `navii_dtas`); TRÁFEGO do CE do ciclo por classe (a baldeação também fica
+     dias no outro operador antes de embarcar: o tráfego/origem do CE separa os dois enquanto o contêiner está lá?);
+     percursos mais comuns e exemplos para conferir à mão.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     DIAG=virasana/analytic_scripts/ciclo_de_vida/diagnostico_operador_tra.py
@@ -100,6 +102,9 @@ SQL_ESTADAS_TRA = (
     'WHERE data_desembarque >= :inicio AND data_desembarque < :fim AND codigoRecintoDesembarque IN :escopo '
     'AND data_entrada_seco IS NOT NULL AND data_saida_seco IS NOT NULL')
 SQL_DTAS = 'SELECT nr_ce, descricao_tipo_declaracao_transito FROM navii_dtas WHERE nr_ce IN :ces'
+SQL_TRAFEGO = 'SELECT numeroCEmercante, tipoTrafego FROM conhecimentosresumo WHERE numeroCEmercante IN :ces'
+TRAFEGOS = (('5', 'importação (5)'), ('9', 'passagem (9)'), ('3', 'cabotagem (3)'), ('7', 'exportação (7)'))
+PREFIXO_SANTOS = '15'   # CE emitido em Santos (os de outros portos: transbordo/cabotagem — sombra de 01/10)
 
 
 def _horas(depois: datetime, antes: datetime) -> float:
@@ -136,6 +141,8 @@ class Estada:
     embarque: Optional[datetime] = None
     inspecoes: List[ldt.Evento] = field(default_factory=list)   # no recinto, durante a estada (ou no gate)
     soltas: List[ldt.Evento] = field(default_factory=list)      # em outros recintos, depois da entrada
+    entrada_id: Optional[int] = None                            # ids dos acessos (para ler placa/declaração)
+    saida_id: Optional[int] = None
 
     @property
     def fim(self) -> Optional[datetime]:
@@ -186,18 +193,20 @@ def _entrada(estadas: List[Estada], evento: ldt.Evento, desembarque: ldt.Evento,
         return 'entrada com o contêiner vazio'
     if _depois_do_prazo(atual, evento.data):
         return f'entrada mais de {PRAZO_TRANSITO_HORAS:.0f} h depois da saída'
-    _nova(estadas, evento.recinto, operadores, evento.data)
+    _nova(estadas, evento.recinto, operadores, evento.data).entrada_id = evento.id
     return None
 
 
 def _saida(estadas: List[Estada], evento: ldt.Evento, operadores: Set[str]):
     atual = estadas[-1]
     if evento.recinto == atual.recinto:
-        atual.saida = atual.saida or evento.data
+        if atual.saida is None:
+            atual.saida, atual.saida_id = evento.data, evento.id
         return None
     if _depois_do_prazo(atual, evento.data):
         return f'saída noutro recinto mais de {PRAZO_TRANSITO_HORAS:.0f} h depois'
-    _nova(estadas, evento.recinto, operadores, None).saida = evento.data   # entrada não informada
+    nova = _nova(estadas, evento.recinto, operadores, None)   # entrada não informada
+    nova.saida, nova.saida_id = evento.data, evento.id
     return None
 
 
@@ -275,6 +284,7 @@ class DiagnosticoOperadorTra(Diagnostico):
         self.escopo, self.operadores, self.nomes = self.carga.operadores()
         self.percursos: List[Percurso] = []
         self.gravados: Dict[int, dict] = {}
+        self.eventos: Dict[str, List[ldt.Evento]] = {}   # contêiner -> todos os eventos (sem retificações)
 
     def nome(self, recinto: Optional[str]) -> str:
         return f'{recinto} {(self.nomes.get(recinto) or "")[:22]}'.strip() if recinto else '-'
@@ -319,7 +329,7 @@ class DiagnosticoOperadorTra(Diagnostico):
         eventos, _ = self.carga.eventos(conteineres)
         inicio, fim = self.periodo['inicio'], self.periodo['fim']
         for conteiner, lista in eventos.items():
-            ordenados = ldt.sem_retificacoes(lista)
+            ordenados = self.eventos[conteiner] = ldt.sem_retificacoes(lista)
             for posicao, evento in enumerate(ordenados):
                 if evento.tipo == ldt.DESEMBARQUE and evento.recinto in self.escopo and inicio <= evento.data < fim:
                     self.percursos.append(percurso(conteiner, ordenados[posicao + 1:], evento, self.operadores))
@@ -436,7 +446,8 @@ class DiagnosticoOperadorTra(Diagnostico):
 
     # ---------------------------------------------------------------- 5 e 6
     def secao_referencia_tra(self):
-        self.titulo('7. REFERÊNCIA — duração das estadas em TRA (não operador) já gravadas, mesmos desembarques')
+        self.titulo('7. REFERÊNCIA — duração das estadas no seco (TRA) já gravadas, mesmos desembarques '
+                    '(desde 15/10/2026 inclui o operador em papel de TRA)')
         faixas = Counter()
         for entrada, saida in self.consulta(SQL_ESTADAS_TRA, {'escopo': sorted(self.escopo)}, listas=('escopo',)):
             faixas[faixa(_horas(_dt(saida), _dt(entrada)))] += 1
@@ -467,6 +478,23 @@ class DiagnosticoOperadorTra(Diagnostico):
                 linhas.append([nome_classe, len(ces), len(com), _pct(len(com), len(ces)),
                                '; '.join(f'{t} ({n})' for t, n in principais)])
         self.tabela(['classe', 'CEs', 'com DTA', '%', 'tipos mais comuns'], linhas)
+
+    def secao_trafego(self):
+        self.titulo('8b. TRÁFEGO do CE do ciclo nas estadas em outro operador, por classe (conhecimentosresumo)')
+        ces = {ce for c, _, _, _ in self.estadas(operador=True) for ce in [(self._gravado(c) or {}).get('ce')] if ce}
+        trafego = {ce: (t or '').strip() for ce, t in self._por_lotes(SQL_TRAFEGO, 'ces', ces)}
+        contagem, rotulos = defaultdict(Counter), dict(TRAFEGOS)
+        for caminho, _, _, nome_classe in self.estadas(operador=True):
+            ce = (self._gravado(caminho) or {}).get('ce')
+            contagem[nome_classe]['estadas'] += 1
+            if not ce:
+                contagem[nome_classe]['sem CE no ciclo'] += 1
+                continue
+            contagem[nome_classe][rotulos.get(trafego.get(ce), 'outro/fora do Mercante')] += 1
+            contagem[nome_classe][f'CE emitido fora (≠ {PREFIXO_SANTOS})'] += not ce.startswith(PREFIXO_SANTOS)
+        colunas = (['estadas', 'sem CE no ciclo'] + [r for _, r in TRAFEGOS] +
+                   ['outro/fora do Mercante', f'CE emitido fora (≠ {PREFIXO_SANTOS})'])
+        self.tabela(['classe'] + colunas, [[c] + [contagem[c][col] for col in colunas] for c in CLASSES if contagem[c]])
 
     def secao_padroes(self, limite: int = 25):
         self.titulo('9. PERCURSOS MAIS COMUNS (OP = operador do desembarque, OP2 = outro operador, SECO = não '
@@ -502,7 +530,8 @@ def roda(diag: DiagnosticoOperadorTra):
     amostra = diag.secao_volume()
     diag.monta_percursos(amostra)
     for secao in (diag.secao_classes, diag.secao_faixas, diag.secao_pares, diag.secao_gravado, diag.secao_completude,
-                  diag.secao_referencia_tra, diag.secao_dtas, diag.secao_padroes, diag.secao_exemplos):
+                  diag.secao_referencia_tra, diag.secao_dtas, diag.secao_trafego, diag.secao_padroes,
+                  diag.secao_exemplos):
         secao()
     diag.titulo('TEMPOS DAS CONSULTAS (as 5 mais lentas)')
     for sql, segundos in sorted(diag.tempos, key=lambda t: -t[1])[:5]:
