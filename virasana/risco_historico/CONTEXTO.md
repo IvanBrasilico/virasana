@@ -234,8 +234,11 @@ parâmetros fazem sentido"; decidiu colocar em produção e balancear acompanhan
 - Ordenação por risco: **não feita** — medir antes (cursor composto pontos + Item.ID).
 
 Pendências do risco (observadas na página de 14/10/2026):
-1. Raízes de CNPJ com todos os dígitos iguais (`00000000` — Banco do Brasil como consignatário "à ordem" —,
-   `99999999`) aparecem com peso máximo: proposta de exclusão automática (a confirmar).
+1. ~~Raízes de CNPJ com todos os dígitos iguais~~ — **feito em 15/10/2026** (aprovado pelo usuário):
+   `sinais.raiz_valida` tira `00000000` (Banco do Brasil "à ordem"), `99999999` etc. do importador e do CNPJ
+   citado, no histórico (`calculo.valores_da_ficha`), nos CEs novos (`sinais_do_ce`) e nos sinais já gravados
+   (`pontuaveis`, ao contar e pontuar). Ativar: `lotes.py --parametros --forca` (as fichas positivas não mudam,
+   então a versão nova precisa ser forçada); a pontuação refaz todos os CEs na nova versão.
 2. Embarcador vem com o endereço junto (várias grafias da mesma empresa): normalização melhor do nome.
 3. Agentes de carga/transportadores como importador ou embarcador: desativar parâmetro pelo analista (F5).
 

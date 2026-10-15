@@ -150,6 +150,20 @@ class TestSinais(unittest.TestCase):
         self.assertEqual(s['importador'], set())
         self.assertEqual(s['porto_baldeacao'], set())
 
+    def test_raizes_com_digitos_iguais_nao_sao_importador(self):
+        self.assertFalse(sinais.raiz_valida('00000000'))      # Banco do Brasil "à ordem"
+        self.assertFalse(sinais.raiz_valida('99999999'))
+        self.assertFalse(sinais.raiz_valida('CPF 52998224725'))
+        self.assertTrue(sinais.raiz_valida('11222333'))
+        s = sinais.sinais_do_ce({'consignatario': '00000000000191', 'portoOrigemCarga': 'CNSHA',
+                                 'portoDestFinal': 'BRSSZ'}, None, [])
+        self.assertEqual(s['importador'], set())
+        # sinais gravados antes da regra: refiltrados na hora de contar e pontuar
+        gravados = sinais.de_json('{"importador": ["99999999"], "rota": ["CNSHA > BRSSZ"]}')
+        self.assertEqual(sinais.pontuaveis(gravados)['importador'], set())
+        self.assertEqual(sinais.pontuaveis(gravados)[sinais.CITADO], set())
+        self.assertEqual(sinais.conta([gravados])['importador'], {})
+
     def test_mesmos_valores_do_historico(self):
         """O CE da ficha gera, nas dimensões do cálculo, os mesmos valores que a extração do histórico."""
         conexao = monta_banco().connect()
@@ -178,10 +192,10 @@ class TestSinais(unittest.TestCase):
 class TestCalculo(unittest.TestCase):
 
     def test_cnpj_citado_sem_o_proprio_importador_e_sem_cpf(self):
-        valores = calculo.valores_da_ficha({'importador': {'11222333', 'CPF 52998224725'},
-                                            'cnpj_citado': {CNPJ_A, CNPJ_C}})
+        valores = calculo.valores_da_ficha({'importador': {'11222333', 'CPF 52998224725', '99999999'},
+                                            'cnpj_citado': {CNPJ_A, CNPJ_C, '00000000000191'}})
         self.assertEqual(valores['importador'], {'11222333'})
-        self.assertEqual(valores[sinais.CITADO], {'11444777'})
+        self.assertEqual(valores[sinais.CITADO], {'11444777'})          # sem o BB (00000000)
 
     def test_peso(self):
         # k=2 de K=5; valor em 1 de 10 CEs: fatia suavizada (2 + 10*0,1)/(5 + 10) = 0,2 -> 2x a média
@@ -211,11 +225,11 @@ class TestCalculo(unittest.TestCase):
     def test_importadores_distintos_e_embarcador_longo(self):
         longo = 'X' * 300
         hist = calculo.historico([
-            {'id': 1, 'peso': 1.0, 'sinais': {'importador': {'11111111'}, 'rota': {'A > B'}, 'embarcador': {longo}}},
-            {'id': 2, 'peso': 1.0, 'sinais': {'importador': {'11111111'}, 'rota': {'A > B'}}},
+            {'id': 1, 'peso': 1.0, 'sinais': {'importador': {'11112222'}, 'rota': {'A > B'}, 'embarcador': {longo}}},
+            {'id': 2, 'peso': 1.0, 'sinais': {'importador': {'11112222'}, 'rota': {'A > B'}}},
             {'id': 3, 'peso': 2.0, 'sinais': {'rota': {'A > B'}}}])                       # sem importador conhecido
         self.assertEqual(hist.total, 4.0)
-        self.assertEqual(hist.importadores['rota']['A > B'], {'11111111', 'ficha 3'})
+        self.assertEqual(hist.importadores['rota']['A > B'], {'11112222', 'ficha 3'})
         self.assertIn('X' * 255, hist.k['embarcador'])
 
     def test_pontos_sao_a_soma_das_parcelas(self):

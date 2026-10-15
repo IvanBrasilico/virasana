@@ -17,6 +17,7 @@ Atenção: `conhecimentosresumo.create_date` é a data da ÚLTIMA ALTERAÇÃO do
 (ON UPDATE current_timestamp no banco), não a de criação.
 """
 import json
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -47,6 +48,13 @@ SQL_NCMS_DOS_CES = text('SELECT ID, numeroCEMercante, identificacaoNCM FROM ncmi
                         'WHERE numeroCEMercante IN :ces').bindparams(bindparam('ces', expanding=True))
 
 
+def raiz_valida(raiz: str) -> bool:
+    """Raiz de CNPJ (8 dígitos) que identifica um importador. Fora: CPF (LGPD) e raízes com todos os dígitos
+    iguais — `00000000` é o Banco do Brasil como consignatário "à ordem", `99999999` é preenchimento inválido
+    (decisão do usuário, 15/10/2026: tinham peso máximo sem dizer quem importa)."""
+    return bool(re.fullmatch(r'\d{8}', raiz or '')) and len(set(raiz)) > 1
+
+
 def _texto(valor) -> str:
     return (valor or '').strip().upper()
 
@@ -56,7 +64,7 @@ def sinais_do_ce(ce: dict, carregamento: Optional[str], posicoes: Iterable[str])
     manifesto e das posições NCM (4 dígitos) declaradas."""
     sinais: Sinais = {dimensao: set() for dimensao in DIMENSOES_CE}
     importador = documento(ce.get('consignatario'))
-    if importador and not importador.startswith('CPF'):
+    if raiz_valida(importador):
         sinais['importador'].add(importador)
     embarcador = normaliza_embarcador(ce.get('embarcador'))
     if embarcador:
@@ -75,8 +83,10 @@ def sinais_do_ce(ce: dict, carregamento: Optional[str], posicoes: Iterable[str])
 
 
 def pontuaveis(sinais: Sinais) -> Sinais:
-    """Valores do CE por dimensão do cálculo (o CNPJ citado casa com o importador)."""
-    return {**sinais, CITADO: set(sinais.get('importador', ()))}
+    """Valores do CE por dimensão do cálculo (o CNPJ citado casa com o importador). Refiltra o importador:
+    vale também para sinais gravados antes de uma regra nova (`raiz_valida`)."""
+    importadores = {v for v in sinais.get('importador', ()) if raiz_valida(v)}
+    return {**sinais, 'importador': importadores, CITADO: importadores}
 
 
 def para_json(sinais: Sinais) -> str:

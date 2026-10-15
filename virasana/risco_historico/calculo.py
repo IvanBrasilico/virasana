@@ -28,7 +28,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Dict, Iterable, List, Set, Tuple
 
-from virasana.risco_historico.sinais import CITADO, DIMENSOES, DIMENSOES_CE, LIMITE_VALOR
+from virasana.risco_historico.sinais import CITADO, DIMENSOES, DIMENSOES_CE, LIMITE_VALOR, raiz_valida
 
 M_PADRAO = 10.0
 # Faixas por percentil dos pontos na população (com pontos > 0): Alto = 1% maiores; Médio = até 5%.
@@ -87,12 +87,13 @@ class Peso:
 
 def valores_da_ficha(sinais: Dict[str, Set[str]]) -> Dict[str, Set[str]]:
     """Sinais de uma ficha (de `dados_risco_perdimentos.extrai`) nas dimensões do
-    cálculo: sem CPF; o CNPJ citado vira raiz e não repete o importador da própria
-    ficha (o CNPJ do fiscalizado digitado nas observações não conta duas vezes)."""
-    importadores = {v for v in sinais.get('importador', ()) if not v.startswith('CPF')}
+    cálculo: sem CPF nem raízes com dígitos iguais (`sinais.raiz_valida`); o CNPJ citado
+    vira raiz e não repete o importador da própria ficha (o CNPJ do fiscalizado
+    digitado nas observações não conta duas vezes)."""
+    importadores = {v for v in sinais.get('importador', ()) if raiz_valida(v)}
     valores = {dimensao: {v[:LIMITE_VALOR] for v in sinais.get(dimensao, ())} for dimensao in DIMENSOES_CE}
     valores['importador'] = importadores
-    valores[CITADO] = {cnpj[:8] for cnpj in sinais.get(CITADO, ())} - importadores
+    valores[CITADO] = {cnpj[:8] for cnpj in sinais.get(CITADO, ()) if raiz_valida(cnpj[:8])} - importadores
     return valores
 
 
