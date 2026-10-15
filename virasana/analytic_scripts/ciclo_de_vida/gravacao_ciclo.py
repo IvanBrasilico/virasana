@@ -9,11 +9,16 @@ Por ciclo (chave: `desembarque_id`, única): atualiza a linha que já existe —
 antigo, que passa a `versao_heuristica = 'v2'` — ou insere. As ligações de confiança BAIXA (CE declarado
 de outra família) NÃO são gravadas: ficam só no motivo/alertas da sombra. Os escaneamentos do ciclo são
 substituídos pelos da v2 (mantendo a imagem já achada); a família de CEs vai para `ciclodevida_ciclo_ce`.
+
+Escaneamento só com IMAGEM (15/10/2026, decisão do usuário): numa passagem por outro recinto ou na chegada ao seco
+sem inspeção transmitida, a imagem do contêiner no Mongo nesse horário é gravada como escaneamento com
+`escaneamento_id` NEGATIVO (derivado do id da imagem — `imagens_ciclo.id_da_imagem`), confiança média e motivo
+"imagem do escâner sem inspeção transmitida". Sem DDL: `escaneamento_id < 0` = não veio da API (conformidade).
 """
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import (
     BigInteger, Boolean, CHAR, Column, DateTime, Integer, MetaData, Numeric, Table, VARCHAR, bindparam, func,
@@ -23,7 +28,9 @@ from sqlalchemy import (
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import CEsResolvidos
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import peso_menos_tara, potencial_oog
-from virasana.analytic_scripts.ciclo_de_vida.imagens_ciclo import imagens_das_inspecoes
+from virasana.analytic_scripts.ciclo_de_vida.imagens_ciclo import (
+    SEM_INSPECAO, Janela, id_da_imagem, imagens_das_inspecoes, imagens_sem_inspecao, janelas_sem_inspecao,
+)
 
 VERSAO = 'v2'
 FORA = 'escaneamento fora'
@@ -160,6 +167,28 @@ def linhas_escaneamentos(ciclo: ldt.CicloCalculado) -> Dict[int, dict]:
     return linhas
 
 
+def linhas_so_imagem(achadas: List[Tuple[Janela, datetime, str]]) -> Dict[int, dict]:
+    """{id negativo: valores} dos escaneamentos só com imagem — o escâner escaneou e a inspeção não foi transmitida
+    (passagem: "escaneamento fora"; chegada ao seco: na etapa). Confiança média."""
+    linhas = {}
+    for janela, horario, imagem_id in achadas:
+        onde = (f'na passagem pelo recinto {janela.recinto} ({FORA})' if janela.passagem
+                else 'na chegada ao recinto seco')
+        linhas[id_da_imagem(imagem_id)] = {
+            'escaneamento_id': id_da_imagem(imagem_id), 'data_escaneamento': horario, 'imagem_id': imagem_id,
+            'confianca': ldt.MEDIA, 'motivo': _texto(f'{SEM_INSPECAO}; {onde}', 200),
+            'codigoRecinto': _texto(janela.recinto, 7), 'fora': janela.passagem,
+        }
+    return linhas
+
+
+def _inclui(valores: dict, id_: Optional[int], ciclo_id: int, inserir: list, atualizar: list):
+    if id_ is None:
+        inserir.append({**valores, 'ciclo_de_vida_id': ciclo_id})
+    else:
+        atualizar.append({**valores, 'b_id': id_})
+
+
 def linhas_ces(ces: CEsResolvidos) -> List[dict]:
     """Os CEs da família com o contêiner (papel master/filhote/simples), marcando o principal."""
     return [{'numeroCEmercante': ce, 'papel': papel, 'principal': ce == ces.principal, 'confianca': ces.confianca}
@@ -236,17 +265,25 @@ class Gravador:
 
     def _compara_escaneamentos(self, item: ItemGravacao, ciclo_id: int, existentes: Dict[int, tuple],
                                inserir: list, atualizar: list, apagar: list):
-        """Separa as inspeções do ciclo em inserir/atualizar/apagar, mantendo a imagem já achada."""
+        """Separa as inspeções do ciclo em inserir/atualizar/apagar, mantendo a imagem já achada; acrescenta as
+        imagens sem inspeção transmitida (id negativo — ver `imagens_ciclo`). Sem o Mongo, as que já existem ficam."""
         novos = linhas_escaneamentos(item.ciclo)
         imagens = self._imagens(item, novos, existentes)
         for escaneamento_id, valores in novos.items():
             id_, imagem = existentes.get(escaneamento_id, (None, None))
             valores = {**valores, 'imagem_id': imagem or imagens.get(escaneamento_id)}
-            if id_ is None:
-                inserir.append({**valores, 'ciclo_de_vida_id': ciclo_id})
-            else:
-                atualizar.append({**valores, 'b_id': id_})
-        apagar += [id_ for escaneamento_id, (id_, _) in existentes.items() if escaneamento_id not in novos]
+            _inclui(valores, id_, ciclo_id, inserir, atualizar)
+        manter = set(novos)
+        if self.mongo_db is None:
+            manter |= {escaneamento_id for escaneamento_id in existentes if escaneamento_id < 0}
+        else:
+            so_imagem = linhas_so_imagem(imagens_sem_inspecao(self.mongo_db, item.conteiner,
+                                                              janelas_sem_inspecao(item.ciclo)))
+            for escaneamento_id, valores in so_imagem.items():
+                _inclui(valores, existentes.get(escaneamento_id, (None, None))[0], ciclo_id, inserir, atualizar)
+            manter |= set(so_imagem)
+            self.estatisticas['escaneamentos só com imagem (sem inspeção na API)'] += len(so_imagem)
+        apagar += [id_ for escaneamento_id, (id_, _) in existentes.items() if escaneamento_id not in manter]
 
     def _imagens(self, item: ItemGravacao, novos: Dict[int, dict], existentes: Dict[int, tuple]) -> Dict[int, str]:
         """Imagens no Mongo só das inspeções que ainda não têm imagem gravada."""

@@ -32,6 +32,12 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     virasana-venv/bin/python $SERVICO --homologacao --uma-vez            # uma volta, gravando
     virasana-venv/bin/python $SERVICO                                    # contínuo (supervisor)
     virasana-venv/bin/python $SERVICO --reprocessa 5000                  # etapa 6: pendentes antigos
+    virasana-venv/bin/python $SERVICO --refaz-desde 2026-09-01           # refaz uma vez (depois de mudar o núcleo)
+
+`--refaz-desde DATA [--refaz-ate DATA]` (15/10/2026): refaz UMA VEZ os ciclos — abertos E concluídos — dos contêineres
+desembarcados no período (o serviço contínuo só refaz o que tem evento novo ou está aberto; depois de uma mudança do
+núcleo, os concluídos ficariam com o resultado antigo). Os mais recentes primeiro, em partes, com o progresso no log;
+uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo) vai ao log e as outras seguem.
 """
 import argparse
 import logging
@@ -267,6 +273,31 @@ class Servico:
             if not cheio:
                 time.sleep(intervalo)
 
+    def conteineres_do_periodo(self, conexao, desde: datetime, ate: datetime) -> List[str]:
+        """Contêineres com ciclo (de qualquer versão) desembarcado no período, os mais recentes primeiro."""
+        consulta = (select(CICLOS.c.numeroConteiner, func.max(CICLOS.c.data_desembarque).label('ultimo'))
+                    .where(CICLOS.c.data_desembarque >= desde, CICLOS.c.data_desembarque < ate,
+                           CICLOS.c.numeroConteiner.isnot(None))
+                    .group_by(CICLOS.c.numeroConteiner).order_by(func.max(CICLOS.c.data_desembarque).desc()))
+        return [c.strip() for c, _ in conexao.execute(consulta) if c and c.strip()]
+
+    def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000) -> Counter:
+        """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo)."""
+        ate = ate or self.relogio()
+        with self.engine.connect() as conexao:
+            conteineres = self.conteineres_do_periodo(conexao, desde, ate)
+        logger.info(f'refazer: {len(conteineres)} contêineres desembarcados de {desde:%Y-%m-%d} a {ate:%Y-%m-%d}')
+        estatisticas = Counter()
+        for i in range(0, len(conteineres), parte):
+            try:
+                estatisticas.update(self.processa(conteineres[i:i + parte], desde=desde))
+            except Exception:  # noqa: uma parte com erro não para as outras (refazer de novo depois resolve)
+                logger.exception(f'refazer: erro na parte {i // parte + 1} — segue com as demais')
+                estatisticas['partes com erro'] += 1
+            logger.info(f'refazer: {min(i + parte, len(conteineres))} de {len(conteineres)} contêineres')
+        logger.info(f'refazer{" (SIMULAÇÃO)" * self.simula}: {dict(estatisticas)}')
+        return estatisticas
+
     def reprocessa(self, limite: int) -> Counter:
         """Etapa 6: reprocessa (v2) os contêineres de ciclos pendentes do loop antigo, os mais recentes primeiro."""
         with self.engine.connect() as conexao:
@@ -312,6 +343,10 @@ def _argumentos(argv=None):
                         help='primeira volta (sem marcas): eventos desde esta data (padrão: 7 dias atrás)')
     parser.add_argument('--reprocessa', type=int, metavar='N',
                         help='etapa 6: reprocessa N contêineres de ciclos pendentes do loop antigo e sai')
+    parser.add_argument('--refaz-desde', type=lambda v: datetime.strptime(v, '%Y-%m-%d'), metavar='AAAA-MM-DD',
+                        help='refaz uma vez os ciclos (abertos e concluídos) desembarcados desde esta data e sai')
+    parser.add_argument('--refaz-ate', type=lambda v: datetime.strptime(v, '%Y-%m-%d'), metavar='AAAA-MM-DD',
+                        help='... até esta data (padrão: agora)')
     parser.add_argument('--sem-mongo', action='store_true', help='não procura as imagens no Mongo')
     parser.add_argument('--sem-risco', action='store_true',
                         help='desliga a etapa do risco histórico por CE (virasana/risco_historico/etapa.py)')
@@ -330,7 +365,9 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     logger.info(f'Ciclo de Vida v2 — banco {engine.url.render_as_string(hide_password=True)}'
                 f'{" — SIMULAÇÃO" * args.simula}')
     servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco)
-    if args.reprocessa:
+    if args.refaz_desde:
+        servico.refaz(args.refaz_desde, args.refaz_ate)
+    elif args.reprocessa:
         servico.reprocessa(args.reprocessa)
     elif args.uma_vez:
         servico.uma_volta(args.desde)

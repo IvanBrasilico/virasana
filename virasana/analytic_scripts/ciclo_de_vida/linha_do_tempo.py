@@ -57,7 +57,7 @@ O resultado depende só dos eventos e de `agora`: recalcular quando chegam event
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 DESEMBARQUE, EMBARQUE, ENTRADA, SAIDA, INSPECAO = 'desembarque', 'embarque', 'entrada', 'saida', 'inspecao'
 PESAGEM = 'pesagem'
@@ -114,6 +114,9 @@ class CicloCalculado:
     motivo: str = ''
     alertas: List[str] = field(default_factory=list)
     remocoes: List[Evento] = field(default_factory=list)   # desembarques de remoção a bordo absorvidos
+    # passagens (recinto, entrada, saída) por outro operador ou estada curta num seco: os acessos não entram no ciclo,
+    # mas a janela serve para achar a imagem do escâner quando a inspeção não foi transmitida (`imagens_ciclo`)
+    passagens: List[Tuple[str, datetime, datetime]] = field(default_factory=list)
 
     @property
     def concluido(self) -> bool:
@@ -376,6 +379,7 @@ class _Percurso:
             # só passou pelo outro operador (ex.: Ecoporto escaneando para o TRA): segue em trânsito
             self._alerta(f'passagem pelo operador {self.recinto}')
             self._marca_estada(f'na passagem pelo operador {self.recinto} (escaneamento fora)')
+            self.ciclo.passagens.append((self.recinto, self.desde, evento.data))
             self.estado, self.recinto, self.desde = 'transito', None, evento.data
         elif evento.tipo == ENTRADA and evento.recinto == self.recinto:
             self._fim(INDEFINIDO, INCOMPLETO, f'saída do operador {self.recinto} não informada (reentrada)')
@@ -426,6 +430,8 @@ class _Percurso:
             return
         self._alerta(f'passagem rápida pelo recinto {self.recinto}')
         self._marca_estada(f'na passagem rápida pelo recinto {self.recinto} (escaneamento fora)')
+        estada = (self.recinto, self.ciclo.entrada_seco.evento.data, self.ciclo.saida_seco.evento.data)
+        self.ciclo.passagens.append(estada)
         self.ciclo.entrada_seco = self.ciclo.saida_seco = None
         self.ciclo.fluxo, self.estado, self.recinto = INDEFINIDO, 'transito', None
         self._entrada_apos_saida(evento)

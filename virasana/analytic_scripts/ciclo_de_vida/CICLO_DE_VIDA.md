@@ -738,6 +738,54 @@ TRA (1.834 + 436 abertos). Mudanças:
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/eventos_conteiner.py --csv sombra_passo1.csv --filtro "8931318 em papel de TRA" --limite 20 --mongo --saida eventos_ecoporto.log
 ```
 
+**Ecoporto em papel de TRA conferido (15/10/2026, `virasana/eventos_ecoporto.log`, 20 contêineres)**: é armazenagem
+real. Padrão: saída do operador de origem com pesagem → 20 min a 3 h depois o Ecoporto PESA o mesmo caminhão
+(mesmo peso ±100 kg, cheio) e inspeciona (com o código do Ecoporto; imagem no Mongo) — sem informar a ENTRADA → 3 a 30
+dias depois (mediana ~11) pesa de novo e informa a saída. O Ecoporto tem dois modos: passagem para escanear (entrada e
+saída informadas, inspeção NÃO transmitida, minutos — a "final curta") e armazenagem (entrada NÃO informada, pesagem,
+inspeção e saída informadas, dias). A entrada deduzida da pesagem está certa; o passo 1 fica como está. Em 2 dos 20
+há imagem na chegada sem inspeção transmitida (o mesmo problema da final curta). Melhoria possível: o peso igual ao
+da saída do operador de origem corroboraria a entrada deduzida (hoje confiança média).
+
+**Passo 2 — CE na heurística (15/10/2026)**: `ces_do_ciclo.importacao_de_santos(resolvidos, candidatos)` (CE principal
+de tráfego 5 e começando com 15) e `heuristica_ciclo.processa_conteiner` passa `importacao` ao núcleo na segunda
+passagem — ativa a regra B (TRA provisório) no serviço e na sombra. Testes em `TestCEsDoCiclo` e
+`TestProcessaConteiner`. Simulação: a mesma sombra do passo 1 (esperado: parte dos "aberto no operador X" vira
+"tra/aberto, operador em papel de TRA").
+
+**Simulação do passo 2 (`virasana/sombra_passo2.log`)**: 47 "aberto no operador X" com CE de importação de Santos
+viram TRA provisório (Embraport 23, Santos Brasil 19, BTP 5); sobram 18 "aberto no operador X"; nada mais muda.
+
+**Passos 3 e 4 — para produção (15/10/2026, aprovado pelo usuário: "vamos colocar em produção")**:
+- **Imagem sem inspeção (opção 1 da final curta)**: `linha_do_tempo` guarda as PASSAGENS (`CicloCalculado.passagens`:
+  recinto, entrada, saída — por outro operador ou estada curta num seco); `imagens_ciclo.janelas_sem_inspecao` dá as
+  janelas sem inspeção ligada (passagem: entrada − 15 min a saída + 15 min; chegada ao seco: 2 h antes a 24 h depois
+  da entrada) e `imagens_sem_inspecao` acha a primeira imagem de cada uma (defasagem do recinto); a gravação grava
+  `escaneamento_id` NEGATIVO (`id_da_imagem`, dos 15 últimos hex do ObjectId — estável), confiança média, motivo
+  "imagem do escâner sem inspeção transmitida", `fora` nas passagens. Sem DDL. Sem o Mongo (`--sem-mongo`), as que
+  já existem ficam; inspeção que chega depois na janela substitui a só-imagem. Não vale para a estada no operador
+  do desembarque.
+- **Completude**: coluna "Só imagem, sem inspeção" (contam como escaneados) e selo "operador em papel de TRA" na
+  lista de recintos secos (operador = recinto que também tem desembarques); no detalhe, selo "sem inspeção na API".
+- **Refazer o que já foi gravado**: `servico_ciclo_de_vida.py --refaz-desde DATA [--refaz-ate DATA]` refaz UMA VEZ
+  os ciclos (abertos e concluídos, de qualquer versão — inclusive os do loop antigo) dos contêineres desembarcados
+  no período, os mais recentes primeiro, em partes de 5.000 com o progresso no log; parte com erro vai ao log.
+- **Acompanhamento**: seção 3 com "operador em papel de TRA" por recinto e situação; seção 4 com a coluna "só imagem
+  (sem inspeção)" por recinto.
+
+**Roteiro no Servidor** (`cd /home/ajna/apps/ajna/virasana`; `SERVICO=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py`):
+1. `git pull` — o serviço em execução continua com o código antigo na memória até reiniciar.
+2. Medir sem gravar, um dia já processado: `virasana-venv/bin/python $SERVICO --refaz-desde 2026-10-13 --refaz-ate
+   2026-10-14 --simula` — o log mostra quanto tempo leva e as estatísticas (ciclos, "escaneamentos só com imagem").
+3. `sudo supervisorctl restart ciclo_de_vida_v2` — o serviço passa a usar o núcleo novo.
+4. Refazer o que já foi gravado, por semana e fora do pico, do mais recente para trás (ex.: `--refaz-desde 2026-10-08
+   --refaz-ate 2026-10-16`, depois `--refaz-desde 2026-10-01 --refaz-ate 2026-10-08`, ... até 2026-09-01).
+5. Reiniciar a aplicação web do virasana (tela da completude).
+6. Acompanhar: `acompanha_ciclo_de_vida.py` (seções 3, 4 e 7), a tela da completude e, depois do passo 4, a sombra
+   (`--csv`): a seção 2b deve mostrar o fluxo gravado igual ao novo.
+Rollback: voltar o código (`git checkout` do commit anterior), reiniciar o serviço e refazer o período; os
+escaneamentos só com imagem saem sozinhos ao refazer (ou `DELETE ... WHERE escaneamento_id < 0`).
+
 **Final curta — 2ª rodada (`virasana/final_curta2.log`, seção 11b)**: a imagem é do momento da passagem em 754 de 761
 (99%; mediana 4 min depois da entrada no Ecoporto), nenhuma na saída do operador de origem — é o escâner do Ecoporto
 (e o da Santos Brasil em 13 casos). H1 confirmada: escaneados, inspeção não transmitida por ninguém. Origem: BTP 469,

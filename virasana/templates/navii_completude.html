@@ -51,6 +51,8 @@
         table.dados td.numero, table.dados th.numero { text-align: right; white-space: nowrap; }
         table.dados tfoot td { font-weight: 700; border-top: 2px solid #E6E6E6; }
         .mono { font-family: monospace; white-space: nowrap; }
+        .selo-operador { display: inline-block; font-size: .6875rem; font-weight: 600; padding: .0625rem .5rem;
+                         border-radius: 999px; background: #E8F0FB; color: #1351B4; white-space: nowrap; }
         .barra { display: inline-block; width: 4rem; height: .5rem; background: #EDEDED; border-radius: 999px;
                  vertical-align: middle; margin-right: .375rem; overflow: hidden; }
         .barra span { display: block; height: 100%; background: #E52207; }
@@ -111,6 +113,7 @@
                 <div><strong>{{ '%.0f' | format(f.participacao * 100) }}%</strong>dos contêineres</div>
                 <div><strong class="{{ 'alerta' if f.totais.pct_sem_escaneamento > 0.05 }}">{{ '%.1f' | format(f.totais.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
                 <div><strong>{{ f.totais.sem_imagem }}</strong>sem imagem</div>
+                {% if f.totais.so_imagem %}<div><strong>{{ f.totais.so_imagem }}</strong>escaneados sem inspeção transmitida (só a imagem)</div>{% endif %}
                 {% if not sem_oog %}<div><strong>{{ f.totais.oog }}</strong>potenciais OOG ({{ f.totais.oog_sem_escaneamento }} sem escaneamento)</div>{% endif %}
                 {% if f.cabotagem %}<div><strong>{{ f.cabotagem.total }}</strong>de cabotagem fora da conta ({{ f.cabotagem.sem_escaneamento }} sem escaneamento)</div>{% endif %}
             </div>
@@ -130,6 +133,7 @@
                         <th>Recinto</th><th>Nome</th>
                         <th class="numero">{{ 'Entradas' if chave == 'tra' else 'Entregas' }}</th>
                         <th class="numero">Sem escaneamento</th><th class="numero">Sem imagem</th>
+                        <th class="numero" title="Escaneados (há imagem no horário), mas sem a inspeção transmitida à API: contam como escaneados">Só imagem, sem inspeção</th>
                         <th>% sem escaneamento</th>
                         {% if chave == 'tra' %}
                         <th class="numero">Saídas do seco</th><th class="numero">Saídas sem escaneamento</th>
@@ -144,10 +148,11 @@
                         <td class="mono">{% if item.codigo_recinto %}<a href="{{ url_for('completude.recinto',
                             codigo=item.codigo_recinto, fluxo=chave, inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None,
                             com_cabotagem=1 if com_cabotagem else None) }}">{{ item.codigo_recinto }}</a>{% else %}—{% endif %}</td>
-                        <td>{{ item.nome_recinto }}</td>
+                        <td>{{ item.nome_recinto }}{% if item.operador %} <span class="selo-operador" title="Operador portuário armazenando carga desembarcada em outro operador (operador em papel de TRA)">operador em papel de TRA</span>{% endif %}</td>
                         <td class="numero">{{ item.total }}</td>
                         <td class="numero">{{ item.sem_escaneamento }}</td>
                         <td class="numero">{{ item.sem_imagem }}</td>
+                        <td class="numero">{{ item.so_imagem }}</td>
                         <td class="mono"><span class="barra"><span style="width: {{ '%.0f' | format(item.pct_sem_escaneamento * 100) }}%"></span></span>{{ '%.1f' | format(item.pct_sem_escaneamento * 100) }}%</td>
                         {% if chave == 'tra' %}
                         <td class="numero">{{ item.total_saidas }}</td>
@@ -164,6 +169,7 @@
                         <td class="numero">{{ f.totais.total }}</td>
                         <td class="numero">{{ f.totais.sem_escaneamento }}</td>
                         <td class="numero">{{ f.totais.sem_imagem }}</td>
+                        <td class="numero">{{ f.totais.so_imagem }}</td>
                         <td class="mono">{{ '%.1f' | format(f.totais.pct_sem_escaneamento * 100) }}%</td>
                         {% if chave == 'tra' %}
                         <td class="numero">{{ f.totais.total_saidas }}</td>

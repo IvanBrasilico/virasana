@@ -8,7 +8,10 @@ RECINTO (sombra de 01–02/10/2026: +3 h ou +0 h, resíduo de até 10 min em ~99
 hora da inspeção + a defasagem do recinto, numa janela de ±15 min; recinto sem medição tenta +3 h e
 +0 h e fica com a imagem mais próxima. Uma consulta por contêiner (índice numeroinformado +
 dataescaneamento), não uma por inspeção.
+
+Também a imagem SEM inspeção transmitida (15/10/2026): ver o bloco "imagem SEM inspeção transmitida" abaixo.
 """
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -60,3 +63,66 @@ def imagens_das_inspecoes(db, conteiner: str, inspecoes: List[ldt.Evento]) -> Di
                                    max(e.data for e in inspecoes) + folga)
     escolhidas = {e.id: escolhe_imagem(imagens, e.data, e.recinto) for e in inspecoes}
     return {id_: imagem for id_, imagem in escolhidas.items() if imagem}
+
+
+# ---------------------------------------------------------------------- imagem SEM inspeção transmitida
+# Decisão do usuário (15/10/2026, `diagnostico_final_curta.py`): o escâner do Ecoporto escaneia o contêiner de
+# passagem (e às vezes na chegada para armazenar) e ninguém transmite a inspeção à API — mas a imagem está no Mongo,
+# no horário da passagem (99% dos casos, 4 min depois da entrada). Onde o contêiner esteve fora do operador do
+# desembarque SEM inspeção ligada, a imagem do contêiner nesse horário vira um escaneamento do ciclo (confiança
+# média). Não vale para a estada no operador do desembarque.
+
+SEM_INSPECAO = 'imagem do escâner sem inspeção transmitida'
+FOLGA_PASSAGEM_MINUTOS = 15      # passagem: da entrada − 15 min à saída + 15 min
+ANTES_DA_CHEGADA_HORAS = 2       # chegada ao seco: do gate (2 h antes da entrada) ...
+CHEGADA_HORAS = 24               # ... até 24 h depois da entrada (ou a saída, se antes)
+
+
+@dataclass(frozen=True)
+class Janela:
+    recinto: str
+    inicio: datetime
+    fim: datetime
+    passagem: bool               # passagem (escaneamento fora, antes do destino) x chegada ao recinto seco
+
+
+def janelas_sem_inspecao(ciclo: ldt.CicloCalculado) -> List[Janela]:
+    """Passagens e chegada ao seco do ciclo sem nenhuma inspeção ligada (de confiança alta ou média) no horário."""
+    ligadas = [lig.evento.data for lig in ciclo.escaneamentos if lig.confianca != ldt.BAIXA]
+    folga = timedelta(minutes=FOLGA_PASSAGEM_MINUTOS)
+    janelas = [Janela(recinto, entrada - folga, saida + folga, True) for recinto, entrada, saida in ciclo.passagens]
+    janelas = [j for j in janelas if not any(j.inicio <= data <= j.fim for data in ligadas)]
+    if ciclo.entrada_seco:
+        entrada = ciclo.entrada_seco.evento.data
+        saida = ciclo.saida_seco.evento.data if ciclo.saida_seco else None
+        inicio = entrada - timedelta(hours=ANTES_DA_CHEGADA_HORAS)
+        fim = entrada + timedelta(hours=CHEGADA_HORAS)
+        if not any(data >= inicio and (saida is None or data <= saida) for data in ligadas):
+            janelas.append(Janela(ciclo.entrada_seco.evento.recinto, inicio, min(fim, saida + folga) if saida else fim,
+                                  False))
+    return janelas
+
+
+def id_da_imagem(imagem_id: str) -> int:
+    """Id NEGATIVO do escaneamento só com imagem (sem inspeção na API), derivado do id da imagem no Mongo: estável
+    entre os reprocessamentos e nunca igual ao id de uma inspeção (positivo). Na tabela, `escaneamento_id < 0`."""
+    return -int(imagem_id[-15:], 16)
+
+
+def imagens_sem_inspecao(db, conteiner: str, janelas: List[Janela]) -> List[Tuple[Janela, datetime, str]]:
+    """[(janela, horário do escaneamento — imagem menos a defasagem do recinto —, id da imagem)]: a primeira imagem
+    de cada janela (uma consulta ao Mongo por contêiner)."""
+    if db is None or not janelas:
+        return []
+    imagens = sorted(imagens_do_conteiner(db, conteiner, min(j.inicio for j in janelas),
+                                          max(j.fim for j in janelas) + timedelta(hours=max(DEFASAGEM_HORAS.values()))))
+    achadas, usadas = [], set()
+    for janela in janelas:
+        for data, imagem_id in imagens:
+            horario = next((data - timedelta(hours=h) for h in defasagens_do(janela.recinto)
+                            if janela.inicio <= data - timedelta(hours=h) <= janela.fim), None)
+            if horario is not None and imagem_id not in usadas:
+                achadas.append((janela, horario, imagem_id))
+                usadas.add(imagem_id)
+                break
+    return achadas

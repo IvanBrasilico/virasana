@@ -493,6 +493,14 @@ class TestCEsDoCiclo(unittest.TestCase):
         r = cdc.resolve_ces(self.DESEMBARQUE, candidatos, declarados=[M])
         self.assertEqual((r.principal, r.confianca), (M, ldt.ALTA))
 
+    def test_importacao_de_santos(self):
+        cabotagem, de_outro_porto = '152600000000033', '072600000000005'
+        candidatos = [self.candidato(H1, M), self.candidato(cabotagem, trafego='3'), self.candidato(de_outro_porto)]
+        self.assertTrue(cdc.importacao_de_santos(cdc.CEsResolvidos(principal=H1), candidatos))
+        self.assertFalse(cdc.importacao_de_santos(cdc.CEsResolvidos(principal=cabotagem), candidatos))
+        self.assertFalse(cdc.importacao_de_santos(cdc.CEsResolvidos(principal=de_outro_porto), candidatos))
+        self.assertFalse(cdc.importacao_de_santos(cdc.CEsResolvidos(), candidatos))   # sem CE
+
     def test_familia_inclui_master_sem_o_conteiner(self):
         candidatos = [self.candidato(H1, M)]
         r = cdc.resolve_ces(self.DESEMBARQUE, candidatos)
@@ -521,6 +529,17 @@ class TestProcessaConteiner(unittest.TestCase):
         self.assertEqual((ces.principal, ces.confianca), (H1, ldt.ALTA))   # declarado (M) é da família
         self.assertEqual([e.confianca for e in ciclo.escaneamentos], [ldt.ALTA, ldt.BAIXA])
         self.assertEqual(ciclo.situacao, ldt.CONCLUIDO)
+
+    def test_ainda_noutro_operador_vira_tra_provisorio_so_com_ce_de_importacao_de_santos(self):
+        # passo 2 (15/10/2026): a heurística diz ao núcleo se o CE principal é de importação emitido em Santos
+        eventos = [D(t(9, 27), ce=H1), S(t(9, 28, 10)), ENT(t(9, 28, 12), EMB)]
+        for trafego, esperado in (('5', (ldt.TRA, 'no recinto seco (operador 8931404 em papel de TRA)')),
+                                  ('3', (ldt.INDEFINIDO, 'no operador 8931404'))):
+            with self.subTest(trafego=trafego):
+                candidatos = [cdc.CandidatoCE(H1, None, trafego, (date(2026, 9, 27),))]
+                [(ciclo, ces)] = processa_conteiner(eventos, candidatos, ESCOPO, OPERADORES, AGORA)
+                self.assertEqual(ces.principal, H1)
+                self.assertEqual((ciclo.fluxo, ciclo.situacao, ciclo.motivo), (esperado[0], ldt.ABERTO, esperado[1]))
 
     def test_inspecao_declarando_irmao_e_da_familia(self):
         # sombra de 01/10 (ECMU7308179): inspeção no cais 10 min depois do desembarque, CE de um irmão

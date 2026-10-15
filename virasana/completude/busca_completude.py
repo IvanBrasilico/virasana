@@ -35,6 +35,12 @@ e permite incluí-los. Ciclo sem CE continua na conta.
 
 No detalhe, cada contêiner traz os parâmetros para abrir o NAVI-I filtrado por ele, na janela do desembarque
 (`navii`): o usuário vê o card da operação (Mercante, linha do tempo, escaneamentos, fichas).
+
+Operador em papel de TRA e imagem sem inspeção (15/10/2026, decisões do usuário — ver CICLO_DE_VIDA.md): a lista de
+recintos secos passa a ter OPERADORES (Embraport, Santos Brasil, Ecoporto, BTP armazenando carga desembarcada em
+outro operador) — marcados `operador` (recinto que também tem desembarques); e cada recinto mostra quantos ciclos
+foram escaneados SÓ pela imagem, sem inspeção transmitida à API (`escaneamento_id < 0` — `so_imagem`): contam como
+escaneados, mas a coluna mostra a falta de transmissão (conformidade).
 """
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -117,12 +123,12 @@ def _percentual(parte: int, total: int) -> float:
     return parte / total if total else 0.0
 
 
-def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc, oog=0, oog_sem_esc=0) -> dict:
+def _item(codigo, nome, total, sem_esc, sem_img, saidas, saidas_sem_esc, oog=0, oog_sem_esc=0, so_imagem=0) -> dict:
     total, sem_esc, sem_img = total or 0, sem_esc or 0, sem_img or 0
     saidas, saidas_sem_esc = saidas or 0, saidas_sem_esc or 0
     return {
         'codigo_recinto': codigo, 'nome_recinto': nome or '(recinto não cadastrado)',
-        'total': total, 'sem_escaneamento': sem_esc, 'sem_imagem': sem_img,
+        'total': total, 'sem_escaneamento': sem_esc, 'sem_imagem': sem_img, 'so_imagem': so_imagem or 0,
         'pct_sem_escaneamento': _percentual(sem_esc, total),
         'total_saidas': saidas, 'saidas_sem_escaneamento': saidas_sem_esc,
         'pct_saidas_sem_escaneamento': _percentual(saidas_sem_esc, saidas),
@@ -141,6 +147,7 @@ def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Option
     recinto = _fluxo(fluxo)['recinto']
     tem_escaneamento = exists().where(Esc.ciclo_de_vida_id == Ciclo.ID)
     tem_imagem = exists().where(and_(Esc.ciclo_de_vida_id == Ciclo.ID, Esc.imagem_id.isnot(None)))
+    tem_inspecao = exists().where(and_(Esc.ciclo_de_vida_id == Ciclo.ID, Esc.escaneamento_id >= 0))
     saiu = Ciclo.data_saida_seco.isnot(None) if fluxo == 'tra' else Ciclo.data_saida.isnot(None)
     nomes = (select(tabela_recintos.c.cod_siscomex, func.max(tabela_recintos.c.nome).label('nome'))
              .where(tabela_recintos.c.cod_siscomex.isnot(None))
@@ -154,6 +161,7 @@ def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Option
             func.sum(case((and_(saiu, ~tem_escaneamento), 1), else_=0)),
             func.sum(case((OOG, 1), else_=0)),
             func.sum(case((and_(OOG, ~tem_escaneamento), 1), else_=0)),
+            func.sum(case((and_(tem_escaneamento, ~tem_inspecao), 1), else_=0)),
         )
         .outerjoin(nomes, nomes.c.cod_siscomex == recinto)
         .outerjoin(DESEMBARQUES, DESEMBARQUES.c.id == Ciclo.desembarque_id)
@@ -164,16 +172,31 @@ def agregado(session, fluxo: str, inicio: datetime, fim: datetime, agora: Option
     if not com_cabotagem:
         consulta = _com_ce(consulta).filter(_sem_cabotagem())
     resultados = [_item(*linha) for linha in consulta.group_by(recinto).all()]
+    if fluxo == 'tra':
+        operadores = _operadores(session, [r['codigo_recinto'] for r in resultados])
+        for resultado in resultados:
+            resultado['operador'] = resultado['codigo_recinto'] in operadores
     return sorted(resultados, key=lambda r: (-r['pct_sem_escaneamento'], -r['total']))
+
+
+def _operadores(session, codigos: List[str]) -> set:
+    """Os recintos da lista que são OPERADORES (têm desembarques nos ciclos) — no fluxo TRA, operador em papel de
+    TRA. Pelos próprios ciclos (índice de `codigoRecintoDesembarque`), sem depender do cadastro."""
+    codigos = [c for c in codigos if c]
+    if not codigos:
+        return set()
+    return {c for c, in session.query(Ciclo.codigoRecintoDesembarque)
+            .filter(Ciclo.codigoRecintoDesembarque.in_(codigos)).distinct()}
 
 
 def totais(resultados: List[dict]) -> dict:
     """Linha de TOTAL de uma tabela agregada."""
     soma = {chave: sum(r.get(chave, 0) for r in resultados)
             for chave in ('total', 'sem_escaneamento', 'sem_imagem', 'total_saidas', 'saidas_sem_escaneamento',
-                          'oog', 'oog_sem_escaneamento')}
+                          'oog', 'oog_sem_escaneamento', 'so_imagem')}
     return _item(None, 'TOTAL', soma['total'], soma['sem_escaneamento'], soma['sem_imagem'],
-                 soma['total_saidas'], soma['saidas_sem_escaneamento'], soma['oog'], soma['oog_sem_escaneamento'])
+                 soma['total_saidas'], soma['saidas_sem_escaneamento'], soma['oog'], soma['oog_sem_escaneamento'],
+                 soma['so_imagem'])
 
 
 def cabotagem_fora(session, fluxo: str, inicio: datetime, fim: datetime, agora: Optional[datetime] = None,
@@ -228,7 +251,7 @@ def _linha_detalhe(ciclo, tipo: Optional[str], trafego: Optional[str], fichas: L
         'situacao': ciclo.situacao, 'motivo': ciclo.motivo,
         'escaneamentos': [{'id': e.escaneamento_id, 'data': e.data_escaneamento, 'imagem_id': e.imagem_id,
                            'recinto': e.codigoRecinto, 'confianca': e.confianca, 'motivo': e.motivo,
-                           'fora': bool(e.fora)}
+                           'fora': bool(e.fora), 'so_imagem': (e.escaneamento_id or 0) < 0}
                           for e in escaneamentos],
         'imagens': [e.imagem_id for e in escaneamentos if e.imagem_id],
         'fichas': fichas,

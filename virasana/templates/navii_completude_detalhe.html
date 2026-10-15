@@ -51,6 +51,7 @@
         .vazio { color: #999; font-style: italic; font-size: .8125rem; }
         .selo.oog { background: #FDE7E4; color: #B3261E; }
         .selo.fora { background: #FFF5C2; color: #8A6D00; }
+        .selo.so-imagem { background: #F3E8FD; color: #6A1B9A; }
         .selo.estagio { background: #EDF5FF; color: #1351B4; }
         .escaneamento { margin-bottom: .25rem; }
         a.selo.ficha { background: #EDF5FF; color: #1351B4; text-decoration: none; }
@@ -119,7 +120,7 @@
                         {% endif %}
                         <td>{% if lin.estagio %}<span class="selo estagio" title="{{ lin.estagio.descricao }}">{{ lin.estagio.rotulo }}</span>{% else %}—{% endif %}{% if lin.motivo %}<span class="secundario">{{ lin.motivo }}</span>{% endif %}</td>
                         <td>{% for f in lin.fichas %}<div class="escaneamento"><a class="selo ficha{{ ' aberta' if f.aberta }}{{ ' abandono' if f.abandono }}" href="{{ f.url }}" target="_blank" rel="noopener" title="{{ 'FMA' if f.abandono else 'Ficha' }} {{ f.numero }} · {{ f.tipo or '' }} — {{ f.fase or '' }}{{ ' (pelo contêiner)' if f.via == 'contêiner' }}">Ficha {{ f.id }}{{ ' · FMA' if f.abandono }}</a><span class="secundario">{{ f.fase or '' }}</span></div>{% else %}—{% endfor %}</td>
-                        <td>{% for e in lin.escaneamentos %}<div class="escaneamento"><span class="selo ok" title="{{ e.motivo or '' }}">{{ e.data.strftime('%d/%m %H:%M') if e.data else e.id }}</span>{% if e.fora %} <span class="selo fora" title="Escaneado fora, antes da entrada no recinto seco (escaneamento terceirizado)">fora</span>{% endif %}{% if e.recinto or e.confianca %}<span class="secundario">{{ e.recinto or '' }}{% if e.confianca %} · confiança {{ confianca[e.confianca] or e.confianca }}{% endif %}</span>{% endif %}</div>{% else %}<span class="selo falta">sem escaneamento</span>{% endfor %}</td>
+                        <td>{% for e in lin.escaneamentos %}<div class="escaneamento"><span class="selo ok" title="{{ e.motivo or '' }}">{{ e.data.strftime('%d/%m %H:%M') if e.data else e.id }}</span>{% if e.fora %} <span class="selo fora" title="Escaneado fora, antes da entrada no recinto seco (escaneamento terceirizado)">fora</span>{% endif %}{% if e.so_imagem %} <span class="selo so-imagem" title="Há a imagem do escâner no horário, mas a inspeção não foi transmitida à API Recintos">sem inspeção na API</span>{% endif %}{% if e.recinto or e.confianca %}<span class="secundario">{{ e.recinto or '' }}{% if e.confianca %} · confiança {{ confianca[e.confianca] or e.confianca }}{% endif %}</span>{% endif %}</div>{% else %}<span class="selo falta">sem escaneamento</span>{% endfor %}</td>
                         <td><div class="miniaturas">{% for imagem in lin.imagens %}<a href="{{ urls_imagem.arquivo }}{{ imagem }}" target="_blank"><img src="{{ urls_imagem.mini }}{{ imagem }}" alt="Imagem de escaneamento" loading="lazy"></a>{% else %}{% if lin.escaneamentos %}<span class="selo falta">sem imagem</span>{% endif %}{% endfor %}</div></td>
                     </tr>
                 {% endfor %}

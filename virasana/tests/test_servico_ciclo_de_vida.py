@@ -13,6 +13,7 @@ Cenário (SQLite + Mongo simulado; agora = 20/03/2026 00:00; marcas iniciais des
 """
 import re
 import unittest
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -280,6 +281,26 @@ class TestVoltasSeguintes(ServicoTestCase):
         limitado = sv.Servico(self.engine, self.mongo, dias_eventos=10, dias_maximos_aberto=15, relogio=self.relogio)
         with self.engine.connect() as c:
             self.assertEqual(limitado._desde_do_lote(c, ['CTRA'], None), self.relogio.agora - timedelta(days=15))
+
+    def test_refaz_periodo_inclusive_concluidos(self):
+        """--refaz-desde (15/10/2026): depois de mudar o núcleo, os ciclos CONCLUÍDOS do período são refeitos uma vez
+        (o serviço contínuo não os revisita). O CTRB (entregue pelo Ecoporto) é "estragado" e volta ao certo."""
+        with self.engine.begin() as c:
+            c.execute(gc.CICLOS.update().where(gc.CICLOS.c.numeroConteiner == 'CTRB').values(fluxo='baldeacao',
+                                                                                           motivo='antigo'))
+        with self.engine.connect() as c:
+            self.assertEqual(self.servico.conteineres_do_periodo(c, d(1), d(10)), ['CTRB', 'CTRA'])
+        estatisticas = self.servico.refaz(d(1), d(10))
+        self.assertEqual((estatisticas['contêineres'], estatisticas['ciclos atualizados']), (2, 2))
+        self.assertEqual((self.ciclo('CTRB')['fluxo'], self.ciclo('CTRB')['situacao']), (ldt.OPERADOR, ldt.CONCLUIDO))
+        self.assertEqual(sv._argumentos(['--refaz-desde', '2026-09-01']).refaz_desde, datetime(2026, 9, 1))
+
+    def test_refaz_segue_quando_uma_parte_falha(self):
+        from unittest import mock
+        with mock.patch.object(self.servico, 'processa', side_effect=[RuntimeError('chave duplicada'), Counter()]) \
+                as processa, self.assertLogs('ciclo_de_vida_v2', 'ERROR'):
+            estatisticas = self.servico.refaz(d(1), d(10), parte=1)
+        self.assertEqual((estatisticas['partes com erro'], processa.call_count), (1, 2))
 
     def test_reprocessa_pendente_antigo(self):
         estatisticas = self.servico.reprocessa(10)

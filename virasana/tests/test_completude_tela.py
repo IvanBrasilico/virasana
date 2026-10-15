@@ -130,6 +130,28 @@ class TestBusca(CompletudeTestCase):
         self.assertEqual(p['operador']['totais']['sem_escaneamento'], 2)
         self.assertAlmostEqual(p['tra']['participacao'], 0.5)
 
+    def test_operador_em_papel_de_tra_e_escaneamento_so_com_imagem(self):
+        # 15/10/2026: T7 desembarca na BTP e fica na Embraport (operador — tem desembarques: O9); escaneado só pela
+        # imagem do escâner, sem inspeção transmitida (escaneamento_id negativo)
+        embraport = '8931404'
+        ciclo(self.session, 'O9', None, codigoRecintoDesembarque=embraport, data_desembarque=datetime(2026, 3, 1))
+        c = CicloDeVidaImportacao(numeroConteiner='T7', numeroCEmercante='CET7', codigoRecintoDesembarque=BTP,
+                                  codigoRecintoArmazenagem=embraport, data_desembarque=datetime(2026, 3, 1),
+                                  data_saida=datetime(2026, 3, 2), data_entrada_seco=datetime(2026, 3, 2, 1),
+                                  concluido=False)
+        c.escaneamentos.append(CicloDeVidaImportacaoEscaneamentos(
+            escaneamento_id=-12345, data_escaneamento=datetime(2026, 3, 2, 1, 5), imagem_id='5f00000000000000000000c1',
+            codigoRecinto=embraport, confianca='media', motivo='imagem do escâner sem inspeção transmitida'))
+        self.session.add(c)
+        self.session.commit()
+        linhas = {r['codigo_recinto']: r for r in bc.agregado(self.session, 'tra', INICIO, FIM, AGORA)}
+        self.assertEqual((linhas[embraport]['operador'], linhas[SECO]['operador']), (True, False))
+        self.assertEqual((linhas[embraport]['so_imagem'], linhas[embraport]['sem_escaneamento']), (1, 0))
+        self.assertEqual(linhas[SECO]['so_imagem'], 0)
+        self.assertEqual(bc.panorama(self.session, INICIO, FIM, AGORA)['tra']['totais']['so_imagem'], 1)
+        [linha] = bc.detalhe(self.session, 'tra', embraport, INICIO, FIM, AGORA)
+        self.assertTrue(linha['escaneamentos'][0]['so_imagem'])
+
     def test_detalhe(self):
         linhas = bc.detalhe(self.session, 'tra', SECO, INICIO, FIM, AGORA)
         self.assertEqual([lin['conteiner'] for lin in linhas], ['T2', 'T1', 'T3'])   # sem escaneamento primeiro
@@ -243,6 +265,16 @@ class TestTela(CompletudeTestCase):
         self.assertEqual(self.client.get('/completude_escaneamentos').status_code, 200)   # sem a barra
         self.assertIn('Excluir potenciais OOG', html)
         self.assertIn('Potencial OOG', html)
+
+    def test_tela_operador_em_papel_de_tra_e_so_imagem(self):
+        TestBusca.test_operador_em_papel_de_tra_e_escaneamento_so_com_imagem(self)   # monta T7/O9 e confere a busca
+        html = self.html('/completude_escaneamentos/', inicio='2026-03-01', fim='2026-03-07')
+        self.assertIn('operador em papel de TRA</span>', html)
+        self.assertIn('Só imagem, sem inspeção', html)
+        self.assertIn('escaneados sem inspeção transmitida (só a imagem)', html)
+        detalhe = self.html('/completude_escaneamentos/recinto/8931404', fluxo='tra', inicio='2026-03-01',
+                            fim='2026-03-07')
+        self.assertIn('sem inspeção na API</span>', detalhe)
 
     def test_tela_sem_oog_mantem_a_opcao_nos_links(self):
         html = self.html('/completude_escaneamentos/', inicio='2026-03-01', fim='2026-03-07', sem_oog='1')

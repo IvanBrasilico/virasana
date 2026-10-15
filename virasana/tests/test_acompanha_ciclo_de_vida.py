@@ -73,6 +73,29 @@ class TestRelatorio(AcompanhamentoTestCase):
         self.assertIn('Total: 1', texto)
 
 
+class TestOperadorEmPapelDeTraESoImagem(unittest.TestCase):
+    """15/10/2026: COTR fica 5 dias no Ecoporto (operador em papel de TRA); CFIN passa pelo Ecoporto e CSEC chega ao
+    EADI sem inspeção transmitida — escaneamentos só com a imagem (id negativo)."""
+
+    def test_secoes_3_e_4(self):
+        from virasana.tests.test_diagnostico_operador_tra import acrescenta_cenario
+        from virasana.tests.test_imagens_sem_inspecao import acrescenta
+        engine, mongo = monta_banco()
+        acrescenta_cenario(engine)
+        acrescenta(engine, mongo)
+        sv.Servico(engine, mongo, relogio=Relogio(AGORA)).uma_volta(DESDE)
+        saida = io.StringIO()
+        with engine.connect() as conexao:
+            acompanhamento = ac.Acompanhamento(conexao, saida, AGORA - timedelta(days=28), AGORA, agora=AGORA)
+            acompanhamento.secao_situacao()
+            acompanhamento.secao_escaneamentos()
+        texto = saida.getvalue()
+        self.assertNotIn('ERRO', texto)
+        self.assertRegex(texto, r'8931318\s+\|\s+concluido\s+\|\s+1')                       # COTR
+        self.assertRegex(texto, r'(?m)^8932000\s+\|\s+EADI\s+\|\s+1\s+\|.*\|\s+1\s*$')      # CSEC: só imagem
+        self.assertIn('só imagem (sem inspeção)', texto)
+
+
 class TestAlertas(AcompanhamentoTestCase):
 
     def test_servico_parado(self):

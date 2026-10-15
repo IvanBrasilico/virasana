@@ -21,6 +21,8 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from virasana.analytic_scripts.ciclo_de_vida.linha_do_tempo import ALTA, BAIXA, MEDIA
 
 TRAFEGO_EXPORTACAO = '7'
+TRAFEGO_IMPORTACAO = '5'
+PREFIXO_SANTOS = '15'      # CE emitido em Santos (os de outros portos: transbordo/cabotagem — sombra de 01/10/2026)
 JANELA_ESCALA_DIAS = 15
 FILHOTE, MASTER, SIMPLES = 'filhote', 'master', 'simples'
 
@@ -122,6 +124,19 @@ def resolve_ces(desembarque: datetime, candidatos: Iterable[CandidatoCE], declar
     resultado.principal = _principal(membros, papeis, declarados)
     resultado.confianca = confianca
     return resultado
+
+
+def importacao_de_santos(resolvidos: CEsResolvidos, candidatos: Iterable[CandidatoCE] = ()) -> bool:
+    """O CE principal é de importação (tráfego 5) e foi emitido em Santos (começa com 15).
+
+    Só com ele uma estada longa ainda em andamento noutro operador vira TRA provisório (`linha_do_tempo`, usuário
+    15/10/2026): na medição, a armazenagem noutro operador tinha CE de importação de Santos em 92% dos casos; a
+    baldeação esperando o navio, quase sempre sem CE, cabotagem ou CE de outro porto."""
+    principal = resolvidos.principal
+    if not principal or not principal.startswith(PREFIXO_SANTOS):
+        return False
+    trafego = next((c.trafego for c in candidatos if c.ce == principal), None)
+    return (trafego or '').strip() == TRAFEGO_IMPORTACAO
 
 
 def familia(resolvidos: CEsResolvidos, candidatos: Iterable[CandidatoCE] = ()) -> set:

@@ -78,6 +78,7 @@ TESTES = [
     'virasana/tests/test_diagnostico_operador_tra.py',
     'virasana/tests/test_diagnostico_final_curta.py',
     'virasana/tests/test_eventos_conteiner.py',
+    'virasana/tests/test_imagens_sem_inspecao.py',
     'virasana/tests/test_prefixo_proxy.py',
 ]
 

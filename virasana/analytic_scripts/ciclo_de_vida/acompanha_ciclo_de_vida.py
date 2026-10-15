@@ -9,7 +9,8 @@ desembarque, `processado_em`, `situacao`, chave primária das tabelas da API) �
   2. COBERTURA por semana de desembarque: ciclos v2 x antigos, abertos, CE, vazio, entrada no seco
      (implícita), escaneamento, imagem, potencial OOG;
   3. SITUAÇÃO x FLUXO dos ciclos v2 e os motivos mais comuns dos que não concluíram; abertos por idade;
-  4. ESCANEAMENTOS por recinto (imagem, escaneamento fora, confiança) e imagens que faltam por idade;
+  4. ESCANEAMENTOS por recinto (imagem, escaneamento fora, confiança, SÓ IMAGEM — sem inspeção transmitida,
+     `escaneamento_id < 0`, 15/10/2026) e imagens que faltam por idade;
   5. CE: confiança, ciclos sem CE por idade (o Mercante atrasa) e papéis da família;
   6. PENDENTES DO LOOP ANTIGO (o que falta reprocessar com `--reprocessa N`);
   7. ALERTAS: o que merece atenção nesta rodada.
@@ -167,6 +168,13 @@ class Acompanhamento(Diagnostico):
             f'SELECT c.situacao, c.motivo, COUNT(*) FROM {CICLO} c WHERE {CICLO_EM_PERIODO} AND {V2} '  # nosec B608
             "AND c.situacao <> 'concluido' GROUP BY c.situacao, c.motivo ORDER BY 3 DESC LIMIT 15"))
         self.escreve()
+        self.escreve('Operador em papel de TRA (15/10/2026): ciclos v2 do período armazenados noutro operador, por '
+                     'recinto e situação:')
+        self.tabela(['recinto de armazenagem', 'situação', 'ciclos'], self.consulta(
+            f'SELECT c.codigoRecintoArmazenagem, c.situacao, COUNT(*) FROM {CICLO} c '  # nosec B608
+            f"WHERE {CICLO_EM_PERIODO} AND {V2} AND c.motivo LIKE '%em papel de TRA%' "
+            'GROUP BY c.codigoRecintoArmazenagem, c.situacao ORDER BY 3 DESC'))
+        self.escreve()
         limites = {'d2': self.agora - timedelta(days=2), 'd7': self.agora - timedelta(days=7),
                    'd30': self.agora - timedelta(days=30), 'd93': self.agora - timedelta(days=93),
                    'revisita': self.agora - timedelta(hours=REVISITA_ATRASADA_HORAS)}
@@ -216,20 +224,21 @@ class Acompanhamento(Diagnostico):
         limites = {'h6': self.agora - timedelta(hours=6), 'd1': self.agora - timedelta(days=1),
                    'd3': self.agora - timedelta(days=3)}
         linhas = []
-        for recinto, total, imagens, sem_ha_3_dias, fora, alta, media in self.consulta(
+        for recinto, total, imagens, sem_ha_3_dias, fora, alta, media, so_imagem in self.consulta(
                 'SELECT e.codigoRecinto, COUNT(*), SUM(CASE WHEN e.imagem_id IS NOT NULL THEN 1 ELSE 0 END), '
                 'SUM(CASE WHEN e.imagem_id IS NULL AND e.data_escaneamento < :d3 THEN 1 ELSE 0 END), '
                 "SUM(CASE WHEN e.fora = 1 THEN 1 ELSE 0 END), SUM(CASE WHEN e.confianca = 'alta' THEN 1 ELSE 0 END), "
-                "SUM(CASE WHEN e.confianca = 'media' THEN 1 ELSE 0 END) " + de_ciclos_v2 +  # nosec B608
+                "SUM(CASE WHEN e.confianca = 'media' THEN 1 ELSE 0 END), "
+                'SUM(CASE WHEN e.escaneamento_id < 0 THEN 1 ELSE 0 END) ' + de_ciclos_v2 +  # nosec B608
                 ' GROUP BY e.codigoRecinto ORDER BY 2 DESC', limites):
             total, imagens = int(total or 0), int(imagens or 0)
             linhas.append((recinto, (nomes.get(recinto) or '')[:30], total, _pct(imagens, total), sem_ha_3_dias,
-                           fora, alta, media))
+                           fora, alta, media, so_imagem))
             if total >= ESCANEAMENTOS_MINIMOS and imagens < IMAGEM_MINIMA * total:
                 self.alertas.append(f'recinto {recinto}: só {_pct(imagens, total)} dos escaneamentos com imagem — '
                                     'conferir a defasagem de horário (imagens_ciclo.DEFASAGEM_HORAS)')
         self.tabela(['recinto', 'nome', 'escaneamentos', 'com imagem', 'sem imagem há > 3 dias', 'fora', 'conf. alta',
-                     'conf. média'], linhas)
+                     'conf. média', 'só imagem (sem inspeção)'], linhas)
         self.escreve()
         self.escreve('Escaneamentos SEM imagem por idade do escaneamento (imagem que chega depois ao Mongo só é '
                      'procurada de novo quando o contêiner é reprocessado):')
