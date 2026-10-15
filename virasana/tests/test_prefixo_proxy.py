@@ -113,6 +113,9 @@ class TestPrefixoProxy(unittest.TestCase):
         self.assertIn('"tipo_janela": "prevista"', html)
         self.assertIn('var NAVII_URL = "/virasana/navii/"', html)
         self.assertIn('var FILTROS_INICIAIS = null', self.get('/navii/').get_data(as_text=True))
+        html = self.get('/navii/?ce=152600000000101&tipo_janela=efetiva').get_data(as_text=True)   # link do CE
+        self.assertIn('"filtros": {"ce": ["152600000000101"]}', html)
+        self.assertIn('"periodo": null', html)
         # data inválida: sem período (vale a sugestão da tela)
         self.assertIn('"periodo": null', self.get('/navii/?conteiner=X1&data_inicio=xx&data_fim=yy')
                       .get_data(as_text=True))

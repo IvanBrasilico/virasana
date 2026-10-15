@@ -287,6 +287,29 @@ class TestFiltros(NaviiSqliteTestCase):
         self.assertNotIn('AS janela', sql)
         self.assertIn('itensresumo.`codigoConteiner` IN', sql)
 
+    def test_ce_sem_periodo_mostra_todos_os_cards_do_ce(self):
+        ce = '152600000000101'
+        cria_ce(self.session, ce, 'M1', {'C8': [], 'C9': []})                # M1: escala prevista em 10/01/2026
+        cria_ciclo(self.session, ce, 'C8', datetime(2025, 6, 1, 8, 0))   # desembarque bem fora de qualquer janela
+        self.session.commit()
+
+        def busca(**filtros):
+            return {r.item.codigoConteiner for r in busca_ces_navii(self.session, 'efetiva', filtros, limit=50)}
+        self.assertEqual(busca(ce='1526.0000.0000.101'), {'C8', 'C9'})          # normalizado; sem limite de data
+        self.assertEqual(conta_conteineres_navii(self.session, 'efetiva', {'ce': ce}), 2)
+        self.assertEqual(busca(ce=ce, conteiner='C8'), {'C8'})
+        self.assertEqual(busca(**PERIODO, ce=ce), {'C9'})   # com período: C8 desceu fora; C9 (sem ciclo) pela escala
+        self.assertEqual(normaliza_filtros({'ce': '152600000000101, 152600000000102'})['ce'],
+                         ['152600000000101', '152600000000102'])
+
+    def test_ce_dirige_a_busca_sem_a_janela(self):
+        from sqlalchemy.dialects import mysql
+        sql = str(monta_query_navii(self.session, 'efetiva', {'ce': ['152600000000101']})
+                  .statement.compile(dialect=mysql.dialect()))
+        self.assertNotIn('AS janela', sql)
+        self.assertNotIn('data_desembarque', sql)                                # sem período, sem condição de data
+        self.assertIn('itensresumo.`numeroCEmercante` IN', sql)
+
     def test_ncm_por_prefixo_no_conteiner(self):
         self.assertEqual(self.conteineres(ncm='8471'), {'C1'})
         self.assertEqual(self.conteineres('prevista', ncm='8471'), {'C1', 'C3'})
@@ -793,6 +816,63 @@ class TestApiCes(NaviiSqliteTestCase):
         self.assertEqual((dados['total'], dados['cards'][0]['tipoBL']), (1, 'MBL'))
         self.assertEqual(self.get(tipo_bl='11', sem_oog='1').get_json()['total'], 0)
         self.assertTrue(dados['cards'][0]['tipoConteiner']['oog'])
+
+
+class TestRiscoHistorico(NaviiSqliteTestCase):
+    """Filtro "Risco histórico" e selo/memória de cálculo do card (risco_navii)."""
+
+    def setUp(self):
+        super().setUp()
+        from virasana.risco_historico import parametros, tabelas
+        parametros.limpa_cache()
+        conexao = self.session.connection()
+        tabelas.metadata.create_all(conexao)
+        conexao.execute(tabelas.VERSOES.insert().values(
+            ID=1, criado_em=datetime(2026, 1, 20), motivo='primeira versão', assinatura='x' * 64, fichas=2,
+            total_k=2, total_n=100, populacao_desde=datetime(2025, 10, 20),
+            constantes='{"faixas": {"alto": 3.0, "medio": 1.0}, "m": 10.0}'))
+        conexao.execute(tabelas.PARAMETROS.insert(), [
+            {'versao_id': 1, 'dimensao': 'importador', 'valor': '11222333', 'descricao': 'IMPORTADORA ALFA LTDA',
+             'fichas': 2, 'importadores': 1, 'k': 2, 'n': 1, 'vezes': 54.6, 'peso': 4.0, 'fichas_ids': '7,3'},
+            {'versao_id': 1, 'dimensao': 'rota', 'valor': 'CNNGB > BRSSZ', 'descricao': None, 'fichas': 3,
+             'importadores': 2, 'k': 3,
+             'n': 40, 'vezes': 1.6, 'peso': 0.5, 'fichas_ids': '9,8,7'}])
+        linha = {'ce_id': 1, 'ncm_id': 0, 'criado_em': datetime(2026, 1, 20), 'sinais_em': datetime(2026, 1, 20),
+                 'versao_id': 1, 'calculado_em': datetime(2026, 1, 20)}
+        conexao.execute(tabelas.CES.insert(), [
+            {**linha, 'numeroCEmercante': 'CE1', 'sinais': '{"importador": ["11222333"]}', 'pontos': 4.0,
+             'faixa': 'alto'},
+            {**linha, 'numeroCEmercante': 'CE3', 'sinais': '{"rota": ["CNNGB > BRSSZ"]}', 'pontos': 0.5,
+             'faixa': 'baixo'}])
+        self.session.commit()
+
+    def test_filtro_por_faixa(self):
+        self.assertEqual(self.conteineres(risco='alto'), {'C1', 'C2'})          # CE1
+        self.assertEqual(self.conteineres(risco='medio'), {'C1', 'C2'})
+        self.assertEqual(self.conteineres(risco='sinal'), {'C1', 'C2', 'C4'})   # + CE3 (baixo)
+        self.assertEqual(self.total(risco='sinal'), 3)
+        self.assertNotIn('risco', normaliza_filtros({'risco': 'qualquer'}))
+
+    def test_card_com_selo_e_memoria_de_calculo(self):
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1', 'C6']}, limit=50)
+        cards = {c['numeroConteiner']: c for c in monta_cards_navii(self.session, resultados)}
+        risco = cards['C1']['risco']
+        self.assertEqual((risco['faixa'], risco['rotuloFaixa'], risco['pontos'], risco['versao']),
+                         ('alto', 'Alto', 4.0, 1))
+        [parcela] = risco['parcelas']
+        self.assertEqual((parcela['dimensao'], parcela['valor'], parcela['descricao'], parcela['peso'],
+                          parcela['pct']), ('Importador', '11222333', 'IMPORTADORA ALFA LTDA', 4.0, 1.0))
+        self.assertEqual(parcela['fichas_links'][0], {'id': 7, 'url': '/bhadrasana2/ovr?id=7'})
+        self.assertIsNone(cards['C6']['risco'])                                  # CE6: não calculado
+
+
+class TestRiscoSemTabelas(NaviiSqliteTestCase):
+
+    def test_filtro_responde_com_erro_claro_e_card_sem_risco(self):
+        with self.assertRaisesRegex(ValueError, 'Risco histórico indisponível'):
+            self.conteineres(risco='alto')
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1']}, limit=50)
+        self.assertIsNone(monta_cards_navii(self.session, resultados)[0]['risco'])
 
 
 if __name__ == '__main__':

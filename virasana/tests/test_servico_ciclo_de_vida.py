@@ -143,6 +143,24 @@ class ServicoTestCase(unittest.TestCase):
             return [dict(linha) for linha in c.execute(select(tabela).where(*criterios)).mappings()]
 
 
+class TestEtapaRisco(ServicoTestCase):
+    """Etapa do risco histórico por CE no fim da volta: erro nela não derruba o ciclo de vida."""
+
+    def test_erro_na_etapa_do_risco_nao_derruba_o_ciclo(self):
+        from unittest import mock
+        servico = sv.Servico(self.engine, self.mongo, relogio=self.relogio, risco=True)
+        self.assertIsNotNone(servico.etapa_risco)
+        servico.etapa_risco = mock.Mock(executa=mock.Mock(side_effect=RuntimeError('tabela não existe')))
+        with self.assertLogs('ciclo_de_vida_v2', 'ERROR'):
+            servico.uma_volta(DESDE)
+        servico.etapa_risco.executa.assert_called_once()
+
+    def test_desligada_por_padrao_e_na_simulacao(self):
+        self.assertIsNone(self.servico.etapa_risco)
+        self.assertIsNone(sv.Servico(self.engine, self.mongo, simula=True, risco=True).etapa_risco)
+        self.assertTrue(sv._argumentos(['--sem-risco']).sem_risco)
+
+
 class TestPrimeiraVolta(ServicoTestCase):
 
     def test_cria_os_novos_e_atualiza_a_linha_do_loop_antigo(self):

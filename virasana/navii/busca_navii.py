@@ -68,7 +68,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from bhadrasana.models.laudo import Empresa
-from virasana.navii import fichas_ovr, referencias
+from virasana.navii import fichas_ovr, referencias, risco_navii
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
@@ -116,10 +116,12 @@ TIPO_BL_UNICO = '10'
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
 CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
-                'estagio', 'conteiner')
+                'estagio', 'conteiner', 'ce')
 # Filtros de marcar (sim/não). `concluido` é o filtro antigo "entregue ao importador" (links e filtros salvos
 # antigos): `normaliza_filtros` o converte no estágio "entregue".
 CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
+# Filtros de escolha única. `risco`: faixa do risco histórico por CE (risco_navii.FILTROS_RISCO).
+CAMPOS_ESCOLHA = ('risco',)
 _CAMPOS_PORTO = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao')
 
 
@@ -153,12 +155,15 @@ def _parse_data(valor: str) -> datetime:
     return datetime.strptime(valor, '%Y-%m-%d')
 
 
-def _periodo_navii(tipo_janela: str, filtros: dict) -> Tuple[str, str]:
+def _periodo_navii(tipo_janela: str, filtros: dict) -> Tuple[Optional[str], Optional[str]]:
     """Período ('YYYY-MM-DD', 'YYYY-MM-DD') efetivamente usado na busca:
     `data_inicio`/`data_fim` dos filtros (se vierem os dois) ou a sugestão da
-    janela."""
+    janela. Com o filtro `ce` e sem datas, (None, None): sem limite de data (pedido do usuário, 14/10/2026 —
+    o link do CE no card mostra todos os cards do CE)."""
     if filtros.get('data_inicio') and filtros.get('data_fim'):
         return filtros['data_inicio'], filtros['data_fim']
+    if filtros.get('ce'):
+        return None, None
     if tipo_janela == 'prevista':
         return _janela_previsao()
     inicio, fim = _janela_efetiva()
@@ -241,7 +246,7 @@ def _normaliza_codigo(campo: str, codigo: str) -> str:
     """Um código de um campo de CAMPOS_LISTA ('' = descartar)."""
     if campo in _CAMPOS_PORTO:
         return codigo.upper()
-    if campo in ('ncm', 'tipo_bl'):
+    if campo in ('ncm', 'tipo_bl', 'ce'):
         return re.sub(r'\D', '', codigo)
     if campo == 'conteiner':
         return re.sub(r'[^A-Z0-9]', '', codigo.upper())
@@ -257,6 +262,8 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
     'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro.
     Estágios desconhecidos são descartados; o filtro antigo `concluido` vira o estágio "entregue"."""
     filtros = dict(filtros or {})
+    if 'risco' in filtros and filtros['risco'] not in risco_navii.FILTROS_RISCO:
+        del filtros['risco']
     if filtros.pop('concluido', None):
         filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
     for campo in CAMPOS_LISTA:
@@ -351,8 +358,8 @@ def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None):
                and_(not_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None))), prevista))
 
 
-def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
-                   criterios_ce=(), conteineres=()):
+def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str], porto=None,
+                   criterios_ce=(), conteineres=(), ces=()):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -377,11 +384,16 @@ def _filtra_janela(q, tipo_janela: str, inicio: str, fim: str, porto=None,
     nem a verificação do ciclo de vida — a tabela derivada é recalculada a
     cada página, e em Santos são ~200 mil contêineres por janela de 11 dias.
 
-    `conteineres` (filtro `conteiner`, 13/10/2026): o índice do contêiner escolhe os poucos itens e a janela vira
-    condição por candidato (`_janela_por_candidato`) — não calcula a janela inteira.
+    `conteineres` (filtro `conteiner`, 13/10/2026) e `ces` (filtro `ce`, 14/10/2026): o índice do contêiner ou do
+    CE em `itensresumo` escolhe os poucos itens e a janela vira condição por candidato (`_janela_por_candidato`) —
+    não calcula a janela inteira. Sem período (só com `ce`; ver `_periodo_navii`), não há condição de data.
     """
-    if conteineres:
-        return q.filter(Item.codigoConteiner.in_(conteineres), _janela_por_candidato(tipo_janela, inicio, fim, porto))
+    if conteineres or ces:
+        if ces:
+            q = q.filter(Item.numeroCEmercante.in_(ces))
+        if conteineres:
+            q = q.filter(Item.codigoConteiner.in_(conteineres))
+        return q.filter(_janela_por_candidato(tipo_janela, inicio, fim, porto)) if inicio and fim else q
     if tipo_janela == 'prevista':
         return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)))
     inicio_dt = _parse_data(inicio)
@@ -438,6 +450,8 @@ def monta_query_navii(
               Conhecimento, indica que houve transbordo/baldeação antes do Brasil.
             - conteiner (str | lista): número do contêiner (só letras e dígitos, em maiúsculas) — todos os
               cards do contêiner no período, com os escaneamentos de cada um; a busca parte do contêiner
+            - ce (str | lista): número do CE Mercante (só dígitos) — os cards do CE; a busca parte do CE e, sem
+              data_inicio/data_fim, não há limite de data
             - recinto (str): código (cod_siscomex) do recinto de desembarque OU
               de armazenagem do ciclo de vida — exige ciclo de vida. Filtro
               secundário: o terminal do Manifesto (cod_carga) não é usado, só
@@ -453,9 +467,11 @@ def monta_query_navii(
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
               ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
             - com_imagem (bool): equivalente a `exigir_escaneamento=True`
+            - risco (str): faixa do risco histórico por CE — 'alto', 'medio' (médio ou alto) ou 'sinal' (com
+              algum sinal); ver `risco_navii`
             - data_inicio / data_fim (str 'YYYY-MM-DD'): sobrescrevem a janela
               sugerida por `_janela_previsao`/`_janela_efetiva` para esse
-              `tipo_janela`. Os dois precisam vir juntos.
+              `tipo_janela`. Os dois precisam vir juntos. Sem eles e com `ce`, sem limite de data.
         exigir_escaneamento: se True, só contêineres cujo ciclo de vida já tem
             ao menos um escaneamento com imagem associada. Padrão False: o
             ciclo de vida/imagem são opcionais.
@@ -480,8 +496,10 @@ def monta_query_navii(
     # também dentro da janela (ver `_filtra_janela`).
     criterios_ce = _criterios_ce(filtros)
     q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce,
-                       filtros.get('conteiner'))
+                       filtros.get('conteiner'), filtros.get('ce'))
     q = q.filter(*criterios_ce)
+    if filtros.get('risco'):   # risco histórico por CE: faixa verificada por candidato
+        q = q.filter(risco_navii.criterio(session, filtros['risco'], _existe))
     return _filtra_por_candidato(q, filtros, exigir_escaneamento)
 
 
@@ -1089,10 +1107,11 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
         campo='cod_carga',
     )
     familias = {r.conhecimento.numeroCEmercante: (r.familia or {}).get('familia', set()) for r in resultados}
+    riscos = risco_navii.risco_dos_ces(session, familias)
     fichas_por_ce, fichas_por_conteiner = fichas_ovr.busca_fichas(
         session, {ce for numero, familia in familias.items() for ce in (numero, *familia)},
         [r.item.codigoConteiner for r in resultados if r.item is not None])
-    return [
+    cards = [
         monta_card_navii(
             r.ciclo, r.conhecimento, r.embarcacao,
             itens_por_ce.get(r.conhecimento.numeroCEmercante), r.manifesto,
@@ -1110,6 +1129,9 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
         )
         for r in resultados
     ]
+    for card in cards:   # risco histórico do CE (None: não calculado — CE antes do início ou sem as tabelas)
+        card['risco'] = riscos.get(card['numeroCEmercante'])
+    return cards
 
 
 if __name__ == '__main__':  # pragma: no-cover

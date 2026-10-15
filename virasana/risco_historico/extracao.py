@@ -165,8 +165,9 @@ class Extracao:
         if novos:
             self.conexao.execute(CES.insert(), novos)
         if existentes:
+            # versao_id NULL: o CE volta à fila da pontuação (pontuacao.py); os pontos antigos ficam até lá
             self.conexao.execute(CES.update().where(CES.c.numeroCEmercante == bindparam('b_numero')).values(
-                **{coluna: bindparam(f'b_{coluna}') for coluna in COLUNAS_SINAIS}), existentes)
+                versao_id=None, **{coluna: bindparam(f'b_{coluna}') for coluna in COLUNAS_SINAIS}), existentes)
         estatisticas[chave] += len(ces)
 
     # ---------------------------------------------------------------- voltas

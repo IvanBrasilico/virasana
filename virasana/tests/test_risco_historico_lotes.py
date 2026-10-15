@@ -17,6 +17,8 @@ from sqlalchemy.pool import StaticPool
 
 from virasana.risco_historico import extracao as ext
 from virasana.risco_historico import lotes, parametros, sinais
+from virasana.risco_historico.etapa import EtapaRisco
+from virasana.risco_historico.pontuacao import Pontuacao
 from virasana.risco_historico.tabelas import CES, MARCAS, PARAMETROS, VERSOES, metadata
 from virasana.tests.test_risco_historico_ce import AGORA, CNPJ_A, CNPJ_C, insere, monta_banco
 
@@ -168,6 +170,7 @@ class TestExtracao(unittest.TestCase):
 class TestParametros(unittest.TestCase):
 
     def setUp(self):
+        parametros.limpa_cache()
         self.conexao = banco().connect()
         e = extracao(self.conexao)
         e.inicia()
@@ -223,6 +226,93 @@ class TestParametros(unittest.TestCase):
         todos = {g['chave']: g for g in parametros.para_tela(self.conexao, todos=True)['grupos']}
         self.assertIn('menos de 3 fichas', {lin['motivo'] for lin in todos['logistica']['linhas']})
         self.assertEqual(dados['versao']['constantes']['m'], 10.0)
+
+
+class TestPontuacao(unittest.TestCase):
+
+    def setUp(self):
+        parametros.limpa_cache()
+        self.conexao = banco().connect()
+        self.extracao = extracao(self.conexao)
+        self.extracao.inicia()
+        self.extracao.uma_volta()
+
+    def tearDown(self):
+        self.conexao.close()
+
+    def pontuacao(self, **opcoes):
+        return Pontuacao(self.conexao, relogio=lambda: AGORA, **opcoes)
+
+    def ce(self, numero):
+        return self.conexao.execute(select(CES).where(CES.c.numeroCEmercante == numero)).one()
+
+    def test_sem_versao_nao_pontua(self):
+        self.assertEqual(self.pontuacao().uma_volta(), ({'sem versão dos parâmetros': 1}, False))
+
+    def test_pontos_e_faixas(self):
+        parametros.atualiza(self.conexao, AGORA)
+        estatisticas, cheio = self.pontuacao().uma_volta()
+        self.assertFalse(cheio)
+        self.assertEqual((estatisticas['CEs pontuados'], estatisticas['faixa alto'], estatisticas['faixa sem_sinal']),
+                         (11, 2, 9))
+        p1 = self.ce('P1')
+        pesos = parametros.pesos_da_versao(self.conexao, 1)
+        esperado = pesos['importador']['11222333'].peso + pesos['embarcador']['NINGBO TOYS'].peso
+        self.assertAlmostEqual(float(p1.pontos), esperado, places=3)
+        self.assertEqual((p1.faixa, p1.versao_id, p1.calculado_em), ('alto', 1, AGORA))
+        self.assertEqual(self.ce('P3').faixa, 'sem_sinal')
+        self.assertEqual(self.pontuacao().uma_volta(), ({}, False))       # nada na fila
+        self.assertEqual(self.pontuacao().situacao(), {'CEs por faixa': {'alto': 2, 'sem_sinal': 9},
+                                                       'CEs na fila da pontuação': 0})
+
+    def test_limiares_guardados_na_versao(self):
+        parametros.atualiza(self.conexao, AGORA)
+        constantes = parametros.para_tela(self.conexao)['versao']['constantes']
+        self.assertEqual(set(constantes['faixas']), {'alto', 'medio'})
+        # versão gravada antes dos limiares: ganha-os ao ser carregada
+        self.conexao.execute(VERSOES.update().values(constantes='{"m": 10.0}'))
+        parametros.limpa_cache()
+        self.assertEqual(parametros.carrega_versao(self.conexao, 1).faixas, constantes['faixas'])
+        self.assertIn('faixas', parametros.para_tela(self.conexao)['versao']['constantes'])
+
+    def test_lotes_e_re_pontuacao(self):
+        parametros.atualiza(self.conexao, AGORA)
+        self.assertTrue(self.pontuacao(lote=5).uma_volta()[1])          # 5 de 11: ainda há fila
+        self.pontuacao().uma_volta()
+        # CE retificado: a extração regrava os sinais e o devolve à fila
+        self.conexao.execute(text("UPDATE conhecimentosresumo SET consignatario = :c, create_date = :d "
+                                  "WHERE ID = 8"), {'c': CNPJ_A, 'd': RECENTE + timedelta(days=1)})
+        self.extracao.uma_volta()
+        self.assertIsNone(self.ce('P3').versao_id)
+        self.assertEqual(self.pontuacao().uma_volta()[0]['CEs pontuados'], 1)
+        self.assertEqual(self.ce('P3').faixa, 'alto')                   # agora do importador A
+        # versão nova: todos de novo
+        parametros.atualiza(self.conexao, AGORA, forca=True)
+        self.assertEqual(self.pontuacao().uma_volta()[0]['CEs pontuados'], 11)
+
+
+class TestEtapa(unittest.TestCase):
+
+    def setUp(self):
+        parametros.limpa_cache()
+
+    def test_sem_carga_inicial_so_avisa(self):
+        estatisticas = EtapaRisco(banco(), relogio=lambda: AGORA).executa()
+        self.assertEqual(estatisticas['sinais: sem marcas: rode lotes.py --sinais'], 1)
+        self.assertEqual(estatisticas['pontos: sem versão dos parâmetros'], 1)
+
+    def test_sinais_parametros_e_pontos(self):
+        engine = banco()
+        with engine.begin() as conexao:
+            extracao(conexao).inicia()
+        etapa = EtapaRisco(engine, relogio=lambda: AGORA)
+        estatisticas = etapa.executa()
+        self.assertEqual(estatisticas['sinais: CEs novos gravados'], 11)
+        self.assertEqual(estatisticas['parâmetros: nova versão 1 (primeira versão)'], 1)
+        self.assertEqual(estatisticas['pontos: CEs pontuados'], 11)
+        with mock.patch.object(parametros, 'atualiza') as atualiza:     # menos de 1 h depois: não verifica
+            etapa.executa()
+        atualiza.assert_not_called()
 
 
 class TestLinhaDeComando(unittest.TestCase):

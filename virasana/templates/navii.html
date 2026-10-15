@@ -206,6 +206,32 @@
             background: #FFF4E5; color: #A15C00; font-size: .625rem; font-weight: 700;
             padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
         }
+        .selo-risco {
+            font-size: .625rem; font-weight: 700; padding: .125rem .5rem; border-radius: 999px;
+            text-transform: uppercase; cursor: help;
+        }
+        .selo-risco.alto { background: #FDE0DC; color: #B00020; }
+        .selo-risco.medio { background: #FFF1D6; color: #8A5300; }
+        .selo-risco.baixo { background: #E8EEF9; color: #0C326F; }
+        .selo-risco.sem_sinal, .selo-risco.nao-calculado { background: #F3F3F3; color: #777; font-weight: 600; }
+        .secao-risco { margin-top: 1rem; border-top: 1px solid #F0F0F0; padding-top: .75rem; }
+        .secao-risco summary { cursor: pointer; font-size: .8125rem; font-weight: 700; color: #1c1c1c; }
+        .tabela-risco { width: 100%; border-collapse: collapse; font-size: .75rem; margin-top: .5rem; }
+        .tabela-risco th {
+            text-align: left; color: #666; font-weight: 600; border-bottom: 1px solid #E6E6E6;
+            padding: .25rem .375rem; white-space: nowrap;
+        }
+        .tabela-risco td { border-bottom: 1px solid #F3F3F3; padding: .25rem .375rem; vertical-align: top; }
+        .tabela-risco .num { text-align: right; white-space: nowrap; }
+        .tabela-risco tfoot td { font-weight: 700; border-bottom: none; }
+        .tabela-risco a { font-family: monospace; margin-right: .25rem; }
+        .tabela-risco td .texto-mono { word-break: normal; overflow-wrap: break-word; }
+        .tabela-risco .nome-ref { display: block; font-size: .6875rem; color: #777; }
+        .nota-risco { font-size: .6875rem; color: #777; margin-top: .375rem; line-height: 1.35; }
+        .campo select.escolha {
+            width: 100%; padding: .375rem .5rem; border: 1px solid #888; border-radius: 4px;
+            font-size: .875rem; background: #fff;
+        }
         .tag-filhotes {
             background: #E8F0FB; color: #1351B4; font-size: .625rem; font-weight: 700; cursor: help;
             padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
@@ -223,6 +249,8 @@
         .grupo-marcaveis { display: flex; flex-direction: column; gap: .25rem; }
         .conteiner-titulo a { color: inherit; text-decoration: none; border-bottom: 1px dotted #1351B4; }
         .conteiner-titulo a:hover { color: #1351B4; }
+        .ce-subtitulo a.link-ce { color: inherit; text-decoration: none; border-bottom: 1px dotted #1351B4; }
+        .ce-subtitulo a.link-ce:hover { color: #1351B4; }
         .situacao-ciclo { margin-top: .5rem; font-size: .6875rem; color: #555; }
         .situacao-ciclo strong { color: #1c1c1c; }
         .etapa-timeline .implicita-etapa { display: block; font-size: .625rem; color: #8A6D00; text-align: center; cursor: help; }
@@ -430,6 +458,8 @@
             {% endmacro %}
             {{ campo_lista('conteiner', 'Contêiner', '', 'número do contêiner',
                            'Todos os cards do contêiner no período, com os escaneamentos de cada um.') }}
+            {{ campo_lista('ce', 'CE Mercante', '', 'número do CE',
+                           'Todos os cards do CE. Com as datas do período vazias, sem limite de data.') }}
             {{ campo_lista('porto_escala', 'Porto de atracação (escala)', 'porto', 'porto ou país',
                            'Vazio = todos os portos.') }}
             {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição') }}
@@ -486,6 +516,17 @@
                     {% endfor %}
                 </div>
                 <div class="dica-lista">Nenhum marcado = todos. Marcar algum exige ciclo de vida localizado.</div>
+            </div>
+
+            <div class="campo">
+                <label class="rotulo-campo" for="f-risco">Risco histórico</label>
+                <select id="f-risco" class="escolha">
+                    <option value="">Qualquer</option>
+                    {% for codigo, rotulo in filtros_risco.items() %}<option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+                </select>
+                <div class="dica-lista">Faixa calculada pelo histórico das Fichas (importador, embarcador, CNPJ citado,
+                    NCM, rota).{% if risco_parametros_url %} <a href="{{ risco_parametros_url }}" target="_blank"
+                    rel="noopener">Parâmetros em uso</a>.{% endif %}</div>
             </div>
 
             <button class="br-button primary block mb-2 mt-3" id="btn-aplicar" type="button">
@@ -561,16 +602,19 @@
     var CONFIANCA = { alta: 'alta', media: 'média', baixa: 'baixa' };
     var IMPLICITA = { inspecao: 'inspeção', pesagem: 'pesagem' };
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+    var FILTROS_RISCO = {{ filtros_risco | tojson }};
+    var RISCO_PARAMETROS_URL = {{ risco_parametros_url | tojson }};
 
     // Campos com lista de códigos (vale qualquer um) e campos de texto livre
-    var CAMPOS_LISTA = ['conteiner', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
+    var CAMPOS_LISTA = ['conteiner', 'ce', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
                         'recinto'];
     var CAMPOS_TEXTO = ['produto', 'empresa'];
     var rotulos = {
-        conteiner: 'Contêiner', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+        conteiner: 'Contêiner', ce: 'CE', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', estagio: 'Estágio',
-        com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG'
+        com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
+        risco: 'Risco histórico'
     };
     var CHECKBOXES = ['com_imagem', 'sem_oog'];
 
@@ -729,7 +773,8 @@
                 ? valor.map(function (c) { return SIGLAS_BL[c] || c; }).join(', ')
                 : (chave === 'estagio'
                     ? valor.map(function (c) { return ROTULOS_ESTAGIO[c] || c; }).join(', ')
-                    : (Array.isArray(valor) ? valor.join(', ') : valor)));
+                    : (chave === 'risco' ? (FILTROS_RISCO[valor] || valor)
+                        : (Array.isArray(valor) ? valor.join(', ') : valor))));
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
@@ -895,6 +940,55 @@
         return '<div class="fichas-card"><span class="rotulo-mini">Fichas OVR</span>' + links + '</div>';
     }
 
+    function formataNumero(valor, casas) {
+        return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+    }
+
+    function montaSeloRisco(card) {
+        var r = card.risco;
+        if (!r) {
+            return ' <span class="selo-risco nao-calculado" title="Risco histórico não calculado para este CE ' +
+                '(anterior ao início do cálculo)">Risco não calculado</span>';
+        }
+        if (!r.faixa) { return ''; }   // ainda na fila da pontuação
+        return ' <span class="selo-risco ' + escapeAttr(r.faixa) + '" title="Risco histórico por CE: ' +
+            formataNumero(r.pontos, 2) + ' pontos (memória de cálculo no fim do card)">Risco ' +
+            escapeHtml(r.rotuloFaixa || r.faixa) + (r.pontos ? ' · ' + formataNumero(r.pontos, 1) : '') + '</span>';
+    }
+
+    function montaLinhaRisco(p) {
+        var fichas = (p.fichas_links || []).map(function (f) {
+            return '<a href="' + escapeAttr(f.url) + '" target="_blank" rel="noopener">' + escapeHtml(f.id) + '</a>';
+        }).join('');
+        return '<tr><td>' + escapeHtml(p.dimensao) + '</td>' +
+            '<td><span class="texto-mono">' + escapeHtml(p.valor) + '</span>' +
+                (p.descricao ? '<div class="nome-ref">' + escapeHtml(p.descricao) + '</div>' : '') + '</td>' +
+            '<td class="num">' + p.fichas + '</td>' +
+            '<td class="num">' + formataNumero(p.pct, 3) + '%</td>' +
+            '<td class="num">' + formataNumero(p.vezes, 1) + '×</td>' +
+            '<td class="num">' + formataNumero(p.peso, 2) + '</td>' +
+            '<td>' + fichas + '</td></tr>';
+    }
+
+    function montaRisco(card) {
+        var r = card.risco;
+        if (!r || !r.parcelas || !r.parcelas.length) { return ''; }
+        return '<details class="secao-risco"><summary>Risco histórico: ' + escapeHtml(r.rotuloFaixa || r.faixa) +
+                ' — ' + formataNumero(r.pontos, 2) + ' pontos (memória de cálculo)</summary>' +
+            '<div class="tabela-rolavel"><table class="tabela-risco"><thead><tr><th>Sinal</th><th>Valor</th>' +
+                '<th class="num">Fichas</th><th class="num">% dos CEs</th><th class="num">× média</th>' +
+                '<th class="num">Peso</th><th>Fichas (mais recentes)</th></tr></thead><tbody>' +
+                r.parcelas.map(montaLinhaRisco).join('') + '</tbody>' +
+                '<tfoot><tr><td colspan="5">Total (soma das parcelas)</td><td class="num">' + formataNumero(r.pontos, 2) +
+                '</td><td></td></tr></tfoot></table></div>' +
+            '<div class="nota-risco">Parâmetros da versão ' + escapeHtml(r.versao) +
+                (r.versaoEm ? ' (' + formatarDataHora(r.versaoEm) + ')' : '') + '. Peso = logaritmo de "vezes a média": ' +
+                'fatia das fichas com resultado que têm o valor ÷ fatia dos CEs que o têm. Um sinal por grupo ' +
+                '(o de maior peso).' + (RISCO_PARAMETROS_URL ? ' <a href="' + escapeAttr(RISCO_PARAMETROS_URL) +
+                '" target="_blank" rel="noopener">Ver todos os parâmetros</a>.' : '') + '</div>' +
+            '</details>';
+    }
+
     function montaFilhotes(card) {
         var filhotes = card.filhotes || [];
         if (!filhotes.length) { return ''; }
@@ -995,6 +1089,11 @@
         }).toString();
     }
 
+    function urlDoCE(numero) {
+        // todos os cards do CE, sem limite de data (a tela abre com o período vazio)
+        return NAVII_URL + '?' + new URLSearchParams({ ce: numero, tipo_janela: estadoBusca.tipo_janela }).toString();
+    }
+
     function montaCard(card) {
         var div = document.createElement('div');
         var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
@@ -1018,11 +1117,16 @@
                                   escapeHtml(card.numeroConteiner) + '</a>'
                                 : '--') + '</h3>' +
                             '<div class="ce-subtitulo">' +
-                                '<span class="texto-mono">CE ' + escapeHtml(card.numeroCEmercante || '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
+                                '<span class="texto-mono">CE ' + (card.numeroCEmercante
+                                    ? '<a class="link-ce" href="' + escapeAttr(urlDoCE(card.numeroCEmercante)) + '" target="_blank" ' +
+                                      'rel="noopener" title="Todos os cards deste CE, sem limite de data (nova aba)">' +
+                                      escapeHtml(card.numeroCEmercante) + '</a>'
+                                    : '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
                                 (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
                                 montaFilhotes(card) +
                                 montaTipoConteiner(card.tipoConteiner, card.isoCode) +
                                 montaSelosFichas(card) +
+                                montaSeloRisco(card) +
                             '</div>' +
                         '</div>' +
                         '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
@@ -1050,6 +1154,7 @@
 
                     montaTimeline(card) +
                     montaFichas(card) +
+                    montaRisco(card) +
                     montaConteineres(card) +
                 '</div>' +
             '</div>';
@@ -1086,8 +1191,20 @@
         el.contagem.textContent = partes.join(' · ');
     }
 
+    function semPeriodo() {
+        return !estadoBusca.periodo.inicio || !estadoBusca.periodo.fim;
+    }
+
+    function limpaPeriodo() {
+        // só com o filtro de CE: sem limite de data
+        document.getElementById('f-data-inicio').value = '';
+        document.getElementById('f-data-fim').value = '';
+        estadoBusca.periodo = { inicio: '', fim: '' };
+    }
+
     function atualizaPeriodoAtivo() {
-        el.periodoAtivo.textContent = 'Período: ' + formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
+        el.periodoAtivo.textContent = semPeriodo() ? 'Período: sem limite de data (filtro por CE)'
+            : 'Período: ' + formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
     }
 
     function carregarPagina() {
@@ -1097,11 +1214,11 @@
         el.estado.className = 'estado-carregando';
         el.estadoVazio.hidden = true;
 
-        var params = new URLSearchParams({
-            tipo_janela: estadoBusca.tipo_janela,
-            data_inicio: estadoBusca.periodo.inicio,
-            data_fim: estadoBusca.periodo.fim
-        });
+        var params = new URLSearchParams({ tipo_janela: estadoBusca.tipo_janela });
+        if (!semPeriodo()) {
+            params.set('data_inicio', estadoBusca.periodo.inicio);
+            params.set('data_fim', estadoBusca.periodo.fim);
+        }
         Object.keys(estadoBusca.filtros).forEach(function (k) {
             var valor = estadoBusca.filtros[k];
             if (Array.isArray(valor)) {
@@ -1151,6 +1268,8 @@
     }
 
     function reiniciarBusca() {
+        // sem CE, período vazio não vale: volta a sugestão da janela
+        if (semPeriodo() && !estadoBusca.filtros.ce) { aplicarDatasDefault(estadoBusca.tipo_janela); }
         estadoBusca.cursor = null;
         estadoBusca.total = null;
         estadoBusca.fim = false;
@@ -1183,7 +1302,7 @@
 
     function normalizaCodigo(campo, codigo) {
         codigo = String(codigo).trim();
-        if (campo === 'ncm') { return codigo.replace(/\D/g, ''); }
+        if (campo === 'ncm' || campo === 'ce') { return codigo.replace(/\D/g, ''); }
         if (campo === 'recinto') { return codigo; }
         if (campo === 'conteiner') { return codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
         return codigo.toUpperCase();
@@ -1350,6 +1469,8 @@
         CHECKBOXES.forEach(function (campo) {
             if (document.getElementById('f-' + campo).checked) { filtros[campo] = 1; }
         });
+        var risco = document.getElementById('f-risco').value;
+        if (risco) { filtros.risco = risco; }
         return filtros;
     }
 
@@ -1371,6 +1492,7 @@
         marcaTiposBl(filtros.tipo_bl || []);
         // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
         marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));
+        document.getElementById('f-risco').value = filtros.risco || '';
     }
 
     function aplicaFiltros() {
@@ -1378,7 +1500,11 @@
 
         var dataInicio = document.getElementById('f-data-inicio').value;
         var dataFim = document.getElementById('f-data-fim').value;
-        if (dataInicio && dataFim) { estadoBusca.periodo = { inicio: dataInicio, fim: dataFim }; }
+        if (dataInicio && dataFim) {
+            estadoBusca.periodo = { inicio: dataInicio, fim: dataFim };
+        } else if (!dataInicio && !dataFim && estadoBusca.filtros.ce) {
+            limpaPeriodo();
+        }
 
         reiniciarBusca();
     }
@@ -1511,6 +1637,8 @@
             document.getElementById('f-data-inicio').value = inicial.periodo.inicio;
             document.getElementById('f-data-fim').value = inicial.periodo.fim;
             estadoBusca.periodo = { inicio: inicial.periodo.inicio, fim: inicial.periodo.fim };
+        } else if (inicial.filtros && inicial.filtros.ce) {
+            limpaPeriodo();   // link do CE: sem limite de data
         }
         preencheTela(inicial.filtros || {});
     }

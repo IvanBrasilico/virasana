@@ -13,6 +13,11 @@ guardadas (ver CONTEXTO.md):
 
 Nova versão só quando as fichas positivas mudam (assinatura dos ids e pesos) ou
 a última passou de `validade_dias` (30): entram ~10 fichas por mês.
+
+Cada versão guarda também os LIMIARES das faixas (Alto, Médio: percentis dos
+pontos da população, `calculo.limiares`) dentro do JSON de constantes — sem
+mudar a DDL. Versão gravada antes disso ganha os limiares na primeira vez que é
+carregada (`carrega_versao`).
 """
 import hashlib
 import json
@@ -24,7 +29,7 @@ from sqlalchemy import select
 
 from virasana.analytic_scripts import dados_risco_perdimentos as drp
 from virasana.risco_historico import calculo, fichas_positivas
-from virasana.risco_historico.sinais import CITADO, conta, de_json
+from virasana.risco_historico.sinais import CITADO, conta, de_json, pontuaveis
 from virasana.risco_historico.tabelas import CES, PARAMETROS, VERSOES
 
 JANELA_DIAS = 90
@@ -42,11 +47,32 @@ class Calculo:
     pesos: Dict[str, Dict[str, calculo.Peso]]
     assinatura: str
     desde: datetime
+    faixas: Dict[str, float]
+
+
+@dataclass
+class Versao:
+    """Uma versão gravada, pronta para pontuar e explicar (memória de cálculo)."""
+    id: int
+    criado_em: datetime
+    total_n: int
+    faixas: Dict[str, float]
+    pesos: Dict[str, Dict[str, calculo.Peso]]
+    descricoes: Dict[Tuple[str, str], str]
+    fichas: Dict[Tuple[str, str], List[int]]
+
+
+_versoes: Dict[int, Versao] = {}   # cache por processo: versões gravadas não mudam
 
 
 def assinatura(fichas: Iterable[dict]) -> str:
     texto = ';'.join(f'{f["id"]}:{f["peso"]:g}' for f in sorted(fichas, key=lambda f: f['id']))
     return hashlib.sha256(texto.encode()).hexdigest()
+
+
+def _sinais_da_populacao(conexao, desde: datetime):
+    for (texto,) in conexao.execute(select(CES.c.sinais).where(CES.c.criado_em >= desde)):
+        yield de_json(texto)
 
 
 def populacao(conexao, desde: datetime) -> Tuple[int, dict]:
@@ -55,12 +81,18 @@ def populacao(conexao, desde: datetime) -> Tuple[int, dict]:
 
     def lidos():
         nonlocal total
-        for (texto,) in conexao.execute(select(CES.c.sinais).where(CES.c.criado_em >= desde)):
+        for sinais in _sinais_da_populacao(conexao, desde):
             total += 1
-            yield de_json(texto)
+            yield sinais
 
     contagens = conta(lidos())
     return total, contagens
+
+
+def faixas_da_populacao(conexao, desde: datetime, pesos) -> Dict[str, float]:
+    """Limiares de Alto e Médio pelos pontos dos CEs da população (segunda leitura, depois dos pesos)."""
+    return calculo.limiares(calculo.pontua(pontuaveis(sinais), pesos)[0]
+                            for sinais in _sinais_da_populacao(conexao, desde))
 
 
 def ultima_versao(conexao) -> Optional[dict]:
@@ -86,8 +118,9 @@ def calcula(conexao, agora: datetime, janela_dias: int = JANELA_DIAS, fichas: Op
     hist = calculo.historico(extracao['fichas'])
     desde = agora - timedelta(days=janela_dias)
     total_n, contagens = populacao(conexao, desde)
-    return Calculo(fichas, extracao['empresas'], hist, total_n, calculo.tabela_de_pesos(hist, contagens, total_n),
-                   assinatura(fichas), desde)
+    pesos = calculo.tabela_de_pesos(hist, contagens, total_n)
+    return Calculo(fichas, extracao['empresas'], hist, total_n, pesos, assinatura(fichas), desde,
+                   faixas_da_populacao(conexao, desde, pesos) if total_n else {})
 
 
 def _descricao(dimensao: str, valor: str, empresas: Dict[str, str]) -> str:
@@ -102,7 +135,8 @@ def grava(conexao, calc: Calculo, agora: datetime, motivo: str) -> int:
     versao_id = conexao.execute(VERSOES.insert().values(
         criado_em=agora, motivo=motivo[:60], assinatura=calc.assinatura, fichas=len(calc.fichas),
         total_k=round(calc.hist.total, 2), total_n=calc.total_n, populacao_desde=calc.desde,
-        constantes=json.dumps(calculo.constantes(), sort_keys=True))).inserted_primary_key[0]
+        constantes=json.dumps({**calculo.constantes(), 'faixas': calc.faixas}, sort_keys=True))
+    ).inserted_primary_key[0]
     linhas = [{'versao_id': versao_id, 'dimensao': dimensao, 'valor': valor, 'descricao':
                (_descricao(dimensao, valor, calc.empresas) or '')[:200] or None,
                'fichas': p.fichas, 'importadores': p.importadores, 'k': round(p.k, 2), 'n': p.n,
@@ -127,14 +161,38 @@ def atualiza(conexao, agora: datetime, forca: bool = False, janela_dias: int = J
     return grava(conexao, calc, agora, motivo), motivo
 
 
+def carrega_versao(conexao, versao_id: int) -> Versao:
+    """A versão gravada, com pesos, descrições e fichas de cada valor (cache por processo). Grava os limiares
+    das faixas se a versão ainda não os tem."""
+    if versao_id in _versoes:
+        return _versoes[versao_id]
+    linha = conexao.execute(select(VERSOES).where(VERSOES.c.ID == versao_id)).one()
+    pesos: Dict[str, Dict[str, calculo.Peso]] = {dimensao: {} for dimensao in calculo.REGRAS}
+    descricoes, fichas = {}, {}
+    for p in conexao.execute(select(PARAMETROS).where(PARAMETROS.c.versao_id == versao_id)):
+        pesos[p.dimensao][p.valor] = calculo.Peso(p.fichas, p.importadores, float(p.k), float(linha.total_k), p.n,
+                                                  linha.total_n, float(p.vezes), float(p.peso), p.motivo or '')
+        descricoes[(p.dimensao, p.valor)] = p.descricao or ''
+        fichas[(p.dimensao, p.valor)] = [int(i) for i in p.fichas_ids.split(',') if i]
+    constantes = json.loads(linha.constantes)
+    if 'faixas' not in constantes:
+        constantes['faixas'] = faixas_da_populacao(conexao, linha.populacao_desde, pesos)
+        conexao.execute(VERSOES.update().where(VERSOES.c.ID == versao_id).values(
+            constantes=json.dumps(constantes, sort_keys=True)))
+    versao = Versao(linha.ID, linha.criado_em, linha.total_n, constantes['faixas'], pesos, descricoes, fichas)
+    if len(_versoes) > 3:
+        _versoes.clear()
+    _versoes[versao_id] = versao
+    return versao
+
+
+def limpa_cache():
+    _versoes.clear()
+
+
 def pesos_da_versao(conexao, versao_id: int) -> Dict[str, Dict[str, calculo.Peso]]:
     """Os pesos gravados de uma versão, como `calculo.tabela_de_pesos` (para pontuar e explicar)."""
-    versao = conexao.execute(select(VERSOES).where(VERSOES.c.ID == versao_id)).one()
-    pesos: Dict[str, Dict[str, calculo.Peso]] = {dimensao: {} for dimensao in calculo.REGRAS}
-    for p in conexao.execute(select(PARAMETROS).where(PARAMETROS.c.versao_id == versao_id)):
-        pesos[p.dimensao][p.valor] = calculo.Peso(p.fichas, p.importadores, float(p.k), float(versao.total_k), p.n,
-                                                  versao.total_n, float(p.vezes), float(p.peso), p.motivo or '')
-    return pesos
+    return carrega_versao(conexao, versao_id).pesos
 
 
 def para_tela(conexao, todos: bool = False) -> Optional[dict]:

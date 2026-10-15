@@ -534,6 +534,14 @@ ambos `autostart=false`: `ciclo_de_vida_v2_hom` (`--homologacao`) e `ciclo_de_vi
    `manager_ciclo_de_vida.py` não foi alterado. As colunas novas ficam como estão (o loop antigo as
    ignora). Os dois nunca devem rodar juntos gravando nas mesmas tabelas.
 
+### Etapa do risco histórico por CE (14/10/2026)
+
+No fim de cada volta, o serviço roda a etapa do risco histórico por CE (`virasana/risco_historico/etapa.py`):
+sinais dos CEs novos/alterados, parâmetros (no máximo 1x/h) e pontos — em transações próprias, com limite de
+60 s. Qualquer erro dela (inclusive ao carregar o módulo) só vai ao log: o ciclo de vida segue. Desligar:
+`--sem-risco` no `command` do supervisor. Em `--simula`, não roda. Exige a carga inicial
+(`virasana/risco_historico/lotes.py --sinais`); sem ela, só avisa no log.
+
 ### Acompanhamento em produção (`acompanha_ciclo_de_vida.py`)
 
 Relatório curto, só leitura, por índices (segundos) — rodar a qualquer hora e comparar com o anterior:

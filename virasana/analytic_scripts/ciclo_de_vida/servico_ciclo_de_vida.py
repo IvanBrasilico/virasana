@@ -18,7 +18,10 @@ A cada volta:
      a linha do tempo e os CEs (`heuristica_ciclo`) e grava (`gravacao_ciclo`) — o resultado depende só dos
      eventos e de "agora", então refazer é seguro;
   4. avança as marcas d'água. Se uma tabela tinha mais eventos que o lote, a próxima volta começa logo;
-     senão, espera o intervalo.
+     senão, espera o intervalo;
+  5. etapa do RISCO HISTÓRICO POR CE (`virasana/risco_historico/etapa.py`, 14/10/2026): sinais dos CEs novos,
+     parâmetros (no máximo 1x/h) e pontos — em transações próprias, com limite de tempo; qualquer erro dela só
+     vai ao log, o ciclo segue. Desligada com `--sem-risco` e em `--simula`.
 
 Escopo: desembarques nos operadores de Santos (`ovr_recintos.e_operador` com `cod_unidade = 0817800`,
 inclui o Ecoporto). Na primeira volta (sem marcas), lê os eventos desde `--desde` (padrão: 7 dias).
@@ -90,13 +93,35 @@ class Servico:
     def __init__(self, engine, mongo_db=None, simula: bool = False, dias_eventos: int = 100,
                  lote_eventos: int = 20000, lote_conteineres: int = 500, revisita_horas: float = 6,
                  revisita_sem_ce_horas: float = 24, revisita_limite: int = 2000, dias_sem_ce: int = 30,
-                 dias_maximos_aberto: int = 400, relogio: Callable[[], datetime] = datetime.now):
+                 dias_maximos_aberto: int = 400, relogio: Callable[[], datetime] = datetime.now,
+                 risco: bool = False):
         self.engine, self.mongo_db, self.simula = engine, mongo_db, simula
         self.dias_eventos, self.lote_eventos, self.lote_conteineres = dias_eventos, lote_eventos, lote_conteineres
         self.dias_maximos_aberto = dias_maximos_aberto
         self.revisita_horas, self.revisita_sem_ce_horas = revisita_horas, revisita_sem_ce_horas
         self.revisita_limite, self.dias_sem_ce = revisita_limite, dias_sem_ce
         self.relogio = relogio
+        self.etapa_risco = self._carrega_etapa_risco(engine, relogio) if risco and not simula else None
+
+    @staticmethod
+    def _carrega_etapa_risco(engine, relogio):
+        """Etapa do risco histórico por CE; se nem carregar, fica desligada (o ciclo de vida segue)."""
+        try:
+            from virasana.risco_historico.etapa import EtapaRisco
+            return EtapaRisco(engine, relogio)
+        except Exception:  # noqa: o ciclo não depende do risco
+            logger.exception('risco histórico: etapa desligada (erro ao carregar)')
+            return None
+
+    def _etapa_risco(self):
+        if self.etapa_risco is None:
+            return
+        inicio = time.perf_counter()
+        try:
+            estatisticas = self.etapa_risco.executa()
+            logger.info(f'risco histórico em {time.perf_counter() - inicio:.1f} s: {dict(estatisticas)}')
+        except Exception:  # noqa: o ciclo não depende do risco
+            logger.exception('risco histórico: erro na etapa (o ciclo de vida segue)')
 
     # ---------------------------------------------------------------- marcas d'água
     def marcas(self, conexao, desde: datetime) -> Dict[str, int]:
@@ -229,6 +254,7 @@ class Servico:
                 self.grava_marcas(conexao, novas_marcas)
         logger.info(f'volta em {time.perf_counter() - inicio:.1f} s{" (SIMULAÇÃO: nada gravado)" * self.simula}: '
                     f'{dict(estatisticas)}')
+        self._etapa_risco()
         return estatisticas, cheio
 
     def roda(self, intervalo: int = 300, desde: Optional[datetime] = None):  # pragma: no cover - laço infinito
@@ -287,6 +313,8 @@ def _argumentos(argv=None):
     parser.add_argument('--reprocessa', type=int, metavar='N',
                         help='etapa 6: reprocessa N contêineres de ciclos pendentes do loop antigo e sai')
     parser.add_argument('--sem-mongo', action='store_true', help='não procura as imagens no Mongo')
+    parser.add_argument('--sem-risco', action='store_true',
+                        help='desliga a etapa do risco histórico por CE (virasana/risco_historico/etapa.py)')
     return parser.parse_args(argv)
 
 
@@ -301,7 +329,7 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     engine = create_engine(uri_do_banco(args), pool_pre_ping=True)
     logger.info(f'Ciclo de Vida v2 — banco {engine.url.render_as_string(hide_password=True)}'
                 f'{" — SIMULAÇÃO" * args.simula}')
-    servico = Servico(engine, mongo_db, simula=args.simula)
+    servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco)
     if args.reprocessa:
         servico.reprocessa(args.reprocessa)
     elif args.uma_vez:

@@ -22,9 +22,9 @@ from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
-from virasana.navii import filtros_salvos, referencias
+from virasana.navii import filtros_salvos, referencias, risco_navii
 from virasana.navii.busca_navii import (
-    CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, busca_ces_navii, conta_conteineres_navii,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, busca_ces_navii, conta_conteineres_navii,
     monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
 )
 
@@ -87,7 +87,17 @@ def index():
         tipos_bl=referencias.tipos_bl(),
         estagios=estagios_ciclo.lista(),
         filtros_iniciais=_filtros_iniciais(),
+        filtros_risco=risco_navii.ROTULOS_FILTRO,
+        risco_parametros_url=_url_parametros_risco(),
     )
+
+
+def _url_parametros_risco() -> Optional[str]:
+    """Página dos parâmetros do risco por CE (memória de cálculo do card), se o blueprint estiver registrado."""
+    try:
+        return url_for('risco_historico.parametros_em_uso')
+    except BuildError:
+        return None
 
 
 def _data_valida(valor: Optional[str]) -> bool:
@@ -120,7 +130,7 @@ def _filtros_da_requisicao() -> dict:
         valores = [v for v in request.args.getlist(campo) if v.strip()]
         if valores:
             filtros[campo] = valores
-    for campo in ('produto', 'empresa'):
+    for campo in ('produto', 'empresa') + CAMPOS_ESCOLHA:
         valor = (request.args.get(campo) or '').strip()
         if valor:
             filtros[campo] = valor

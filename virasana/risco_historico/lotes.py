@@ -9,6 +9,9 @@ serviço do ciclo de vida). Ver virasana/risco_historico/CONTEXTO.md.
                 enquanto houver fila (--uma-vez: só uma).
   --parametros  nova versão dos parâmetros (lote 1), se as fichas positivas
                 mudaram ou a última venceu (--forca: sempre).
+  --pontos      pontuação dos CEs na fila (lote 2b), até esvaziar (--uma-vez: um lote).
+  --etapa       uma execução da etapa do serviço do ciclo (sinais, parâmetros e
+                pontos, com limite de tempo) — o que o serviço faz a cada volta.
   --reinicia    com --sinais: apaga as marcas e recomeça (com --desde-dias ou
                 --desde-id). Os sinais já gravados ficam e são refeitos se lidos de
                 novo. Sem ele, --desde-id com marcas já gravadas é recusado.
@@ -21,6 +24,7 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     virasana-venv/bin/python $LOTES --sinais --simula           # mede uma volta (e a marca inicial)
     virasana-venv/bin/python $LOTES --sinais                    # carga inicial, até alcançar o Mercante
     virasana-venv/bin/python $LOTES --parametros                # versão dos parâmetros
+    virasana-venv/bin/python $LOTES --pontos                    # pontos e faixas de todos os CEs
     virasana-venv/bin/python $LOTES --homologacao --situacao
 """
 import argparse
@@ -36,7 +40,9 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.risco_historico import parametros  # noqa: E402
+from virasana.risco_historico.etapa import EtapaRisco  # noqa: E402
 from virasana.risco_historico.extracao import ErroInicio, Extracao  # noqa: E402
+from virasana.risco_historico.pontuacao import Pontuacao  # noqa: E402
 
 logger = logging.getLogger('risco_historico.lotes')
 
@@ -67,6 +73,19 @@ def _transacao(engine, simula: bool, funcao):
         return resultado
 
 
+def _voltas(engine, args, volta, nome: str) -> int:
+    """Repete `volta(conexao) -> (estatísticas, cheio)` enquanto houver fila; devolve quantas voltas fez."""
+    voltas = 0
+    while True:
+        comeco = time.perf_counter()
+        estatisticas, cheio = _transacao(engine, args.simula, volta)
+        voltas += 1
+        logger.info(f'{nome}: volta {voltas} em {time.perf_counter() - comeco:.1f} s'
+                    f'{" (SIMULAÇÃO: nada gravado)" * args.simula}: {dict(estatisticas)}')
+        if not cheio or args.uma_vez or args.simula:
+            return voltas
+
+
 def sinais(engine, args, relogio=datetime.now) -> int:
     """Voltas da extração; devolve quantas fez."""
     primeira = {'desde_id': args.desde_id, 'reinicia': getattr(args, 'reinicia', False)}
@@ -79,15 +98,12 @@ def sinais(engine, args, relogio=datetime.now) -> int:
         primeira.update(desde_id=None, reinicia=False)   # só na primeira volta
         return extracao.uma_volta()
 
-    voltas = 0
-    while True:
-        comeco = time.perf_counter()
-        estatisticas, cheio = _transacao(engine, args.simula, volta)
-        voltas += 1
-        logger.info(f'volta {voltas} em {time.perf_counter() - comeco:.1f} s'
-                    f'{" (SIMULAÇÃO: nada gravado)" * args.simula}: {dict(estatisticas)}')
-        if not cheio or args.uma_vez or args.simula:
-            return voltas
+    return _voltas(engine, args, volta, 'sinais')
+
+
+def pontos(engine, args, relogio=datetime.now) -> int:
+    """Voltas da pontuação; devolve quantas fez."""
+    return _voltas(engine, args, lambda conexao: Pontuacao(conexao, relogio).uma_volta(), 'pontos')
 
 
 def main(argv=None):  # pragma: no cover - depende do banco real
@@ -96,6 +112,8 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     parser.add_argument('--homologacao', action='store_true', help='usa o banco de homologação (SQL_URI_HOM)')
     parser.add_argument('--sinais', action='store_true', help='extração dos sinais dos CEs (lote 2a)')
     parser.add_argument('--parametros', action='store_true', help='nova versão dos parâmetros (lote 1), se preciso')
+    parser.add_argument('--pontos', action='store_true', help='pontuação dos CEs na fila (lote 2b)')
+    parser.add_argument('--etapa', action='store_true', help='uma execução da etapa do serviço do ciclo')
     parser.add_argument('--situacao', action='store_true', help='marcas e quanto falta')
     parser.add_argument('--forca', action='store_true', help='--parametros: nova versão mesmo sem mudança')
     parser.add_argument('--simula', action='store_true', help='desfaz no fim: mede sem gravar')
@@ -115,11 +133,16 @@ def main(argv=None):  # pragma: no cover - depende do banco real
                                         lambda conexao: parametros.atualiza(conexao, datetime.now(), args.forca))
             logger.info(f'parâmetros: {motivo}' + (f' -> versão {versao}' if versao else '')
                         + (' (SIMULAÇÃO: nada gravado)' if args.simula and versao else ''))
+        if args.pontos:
+            pontos(engine, args)
+        if args.etapa:
+            logger.info(f'etapa: {dict(EtapaRisco(engine).executa())}')
         if args.situacao:
             with engine.connect() as conexao:
                 extracao = Extracao(conexao)
                 logger.info(f'marcas: {extracao.marcas()}')
                 logger.info(f'situação: {extracao.situacao()}')
+                logger.info(f'pontuação: {Pontuacao(conexao).situacao()}')
                 logger.info(f'última versão dos parâmetros: {parametros.ultima_versao(conexao)}')
     except ErroInicio as erro:
         logger.error(str(erro))

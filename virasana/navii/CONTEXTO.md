@@ -401,6 +401,16 @@ Em 13/10/2026 (pedido do usuário) — **links para diagnosticar a operação**:
   para essa pesquisa (mesma janela e período, nova aba; `NAVII_URL` vem do servidor).
 - Completude (detalhe): o contêiner é link para o NAVI-I filtrado por ele, na janela do desembarque ±1 dia.
 
+Em 14/10/2026 (pedidos do usuário):
+- **Filtro `ce`** (lista; só dígitos): o índice de `itensresumo.numeroCEmercante` dirige a busca. Sem
+  `data_inicio`/`data_fim`, **sem limite de data** (`_periodo_navii` devolve `(None, None)`); com datas, a janela é
+  condição por candidato, como no contêiner. O número do CE no card é link para essa pesquisa (sem período). Na
+  tela, com CE informado e as datas vazias, o período fica "sem limite de data"; sem CE, período vazio volta à
+  sugestão.
+- **Risco histórico por CE** (`risco_navii.py`; ver `virasana/risco_historico/CONTEXTO.md`): selo e memória de
+  cálculo no card; filtro `risco` (`alto`, `medio`, `sinal`) por candidato (`_existe` na chave única de
+  `risco_historico_ce`). Cenários no `diagnostico_sql.py` (também em `--so-ciclo`).
+
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
 Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache

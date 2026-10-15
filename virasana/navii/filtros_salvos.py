@@ -21,12 +21,14 @@ para os testes rodarem com uma coleção falsa em memória.
 from datetime import datetime
 from typing import List, Optional
 
-from virasana.navii.busca_navii import CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, normaliza_filtros
+from virasana.navii.busca_navii import (
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, normaliza_filtros,
+)
 
 COLECAO = 'navii_filtros_salvos'
 TAMANHO_MAXIMO_NOME = 60
 MAXIMO_POR_USUARIO = 100
-CAMPOS_SALVAVEIS = CAMPOS_LISTA + CAMPOS_MARCAVEIS + ('produto', 'empresa', 'ncms_max')
+CAMPOS_SALVAVEIS = CAMPOS_LISTA + CAMPOS_MARCAVEIS + CAMPOS_ESCOLHA + ('produto', 'empresa', 'ncms_max')
 
 
 class FiltroInvalido(ValueError):

@@ -31,10 +31,15 @@ from typing import Dict, Iterable, List, Set, Tuple
 from virasana.risco_historico.sinais import CITADO, DIMENSOES, DIMENSOES_CE, LIMITE_VALOR
 
 M_PADRAO = 10.0
+# Faixas por percentil dos pontos na população (com pontos > 0): Alto = 1% maiores; Médio = até 5%.
+PERCENTIL_ALTO, PERCENTIL_MEDIO = 0.99, 0.95
+FAIXAS = ('alto', 'medio', 'baixo', 'sem_sinal')
+ROTULOS_FAIXA = {'alto': 'Alto', 'medio': 'Médio', 'baixo': 'Baixo', 'sem_sinal': 'Sem sinal'}
 IDENTIDADE = ('importador', 'embarcador', CITADO)
 CONTEXTO = ('rota', 'porto_baldeacao', 'pais_ncm', 'ncm_declarado')
 GRUPOS = {'importador': ('importador',), 'embarcador': ('embarcador',), CITADO: (CITADO,),
           'mercadoria': ('ncm_declarado', 'pais_ncm'), 'logistica': ('rota', 'porto_baldeacao')}
+GRUPO_DA_DIMENSAO = {dimensao: grupo for grupo, dimensoes in GRUPOS.items() for dimensao in dimensoes}
 ROTULOS = {'importador': 'Importador', 'embarcador': 'Embarcador', CITADO: 'CNPJ citado em ficha positiva',
            'ncm_declarado': 'NCM', 'pais_ncm': 'País + NCM', 'rota': 'Rota', 'porto_baldeacao': 'Baldeação',
            'mercadoria': 'Mercadoria', 'logistica': 'Logística'}
@@ -131,7 +136,8 @@ def peso(dimensao: str, fichas: int, k: float, total_k: float, n: int, total_n: 
     regra = REGRAS[dimensao]
     vezes = vezes_a_media(k, total_k, n, total_n, m)
     motivo = _motivo_zero(regra, fichas, importadores, vezes)
-    valor = 0.0 if motivo else min(regra.teto, math.log(vezes))
+    # 3 casas: a precisão gravada (risco_historico_parametro.peso) — limiares e pontuação usam o mesmo número
+    valor = 0.0 if motivo else round(min(regra.teto, math.log(vezes)), 3)
     return Peso(fichas, importadores, k, total_k, n, total_n, vezes, valor, motivo)
 
 
@@ -157,3 +163,24 @@ def pontua(valores: Dict[str, Iterable[str]],
             _, dimensao, valor = max(candidatos)
             parcelas.append((dimensao, valor, pesos[dimensao][valor]))
     return round(sum(p.peso for _, _, p in parcelas), 4), parcelas
+
+
+def limiares(pontos: Iterable[float]) -> Dict[str, float]:
+    """Pontos mínimos de Alto e Médio: percentis dos pontos de TODOS os CEs da população."""
+    ordenados = sorted(pontos)
+    if not ordenados:
+        return {'alto': 0.0, 'medio': 0.0}
+    ultimo = len(ordenados) - 1
+    return {'alto': round(ordenados[int(PERCENTIL_ALTO * ultimo)], 4),
+            'medio': round(ordenados[int(PERCENTIL_MEDIO * ultimo)], 4)}
+
+
+def faixa(pontos: float, limites: Dict[str, float]) -> str:
+    """Faixa de um CE: sem pontos é "sem_sinal"; com pontos, alto/médio pelos limiares da versão, senão baixo."""
+    if pontos <= 0:
+        return 'sem_sinal'
+    if pontos >= limites.get('alto', 0):
+        return 'alto'
+    if pontos >= limites.get('medio', 0):
+        return 'medio'
+    return 'baixo'

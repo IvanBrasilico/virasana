@@ -187,7 +187,7 @@ class TestCalculo(unittest.TestCase):
         # k=2 de K=5; valor em 1 de 10 CEs: fatia suavizada (2 + 10*0,1)/(5 + 10) = 0,2 -> 2x a média
         p = calculo.peso('importador', 2, 2.0, 5.0, 1, 10)
         self.assertAlmostEqual(p.vezes, 2.0)
-        self.assertAlmostEqual(p.peso, math.log(2))
+        self.assertAlmostEqual(p.peso, math.log(2), places=3)   # 3 casas, como gravado
         self.assertEqual(p.motivo, '')
         self.assertGreater(calculo.peso('importador', 1, 1.0, 5.0, 1, 100).peso, 0.0)    # identidade: 1 ficha basta
         rota_comum = calculo.peso('rota', 3, 3.0, 5.0, 9, 10, importadores=3)
@@ -230,7 +230,7 @@ class TestCalculo(unittest.TestCase):
         pesos = calculo.tabela_de_pesos(hist, sinais.conta(por_ce.values()), len(por_ce))
         pontos, parcelas = calculo.pontua(sinais.pontuaveis(por_ce['P1']), pesos)
         self.assertEqual({d for d, _, _ in parcelas}, {'importador', 'embarcador'})   # rota comum e NCM em 1 ficha: 0
-        self.assertAlmostEqual(pontos, 2 * math.log(2), places=4)
+        self.assertAlmostEqual(pontos, 2 * math.log(2), places=2)
         self.assertAlmostEqual(pontos, sum(p.peso for _, _, p in parcelas), places=4)
         pontos_p2, parcelas_p2 = calculo.pontua(sinais.pontuaveis(por_ce['P2']), pesos)
         self.assertEqual([d for d, _, _ in parcelas_p2], [sinais.CITADO])

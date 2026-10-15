@@ -211,3 +211,34 @@ regras por dimensão (`Regra`, `REGRAS`, `GRUPOS`; `Peso.motivo`), `fichas_posit
 `test_risco_historico_tela.py`/`test_prefixo_proxy.py`. Ativação: executar a DDL; `lotes.py --sinais --simula`
 (mede a marca inicial e uma volta); `lotes.py --sinais` (carga do mês); `lotes.py --parametros`; conferir a
 página. Depois, F2.
+
+**F1 ativado em produção (14/10/2026).** Carga do mês: 42 voltas em ~2 min (417.764 IDs; 304.320 CEs; 113.444 de
+exportação ignorados), marca inicial 27.917.049 pelo 1º percentil (o menor ID era 26.798.238 — CEs antigos com
+`dataEmissao` recente). Versão 2 dos parâmetros (forçada, N = 304.320, K = 730). O usuário olhou a página: "os
+parâmetros fazem sentido"; decidiu colocar em produção e balancear acompanhando (F2 adiado).
+
+**F3 e F4 (14/10/2026) — escritos e testados, falta ativar.**
+- `pontuacao.py`: pontos e faixa dos CEs da fila (`versao_id` NULL ou menor que a atual; índice de `versao_id`),
+  em lotes. A extração zera `versao_id` ao regravar sinais (o CE volta à fila).
+- Faixas: limiares de Alto (1% maiores) e Médio (5%) pelos pontos da população, guardados com a versão no JSON
+  `constantes['faixas']` (sem mudar a DDL); versão antiga ganha os limiares ao ser carregada
+  (`parametros.carrega_versao`, com cache por processo). O peso é arredondado a 3 casas no cálculo (a precisão
+  gravada) — limiares e pontuação usam o mesmo número.
+- `etapa.py` (`EtapaRisco`): no fim de cada volta do serviço do ciclo — sinais, parâmetros (no máximo 1x/h),
+  pontos; transações próprias; limite de 60 s. O serviço captura qualquer erro (import protegido também);
+  `--sem-risco` desliga; `--simula` não roda a etapa. `lotes.py --pontos` e `--etapa` fazem o mesmo à mão.
+- NAVI-I (`virasana/navii/risco_navii.py`): selo da faixa no card, memória de cálculo recolhível (uma parcela por
+  grupo, refeita com os pesos da versão do CE: o total é a soma das parcelas; links das fichas), filtro "Risco
+  histórico" (só alto / médio ou alto / com algum sinal) verificado por candidato (`_existe` na chave única de
+  `risco_historico_ce`). Sem as tabelas, card sem risco e filtro com erro claro.
+- Ordenação por risco: **não feita** — medir antes (cursor composto pontos + Item.ID).
+
+Pendências do risco (observadas na página de 14/10/2026):
+1. Raízes de CNPJ com todos os dígitos iguais (`00000000` — Banco do Brasil como consignatário "à ordem" —,
+   `99999999`) aparecem com peso máximo: proposta de exclusão automática (a confirmar).
+2. Embarcador vem com o endereço junto (várias grafias da mesma empresa): normalização melhor do nome.
+3. Agentes de carga/transportadores como importador ou embarcador: desativar parâmetro pelo analista (F5).
+
+Ativação do F3/F4: `git pull`; `lotes.py --pontos` (pontua os ~300 mil CEs; cria os limiares da versão 2);
+reiniciar o serviço do ciclo (a etapa entra sozinha) e o virasana web; conferir no NAVI-I e medir o filtro com
+`navii/diagnostico_sql.py --analyze --so-ciclo` (cenários "risco histórico").
