@@ -108,7 +108,7 @@
                 <tbody>
                 {% for lin in linhas %}
                     <tr class="{{ '' if lin.escaneamentos else 'sem-escaneamento' }}">
-                        <td class="mono">{% if url_navii and lin.navii %}<a href="{{ url_navii }}?{{ lin.navii | urlencode }}" target="_blank" rel="noopener" title="Abrir o card do contêiner no NAVI-I (nova aba)">{{ lin.conteiner }}</a>{% else %}{{ lin.conteiner }}{% endif %}<span class="secundario">{{ lin.ce or '' }}{% if lin.cabotagem %} · cabotagem{% endif %}</span></td>
+                        <td class="mono">{% if url_navii and lin.navii %}<a href="{{ url_navii }}?{{ lin.navii | urlencode }}" target="_blank" rel="noopener" title="Abrir o card do contêiner no NAVI-I (nova aba)">{{ lin.conteiner }}</a>{% else %}{{ lin.conteiner }}{% endif %}<span class="secundario">{% if lin.ce and url_extrato_ce is defined %}<a href="{{ url_extrato_ce(lin.ce) }}" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">{{ lin.ce }}</a>{% else %}{{ lin.ce or '' }}{% endif %}{% if lin.cabotagem %} · cabotagem{% endif %}</span></td>
                         <td class="tipo">{% if lin.tipo %}<span title="{{ lin.tipo.descricao }}"><span class="mono">{{ lin.tipo.codigo }}</span>
                             <span class="secundario">{{ lin.tipo.curta }}</span></span>{% if lin.oog %} <span class="selo oog" title="Open top / plataforma: pode ser carga fora de gabarito, que não passa no escâner">potencial OOG</span>{% endif %}{% elif lin.tipo_codigo %}<span class="mono">{{ lin.tipo_codigo }}</span>{% else %}—{% endif %}</td>
                         <td class="mono">{{ lin.desembarque.strftime('%d/%m/%Y %H:%M') if lin.desembarque else '—' }}</td>

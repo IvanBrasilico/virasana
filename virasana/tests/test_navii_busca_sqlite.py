@@ -28,6 +28,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from virasana.navii import busca_navii, fichas_ovr
+from bhadrasana.models.apirecintos import AcessoVeiculo, InspecaoNaoInvasiva, PesagemVeiculo
+from bhadrasana.models.riscocorad import MatrizCorad
+from virasana.navii import dta_navii, extrato_navii, tabelas_opcionais
 from virasana.navii.busca_navii import (
     busca_ces_navii, busca_ciclos_navii, busca_familias_navii, busca_manifestos_navii,
     busca_nomes_recintos, conta_conteineres_navii, monta_cards_navii,
@@ -48,6 +51,7 @@ from bhadrasana.models.laudo import Empresa
 PERIODO = {'data_inicio': '2026-01-05', 'data_fim': '2026-01-15'}
 
 TABELAS = [
+    MatrizCorad, AcessoVeiculo, InspecaoNaoInvasiva, PesagemVeiculo,
     Enumerado, Escala, EscalaManifesto, Manifesto, Conhecimento, Item, NCMItem,
     CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, CicloDeVidaCE,
     Empresa, EmbarqueDesembarque,   # desembarque: tipo do contêiner na completude
@@ -59,6 +63,7 @@ def cria_sessao():
     for modelo in TABELAS:
         modelo.__table__.create(engine)
     tabela_recintos.create(engine)
+    dta_navii.DTAS.create(engine)
     fichas_ovr.tabela_ovrs.create(engine)
     fichas_ovr.tabela_rvfs.create(engine)
     return sessionmaker(bind=engine)()
@@ -139,6 +144,7 @@ def monta_cenario(session):
 
 class NaviiSqliteTestCase(unittest.TestCase):
     def setUp(self):
+        tabelas_opcionais.limpa_cache()
         self.session = cria_sessao()
         monta_cenario(self.session)
 
@@ -873,6 +879,154 @@ class TestRiscoSemTabelas(NaviiSqliteTestCase):
             self.conteineres(risco='alto')
         resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1']}, limit=50)
         self.assertIsNone(monta_cards_navii(self.session, resultados)[0]['risco'])
+
+
+class TestRiscoCorad(NaviiSqliteTestCase):
+    """Slider "Risco CORAD", inclusivo. Consignatários: CE1 11222333 (classe 1, alto), CE6 e os demais
+    00000000000000 (classe 3), CE3 "LOJA X LTDA" (não é CNPJ: não consta). Na janela: C1 e C2 (CE1), C4 (CE3), C6."""
+
+    def setUp(self):
+        super().setUp()
+        self.session.execute(MatrizCorad.__table__.insert(), [
+            {'id': 1, 'cod_emp_interv_rad': '11222333', 'classificacao_aniita_imp': 1},
+            {'id': 2, 'cod_emp_interv_rad': '00000000', 'classificacao_aniita_imp': 3}])
+        self.session.commit()
+
+    def test_niveis_inclusivos(self):
+        self.assertEqual(self.conteineres(), {'C1', 'C2', 'C4', 'C6'})
+        self.assertEqual(self.conteineres(corad=0), {'C4'})                      # só os que não constam
+        self.assertEqual(self.conteineres(corad=1), {'C1', 'C2', 'C4'})          # + alto
+        self.assertEqual(self.conteineres(corad=2), {'C1', 'C2', 'C4'})
+        self.assertEqual(self.conteineres(corad=3), {'C1', 'C2', 'C4', 'C6'})    # + classe 3
+        self.assertEqual(self.total(corad='0'), 1)
+
+    def test_raiz_sem_classificacao_nao_consta(self):
+        tabela = MatrizCorad.__table__
+        self.session.execute(tabela.update().where(tabela.c.id == 1).values(classificacao_aniita_imp=None))
+        self.session.commit()
+        self.assertEqual(self.conteineres(corad=0), {'C1', 'C2', 'C4'})
+
+    def test_normaliza(self):
+        self.assertEqual(normaliza_filtros({'corad': '2'})['corad'], 2)
+        self.assertEqual(normaliza_filtros({'corad': 0})['corad'], 0)
+        for invalido in ('9', '-1', 'x', None):
+            self.assertNotIn('corad', normaliza_filtros({'corad': invalido}))
+
+
+def insere_dta(session, ce, numero, **campos):
+    session.execute(dta_navii.DTAS.insert(), [{
+        'nr_ce': ce, 'codigo_declaracao_transito': numero, 'descricao_tipo_declaracao_transito': 'DTA - ENTRADA COMUM',
+        'data_registro_declaracao': datetime(2026, 1, 13, 9, 0), 'indicador_transito_concluido': False,
+        'nome_transportadora': 'TRANSPORTES EXEMPLO LTDA', 'ni_transportador_declaracao': '44555666000100',
+        'max_vlr_fob_carga_fatura': 12345.67, 'codigo_moeda_negociada': 'USD',
+        'descricao_mercadoria_transito': 'NOTEBOOKS', **campos}])
+
+
+class TestDtaECorad(NaviiSqliteTestCase):
+    """Filtros "Tem DTA" e "Nº DTA"; DTA e classe CORAD no card. CE1 tem a DTA 2612345678."""
+
+    def setUp(self):
+        super().setUp()
+        insere_dta(self.session, 'CE1', '2612345678')
+        self.session.execute(MatrizCorad.__table__.insert(), [
+            {'id': 1, 'cod_emp_interv_rad': '11222333', 'classificacao_aniita_imp': 1}])
+        self.session.commit()
+
+    def test_tem_dta(self):
+        self.assertEqual(self.conteineres(tem_dta='sim'), {'C1', 'C2'})
+        self.assertEqual(self.conteineres(tem_dta='nao'), {'C4', 'C6'})
+        self.assertNotIn('tem_dta', normaliza_filtros({'tem_dta': 'talvez'}))
+
+    def test_numero_da_dta_sem_periodo(self):
+        def busca(**filtros):
+            return {r.item.codigoConteiner for r in busca_ces_navii(self.session, 'efetiva', filtros, limit=50)}
+        self.assertEqual(busca(dta='26/1234567-8'), {'C1', 'C2'})        # normalizado; sem limite de data
+        self.assertEqual(busca(dta='2699999999'), set())                  # DTA desconhecida: nada
+        self.assertEqual(conta_conteineres_navii(self.session, 'efetiva', {'dta': '2699999999'}), 0)
+        self.assertEqual(busca(dta='2612345678', ce='CE3'), set())        # CE e DTA: os comuns
+
+    def test_card_com_dta_e_corad(self):
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1', 'C4']}, limit=50)
+        cards = {c['numeroConteiner']: c for c in monta_cards_navii(self.session, resultados)}
+        [dta] = cards['C1']['dtas']
+        self.assertEqual((dta['numero'], dta['transportador'], dta['valor'], dta['moeda'], dta['concluido']),
+                         ('2612345678', 'TRANSPORTES EXEMPLO LTDA', 12345.67, 'USD', False))
+        self.assertEqual(cards['C4']['dtas'], [])
+        self.assertEqual(cards['C1']['corad'], {'classe': 1, 'rotulo': 'Alto'})
+        self.assertEqual(cards['C4']['corad'], {'classe': None, 'rotulo': 'Não consta'})   # "LOJA X LTDA"
+
+    def test_sem_a_tabela_da_dta(self):
+        dta_navii.DTAS.drop(self.session.get_bind())
+        tabelas_opcionais.limpa_cache()
+        with self.assertRaisesRegex(ValueError, 'DTA indisponível'):
+            self.conteineres(tem_dta='sim')
+        resultados = busca_ces_navii(self.session, 'efetiva', {**PERIODO, 'conteiner': ['C1']}, limit=50)
+        self.assertEqual(monta_cards_navii(self.session, resultados)[0]['dtas'], [])
+
+
+CE_EXTRATO = '152600000000101'
+
+
+def monta_extrato_cenario(session):
+    """CE com dois contêineres: C8 desembarcou em 11/01/2026 (ciclo, eventos da API) e C9 sem ciclo."""
+    cria_ce(session, CE_EXTRATO, 'M1', {'C8': [('84713000', 'Notebook')], 'C9': [('95030000', 'Brinquedo')]},
+            consignatario='11222333000181')
+    ciclo = cria_ciclo(session, CE_EXTRATO, 'C8', datetime(2026, 1, 11, 8, 0), '8931356', imagens=['5f00000000000000000000c8'])
+    ciclo.data_saida = datetime(2026, 1, 12, 10, 0)
+    session.execute(EmbarqueDesembarque.__table__.insert(), [
+        {'id': 1, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2026, 1, 11, 8, 0), 'codigoRecinto': '8931356',
+         'embarqueDesembarque': 'D', 'pesoBrutoBalanca': 12000, 'escala': 'E1'}])
+    session.execute(AcessoVeiculo.__table__.insert(), [
+        {'id': 1, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2026, 1, 12, 10, 0), 'codigoRecinto': '8931356',
+         'operacao': 'C', 'direcao': 'S', 'placa': 'ABC1D23'},
+        {'id': 2, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2026, 1, 12, 9, 0), 'codigoRecinto': '8931356',
+         'operacao': 'G', 'direcao': 'S', 'placa': None},                         # agendamento: fora
+        {'id': 3, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2025, 6, 1), 'codigoRecinto': '8931356',
+         'operacao': 'C', 'direcao': 'E', 'placa': None}])                        # outra operação, fora da janela
+    session.execute(InspecaoNaoInvasiva.__table__.insert(), [
+        {'id': 1, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2026, 1, 11, 10, 0),
+         'codigoRecinto': '8931356'}])
+    session.execute(PesagemVeiculo.__table__.insert(), [
+        {'id': 1, 'numeroConteiner': 'C8', 'dataHoraOcorrencia': datetime(2026, 1, 12, 9, 30),
+         'codigoRecinto': '8931356', 'pesoBrutoBalanca': 27500, 'placa': 'ABC1D23'}])
+    insere_dta(session, CE_EXTRATO, '2612345678')
+    session.commit()
+
+
+class TestExtrato(NaviiSqliteTestCase):
+
+    def setUp(self):
+        super().setUp()
+        monta_extrato_cenario(self.session)
+
+    def test_ce_uma_vez_e_um_card_por_conteiner(self):
+        extrato = extrato_navii.monta_extrato(self.session, '1526.0000.0000.101')
+        self.assertEqual(extrato['ce']['numeroCEmercante'], CE_EXTRATO)
+        self.assertEqual(extrato['ce']['dtas'][0]['numero'], '2612345678')
+        self.assertEqual([c['numeroConteiner'] for c in sorted(extrato['conteineres'], key=lambda c: c['numeroConteiner'])],
+                         ['C8', 'C9'])
+        self.assertEqual(extrato['resumo']['declarados'], 2)
+        self.assertEqual(extrato['resumo']['escaneados'], 1)
+        c8 = next(c for c in extrato['conteineres'] if c['numeroConteiner'] == 'C8')
+        self.assertEqual([e['tipo'] for e in c8['eventosApi']],
+                         ['Desembarque', 'Escaneamento (inspeção não invasiva)', 'Pesagem', 'Saída do recinto'])
+        self.assertEqual(c8['eventosApi'][0]['nomeRecinto'], 'BTP')
+        self.assertIn('placa ABC1D23', c8['eventosApi'][3]['detalhe'])
+        self.assertEqual(c8['declarado']['ncms'][0]['identificacaoNCM'], '84713000')
+        c9 = next(c for c in extrato['conteineres'] if c['numeroConteiner'] == 'C9')
+        self.assertEqual(c9['eventosApi'], [])
+        self.assertEqual(c9['janelaEventos'][0], datetime(2026, 1, 5))       # atracação prevista (E1) - 5 dias
+        self.assertEqual(c8['janelaEventos'][1], datetime(2026, 5, 11, 8, 0))   # ciclo em aberto: 120 dias
+
+    def test_janela_do_ciclo_terminado(self):
+        card = {'concluido': True, 'linhaDoTempo': {'desembarque': {'data': datetime(2026, 1, 11)},
+                                                    'saida': {'data': datetime(2026, 1, 20)}}}
+        self.assertEqual(extrato_navii.janela_do_conteiner(card), (datetime(2026, 1, 6), datetime(2026, 1, 25)))
+        self.assertIsNone(extrato_navii.janela_do_conteiner({'linhaDoTempo': {}}))
+
+    def test_ce_inexistente_ou_vazio(self):
+        self.assertIsNone(extrato_navii.monta_extrato(self.session, '999'))
+        self.assertIsNone(extrato_navii.monta_extrato(self.session, ''))
 
 
 if __name__ == '__main__':

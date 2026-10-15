@@ -411,6 +411,33 @@ Em 14/10/2026 (pedidos do usuário):
   cálculo no card; filtro `risco` (`alto`, `medio`, `sinal`) por candidato (`_existe` na chave única de
   `risco_historico_ce`). Cenários no `diagnostico_sql.py` (também em `--so-ciclo`).
 
+Em 15/10/2026 (pedido do usuário) — **filtro "Risco CORAD"** (slider com liga/desliga; `corad` = 0..4): matriz
+`matriz_risco_corad` (classe `MatrizCorad` do Fichas, `bhadrasana/models/riscocorad.py`, usada pela TABELA Core
+— a classe divide a base ORM com os modelos do Fichas e configurá-los quebrava fora do Fichas). Inclusivo: nível 0
+= só os importadores que não constam; N = não constam + classificação <= N. Uma condição só, em `criterios_ce`:
+"não há linha da raiz do consignatário com classificação acima de N" (chave única de `cod_emp_interv_rad`).
+Não consta = raiz fora da matriz, classificação vazia ou consignatário que não é CNPJ. Rótulos do usuário:
+Não consta, Alto, Médio, Baixo, Muito baixo — a matriz descreve 3 como "SEM HISTORICO" e 4 como "BAIXO RISCO"
+(`RiscoEmpresa` em riscocorad.py). Cenário no `diagnostico_sql.py`.
+
+Em 15/10/2026 (pedidos do usuário):
+- **DTA** (`dta_navii.py`; tabela `navii_dtas`, gravada pelo `integracao/dta/dta_manager.py`; definição Core
+  parcial, só os campos da declaração): filtro `tem_dta` ('sim'/'nao', por candidato pelo índice de `nr_ce`) e
+  filtro `dta` (número → CEs da DTA pela chave única, que dirigem a busca como o filtro `ce`; sem datas, sem limite
+  de período; com `ce` junto, os comuns). Card: selo e seção da DTA (número, tipo, registro, desembaraço,
+  previsão de chegada, concluído, transportador e CNPJ, valor declarado e moeda, descrição).
+- **CORAD no card** (`busca_corad`): classe do consignatário ao lado do nome ("Não consta" sem raiz na matriz).
+- **Extrato do CE** (`/navii/extrato?CE=`, `extrato_navii.py`, `templates/navii_extrato.html`, renderizado no
+  servidor): o CE uma vez (o card sem contêiner: Mercante, família, navio, risco histórico com memória, CORAD, DTA,
+  Fichas) e um card por contêiner (busca por `ce`), com a imagem em destaque (miniatura recortada; clique abre a
+  imagem cheia `/image/<id>`), linha do tempo, escaneamentos do ciclo e os **eventos da API Recintos** (4 tabelas,
+  uma consulta cada, pelo índice do contêiner; janela: desembarque ou atracação prevista − 5 dias até a última
+  etapa + 5 dias, ou + 120 dias com o ciclo em aberto). Todo número de CE das telas do virasana leva ao extrato:
+  card do NAVI-I (CE e master), completude, Entregas por CNPJ, Transporte das apreensões — pelo helper global de
+  template `url_extrato_ce` (registrado pelo blueprint do NAVI-I; os templates conferem `is defined`). As telas do
+  Fichas (bhadrasana2) não foram mexidas.
+- `tabelas_opcionais.py`: conferência (com cache) das tabelas que nem todo banco tem (risco, DTA, CORAD, API).
+
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
 Logs `com_familia.log` / `sem_familia.log` (61 consultas cada; janela efetiva 17–27/09). Tempos com cache

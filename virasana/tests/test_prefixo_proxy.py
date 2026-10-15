@@ -37,6 +37,7 @@ TELAS = [
     ('/apreensoes_transporte', 'Transporte das apreensões'),
     ('/risco_historico', 'Risco histórico das Fichas'),
     ('/risco_historico/parametros', 'Parâmetros do risco por CE'),
+    ('/navii/extrato', 'Extrato do CE'),
     ('/completude_escaneamentos', 'Completude de escaneamentos'),
 ]
 
@@ -135,6 +136,24 @@ class TestPrefixoProxy(unittest.TestCase):
                            '&fim=2026-03-07', environ_base={'HTTP_HOST': HOST_INTERNO}).get_data(as_text=True)
         self.assertIn('href="/virasana/navii/?conteiner=T1&amp;tipo_janela=efetiva&amp;data_inicio=2026-02-28'
                       '&amp;data_fim=2026-03-02"', html)
+
+    def test_extrato_do_ce_e_links_para_ele(self):
+        from virasana.tests.test_navii_busca_sqlite import CE_EXTRATO, monta_extrato_cenario
+        app = cria_app()
+        monta_extrato_cenario(app.config['db_session'])
+        cliente = Client(DispatcherMiddleware(NotFound(), {PREFIXO: app}))
+
+        def get(caminho):
+            return cliente.get(PREFIXO + caminho, environ_base={'HTTP_HOST': HOST_INTERNO}).get_data(as_text=True)
+        html = get(f'/navii/extrato?CE={CE_EXTRATO}')
+        for trecho in ('EXTRATO DO CE', 'C8', 'C9', 'Desembarque', 'DTA 2612345678', 'Saída do recinto',
+                       f'href="/virasana/navii/?ce={CE_EXTRATO}&amp;tipo_janela=efetiva"',
+                       'src="/virasana/mini1/5f00000000000000000000c8"'):
+            self.assertIn(trecho, html)
+        for url in urls_internas(html):
+            self.assertTrue(url.startswith((PREFIXO + '/',) + OUTRAS_APPS), f'URL sem o prefixo: {url}')
+        self.assertIn('não encontrado no Mercante', get('/navii/extrato?CE=999'))
+        self.assertIn('var EXTRATO_URL = "/virasana/navii/extrato"', get('/navii/'))
 
     def test_apis_respondem_sob_o_prefixo(self):
         for caminho in ('/navii/api/sugestoes?campo=porto&q=BRSSZ', '/navii/api/filtros'):

@@ -4,6 +4,7 @@ Blueprint Flask do NAVI-I — Análise de risco na importação.
 
 Expõe:
   GET /navii/            -> página HTML (filtros + cards com rolagem infinita)
+  GET /navii/extrato?CE=  -> extrato do CE: dados do CE uma vez e um card por contêiner (extrato_navii.py)
   GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página); na
                              primeira página (sem cursor) traz também `total`
                              de contêineres que o filtro encontrou na base
@@ -22,10 +23,11 @@ from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
-from virasana.navii import filtros_salvos, referencias, risco_navii
+from virasana.navii import dta_navii, extrato_navii, filtros_salvos, referencias, risco_navii
 from virasana.navii.busca_navii import (
-    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, busca_ces_navii, conta_conteineres_navii,
-    monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva, _janela_previsao, sugere_recintos,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS, busca_ces_navii,
+    conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
+    _janela_previsao, sugere_recintos,
 )
 
 bp_navii = Blueprint(
@@ -47,6 +49,14 @@ def _imagem_url_template() -> str:
         return url_for('mini', _id='imagem_id')
     except BuildError:
         return request.script_root + '/mini1/imagem_id'
+
+
+def _imagem_cheia_template() -> str:
+    """URL da imagem completa (rota `/image/<_id>` de virasana/views.py), com 'imagem_id' no lugar do id."""
+    try:
+        return url_for('image_id', _id='imagem_id')
+    except BuildError:
+        return request.script_root + '/image/imagem_id'
 
 
 def _serializa_valor(v):
@@ -87,7 +97,31 @@ def index():
         tipos_bl=referencias.tipos_bl(),
         estagios=estagios_ciclo.lista(),
         filtros_iniciais=_filtros_iniciais(),
+        extrato_url=url_for('navii.extrato'),
         filtros_risco=risco_navii.ROTULOS_FILTRO,
+        rotulos_corad=ROTULOS_CORAD,
+        opcoes_tem_dta=dta_navii.OPCOES_TEM_DTA,
+        risco_parametros_url=_url_parametros_risco(),
+    )
+
+
+@bp_navii.app_template_global('url_extrato_ce')
+def url_extrato_ce(numero: str) -> str:
+    """Link para o extrato do CE, para qualquer tela da app que mostre um número de CE (com o prefixo da app).
+    Nos templates: `{% if url_extrato_ce is defined %}` — só existe com o NAVI-I registrado."""
+    return url_for('navii.extrato', CE=numero)
+
+
+@bp_navii.route('/extrato', strict_slashes=False)  # sem redirect da barra final (proxy)
+@login_required
+def extrato():
+    """Extrato do CE (?CE=número): os dados do CE uma vez e um card por contêiner, com imagem e eventos."""
+    numero = extrato_navii.normaliza_ce(request.args.get('CE') or request.args.get('ce'))
+    dados = extrato_navii.monta_extrato(current_app.config['db_session'], numero) if numero else None
+    return render_template(
+        'navii_extrato.html', numero=numero, dados=dados,
+        extrato_url=url_for('navii.extrato'), navii_url=url_for('navii.index'),
+        imagem_url_template=_imagem_url_template(), imagem_cheia_template=_imagem_cheia_template(),
         risco_parametros_url=_url_parametros_risco(),
     )
 

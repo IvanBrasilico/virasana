@@ -93,10 +93,13 @@ CENARIOS = [
     ('CE (link do card, sem período)', {'ce': ['152605000000000']}),
     ('risco histórico: só alto', {'porto_escala': 'BRSSZ', 'risco': 'alto'}),
     ('risco histórico: com algum sinal', {'porto_escala': 'BRSSZ', 'risco': 'sinal'}),
+    ('risco CORAD: até alto (e não consta)', {'porto_escala': 'BRSSZ', 'corad': 1}),
+    ('com DTA', {'porto_escala': 'BRSSZ', 'tem_dta': 'sim'}),
+    ('número da DTA (sem período)', {'dta': ['2600000000']}),
 ]
 # --so-ciclo: a janela efetiva sem filtros e as buscas com filtro do ciclo de vida (imagem, recinto, estágio),
 # de contêiner/CE e do risco histórico por CE
-CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio', 'conteiner', 'ce', 'risco')
+CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio', 'conteiner', 'ce', 'risco', 'corad', 'tem_dta', 'dta')
 CENARIOS_CICLO = [(d, f) for d, f in CENARIOS
                   if d == 'porto de atracação (padrão da tela)' or any(c in f for c in CAMPOS_DO_CICLO)]
 
@@ -339,7 +342,7 @@ class Diagnostico:
             for descricao, filtros in cenarios:
                 filtros = dict(filtros)
                 inicio, fim = periodos.get(tipo_janela) or (None, None)
-                if inicio and fim and 'ce' not in filtros:   # o link do CE vem sem período
+                if inicio and fim and 'ce' not in filtros and 'dta' not in filtros:   # CE/DTA: sem período
                     filtros.update(data_inicio=inicio, data_fim=fim)
                 periodo = _periodo_navii(tipo_janela, filtros)
                 self.cenario = f'[{tipo_janela}] {descricao}'

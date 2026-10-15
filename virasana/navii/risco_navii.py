@@ -12,12 +12,12 @@ Risco histórico por CE no NAVI-I (F4; ver virasana/risco_historico/CONTEXTO.md)
 Sem as tabelas do risco no banco (homologação, testes antigos), o card fica sem
 risco e o filtro responde com erro claro — o resto do NAVI-I não muda.
 """
-import time
 from typing import Callable, Dict, Iterable, List
 
-from sqlalchemy import inspect, select
+from sqlalchemy import select
 
 from virasana.integracao.mercante.mercantealchemy import Item
+from virasana.navii import tabelas_opcionais
 from virasana.navii.fichas_ovr import URL_FICHA
 from virasana.risco_historico import calculo, parametros
 from virasana.risco_historico.sinais import de_json, pontuaveis
@@ -26,19 +26,10 @@ from virasana.risco_historico.tabelas import CES
 FILTROS_RISCO = {'alto': ('alto',), 'medio': ('alto', 'medio'), 'sinal': ('alto', 'medio', 'baixo')}
 ROTULOS_FILTRO = {'sinal': 'Com algum sinal', 'medio': 'Médio ou alto', 'alto': 'Só alto'}
 FICHAS_NA_MEMORIA = 5
-VALIDADE_CHECAGEM = 600   # s: a existência das tabelas é conferida a cada 10 min
-
-_tabelas: Dict[tuple, tuple] = {}   # (url, engine) -> (existe?, quando conferiu)
 
 
 def tem_tabelas(session) -> bool:
-    bind = session.get_bind()
-    chave = (str(bind.url), id(bind))   # bancos SQLite em memória têm a mesma URL
-    existe, quando = _tabelas.get(chave, (None, 0.0))
-    if existe is None or time.monotonic() - quando > VALIDADE_CHECAGEM:
-        existe = inspect(bind).has_table(CES.name)
-        _tabelas[chave] = (existe, time.monotonic())
-    return existe
+    return tabelas_opcionais.existe(session, CES.name)
 
 
 def criterio(session, valor: str, existe: Callable):

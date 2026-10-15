@@ -140,7 +140,7 @@
                     <tr>
                         <td class="mono">
                             <a href="/bhadrasana2/ovr?id={{ linha.ovr_id }}" target="_blank">{{ linha.ovr_numero or linha.ovr_id }}</a>
-                            <span class="secundario">RVF {{ linha.rvf_id }} · {{ linha.numeroCEmercante or '' }}</span></td>
+                            <span class="secundario">RVF {{ linha.rvf_id }} · {% if linha.numeroCEmercante and url_extrato_ce is defined %}<a href="{{ url_extrato_ce(linha.numeroCEmercante) }}" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">{{ linha.numeroCEmercante }}</a>{% else %}{{ linha.numeroCEmercante or '' }}{% endif %}</span></td>
                         <td>{{ linha.apreensao_tipos or '' }}
                             {% if linha.apreensao_peso_total %}<span class="secundario">{{ '%.1f' | format(linha.apreensao_peso_total) }} kg</span>{% endif %}</td>
                         {% if linha.qtd_ocorrencias %}

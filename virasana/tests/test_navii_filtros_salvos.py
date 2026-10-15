@@ -106,6 +106,12 @@ class TestFiltrosSalvos(unittest.TestCase):
             'ncms_max': 3, 'estagio': ['entregue'], 'tipo_bl': ['11', '12'], 'sem_oog': True,
         })   # o "concluido" antigo vira o estágio "entregue"
 
+    def test_risco_historico_e_corad(self):
+        salvo = filtros_salvos.salva(self.col, 'ana', 'risco', 'efetiva', {'risco': 'alto', 'corad': '0'})
+        self.assertEqual(salvo['filtros'], {'risco': 'alto', 'corad': 0})       # nível 0 (não consta) também vale
+        salvo = filtros_salvos.salva(self.col, 'ana', 'risco', 'efetiva', {'risco': 'x', 'corad': 7})
+        self.assertEqual(salvo['filtros'], {})
+
     def test_validacoes(self):
         for nome, janela, filtros in (('', 'efetiva', {}), ('x' * 61, 'efetiva', {}),
                                       ('ok', 'outra', {}), ('ok', 'efetiva', {'ncms_max': 'muitos'})):

@@ -232,6 +232,20 @@
             width: 100%; padding: .375rem .5rem; border: 1px solid #888; border-radius: 4px;
             font-size: .875rem; background: #fff;
         }
+        .tag-dta {
+            background: #E0F2F1; color: #00695C; font-size: .625rem; font-weight: 700;
+            padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
+        }
+        .tag-corad { display: inline-block; margin-top: .125rem; font-size: .625rem; font-weight: 700; padding: .0625rem .4375rem;
+                     border-radius: 999px; text-transform: uppercase; background: #F3F3F3; color: #666; }
+        .tag-corad.c1 { background: #FDE0DC; color: #B00020; }
+        .tag-corad.c2 { background: #FFF1D6; color: #8A5300; }
+        .tag-corad.c3, .tag-corad.c4 { background: #E8F5E9; color: #1B5E20; }
+        .secao-dta { margin-top: 1rem; border-top: 1px solid #F0F0F0; padding-top: .75rem; font-size: .75rem; color: #444; }
+        .secao-dta .dta-item { margin-bottom: .5rem; }
+        .secao-dta .dta-numero { font-family: monospace; font-weight: 700; color: #00695C; }
+        .secao-dta summary { cursor: pointer; color: #1351B4; }
+        .ce-subtitulo a.link-master { color: inherit; text-decoration: none; }
         .tag-filhotes {
             background: #E8F0FB; color: #1351B4; font-size: .625rem; font-weight: 700; cursor: help;
             padding: .125rem .5rem; border-radius: 999px; text-transform: uppercase;
@@ -460,6 +474,8 @@
                            'Todos os cards do contêiner no período, com os escaneamentos de cada um.') }}
             {{ campo_lista('ce', 'CE Mercante', '', 'número do CE',
                            'Todos os cards do CE. Com as datas do período vazias, sem limite de data.') }}
+            {{ campo_lista('dta', 'Nº DTA', '', 'número da DTA',
+                           'Os cards dos CEs da DTA. Com as datas do período vazias, sem limite de data.') }}
             {{ campo_lista('porto_escala', 'Porto de atracação (escala)', 'porto', 'porto ou país',
                            'Vazio = todos os portos.') }}
             {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição') }}
@@ -480,6 +496,18 @@
                 <label for="f-ncms_max">Qtde. máxima de NCMs distintos</label>
                 <span class="valor-slider" id="valor-ncms_max">Sem limite</span>
                 <input id="f-ncms_max" type="range" min="0" max="20" step="1" value="0" />
+            </div>
+
+            <div class="campo campo-slider">
+                <div class="campo-checkbox mb-1">
+                    <input id="f-corad-ligado" type="checkbox" />
+                    <label for="f-corad-ligado">Filtrar por Risco CORAD</label>
+                </div>
+                <label for="f-corad">Risco CORAD do importador</label>
+                <span class="valor-slider" id="valor-corad">{{ rotulos_corad[0] }}</span>
+                <input id="f-corad" type="range" min="0" max="{{ rotulos_corad | length - 1 }}" step="1" value="0" disabled />
+                <div class="dica-lista">Matriz CORAD (raiz do CNPJ do consignatário). Inclusivo: cada nível mostra os
+                    que não constam da matriz e os de risco até aquele nível (ex.: Médio = não consta, alto e médio).</div>
             </div>
 
             <div class="campo">
@@ -516,6 +544,14 @@
                     {% endfor %}
                 </div>
                 <div class="dica-lista">Nenhum marcado = todos. Marcar algum exige ciclo de vida localizado.</div>
+            </div>
+
+            <div class="campo">
+                <label class="rotulo-campo" for="f-tem_dta">DTA (trânsito aduaneiro)</label>
+                <select id="f-tem_dta" class="escolha">
+                    <option value="">Qualquer</option>
+                    {% for codigo, rotulo in opcoes_tem_dta.items() %}<option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+                </select>
             </div>
 
             <div class="campo">
@@ -603,16 +639,19 @@
     var IMPLICITA = { inspecao: 'inspeção', pesagem: 'pesagem' };
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
     var FILTROS_RISCO = {{ filtros_risco | tojson }};
+    var OPCOES_TEM_DTA = {{ opcoes_tem_dta | tojson }};
+    var EXTRATO_URL = {{ extrato_url | tojson }};
+    var ROTULOS_CORAD = {{ rotulos_corad | tojson }};
     var RISCO_PARAMETROS_URL = {{ risco_parametros_url | tojson }};
 
     // Campos com lista de códigos (vale qualquer um) e campos de texto livre
-    var CAMPOS_LISTA = ['conteiner', 'ce', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
+    var CAMPOS_LISTA = ['conteiner', 'ce', 'dta', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
                         'recinto'];
     var CAMPOS_TEXTO = ['produto', 'empresa'];
     var rotulos = {
-        conteiner: 'Contêiner', ce: 'CE', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
+        conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
-        ncms_max: 'NCMs distintos ≤', estagio: 'Estágio',
+        ncms_max: 'NCMs distintos ≤', estagio: 'Estágio', corad: 'Risco CORAD',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
         risco: 'Risco histórico'
     };
@@ -752,6 +791,29 @@
         if (e.key === 'ArrowRight') { navegarLightbox(1); }
     });
 
+    function textoCorad(nivel) {
+        nivel = parseInt(nivel, 10);
+        return nivel > 0 ? 'até ' + ROTULOS_CORAD[nivel] + ' (e não consta)' : ROTULOS_CORAD[0];
+    }
+
+    function marcaCorad(nivel) {
+        // null = filtro desligado (slider desabilitado)
+        var ligado = nivel !== null && nivel !== undefined && nivel !== '';
+        var slider = document.getElementById('f-corad');
+        document.getElementById('f-corad-ligado').checked = ligado;
+        slider.disabled = !ligado;
+        slider.value = ligado ? parseInt(nivel, 10) : 0;
+        document.getElementById('valor-corad').textContent = ROTULOS_CORAD[parseInt(slider.value, 10)];
+    }
+
+    document.getElementById('f-corad').addEventListener('input', function (e) {
+        document.getElementById('valor-corad').textContent = ROTULOS_CORAD[parseInt(e.target.value, 10)];
+    });
+
+    document.getElementById('f-corad-ligado').addEventListener('change', function (e) {
+        marcaCorad(e.target.checked ? document.getElementById('f-corad').value : null);
+    });
+
     document.getElementById('f-ncms_max').addEventListener('input', function (e) {
         var valor = parseInt(e.target.value, 10);
         document.getElementById('valor-ncms_max').textContent = valor > 0 ? valor : 'Sem limite';
@@ -774,7 +836,9 @@
                 : (chave === 'estagio'
                     ? valor.map(function (c) { return ROTULOS_ESTAGIO[c] || c; }).join(', ')
                     : (chave === 'risco' ? (FILTROS_RISCO[valor] || valor)
-                        : (Array.isArray(valor) ? valor.join(', ') : valor))));
+                    : (chave === 'tem_dta' ? (OPCOES_TEM_DTA[valor] || valor)
+                        : (chave === 'corad' ? textoCorad(valor)
+                            : (Array.isArray(valor) ? valor.join(', ') : valor))))));
             var chip = document.createElement('span');
             chip.className = 'br-tag tag-neutra';
             chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
@@ -787,6 +851,8 @@
                     marcaTiposBl([]);
                 } else if (chave === 'estagio') {
                     marcaEstagios([]);
+                } else if (chave === 'corad') {
+                    marcaCorad(null);
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
@@ -1090,8 +1156,44 @@
     }
 
     function urlDoCE(numero) {
-        // todos os cards do CE, sem limite de data (a tela abre com o período vazio)
-        return NAVII_URL + '?' + new URLSearchParams({ ce: numero, tipo_janela: estadoBusca.tipo_janela }).toString();
+        // extrato do CE: os dados do CE uma vez e um card por contêiner (a URL da tela vem do servidor)
+        return EXTRATO_URL + '?' + new URLSearchParams({ CE: numero }).toString();
+    }
+
+    function montaSeloDta(card) {
+        var dtas = card.dtas || [];
+        if (!dtas.length) { return ''; }
+        return ' <span class="tag-dta" title="Declaração de trânsito aduaneiro (detalhes no fim do card)">DTA ' +
+            escapeHtml(dtas[0].numero) + (dtas.length > 1 ? ' +' + (dtas.length - 1) : '') + '</span>';
+    }
+
+    function montaDtas(card) {
+        var dtas = card.dtas || [];
+        if (!dtas.length) { return ''; }
+        var itens = dtas.map(function (d) {
+            var partes = [
+                d.tipo ? escapeHtml(d.tipo) : '',
+                'registro ' + (d.registro ? formatarDataHora(d.registro) : '--'),
+                d.desembaraco ? 'desembaraço ' + formatarDataHora(d.desembaraco) : '',
+                d.previsaoChegada ? 'previsão de chegada ' + formatarDataHora(d.previsaoChegada) : '',
+                d.concluido ? 'trânsito concluído' : 'em trânsito'
+            ].filter(Boolean).join(' · ');
+            return '<div class="dta-item"><span class="dta-numero">DTA ' + escapeHtml(d.numero) + '</span> · ' + partes +
+                '<br>Transportador: ' + escapeHtml(d.transportador || '--') +
+                    (d.cnpjTransportador ? ' <span class="texto-mono">' + escapeHtml(d.cnpjTransportador) + '</span>' : '') +
+                ' · Valor declarado: ' + (d.valor !== null && d.valor !== undefined
+                    ? escapeHtml(d.moeda || '') + ' ' + formataNumero(d.valor, 2) : '--') +
+                (d.descricao ? '<details><summary>Descrição da mercadoria na DTA</summary>' + escapeHtml(d.descricao) +
+                    '</details>' : '') + '</div>';
+        }).join('');
+        return '<div class="secao-dta"><span class="rotulo-mini">Trânsito aduaneiro (DTA)</span>' + itens + '</div>';
+    }
+
+    function montaCorad(card) {
+        var c = card.corad;
+        if (!c) { return ''; }   // matriz CORAD ausente no banco
+        return '<span class="tag-corad c' + (c.classe || 0) + '" title="Matriz de risco CORAD do importador (raiz do CNPJ)">CORAD ' +
+            escapeHtml(c.rotulo) + '</span>';
     }
 
     function montaCard(card) {
@@ -1119,14 +1221,17 @@
                             '<div class="ce-subtitulo">' +
                                 '<span class="texto-mono">CE ' + (card.numeroCEmercante
                                     ? '<a class="link-ce" href="' + escapeAttr(urlDoCE(card.numeroCEmercante)) + '" target="_blank" ' +
-                                      'rel="noopener" title="Todos os cards deste CE, sem limite de data (nova aba)">' +
+                                      'rel="noopener" title="Extrato do CE: dados do CE e um card por contêiner (nova aba)">' +
                                       escapeHtml(card.numeroCEmercante) + '</a>'
                                     : '--') + ' · ' + escapeHtml(card.numConhecimento || 's/n') + '</span>' +
-                                (card.numeroCEMaster ? '<span class="tag-master">Master: ' + escapeHtml(card.numeroCEMaster) + '</span>' : '') +
+                                (card.numeroCEMaster ? '<a class="link-master" href="' + escapeAttr(urlDoCE(card.numeroCEMaster)) +
+                                    '" target="_blank" rel="noopener" title="Extrato do master (nova aba)"><span class="tag-master">Master: ' +
+                                    escapeHtml(card.numeroCEMaster) + '</span></a>' : '') +
                                 montaFilhotes(card) +
                                 montaTipoConteiner(card.tipoConteiner, card.isoCode) +
                                 montaSelosFichas(card) +
                                 montaSeloRisco(card) +
+                                montaSeloDta(card) +
                             '</div>' +
                         '</div>' +
                         '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
@@ -1143,7 +1248,7 @@
 
                     '<div class="grid-dados">' +
                         '<div><span class="rotulo-mini"><i class="fas fa-building" aria-hidden="true"></i>Embarcador</span>' + montaValorEmpresa(card.embarcador, card.nomeEmbarcador) + '</div>' +
-                        '<div><span class="rotulo-mini"><i class="fas fa-warehouse" aria-hidden="true"></i>Consignatário</span>' + montaValorEmpresa(card.consignatario, card.nomeConsignatario) + '</div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-warehouse" aria-hidden="true"></i>Consignatário</span>' + montaValorEmpresa(card.consignatario, card.nomeConsignatario) + montaCorad(card) + '</div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-weight-hanging" aria-hidden="true"></i>Peso bruto total</span><span class="valor-mini">' + formatarPeso(card.pesoBrutoTotal) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-tags" aria-hidden="true"></i>NCMs distintos</span><span class="valor-mini">' + (card.qtdNcmsDistintos || 0) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-route" aria-hidden="true"></i>Tráfego</span><span class="valor-mini">' + escapeHtml(card.tipoTrafego || '--') + '</span></div>' +
@@ -1155,6 +1260,7 @@
                     montaTimeline(card) +
                     montaFichas(card) +
                     montaRisco(card) +
+                    montaDtas(card) +
                     montaConteineres(card) +
                 '</div>' +
             '</div>';
@@ -1195,6 +1301,11 @@
         return !estadoBusca.periodo.inicio || !estadoBusca.periodo.fim;
     }
 
+    function semLimiteDeData(filtros) {
+        // CE e DTA podem ser pesquisados sem período (as datas vazias)
+        return !!(filtros && (filtros.ce || filtros.dta));
+    }
+
     function limpaPeriodo() {
         // só com o filtro de CE: sem limite de data
         document.getElementById('f-data-inicio').value = '';
@@ -1203,7 +1314,7 @@
     }
 
     function atualizaPeriodoAtivo() {
-        el.periodoAtivo.textContent = semPeriodo() ? 'Período: sem limite de data (filtro por CE)'
+        el.periodoAtivo.textContent = semPeriodo() ? 'Período: sem limite de data (filtro por CE ou DTA)'
             : 'Período: ' + formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
     }
 
@@ -1269,7 +1380,7 @@
 
     function reiniciarBusca() {
         // sem CE, período vazio não vale: volta a sugestão da janela
-        if (semPeriodo() && !estadoBusca.filtros.ce) { aplicarDatasDefault(estadoBusca.tipo_janela); }
+        if (semPeriodo() && !semLimiteDeData(estadoBusca.filtros)) { aplicarDatasDefault(estadoBusca.tipo_janela); }
         estadoBusca.cursor = null;
         estadoBusca.total = null;
         estadoBusca.fim = false;
@@ -1304,7 +1415,7 @@
         codigo = String(codigo).trim();
         if (campo === 'ncm' || campo === 'ce') { return codigo.replace(/\D/g, ''); }
         if (campo === 'recinto') { return codigo; }
-        if (campo === 'conteiner') { return codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+        if (campo === 'conteiner' || campo === 'dta') { return codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
         return codigo.toUpperCase();
     }
 
@@ -1471,6 +1582,11 @@
         });
         var risco = document.getElementById('f-risco').value;
         if (risco) { filtros.risco = risco; }
+        var temDta = document.getElementById('f-tem_dta').value;
+        if (temDta) { filtros.tem_dta = temDta; }
+        if (document.getElementById('f-corad-ligado').checked) {
+            filtros.corad = parseInt(document.getElementById('f-corad').value, 10);
+        }
         return filtros;
     }
 
@@ -1493,6 +1609,8 @@
         // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
         marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));
         document.getElementById('f-risco').value = filtros.risco || '';
+        document.getElementById('f-tem_dta').value = filtros.tem_dta || '';
+        marcaCorad(filtros.corad);
     }
 
     function aplicaFiltros() {
@@ -1502,7 +1620,7 @@
         var dataFim = document.getElementById('f-data-fim').value;
         if (dataInicio && dataFim) {
             estadoBusca.periodo = { inicio: dataInicio, fim: dataFim };
-        } else if (!dataInicio && !dataFim && estadoBusca.filtros.ce) {
+        } else if (!dataInicio && !dataFim && semLimiteDeData(estadoBusca.filtros)) {
             limpaPeriodo();
         }
 
@@ -1637,8 +1755,8 @@
             document.getElementById('f-data-inicio').value = inicial.periodo.inicio;
             document.getElementById('f-data-fim').value = inicial.periodo.fim;
             estadoBusca.periodo = { inicio: inicial.periodo.inicio, fim: inicial.periodo.fim };
-        } else if (inicial.filtros && inicial.filtros.ce) {
-            limpaPeriodo();   // link do CE: sem limite de data
+        } else if (semLimiteDeData(inicial.filtros)) {
+            limpaPeriodo();   // link do CE/DTA: sem limite de data
         }
         preencheTela(inicial.filtros || {});
     }

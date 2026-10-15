@@ -52,7 +52,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from sqlalchemy import (
-    BigInteger, Column, MetaData, Table, VARCHAR, and_, func, join, literal, not_, or_, select, union,
+    BigInteger, Column, MetaData, Table, VARCHAR, and_, false, func, join, literal, not_, or_, select, union,
 )
 from sqlalchemy.orm import selectinload, undefer_group
 
@@ -68,7 +68,8 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from bhadrasana.models.laudo import Empresa
-from virasana.navii import fichas_ovr, referencias, risco_navii
+from bhadrasana.models.riscocorad import MatrizCorad
+from virasana.navii import dta_navii, fichas_ovr, referencias, risco_navii, tabelas_opcionais
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
@@ -116,12 +117,20 @@ TIPO_BL_UNICO = '10'
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
 CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
-                'estagio', 'conteiner', 'ce')
+                'estagio', 'conteiner', 'ce', 'dta')
 # Filtros de marcar (sim/não). `concluido` é o filtro antigo "entregue ao importador" (links e filtros salvos
 # antigos): `normaliza_filtros` o converte no estágio "entregue".
 CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
-# Filtros de escolha única. `risco`: faixa do risco histórico por CE (risco_navii.FILTROS_RISCO).
-CAMPOS_ESCOLHA = ('risco',)
+# Filtros de escolha única. `risco`: faixa do risco histórico por CE (risco_navii.FILTROS_RISCO). `corad`: nível
+# do slider "Risco CORAD" (0 a CORAD_MAX; ver `_criterio_corad`). `tem_dta`: 'sim'/'nao' (dta_navii).
+CAMPOS_ESCOLHA = ('risco', 'corad', 'tem_dta')
+# Matriz de risco CORAD (`matriz_risco_corad`, classe `MatrizCorad` do Fichas): classificacao_aniita_imp de 1 (alto)
+# a 4 por raiz de CNPJ. Rótulos do slider (pedido do usuário, 15/10/2026); 0 = não consta (risco não apurado).
+CORAD_MAX = 4
+ROTULOS_CORAD = ('Não consta', 'Alto', 'Médio', 'Baixo', 'Muito baixo')
+# A tabela (Core), não a classe: a classe divide a base ORM com os modelos do Fichas, e usá-la pelo ORM faria o
+# SQLAlchemy configurar todos eles (inclusive os que este processo não carrega).
+MATRIZ_CORAD = MatrizCorad.__table__
 _CAMPOS_PORTO = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao')
 
 
@@ -158,11 +167,11 @@ def _parse_data(valor: str) -> datetime:
 def _periodo_navii(tipo_janela: str, filtros: dict) -> Tuple[Optional[str], Optional[str]]:
     """Período ('YYYY-MM-DD', 'YYYY-MM-DD') efetivamente usado na busca:
     `data_inicio`/`data_fim` dos filtros (se vierem os dois) ou a sugestão da
-    janela. Com o filtro `ce` e sem datas, (None, None): sem limite de data (pedido do usuário, 14/10/2026 —
-    o link do CE no card mostra todos os cards do CE)."""
+    janela. Com o filtro `ce` ou `dta` e sem datas, (None, None): sem limite de data (pedido do usuário,
+    14/10/2026 — todos os cards do CE / da DTA)."""
     if filtros.get('data_inicio') and filtros.get('data_fim'):
         return filtros['data_inicio'], filtros['data_fim']
-    if filtros.get('ce'):
+    if filtros.get('ce') or filtros.get('dta'):
         return None, None
     if tipo_janela == 'prevista':
         return _janela_previsao()
@@ -248,11 +257,29 @@ def _normaliza_codigo(campo: str, codigo: str) -> str:
         return codigo.upper()
     if campo in ('ncm', 'tipo_bl', 'ce'):
         return re.sub(r'\D', '', codigo)
-    if campo == 'conteiner':
+    if campo in ('conteiner', 'dta'):
         return re.sub(r'[^A-Z0-9]', '', codigo.upper())
     if campo == 'estagio':
         return codigo.lower() if codigo.lower() in estagios_ciclo.ESTAGIOS else ''
     return codigo
+
+
+def _normaliza_escolhas(filtros: dict) -> dict:
+    """`risco` só com uma faixa conhecida; `corad` como inteiro de 0 a CORAD_MAX (senão, sem o filtro)."""
+    if 'risco' in filtros and filtros['risco'] not in risco_navii.FILTROS_RISCO:
+        del filtros['risco']
+    if 'tem_dta' in filtros and filtros['tem_dta'] not in dta_navii.OPCOES_TEM_DTA:
+        del filtros['tem_dta']
+    if 'corad' in filtros:
+        try:
+            nivel = int(filtros['corad'])
+        except (TypeError, ValueError):
+            nivel = -1
+        if 0 <= nivel <= CORAD_MAX:
+            filtros['corad'] = nivel
+        else:
+            del filtros['corad']
+    return filtros
 
 
 def normaliza_filtros(filtros: Optional[dict]) -> dict:
@@ -261,9 +288,7 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
     (a base guarda '84713012'; o usuário pode digitar '8471.30.12'). Sem isso,
     'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro.
     Estágios desconhecidos são descartados; o filtro antigo `concluido` vira o estágio "entregue"."""
-    filtros = dict(filtros or {})
-    if 'risco' in filtros and filtros['risco'] not in risco_navii.FILTROS_RISCO:
-        del filtros['risco']
+    filtros = _normaliza_escolhas(dict(filtros or {}))
     if filtros.pop('concluido', None):
         filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
     for campo in CAMPOS_LISTA:
@@ -359,7 +384,7 @@ def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None):
 
 
 def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str], porto=None,
-                   criterios_ce=(), conteineres=(), ces=()):
+                   criterios_ce=(), conteineres=(), ces: Optional[List[str]] = None):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -386,11 +411,12 @@ def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str
 
     `conteineres` (filtro `conteiner`, 13/10/2026) e `ces` (filtro `ce`, 14/10/2026): o índice do contêiner ou do
     CE em `itensresumo` escolhe os poucos itens e a janela vira condição por candidato (`_janela_por_candidato`) —
-    não calcula a janela inteira. Sem período (só com `ce`; ver `_periodo_navii`), não há condição de data.
+    não calcula a janela inteira. Sem período (só com `ce`/`dta`; ver `_periodo_navii`), não há condição de data.
+    `ces` None = sem filtro de CE; lista vazia = nenhum CE (ex.: DTA não encontrada).
     """
-    if conteineres or ces:
-        if ces:
-            q = q.filter(Item.numeroCEmercante.in_(ces))
+    if conteineres or ces is not None:
+        if ces is not None:
+            q = q.filter(Item.numeroCEmercante.in_(ces) if ces else false())
         if conteineres:
             q = q.filter(Item.codigoConteiner.in_(conteineres))
         return q.filter(_janela_por_candidato(tipo_janela, inicio, fim, porto)) if inicio and fim else q
@@ -467,8 +493,13 @@ def monta_query_navii(
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
               ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
             - com_imagem (bool): equivalente a `exigir_escaneamento=True`
+            - dta (str | lista): número da DTA (só letras e dígitos) — os cards dos CEs da DTA; sem
+              data_inicio/data_fim, sem limite de data (como `ce`)
+            - tem_dta (str): 'sim' (CE com DTA) ou 'nao' (sem DTA) — ver `dta_navii`
             - risco (str): faixa do risco histórico por CE — 'alto', 'medio' (médio ou alto) ou 'sinal' (com
               algum sinal); ver `risco_navii`
+            - corad (int 0..4): Risco CORAD do importador, inclusivo — 0 só os que não constam da matriz;
+              N os que não constam e os de classificação <= N (1 alto ... 4 muito baixo); ver `_criterio_corad`
             - data_inicio / data_fim (str 'YYYY-MM-DD'): sobrescrevem a janela
               sugerida por `_janela_previsao`/`_janela_efetiva` para esse
               `tipo_janela`. Os dois precisam vir juntos. Sem eles e com `ce`, sem limite de data.
@@ -496,11 +527,23 @@ def monta_query_navii(
     # também dentro da janela (ver `_filtra_janela`).
     criterios_ce = _criterios_ce(filtros)
     q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce,
-                       filtros.get('conteiner'), filtros.get('ce'))
+                       filtros.get('conteiner'), _ces_alvo(session, filtros))
     q = q.filter(*criterios_ce)
     if filtros.get('risco'):   # risco histórico por CE: faixa verificada por candidato
         q = q.filter(risco_navii.criterio(session, filtros['risco'], _existe))
+    if filtros.get('tem_dta'):
+        q = q.filter(dta_navii.criterio_tem_dta(session, filtros['tem_dta'], _existe))
     return _filtra_por_candidato(q, filtros, exigir_escaneamento)
+
+
+def _ces_alvo(session, filtros: dict) -> Optional[List[str]]:
+    """CEs que dirigem a busca: os do filtro `ce` e/ou os das DTAs do filtro `dta` (os dois: os comuns).
+    None = sem esses filtros."""
+    ces = set(filtros['ce']) if filtros.get('ce') else None
+    if filtros.get('dta'):
+        das_dtas = set(dta_navii.ces_das_dtas(session, filtros['dta']))
+        ces = das_dtas if ces is None else ces & das_dtas
+    return sorted(ces) if ces is not None else None
 
 
 def _criterios_ce(filtros: dict) -> list:
@@ -527,7 +570,24 @@ def _criterios_ce(filtros: dict) -> list:
             Conhecimento.embarcador.ilike(termo),
             Conhecimento.consignatario.ilike(termo),
         ))
+    if filtros.get('corad') is not None:
+        criterios_ce.append(_criterio_corad(filtros['corad']))
     return criterios_ce
+
+
+def _criterio_corad(nivel: int):
+    """Slider "Risco CORAD", INCLUSIVO (pedido do usuário): nível 0 = só os importadores que não constam da
+    matriz; nível N = os que não constam e os de classificação <= N. Como a raiz é única na matriz, é o mesmo
+    que "não há linha da raiz com classificação acima de N" — uma condição só, verificada por candidato pela chave
+    única de `cod_emp_interv_rad`. Não consta: raiz fora da matriz, classificação vazia ou consignatário que não é
+    CNPJ (CPF, nome estrangeiro, vazio)."""
+    consignatario = func.trim(Conhecimento.consignatario)
+    classificado_acima = _existe(
+        MATRIZ_CORAD,
+        MATRIZ_CORAD.c.cod_emp_interv_rad == func.substr(consignatario, 1, 8),
+        MATRIZ_CORAD.c.classificacao_aniita_imp > nivel,
+    )
+    return or_(Conhecimento.consignatario.is_(None), func.length(consignatario) != 14, not_(classificado_acima))
 
 
 def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
@@ -1095,19 +1155,13 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
         session,
         [v for r in resultados for v in (r.conhecimento.embarcador, r.conhecimento.consignatario)],
     )
-    nomes_recintos = busca_nomes_recintos(
-        session,
-        [c for r in resultados if r.ciclo
-         for c in (r.ciclo.codigoRecintoDesembarque, r.ciclo.codigoRecintoArmazenagem,
-                   *(e.codigoRecinto for e in r.ciclo.escaneamentos))],
-    )
+    nomes_recintos = busca_nomes_recintos(session, _recintos_dos_ciclos(resultados))
     nomes_terminais = busca_nomes_recintos(
         session,
         [r.manifesto.codigoTerminalDescarregamento for r in resultados if r.manifesto is not None],
         campo='cod_carga',
     )
     familias = {r.conhecimento.numeroCEmercante: (r.familia or {}).get('familia', set()) for r in resultados}
-    riscos = risco_navii.risco_dos_ces(session, familias)
     fichas_por_ce, fichas_por_conteiner = fichas_ovr.busca_fichas(
         session, {ce for numero, familia in familias.items() for ce in (numero, *familia)},
         [r.item.codigoConteiner for r in resultados if r.item is not None])
@@ -1129,9 +1183,55 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
         )
         for r in resultados
     ]
-    for card in cards:   # risco histórico do CE (None: não calculado — CE antes do início ou sem as tabelas)
-        card['risco'] = riscos.get(card['numeroCEmercante'])
+    _acrescenta_risco_dta_corad(session, cards)
     return cards
+
+
+def _recintos_dos_ciclos(resultados: List[ResultadoNavii]) -> List[str]:
+    codigos = []
+    for r in resultados:
+        if r.ciclo:
+            codigos += [r.ciclo.codigoRecintoDesembarque, r.ciclo.codigoRecintoArmazenagem]
+            codigos += [e.codigoRecinto for e in r.ciclo.escaneamentos]
+    return codigos
+
+
+def _acrescenta_risco_dta_corad(session, cards: List[dict]):
+    """Risco histórico do CE (None: não calculado — CE antes do início ou sem as tabelas), DTAs do CE e classe
+    CORAD do consignatário (None: matriz ausente no banco)."""
+    ces = {card['numeroCEmercante'] for card in cards}
+    riscos, dtas = risco_navii.risco_dos_ces(session, ces), dta_navii.dtas_dos_ces(session, ces)
+    corad = busca_corad(session, [card['consignatario'] for card in cards])
+    for card in cards:
+        card['risco'] = riscos.get(card['numeroCEmercante'])
+        card['dtas'] = dtas.get(card['numeroCEmercante'], [])
+        card['corad'] = corad.get(card['consignatario']) if corad else None
+
+
+def _raiz_cnpj(consignatario: Optional[str]) -> Optional[str]:
+    valor = (consignatario or '').strip()
+    return valor[:8] if re.fullmatch(r'\d{14}', valor) else None
+
+
+def busca_corad(session, consignatarios: Iterable[str]) -> Dict[str, dict]:
+    """{consignatário: {'classe', 'rotulo'}} pela matriz CORAD (classe None = não consta: raiz fora da matriz, sem
+    classificação ou consignatário que não é CNPJ). {} sem a tabela no banco."""
+    consignatarios = {c for c in consignatarios if c}
+    if not consignatarios or not tabelas_opcionais.existe(session, MATRIZ_CORAD.name):
+        return {}
+    raizes = {c: _raiz_cnpj(c) for c in consignatarios}
+    classes = {}
+    if any(raizes.values()):   # .all(): dict() trataria o resultado como mapeamento (ele tem keys())
+        classes = dict(session.connection().execute(
+            select(MATRIZ_CORAD.c.cod_emp_interv_rad, MATRIZ_CORAD.c.classificacao_aniita_imp)
+            .where(MATRIZ_CORAD.c.cod_emp_interv_rad.in_(sorted({r for r in raizes.values() if r})))).all())
+    resultado = {}
+    for consignatario, raiz in raizes.items():
+        classe = classes.get(raiz) if raiz else None
+        if classe is not None and not 1 <= classe <= CORAD_MAX:
+            classe = None
+        resultado[consignatario] = {'classe': classe, 'rotulo': ROTULOS_CORAD[classe or 0]}
+    return resultado
 
 
 if __name__ == '__main__':  # pragma: no-cover

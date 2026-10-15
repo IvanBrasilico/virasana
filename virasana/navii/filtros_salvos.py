@@ -65,7 +65,7 @@ def limpa_filtros(filtros: Optional[dict]) -> dict:
                     limpos[campo] = int(valor)
             except (TypeError, ValueError):
                 raise FiltroInvalido('Quantidade máxima de NCMs inválida.')
-        elif campo in CAMPOS_LISTA:
+        elif campo in CAMPOS_LISTA or campo == 'corad':   # corad: inteiro 0..4 (o nível 0 também vale)
             limpos[campo] = valor
         elif str(valor).strip():
             limpos[campo] = str(valor).strip()

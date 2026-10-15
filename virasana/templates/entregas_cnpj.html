@@ -122,7 +122,7 @@
                         <td class="mono">{{ linha.placa or '' }}
                             {% if linha.placa_semirreboque %}<span class="secundario">semirreboque {{ linha.placa_semirreboque }}</span>{% endif %}</td>
                         <td>{{ linha.recinto or '' }}<span class="secundario">{{ linha.nome_recinto or '' }}</span></td>
-                        <td class="mono">{{ linha.ce }}<span class="secundario">{{ linha.cnpj }}
+                        <td class="mono">{% if linha.ce and url_extrato_ce is defined %}<a href="{{ url_extrato_ce(linha.ce) }}" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">{{ linha.ce }}</a>{% else %}{{ linha.ce }}{% endif %}<span class="secundario">{{ linha.cnpj }}
                             {% if linha.papel %}({{ linha.papel }}){% endif %}</span></td>
                         <td class="mercadoria">{{ linha.mercadoria or '' }}
                             {% if linha.ncms %}<span class="secundario">{{ linha.ncms }}</span>{% endif %}</td>
