@@ -7,7 +7,8 @@ Expõe:
   GET /navii/extrato?CE=  -> extrato do CE: dados do CE uma vez e um card por contêiner (extrato_navii.py)
   GET /navii/api/ces      -> JSON paginado (consumido pelo JS da página); na
                              primeira página (sem cursor) traz também `total`
-                             de contêineres que o filtro encontrou na base
+                             de contêineres que o filtro encontrou na base; `tempos`
+                             (segundos) mostra à tela quanto custou cada parte
   GET /navii/api/sugestoes -> autocompletar de porto, NCM e recinto
   GET|POST|DELETE /navii/api/filtros -> filtros salvos do usuário (MongoDB,
                              ver `filtros_salvos.py`)
@@ -16,6 +17,7 @@ Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
 """
 from datetime import datetime
+from time import perf_counter
 from typing import Optional
 
 from flask import Blueprint, current_app, jsonify, render_template, request, url_for
@@ -193,7 +195,8 @@ def api_ces():
     filtros = _filtros_da_requisicao()
 
     try:
-        resultados = busca_ces_navii(
+        resultados, t_consulta = _cronometrado(
+            busca_ces_navii,
             session,
             tipo_janela=tipo_janela,
             filtros=filtros,
@@ -201,20 +204,30 @@ def api_ces():
             limit=limit,
         )
         # Contagem só na primeira página: nas seguintes a tela já tem o total.
-        total = None if cursor_id else conta_conteineres_navii(session, tipo_janela, filtros)
+        total, t_contagem = (None, None) if cursor_id else _cronometrado(
+            conta_conteineres_navii, session, tipo_janela, filtros)
     except ValueError as err:
         return jsonify({'erro': str(err)}), 400
 
-    cards = [_serializa_card(card) for card in monta_cards_navii(session, resultados)]
+    montados, t_cards = _cronometrado(monta_cards_navii, session, resultados)
+    cards = [_serializa_card(card) for card in montados]
     next_cursor = cards[-1]['item_id'] if len(cards) == limit else None
 
     return jsonify({
         'cards': cards,
         'next_cursor': next_cursor,
         'total': total,
+        'tempos': {'consulta': t_consulta, 'contagem': t_contagem, 'cards': t_cards},
         'tipo_janela': tipo_janela,
         'filtros': filtros,
     })
+
+
+def _cronometrado(funcao, *args, **kwargs):
+    """(resultado, segundos) da chamada: a tela mostra ao usuário quanto custou cada consulta."""
+    inicio = perf_counter()
+    resultado = funcao(*args, **kwargs)
+    return resultado, round(perf_counter() - inicio, 3)
 
 
 def _usuario():

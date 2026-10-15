@@ -152,6 +152,8 @@
         }
 
         .contagem { color: #666; font-size: .8125rem; margin-bottom: .75rem; }
+        .contagem .tempos { display: inline-block; margin-left: .75rem; cursor: help; }
+        .contagem .tempos.lento { color: #8C4A00; font-weight: 600; }
 
         /* ---------- Lista de cards: um por linha, tela inteira ---------- */
         .lista-cards { display: flex; flex-direction: column; gap: 1.25rem; }
@@ -676,6 +678,7 @@
         periodo: { inicio: DEFAULTS_PERIODO.efetiva.inicio, fim: DEFAULTS_PERIODO.efetiva.fim },
         cursor: null,
         total: null,
+        tempos: null,
         carregando: false,
         fim: false
     };
@@ -1282,6 +1285,43 @@
         return div;
     }
 
+    // Tempos da busca (custo das consultas), ao lado da contagem. A contagem é feita só na
+    // primeira página; consulta e cards são da última página carregada; a resposta é o que o
+    // navegador esperou até os cards aparecerem (inclui rede).
+    var SEGUNDOS_LENTO = 10;
+    var AJUDA_TEMPOS = 'Contagem: total de contêineres do filtro (feita só na primeira página).\n' +
+        'Consulta: busca da página de cards no banco.\n' +
+        'Cards: montagem dos cards da página (imagens, ciclo de vida, fichas, risco, DTA e CORAD).\n' +
+        'Resposta: tempo total até os cards aparecerem na tela, incluindo a rede.\n' +
+        'Para acelerar: restrinja o período, informe o porto ou acrescente filtros.';
+
+    function formataSegundos(segundos) {
+        if (segundos === null || segundos === undefined) { return '—'; }
+        return segundos < 0.1 ? '< 0,1 s' : formataNumero(segundos, 1) + ' s';
+    }
+
+    function guardaTempos(tempos, inicio) {
+        var anterior = estadoBusca.tempos;
+        var contagem = tempos.contagem;
+        if ((contagem === null || contagem === undefined) && anterior) { contagem = anterior.contagem; }
+        estadoBusca.tempos = {
+            contagem: contagem,
+            consulta: tempos.consulta,
+            cards: tempos.cards,
+            resposta: (performance.now() - inicio) / 1000,
+            paginas: anterior ? anterior.paginas + 1 : 1
+        };
+    }
+
+    function textoTempos(t) {
+        var partes = [];
+        if (t.contagem !== null && t.contagem !== undefined) { partes.push('contagem ' + formataSegundos(t.contagem)); }
+        var pagina = 'consulta ' + formataSegundos(t.consulta) + ' + cards ' + formataSegundos(t.cards);
+        partes.push(t.paginas > 1 ? 'última página: ' + pagina : pagina);
+        partes.push('resposta ' + formataSegundos(t.resposta));
+        return 'Tempos: ' + partes.join(' · ');
+    }
+
     function atualizaContagem() {
         var carregados = el.grid.children.length;
         var partes = [];
@@ -1290,6 +1330,13 @@
         }
         partes.push(carregados + ' card(s) carregado(s)');
         el.contagem.textContent = partes.join(' · ');
+        if (estadoBusca.tempos) {
+            var span = document.createElement('span');
+            span.className = 'tempos' + (estadoBusca.tempos.resposta >= SEGUNDOS_LENTO ? ' lento' : '');
+            span.title = AJUDA_TEMPOS;
+            span.textContent = textoTempos(estadoBusca.tempos);
+            el.contagem.appendChild(span);
+        }
     }
 
     function semPeriodo() {
@@ -1335,6 +1382,7 @@
         });
         if (estadoBusca.cursor) { params.set('cursor_id', estadoBusca.cursor); }
 
+        var inicio = performance.now();
         fetch(API_URL + '?' + params.toString())
             .then(function (resp) {
                 if (!resp.ok) {
@@ -1361,6 +1409,7 @@
                 }
 
                 if (dados.total !== null && dados.total !== undefined) { estadoBusca.total = dados.total; }
+                if (dados.tempos) { guardaTempos(dados.tempos, inicio); }
                 atualizaContagem();
             })
             .catch(function (e) {
@@ -1378,6 +1427,7 @@
         if (semPeriodo() && !semLimiteDeData(estadoBusca.filtros)) { aplicarDatasDefault(estadoBusca.tipo_janela); }
         estadoBusca.cursor = null;
         estadoBusca.total = null;
+        estadoBusca.tempos = null;
         estadoBusca.fim = false;
         el.grid.innerHTML = '';
         el.estado.textContent = '';

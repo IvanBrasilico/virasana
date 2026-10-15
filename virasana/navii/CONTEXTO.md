@@ -442,6 +442,12 @@ Em 15/10/2026 (pedidos do usuário):
   do card saiu. Mesmo rótulo no extrato e na completude. Ao mexer nisso, um recorte no JS apagou as funções do
   risco (os cards não carregavam): `test_prefixo_proxy.test_script_do_navii_so_chama_funcoes_definidas` agora
   confere que toda função chamada no script da página existe.
+- **Tempos na contagem** (sugestão do usuário): `api_ces` cronometra (`_cronometrado`, `perf_counter`) a consulta da
+  página, a contagem (só na 1ª página) e a montagem dos cards, e devolve `tempos` (segundos; `contagem` None nas
+  páginas seguintes). A tela acrescenta à linha da contagem "Tempos: contagem X s · consulta Y s + cards Z s ·
+  resposta W s" — a resposta é medida no navegador (inclui rede e desenho dos cards); da 2ª página em diante,
+  "última página: …" e a contagem continua a da 1ª. Resposta ≥ 10 s fica em destaque, com dica para restringir o
+  filtro. Os tempos não são gravados em log (se for útil acompanhar, logar só as respostas lentas).
 
 ### Quinta medição (15/10/2026, `--analyze --so-ciclo`, filtros novos)
 

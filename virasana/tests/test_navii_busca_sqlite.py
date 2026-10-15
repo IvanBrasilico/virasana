@@ -785,6 +785,17 @@ class TestApiCes(NaviiSqliteTestCase):
         ids = [c['item_id'] for c in primeira['cards'] + segunda['cards']]
         self.assertEqual(len(set(ids)), 4)
 
+    def test_tempos_das_consultas(self):
+        """A tela mostra quanto custou cada parte; a contagem só existe na primeira página."""
+        primeira = self.get(limit=2).get_json()
+        segunda = self.get(limit=2, cursor_id=primeira['next_cursor']).get_json()
+        for dados in (primeira, segunda):
+            self.assertEqual(set(dados['tempos']), {'consulta', 'contagem', 'cards'})
+            self.assertGreaterEqual(dados['tempos']['consulta'], 0)
+            self.assertGreaterEqual(dados['tempos']['cards'], 0)
+        self.assertGreaterEqual(primeira['tempos']['contagem'], 0)
+        self.assertIsNone(segunda['tempos']['contagem'])
+
     def test_filtro_com_imagem(self):
         dados = self.get(com_imagem='1').get_json()
         self.assertEqual(dados['total'], 1)
