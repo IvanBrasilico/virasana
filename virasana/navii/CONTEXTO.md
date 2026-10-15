@@ -437,6 +437,11 @@ Em 15/10/2026 (pedidos do usuário):
   template `url_extrato_ce` (registrado pelo blueprint do NAVI-I; os templates conferem `is defined`). As telas do
   Fichas (bhadrasana2) não foram mexidas.
 - `tabelas_opcionais.py`: conferência (com cache) das tabelas que nem todo banco tem (risco, DTA, CORAD, API).
+- **Fichas no topo do card** (pedido do usuário): um link "Ficha <id>" por ficha relacionada (cores: aberta,
+  encerrada, FMA; dica com número/ano, tipo, fase, via), abrindo `/bhadrasana2/ovr?id=` em nova aba; a lista do fim
+  do card saiu. Mesmo rótulo no extrato e na completude. Ao mexer nisso, um recorte no JS apagou as funções do
+  risco (os cards não carregavam): `test_prefixo_proxy.test_script_do_navii_so_chama_funcoes_definidas` agora
+  confere que toda função chamada no script da página existe.
 
 ### Quarta medição (02/10/2026 tarde): ligação pela família (`--so-ciclo`, com e sem `--sem-familia`)
 
