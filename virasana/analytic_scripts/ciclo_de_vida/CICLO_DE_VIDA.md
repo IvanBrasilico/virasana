@@ -586,7 +586,7 @@ ciclos já encerrados (o serviço só procura a imagem ao refazer o contêiner) 
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_imagens_ciclo.py --saida imagens.log
 ```
 
-### Operador em papel de TRA (observação do usuário, 15/10/2026) — EM DIAGNÓSTICO
+### Operador em papel de TRA (observação do usuário, 15/10/2026) — EM PRODUÇÃO desde 15/10/2026
 
 Faltou na especificação inicial: um operador pode armazenar carga desembarcada em OUTRO operador, como TRA —
 desembarca na ECOPORTO, sai, entra na DPW/EMBRAPORT, escaneia e fica lá (DPW como TRA); ou desembarca na BTP,
@@ -790,6 +790,29 @@ escaneamentos só com imagem saem sozinhos ao refazer (ou `DELETE ... WHERE esca
 (99%; mediana 4 min depois da entrada no Ecoporto), nenhuma na saída do operador de origem — é o escâner do Ecoporto
 (e o da Santos Brasil em 13 casos). H1 confirmada: escaneados, inspeção não transmitida por ninguém. Origem: BTP 469,
 Santos Brasil 253, Embraport 38.
+
+**Resultado em produção (15/10/2026, refaz de 01/09 a 16/10 — 211.943 contêineres; `virasana/acompanha_pos.log`,
+`sombra_pos.log`, `operador_tra_pos.log`)**:
+- Operador em papel de TRA: as 312 estadas "final (TRA?)" da amostra estão gravadas como `tra/concluido` com a
+  armazenagem lá (antes, 82% como entrega pelo operador do desembarque); "entrega pelo op. do desembarque" zerou
+  na seção 6. No período (acompanhamento, seção 3): concluídos Ecoporto 977, Embraport 631, Santos Brasil 322,
+  BTP 33; abertos Embraport 434, Santos Brasil 405, BTP 47. O Ecoporto quase não aparece no diagnóstico (seção 2:
+  4) porque lá a entrada da armazenagem não é informada (é deduzida da pesagem).
+- Final curta: 180 das 183 com escaneamento "fora" (a imagem sem inspeção); antes, nenhum.
+- Só imagem por recinto (acompanhamento, seção 4): Ecoporto 543 (passagens), **Multilog 8933201: 972 de 972** —
+  o Multilog não transmite NENHUMA inspeção à API, mas as imagens chegam ao AJNA (era o recinto "faltando" na
+  completude) —, Santos Brasil Logística 8933203: 20 de 20, demais secos 1 a 15.
+- Sombra, seção 2b: fluxo gravado = novo, menos 18 `indefinido → operador` (prazo de 48 h vencido entre a última
+  revisita e a sombra — o serviço fecha na revisita seguinte) e 19 "sem ciclo atual". Os 183 "perdeu" da seção 4
+  eram os escaneamentos só com imagem (id negativo), que a sombra não recalcula — agora ficam fora da comparação
+  (coluna `escaneamentos_so_imagem` e linha própria na seção 4).
+- **Achado: 18 de 65 desembarques no Ecoporto (10 a 24/09) sem ciclo**, iguais antes e depois do refaz: o loop antigo
+  não criava ciclo para o Ecoporto, o serviço só cria ao ver um evento novo do contêiner e o `--refaz-desde` só pegava
+  contêiner que já tinha ciclo. Corrigido: `conteineres_do_periodo` inclui os contêineres com desembarque num
+  operador do escopo no período (teste `test_refaz_cria_ciclo_de_desembarque_sem_ciclo`). Rodar o refaz de novo
+  para criá-los.
+- Para olhar depois: 7 ciclos abertos no operador/seco há mais de 93 dias (alerta do acompanhamento; eram 1 em
+  02/10) e BTP com 67% dos escaneamentos com imagem (76% em 02/10) — ver "Imagens que faltam".
 
 ### Efeitos nas telas (completude e NAVI-I) — 02/10/2026
 

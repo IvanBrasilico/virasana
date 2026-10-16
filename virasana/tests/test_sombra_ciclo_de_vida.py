@@ -194,6 +194,17 @@ class TestFuncoes(unittest.TestCase):
                          (ldt.OPERADOR, ldt.TRA, sombra.SIM, 'nova'))
         self.assertEqual(sombra.compara('C1', ciclo, CEsResolvidos(), [], None)['fluxo_atual'], 'sem ciclo atual')
 
+    def test_compara_ignora_escaneamento_so_com_imagem(self):
+        # sombra pós-refaz (15/10/2026): 183 "perdeu" eram as imagens sem inspeção (id negativo) que o serviço liga
+        # pelo Mongo e a sombra não recalcula — ficam fora da comparação, contadas à parte
+        eventos = [ldt.Evento(ldt.DESEMBARQUE, 1, d(1), BTP), ldt.Evento(ldt.SAIDA, 2, d(2), BTP)]
+        [ciclo] = ldt.ciclos_do_conteiner(eventos, {BTP}, {BTP}, d(20))
+        atual = {'id': 9, 'concluido': True, 'saida_id': 2, 'entrada_seco_id': None, 'saida_seco_id': None,
+                 'ce': None, 'fluxo': ldt.OPERADOR, 'escaneamentos': [-123456789]}
+        linha = sombra.compara('C1', ciclo, CEsResolvidos(), [], atual)
+        self.assertEqual((linha['escaneamentos'], linha['escaneamentos_perdidos'], linha['escaneamentos_so_imagem']),
+                         ('nenhum', 0, 1))
+
     def test_compara_ce(self):
         ces = CEsResolvidos(principal=H1, ces={H1: 'filhote', M: 'master'})
         casos = [(None, ces, 'novo'), (None, CEsResolvidos(), 'nenhum'), (M, CEsResolvidos(), 'perdido'),

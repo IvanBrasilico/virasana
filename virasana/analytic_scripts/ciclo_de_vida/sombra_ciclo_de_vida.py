@@ -22,7 +22,8 @@ Relatório:
      o serviço já gravou (ex.: operador em papel de TRA e fronteiras do trânsito, 15/10/2026);
   3. etapas (saída, entrada e saída do seco), só ciclos com ciclo atual: iguais, novas, removidas...;
      onde estava a entrada no seco do ciclo atual quando a nova a remove/troca;
-  4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas;
+  4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas; os só com imagem
+     (sem inspeção na API, id negativo) que o serviço gravou ficam fora da comparação — a sombra não os recalcula;
   5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente) e confiança; por que
      o CE atual foi perdido/trocado; eventos com CE declarado de OUTRA família: relação e tráfego;
   6. saídas tardias (> 72 h, além da janela antiga) e ciclos incompletos (fronteiras);
@@ -87,7 +88,7 @@ COLUNAS_CSV = ['conteiner', 'desembarque_id', 'data_desembarque', 'operador', 'c
                'escaneamentos', 'escaneamentos_ganhos', 'escaneamentos_perdidos', 'ce_atual', 'ce_novo',
                'ces_familia', 'ce_comparacao', 'ce_confianca', 'alertas', 'idade_dias', 'vazio_mercante',
                'peso_balanca', 'peso_manifesto', 'ce_atual_motivo', 'recinto_seco_atual', 'recinto_seco_novo',
-               'tipo_conteiner', 'oog', 'manifesto_vazio', 'escala_confere']
+               'tipo_conteiner', 'oog', 'manifesto_vazio', 'escala_confere', 'escaneamentos_so_imagem']
 LIMITE_ESTADA_HORAS = 6     # passagens rápidas: estada até isto, seguida de outra entrada até isto
 
 
@@ -134,7 +135,10 @@ def compara(conteiner: str, ciclo: ldt.CicloCalculado, ces: CEsResolvidos, candi
             atual: Optional[dict]) -> dict:
     """Linha de comparação de um ciclo (também é a linha do CSV)."""
     dados = atual or {}
-    atuais = set(dados.get('escaneamentos', ()))
+    gravados = set(dados.get('escaneamentos', ()))
+    # imagem sem inspeção na API (id negativo, 15/10/2026): o serviço liga pelo Mongo; a sombra não recalcula
+    so_imagem = {e for e in gravados if e is not None and e < 0}
+    atuais = gravados - so_imagem
     novos = {lig.evento.id for lig in ciclo.escaneamentos if lig.confianca != ldt.BAIXA}
     return {
         'conteiner': conteiner, 'desembarque_id': ciclo.desembarque.id, 'data_desembarque': ciclo.desembarque.data,
@@ -148,6 +152,7 @@ def compara(conteiner: str, ciclo: ldt.CicloCalculado, ces: CEsResolvidos, candi
         'saida_seco': compara_id(dados.get('saida_seco_id'), ciclo.saida_seco),
         'escaneamentos': _compara_conjuntos(atuais, novos),
         'escaneamentos_ganhos': len(novos - atuais), 'escaneamentos_perdidos': len(atuais - novos),
+        'escaneamentos_so_imagem': len(so_imagem),
         'ce_atual': dados.get('ce'), 'ce_novo': ces.principal, 'ces_familia': ' '.join(sorted(ces.ces)),
         'ce_comparacao': compara_ce(dados.get('ce'), ces, familia(ces, candidatos)),
         'ce_confianca': ces.confianca or '-',
@@ -389,6 +394,10 @@ class Sombra(Diagnostico):
                     self._conta('escaneamentos', filtro=_com_atual))
         self.escreve(f'Ligações ganhas: {sum(lin["escaneamentos_ganhos"] for lin in com_atual)}; '
                      f'perdidas: {sum(lin["escaneamentos_perdidos"] for lin in com_atual)}')
+        so_imagem = [lin for lin in com_atual if lin.get('escaneamentos_so_imagem')]
+        self.escreve(f'Escaneamentos só com imagem (sem inspeção na API) gravados pelo serviço: '
+                     f'{sum(lin["escaneamentos_so_imagem"] for lin in so_imagem)} em {len(so_imagem)} ciclos — '
+                     'fora da comparação (o serviço os liga pelo Mongo; a sombra não os recalcula).')
         confianca, motivos = Counter(), Counter()
         for ciclo in self.ciclos.values():
             for lig in ciclo.escaneamentos:

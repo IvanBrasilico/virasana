@@ -295,6 +295,18 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual((self.ciclo('CTRB')['fluxo'], self.ciclo('CTRB')['situacao']), (ldt.OPERADOR, ldt.CONCLUIDO))
         self.assertEqual(sv._argumentos(['--refaz-desde', '2026-09-01']).refaz_desde, datetime(2026, 9, 1))
 
+    def test_refaz_cria_ciclo_de_desembarque_sem_ciclo(self):
+        """Sombra de 15/10/2026: desembarques no Ecoporto de antes do serviço ficaram sem ciclo (o loop antigo não os
+        criava) e o refaz só pegava contêiner com ciclo. Agora pega também o desembarque no escopo sem ciclo; o de
+        fora do escopo (CTRX, no Rio, em 06/03) continua de fora."""
+        with self.engine.begin() as c:
+            c.execute(gc.CICLOS.delete().where(gc.CICLOS.c.numeroConteiner == 'CTRB'))
+        with self.engine.connect() as c:
+            self.assertEqual(self.servico.conteineres_do_periodo(c, d(1), d(10)), ['CTRB', 'CTRA'])
+        estatisticas = self.servico.refaz(d(1), d(10))
+        self.assertEqual((estatisticas['contêineres'], estatisticas['ciclos inseridos']), (2, 1))
+        self.assertEqual((self.ciclo('CTRB')['fluxo'], self.ciclo('CTRB')['situacao']), (ldt.OPERADOR, ldt.CONCLUIDO))
+
     def test_refaz_segue_quando_uma_parte_falha(self):
         from unittest import mock
         with mock.patch.object(self.servico, 'processa', side_effect=[RuntimeError('chave duplicada'), Counter()]) \

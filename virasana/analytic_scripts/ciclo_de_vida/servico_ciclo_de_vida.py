@@ -37,7 +37,8 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
 `--refaz-desde DATA [--refaz-ate DATA]` (15/10/2026): refaz UMA VEZ os ciclos — abertos E concluídos — dos contêineres
 desembarcados no período (o serviço contínuo só refaz o que tem evento novo ou está aberto; depois de uma mudança do
 núcleo, os concluídos ficariam com o resultado antigo). Os mais recentes primeiro, em partes, com o progresso no log;
-uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo) vai ao log e as outras seguem.
+uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo) vai ao log e as outras seguem. Entram também
+os contêineres com desembarque no escopo e ainda SEM ciclo (ex.: desembarques no Ecoporto de antes do serviço).
 """
 import argparse
 import logging
@@ -274,12 +275,26 @@ class Servico:
                 time.sleep(intervalo)
 
     def conteineres_do_periodo(self, conexao, desde: datetime, ate: datetime) -> List[str]:
-        """Contêineres com ciclo (de qualquer versão) desembarcado no período, os mais recentes primeiro."""
-        consulta = (select(CICLOS.c.numeroConteiner, func.max(CICLOS.c.data_desembarque).label('ultimo'))
+        """Contêineres desembarcados no período, os mais recentes primeiro: os com ciclo (de qualquer versão) e os
+        com desembarque num operador do escopo e SEM ciclo — o loop antigo não criava ciclo para o desembarque no
+        Ecoporto, e o serviço só cria ao ver um evento novo do contêiner (sombra de 15/10/2026: 18 de 65)."""
+        ultimo: Dict[str, datetime] = {}
+        consulta = (select(CICLOS.c.numeroConteiner, func.max(CICLOS.c.data_desembarque))
                     .where(CICLOS.c.data_desembarque >= desde, CICLOS.c.data_desembarque < ate,
                            CICLOS.c.numeroConteiner.isnot(None))
-                    .group_by(CICLOS.c.numeroConteiner).order_by(func.max(CICLOS.c.data_desembarque).desc()))
-        return [c.strip() for c, _ in conexao.execute(consulta) if c and c.strip()]
+                    .group_by(CICLOS.c.numeroConteiner))
+        consulta_sql = ConsultaSQL(conexao)
+        escopo, _, _ = CargaCiclo(consulta_sql, desde, ate).operadores()
+        desembarques = consulta_sql.consulta(
+            'SELECT numeroConteiner, MAX(dataHoraOcorrencia) FROM apirecintos_embarquedesembarque '
+            "WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo AND dataHoraOcorrencia >= :desde "
+            'AND dataHoraOcorrencia < :ate GROUP BY numeroConteiner',
+            {'escopo': sorted(escopo), 'desde': desde, 'ate': ate}, listas=('escopo',)) if escopo else []
+        for conteiner, data in list(conexao.execute(consulta)) + desembarques:
+            conteiner, data = (conteiner or '').strip(), _data(data)
+            if conteiner and data and (conteiner not in ultimo or data > ultimo[conteiner]):
+                ultimo[conteiner] = data
+        return sorted(ultimo, key=lambda c: (ultimo[c], c), reverse=True)
 
     def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000) -> Counter:
         """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo)."""
