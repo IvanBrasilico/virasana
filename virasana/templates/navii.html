@@ -128,6 +128,30 @@
         .lista-sugestoes .codigo-sugestao { font-family: monospace; font-weight: 700; color: #0C326F; margin-right: .375rem; }
         .dica-lista { font-size: .6875rem; color: #777; margin-top: .25rem; }
 
+        /* ---------- Filtrar | Ocultar (16/10/2026): ocultar = vermelho + olho cortado + borda tracejada ---------- */
+        .rotulo-com-modo { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+        .modo-lista { display: inline-flex; border: 1px solid #888; border-radius: 999px; overflow: hidden; }
+        .modo-lista button {
+            background: #fff; border: none; color: #333; cursor: pointer; font-size: .6875rem; font-weight: 600;
+            padding: .125rem .5rem; line-height: 1.5;
+        }
+        .modo-lista button + button { border-left: 1px solid #888; }
+        .modo-lista button[aria-checked="true"][data-modo="filtrar"] { background: #1351B4; color: #fff; }
+        .modo-lista button[aria-checked="true"][data-modo="ocultar"] { background: #A41F14; color: #fff; }
+        .modo-lista button:focus-visible { outline: 2px solid #C2850C; outline-offset: -2px; }
+        .caixa-lista.modo-ocultar { border-color: #A41F14; }
+        .caixa-lista.modo-ocultar:focus-within { border-color: #A41F14; box-shadow: 0 0 0 2px rgba(164,31,20,.25); }
+        .chip-codigo.chip-oculto { background: #FDE8E5; color: #8B0A03; border: 1px dashed #A41F14; }
+        .chip-codigo .icone-oculto { font-size: .6875rem; }
+        .chip-codigo button.inverte-modo { font-size: .6875rem; opacity: .75; }
+        .chip-codigo button.inverte-modo:hover, .chip-codigo button.inverte-modo:focus { opacity: 1; }
+        .aviso-lista { font-size: .6875rem; color: #A41F14; margin-top: .25rem; }
+        .aviso-lista:empty { display: none; }
+        .so-leitor {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+            clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
+
         /* ---------- Filtros salvos ---------- */
         .linha-salvos { display: flex; gap: .375rem; align-items: center; }
         .painel-filtros .linha-salvos select,
@@ -149,6 +173,41 @@
         .chips .br-tag button {
             background: none; border: none; color: inherit; cursor: pointer;
             font-size: .875rem; line-height: 1; padding: 0;
+        }
+        .chips .br-tag.tag-ocultar { background: #FDE8E5; color: #8B0A03; border: 1px dashed #A41F14; }
+        .avisos-busca { font-size: .8125rem; color: #8C4A00; margin-bottom: .75rem; }
+        .avisos-busca:empty { display: none; }
+
+        /* ---------- Menu "Filtrar por / Ocultar" nos códigos do card e aviso com Desfazer ---------- */
+        .btn-acoes-codigo {
+            background: none; border: 1px solid transparent; border-radius: 4px; color: #1351B4; cursor: pointer;
+            font-size: .6875rem; line-height: 1; padding: .125rem .25rem; margin-left: .125rem; opacity: 0;
+        }
+        .ncm-linha:hover .btn-acoes-codigo, .rota-navii:hover .btn-acoes-codigo,
+        .btn-acoes-codigo:focus, .btn-acoes-codigo[aria-expanded="true"] { opacity: 1; border-color: #CCC; }
+        @media (hover: none) { .btn-acoes-codigo { opacity: 1; } }
+        .menu-codigo {
+            position: absolute; z-index: 1000; min-width: 15rem; margin: 0; padding: .25rem 0; list-style: none;
+            background: #fff; border: 1px solid #CCC; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        }
+        .menu-codigo button {
+            display: flex; align-items: center; gap: .5rem; width: 100%; padding: .4375rem .75rem; border: none;
+            background: none; text-align: left; font-size: .8125rem; color: #1c1c1c; cursor: pointer;
+        }
+        .menu-codigo button:hover, .menu-codigo button:focus { background: #F0F4FC; outline: none; }
+        .menu-codigo button.item-ocultar { color: #8B0A03; }
+        .menu-codigo button.item-ocultar:hover, .menu-codigo button.item-ocultar:focus { background: #FDE8E5; }
+        .menu-codigo .separador { border-top: 1px solid #EDEDED; margin: .25rem 0; }
+        .toast-navii {
+            position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 1100;
+            display: flex; align-items: center; gap: 1rem; max-width: calc(100vw - 2rem);
+            background: #1c1c1c; color: #fff; border-radius: 6px; padding: .625rem 1rem; font-size: .875rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,.3);
+        }
+        .toast-navii[hidden] { display: none; }
+        .toast-navii button {
+            background: none; border: none; color: #C5D4EB; font-weight: 700; cursor: pointer; padding: 0;
+            text-decoration: underline;
         }
 
         .contagem { color: #666; font-size: .8125rem; margin-bottom: .75rem; }
@@ -293,6 +352,19 @@
         .card-navii.concluido .status-navii { color: #168821; background: rgba(22,136,33,.1); }
         .card-navii.aberto .status-navii { color: #E8A33D; background: rgba(232,163,61,.15); }
         .card-navii.sem-ciclo .status-navii { color: #555; background: #EDEDED; }
+        /* ---------- Ainda sem desembarque (16/10/2026): previsão futura = azul; já vencida = laranja ---------- */
+        .card-navii.sem-desembarque .status-navii { color: #555; background: #EDEDED; }
+        .card-navii.sem-desembarque.prevista .status-navii { color: #0C326F; background: #E8EEF9; }
+        .card-navii.sem-desembarque.vencida .status-navii { color: #8C4A00; background: #FFF1D6; }
+        .faixa-sem-desembarque {
+            display: flex; gap: .5rem; align-items: baseline; margin-bottom: .75rem; padding: .5rem .75rem;
+            border-radius: 6px; border-left: 4px solid #1351B4; background: #E8EEF9; color: #0C326F;
+            font-size: .8125rem; line-height: 1.4;
+        }
+        .faixa-sem-desembarque.vencida { border-left-color: #C2850C; background: #FFF5E0; color: #6B3A00; }
+        .etapa-timeline.prevista .ponto { background: #fff; border: 2px dashed #1351B4; }
+        .etapa-timeline.prevista.vencida .ponto { border-color: #C2850C; }
+        .etapa-timeline.prevista .data-etapa { font-style: italic; color: #555; }
 
         .aviso-sem-ciclo {
             margin-top: 1.25rem; padding: .625rem .875rem; border-radius: 6px;
@@ -457,17 +529,40 @@
                     </div>
                 </div>
                 <div class="dica-periodo" id="dica-periodo"></div>
+                <div class="campo-checkbox mt-2">
+                    <input id="f-incluir_sem_desembarque" type="checkbox" checked />
+                    <label for="f-incluir_sem_desembarque">Incluir os ainda sem desembarque (pela atracação prevista)</label>
+                </div>
             </div>
 
-            {% macro campo_lista(campo, rotulo, sugestoes, placeholder, dica='') %}
+            {% macro campo_lista(campo, rotulo, sugestoes, placeholder, dica='', ocultavel=False) %}
             <div class="campo">
+                {% if ocultavel %}
+                <div class="rotulo-com-modo">
+                    <label class="rotulo-campo" for="f-{{ campo }}">{{ rotulo }}</label>
+                    {# Filtrar | Ocultar: vale para os próximos códigos digitados ou escolhidos #}
+                    <div class="modo-lista" role="radiogroup" aria-label="{{ rotulo }}: filtrar ou ocultar"
+                         data-campo="{{ campo }}">
+                        {# o nome acessível começa pelo texto visível (WCAG 2.5.3); o title só repetiria #}
+                        <button type="button" role="radio" aria-checked="true" data-modo="filtrar"
+                                aria-label="Filtrar: mostrar só os cards com estes códigos">Filtrar</button>
+                        <button type="button" role="radio" aria-checked="false" data-modo="ocultar" tabindex="-1"
+                                aria-label="Ocultar: esconder os cards com estes códigos">
+                            <i class="fas fa-eye-slash" aria-hidden="true"></i> Ocultar</button>
+                    </div>
+                </div>
+                {% else %}
                 <label class="rotulo-campo" for="f-{{ campo }}">{{ rotulo }}</label>
-                <div class="caixa-lista" data-campo="{{ campo }}" data-sugestoes="{{ sugestoes }}">
+                {% endif %}
+                <div class="caixa-lista" data-campo="{{ campo }}" data-sugestoes="{{ sugestoes }}"
+                     {% if ocultavel %}data-ocultavel="1"{% endif %}>
                     <input id="f-{{ campo }}" type="text" autocomplete="off" placeholder="{{ placeholder }}"
+                           data-placeholder="{{ placeholder }}"
                            role="combobox" aria-autocomplete="list" aria-expanded="false"
                            aria-controls="sug-{{ campo }}" />
                     <ul class="lista-sugestoes" id="sug-{{ campo }}" role="listbox" hidden></ul>
                 </div>
+                {% if ocultavel %}<div class="aviso-lista" id="aviso-{{ campo }}" role="status" aria-live="polite"></div>{% endif %}
                 {% if dica %}<div class="dica-lista">{{ dica }}</div>{% endif %}
             </div>
             {% endmacro %}
@@ -479,12 +574,16 @@
                            'Os cards dos CEs da DTA. Com as datas do período vazias, sem limite de data.') }}
             {{ campo_lista('porto_escala', 'Porto de atracação (escala)', 'porto', 'porto ou país',
                            'Vazio = todos os portos.') }}
-            {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição') }}
+            {{ campo_lista('ncm', 'NCM', 'ncm', 'código ou descrição',
+                           'Ocultar esconde o card só quando TODOS os NCMs do contêiner estão ocultos; '
+                           'contêiner sem NCM declarado continua aparecendo.', ocultavel=True) }}
             <div class="campo br-input">
                 <label for="f-produto">Produto</label>
                 <input id="f-produto" type="text" placeholder="descrição da mercadoria no CE" />
             </div>
-            {{ campo_lista('porto_origem', 'Porto de origem', 'porto', 'porto ou país') }}
+            {{ campo_lista('porto_origem', 'Porto de origem', 'porto', 'porto ou país',
+                           'Ocultar esconde os cards com esta origem; sem origem informada, o card aparece.',
+                           ocultavel=True) }}
             {{ campo_lista('porto_destino', 'Porto de destino', 'porto', 'porto ou país') }}
             {{ campo_lista('porto_baldeacao', 'Porto de baldeação (manifesto)', 'porto', 'porto ou país') }}
             {{ campo_lista('recinto', 'Recinto', 'recinto', 'código ou nome') }}
@@ -595,6 +694,7 @@
 
             <div class="chips" id="chips"></div>
             <div class="contagem" id="contagem"></div>
+            <div class="avisos-busca" id="avisos-busca" role="status" aria-live="polite"></div>
             <div class="lista-cards" id="grid"></div>
 
             <div id="estado" class="estado-carregando"></div>
@@ -607,6 +707,11 @@
 
             <div id="sentinela"></div>
         </main>
+        <ul class="menu-codigo" id="menu-codigo" role="menu" hidden></ul>
+        <div class="toast-navii" id="toast-navii" role="status" aria-live="polite" hidden>
+            <span id="toast-texto"></span>
+            <button type="button" id="toast-desfazer">Desfazer</button>
+        </div>
     </div>
 </div>
 
@@ -649,19 +754,27 @@
     var CAMPOS_LISTA = ['conteiner', 'ce', 'dta', 'porto_escala', 'ncm', 'porto_origem', 'porto_destino', 'porto_baldeacao',
                         'recinto'];
     var CAMPOS_TEXTO = ['produto', 'empresa'];
+    // Filtros OCULTAR (16/10/2026): campo da tela -> chave do filtro oculto. Os códigos ocultos ficam na mesma caixa,
+    // depois dos de filtrar, em vermelho, com o olho cortado e a borda tracejada (não só a cor).
+    var OCULTAVEIS = { ncm: 'ncm_ocultar', porto_origem: 'porto_origem_ocultar' };
+    var BASE_DO_OCULTO = { ncm_ocultar: 'ncm', porto_origem_ocultar: 'porto_origem' };
+    var NOMES_CAMPO = { ncm: 'NCM', porto_origem: 'origem' };
+    var MINIMO_OCULTAR = {{ minimo_ocultar | tojson }};
+    var modos = { ncm: 'filtrar', porto_origem: 'filtrar' };
     var rotulos = {
         conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', estagio: 'Estágio', corad: 'Risco CORAD',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
-        risco: 'Risco histórico'
+        risco: 'Risco histórico', ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem',
+        so_com_desembarque: 'Só com desembarque'
     };
     var CHECKBOXES = ['com_imagem', 'sem_oog'];
 
     var DICAS_PERIODO = {
         prevista: 'Data prevista de atracação do navio (escala do manifesto do CE).',
-        efetiva: 'Data de desembarque do contêiner (ciclo de vida). Sem ciclo de vida localizado, ' +
-                 'usa a data prevista de atracação do navio.'
+        efetiva: 'Data de desembarque do contêiner (ciclo de vida). Os ainda sem desembarque entram pela data ' +
+                 'prevista de atracação do navio — o card avisa.'
     };
 
     var ETAPAS_TIMELINE = [
@@ -689,6 +802,7 @@
         estado: document.getElementById('estado'),
         estadoVazio: document.getElementById('estado-vazio'),
         chips: document.getElementById('chips'),
+        avisos: document.getElementById('avisos-busca'),
         contagem: document.getElementById('contagem'),
         periodoAtivo: document.getElementById('periodo-ativo'),
         sentinela: document.getElementById('sentinela')
@@ -833,7 +947,7 @@
         el.chips.innerHTML = '';
         Object.keys(estadoBusca.filtros).forEach(function (chave) {
             var valor = estadoBusca.filtros[chave];
-            var texto = (CHECKBOXES.indexOf(chave) >= 0) ? 'sim' : (chave === 'tipo_bl'
+            var texto = (CHECKBOXES.indexOf(chave) >= 0 || chave === 'so_com_desembarque') ? 'sim' : (chave === 'tipo_bl'
                 ? valor.map(function (c) { return SIGLAS_BL[c] || c; }).join(', ')
                 : (chave === 'estagio'
                     ? valor.map(function (c) { return ROTULOS_ESTAGIO[c] || c; }).join(', ')
@@ -842,8 +956,9 @@
                         : (chave === 'corad' ? textoCorad(valor)
                             : (Array.isArray(valor) ? valor.join(', ') : valor))))));
             var chip = document.createElement('span');
-            chip.className = 'br-tag tag-neutra';
-            chip.innerHTML = (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
+            chip.className = 'br-tag ' + (BASE_DO_OCULTO[chave] ? 'tag-ocultar' : 'tag-neutra');
+            chip.innerHTML = (BASE_DO_OCULTO[chave] ? '<i class="fas fa-eye-slash" aria-hidden="true"></i> ' : '') +
+                (rotulos[chave] || chave) + ': ' + escapeHtml(texto) +
                 ' <button type="button" aria-label="remover">×</button>';
             chip.querySelector('button').addEventListener('click', function () {
                 delete estadoBusca.filtros[chave];
@@ -858,6 +973,11 @@
                 } else if (chave === 'ncms_max') {
                     document.getElementById('f-ncms_max').value = 0;
                     document.getElementById('valor-ncms_max').textContent = 'Sem limite';
+                } else if (chave === 'so_com_desembarque') {
+                    document.getElementById('f-incluir_sem_desembarque').checked = true;
+                } else if (BASE_DO_OCULTO[chave]) {
+                    listas[chave] = [];
+                    renderCaixa(BASE_DO_OCULTO[chave]);
                 } else if (CAMPOS_LISTA.indexOf(chave) >= 0) {
                     listas[chave] = [];
                     renderCaixa(chave);
@@ -942,13 +1062,69 @@
             (dados.nomeRecinto ? '<span class="nome-recinto">' + escapeHtml(dados.nomeRecinto) + '</span>' : '');
     }
 
+    // Ainda sem desembarque (16/10/2026): selo, faixa e a etapa "Desembarque" como previsão (pelo servidor:
+    // `semDesembarque`, o mesmo critério da janela; `previsaoAtracacao`: futura, hoje ou vencida).
+    function quandoPrevisao(p) {
+        var n = Math.abs(p.dias), dias = n + (n === 1 ? ' dia' : ' dias');
+        return p.dias === 0 ? 'hoje' : (p.dias > 0 ? 'daqui a ' + dias : 'há ' + dias);
+    }
+
+    function seloSemDesembarque(p) {
+        if (!p) {
+            return { classe: 'sem-desembarque', texto: 'Sem desembarque',
+                     titulo: 'Sem desembarque localizado e sem atracação prevista no manifesto' };
+        }
+        var titulo = 'Atracação prevista para ' + formatarDataBR(p.data) + ' (' + quandoPrevisao(p) + ')';
+        if (p.situacao === 'vencida') {
+            return { classe: 'sem-desembarque vencida', texto: 'Desembarque não informado',
+                     titulo: titulo + ' e nenhum desembarque informado' };
+        }
+        return { classe: 'sem-desembarque prevista', titulo: titulo,
+                 texto: p.situacao === 'hoje' ? 'Previsto · hoje' : 'Previsto · ' + formatarDataBR(p.data).slice(0, 5) };
+    }
+
+    function montaFaixaSemDesembarque(card) {
+        if (!card.semDesembarque) { return ''; }
+        var p = card.previsaoAtracacao;
+        var vencida = !!(p && p.situacao === 'vencida');
+        var texto = !p
+            ? '<strong>Ainda sem desembarque.</strong> O manifesto não traz atracação prevista no porto pesquisado.'
+            : (vencida ? '<strong>Desembarque ainda não informado.</strong> A atracação do navio estava prevista para '
+                       : '<strong>Ainda sem desembarque.</strong> Atracação do navio prevista para ') +
+              '<strong>' + formatarDataBR(p.data) + '</strong> (' + quandoPrevisao(p) + ').';
+        if (estadoBusca.tipo_janela === 'efetiva') { texto += ' Está nesta pesquisa pela data prevista de atracação.'; }
+        return '<div class="faixa-sem-desembarque' + (vencida ? ' vencida' : '') + '" role="note">' +
+            '<i class="fas ' + (vencida ? 'fa-exclamation-triangle' : 'fa-ship') + '" aria-hidden="true"></i>' +
+            '<span>' + texto + '</span></div>';
+    }
+
+    function montaEtapaPrevista(card) {
+        var p = card.previsaoAtracacao;
+        return '<div class="etapa-timeline pendente prevista' + (p && p.situacao === 'vencida' ? ' vencida' : '') + '">' +
+            '<span class="ponto"></span>' +
+            '<div class="rotulo-etapa">Desembarque</div>' +
+            '<div class="data-etapa">' + (p ? 'previsto ' + formatarDataBR(p.data) : 'Não ocorrido') + '</div>' +
+            '<div class="recinto-etapa">' + (p ? 'atracação prevista' : '') + '</div>' +
+        '</div>';
+    }
+
+    function etapasDaLinha(card) {
+        var linha = card.linhaDoTempo || {};
+        return ETAPAS_TIMELINE.filter(function (etapa) {
+            return !etapa.opcional || (linha[etapa.chave] && linha[etapa.chave].data);
+        }).map(function (etapa) {
+            return (etapa.chave === 'desembarque' && card.semDesembarque)
+                ? montaEtapaPrevista(card) : montaEtapaTimeline(etapa, linha[etapa.chave]);
+        }).join('');
+    }
+
     function montaAvisoSemCiclo(card) {
         var terminal = card.terminalDescarregamento;
         var textoTerminal = terminal
             ? ' Terminal de descarregamento (manifesto): <strong>' + escapeHtml(terminal.codigo) +
               (terminal.nome ? ' — ' + escapeHtml(terminal.nome) : '') + '</strong>.'
             : '';
-        var textoAtracacao = card.dataPrevistaAtracacao
+        var textoAtracacao = (card.dataPrevistaAtracacao && !card.semDesembarque)   // sem desembarque: está na faixa
             ? ' Atracação prevista: <strong>' + formatarDataBR(card.dataPrevistaAtracacao) + '</strong>.'
             : '';
         return (
@@ -961,13 +1137,11 @@
     }
 
     function montaTimeline(card) {
-        if (card.cicloDeVidaLocalizado === false) { return montaAvisoSemCiclo(card); }
-        var linha = card.linhaDoTempo || {};
-        var etapas = ETAPAS_TIMELINE.filter(function (etapa) {
-            return !etapa.opcional || (linha[etapa.chave] && linha[etapa.chave].data);
-        }).map(function (etapa) {
-            return montaEtapaTimeline(etapa, linha[etapa.chave]);
-        }).join('');
+        if (card.cicloDeVidaLocalizado === false) {
+            return (card.semDesembarque ? '<div class="timeline-navii">' + etapasDaLinha(card) + '</div>' : '') +
+                montaAvisoSemCiclo(card);
+        }
+        var etapas = etapasDaLinha(card);
         var familia = card.cicloPorCE
             ? '<div class="aviso-familia"><i class="fas fa-sitemap" aria-hidden="true"></i> Ciclo de vida localizado ' +
               'pelo CE <span class="texto-mono">' + escapeHtml(card.cicloPorCE) + '</span>, da mesma família ' +
@@ -1078,6 +1252,7 @@
                     '<div class="ncm-linha">' +
                         '<span class="rotulo-ncm">NCM</span>' +
                         '<span class="codigo-ncm">' + escapeHtml(n.identificacaoNCM || '--') + '</span>' +
+                        botaoAcoes('ncm', n.identificacaoNCM) +
                         '<span class="descricao-ncm">' +
                             (n.descricaoPosicao ? '<span class="posicao-ncm">' + escapeHtml(n.descricaoPosicao) + '</span>' : '') +
                             (n.descritivo ? '<span class="declarado-ncm">Declarado: ' + escapeHtml(n.descritivo) + '</span>' : '') +
@@ -1201,6 +1376,12 @@
         var textoStatus = classeStatus === 'sem-ciclo' ? 'Sem ciclo de vida'
             : (card.estagio ? card.estagio.rotulo : 'Em monitoramento');
         var tituloStatus = card.estagio ? card.estagio.descricao : '';
+        if (card.semDesembarque) {   // o mesmo critério da janela (servidor): ainda sem desembarque localizado
+            var selo = seloSemDesembarque(card.previsaoAtracacao);
+            classeStatus = selo.classe;
+            textoStatus = selo.texto;
+            tituloStatus = selo.titulo;
+        }
         div.className = 'br-card card-navii ' + classeStatus;
 
         var painelImagens = montaPainelImagens(card);
@@ -1210,6 +1391,7 @@
             '<div class="card-content">' +
                 htmlImagens +
                 '<div class="bloco-dados">' +
+                    montaFaixaSemDesembarque(card) +
                     '<div class="cabecalho-card">' +
                         '<div>' +
                             '<h3 class="conteiner-titulo texto-mono">' + (card.numeroConteiner
@@ -1236,7 +1418,8 @@
                         '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
                     '</div>' +
 
-                    '<div class="rota-navii">' + montaPorto(card.portoOrigemCarga, card.nomePortoOrigemCarga) + ' → ' +
+                    '<div class="rota-navii">' + montaPorto(card.portoOrigemCarga, card.nomePortoOrigemCarga) +
+                        botaoAcoes('porto_origem', card.portoOrigemCarga) + ' → ' +
                         montaPorto(card.portoDestFinal, card.nomePortoDestFinal) +
                         (card.embarcacao ? ' · Embarcação ' + escapeHtml(card.nomeEmbarcacao || '') +
                             ' <span class="nome-ref">' + (card.nomeEmbarcacao ? 'IMO ' : '') + escapeHtml(card.embarcacao) + '</span>' : '') +
@@ -1337,6 +1520,7 @@
             span.textContent = textoTempos(estadoBusca.tempos);
             el.contagem.appendChild(span);
         }
+        totalNoToast();
     }
 
     function semPeriodo() {
@@ -1356,8 +1540,12 @@
     }
 
     function atualizaPeriodoAtivo() {
+        var de = formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
         el.periodoAtivo.textContent = semPeriodo() ? 'Período: sem limite de data (filtro por CE ou DTA)'
-            : 'Período: ' + formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
+            : (estadoBusca.tipo_janela === 'efetiva'
+                ? 'Desembarque de ' + de + (estadoBusca.filtros.so_com_desembarque ? ''
+                    : ' — e, para os ainda sem desembarque, atracação prevista no período')
+                : 'Atracação prevista de ' + de);
     }
 
     function carregarPagina() {
@@ -1409,6 +1597,7 @@
                 }
 
                 if (dados.total !== null && dados.total !== undefined) { estadoBusca.total = dados.total; }
+                if (dados.avisos) { el.avisos.textContent = dados.avisos.join(' '); }
                 if (dados.tempos) { guardaTempos(dados.tempos, inicio); }
                 atualizaContagem();
             })
@@ -1433,6 +1622,7 @@
         el.estado.textContent = '';
         el.estadoVazio.hidden = true;
         el.contagem.textContent = '';
+        el.avisos.textContent = '';
         montaChips();
         atualizaPeriodoAtivo();
         carregarPagina();
@@ -1464,35 +1654,109 @@
         return codigo.toUpperCase();
     }
 
+    // As mesmas regras do servidor (busca_navii._normaliza_oculto e _resolve_conflitos_ocultar), avisadas na hora:
+    // código oculto só com letras e dígitos e com ao menos MINIMO_OCULTAR caracteres; nunca ocultar o que esconderia
+    // um código do filtro positivo, nem filtrar o que um código oculto já esconde. O código igual muda de modo.
+    function problemaDoCodigo(campo, codigo, ocultar) {
+        var oculto = OCULTAVEIS[campo];
+        if (!oculto) { return null; }
+        var nome = NOMES_CAMPO[campo];
+        if (ocultar) {
+            if (codigo.length < MINIMO_OCULTAR) {
+                return 'Para ocultar, use ao menos ' + MINIMO_OCULTAR + ' caracteres (' +
+                    (campo === 'ncm' ? 'o capítulo do NCM' : 'a sigla do país') + ').';
+            }
+            var cobertos = listas[campo].filter(function (p) { return p !== codigo && p.indexOf(codigo) === 0; });
+            if (cobertos.length) {
+                return 'Ocultar ' + nome + ' ' + codigo + ' esconderia o filtro ' + cobertos.join(', ') +
+                    '. Remova o filtro antes.';
+            }
+        } else {
+            var cobre = listas[oculto].filter(function (h) { return h !== codigo && codigo.indexOf(h) === 0; });
+            if (cobre.length) {
+                return nome + ' ' + codigo + ' está oculto por ' + cobre.join(', ') + '. Remova o ocultar antes de filtrar.';
+            }
+        }
+        return null;
+    }
+
+    function avisoDoCampo(campo, texto) {
+        var aviso = document.getElementById('aviso-' + campo);
+        if (aviso) { aviso.textContent = texto || ''; }
+    }
+
+    // Inclui um código no modo pedido (o mesmo código no outro modo muda de modo); devolve o problema ou null.
+    function incluiCodigo(campo, codigo, ocultar, descricao) {
+        ocultar = ocultar && !!OCULTAVEIS[campo];
+        if (ocultar) { codigo = String(codigo).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+        if (!codigo) { return null; }
+        var problema = problemaDoCodigo(campo, codigo, ocultar);
+        if (problema) { return problema; }
+        var destino = ocultar ? OCULTAVEIS[campo] : campo;
+        if (OCULTAVEIS[campo]) {
+            var outro = ocultar ? campo : OCULTAVEIS[campo];
+            listas[outro] = listas[outro].filter(function (c) { return c !== codigo; });
+        }
+        if (listas[destino].indexOf(codigo) < 0) { listas[destino].push(codigo); }
+        if (descricao) { descricoes[campo + ':' + codigo] = descricao; }
+        return null;
+    }
+
+    // Devolve o texto dos códigos RECUSADOS: fica no campo, para a pessoa corrigir (ex.: trocar o modo) sem redigitar.
     function adicionaCodigos(campo, texto, descricao) {
+        var ocultar = modos[campo] === 'ocultar';
+        var problemas = [], recusados = [];
         // contêiner costuma vir com espaço ("ABCU 123456-7"): só vírgula/ponto e vírgula separam
         String(texto).split(campo === 'conteiner' ? /[,;]+/ : /[,;\s]+/).forEach(function (parte) {
-            var codigo = normalizaCodigo(campo, parte);
-            if (!codigo) { return; }
-            if (listas[campo].indexOf(codigo) < 0) { listas[campo].push(codigo); }
-            if (descricao) { descricoes[campo + ':' + codigo] = descricao; }
+            var problema = incluiCodigo(campo, normalizaCodigo(campo, parte), ocultar, descricao);
+            if (problema) { problemas.push(problema); recusados.push(parte.trim()); }
         });
+        avisoDoCampo(campo, problemas.join(' '));
         renderCaixa(campo);
+        return recusados.join(', ');
+    }
+
+    function chipDaCaixa(campo, codigo, ocultar) {
+        var descricao = descricoes[campo + ':' + codigo];
+        var lista = ocultar ? OCULTAVEIS[campo] : campo;
+        var chip = document.createElement('span');
+        chip.className = 'chip-codigo' + (ocultar ? ' chip-oculto' : '');
+        chip.title = (ocultar ? 'Ocultar: ' : '') + (descricao || codigo);
+        var textoInverte = ocultar ? 'Filtrar em vez de ocultar' : 'Ocultar em vez de filtrar';
+        var inverte = OCULTAVEIS[campo]
+            ? '<button type="button" class="inverte-modo" title="' + textoInverte + '" aria-label="' + textoInverte +
+              ' ' + escapeAttr(codigo) + '"><i class="fas ' + (ocultar ? 'fa-filter' : 'fa-eye-slash') +
+              '" aria-hidden="true"></i></button>'
+            : '';
+        chip.innerHTML = (ocultar ? '<i class="fas fa-eye-slash icone-oculto" aria-hidden="true"></i>' +
+                                    '<span class="so-leitor">ocultar </span>' : '') +
+            escapeHtml(codigo) +
+            (descricao ? '<span class="nome-chip">' + escapeHtml(descricao) + '</span>' : '') +
+            inverte +
+            '<button type="button" class="remove-codigo" aria-label="remover ' + escapeAttr(codigo) + '">×</button>';
+        chip.querySelector('.remove-codigo').addEventListener('click', function () {
+            listas[lista] = listas[lista].filter(function (c) { return c !== codigo; });
+            avisoDoCampo(campo, '');
+            renderCaixa(campo);
+            document.getElementById('f-' + campo).focus();
+        });
+        if (inverte) {
+            chip.querySelector('.inverte-modo').addEventListener('click', function () {
+                avisoDoCampo(campo, incluiCodigo(campo, codigo, !ocultar));
+                renderCaixa(campo);
+                document.getElementById('f-' + campo).focus();
+            });
+        }
+        return chip;
     }
 
     function renderCaixa(campo) {
         var caixa = document.querySelector('.caixa-lista[data-campo="' + campo + '"]');
         var input = caixa.querySelector('input');
         caixa.querySelectorAll('.chip-codigo').forEach(function (chip) { chip.remove(); });
-        listas[campo].forEach(function (codigo) {
-            var descricao = descricoes[campo + ':' + codigo];
-            var chip = document.createElement('span');
-            chip.className = 'chip-codigo';
-            if (descricao) { chip.title = descricao; }
-            chip.innerHTML = escapeHtml(codigo) +
-                (descricao ? '<span class="nome-chip">' + escapeHtml(descricao) + '</span>' : '') +
-                '<button type="button" aria-label="remover ' + escapeHtml(codigo) + '">×</button>';
-            chip.querySelector('button').addEventListener('click', function () {
-                listas[campo] = listas[campo].filter(function (c) { return c !== codigo; });
-                renderCaixa(campo);
-                input.focus();
-            });
-            caixa.insertBefore(chip, input);
+        listas[campo].forEach(function (codigo) { caixa.insertBefore(chipDaCaixa(campo, codigo, false), input); });
+        (OCULTAVEIS[campo] ? listas[OCULTAVEIS[campo]] : []).forEach(function (codigo) {
+            caixa.insertBefore(chipDaCaixa(campo, codigo, true), input);
         });
     }
 
@@ -1500,7 +1764,7 @@
         // o que ficou digitado sem Enter também vale (ex.: digitou "CNSHA" e clicou em Aplicar)
         CAMPOS_LISTA.forEach(function (campo) {
             var input = document.getElementById('f-' + campo);
-            if (input.value.trim()) { adicionaCodigos(campo, input.value); input.value = ''; }
+            if (input.value.trim()) { input.value = adicionaCodigos(campo, input.value); }
         });
     }
 
@@ -1539,8 +1803,7 @@
         function escolhe(i) {
             var sugestao = itens[i];
             if (!sugestao) { return; }
-            adicionaCodigos(campo, sugestao.codigo, sugestao.descricao);
-            input.value = '';
+            input.value = adicionaCodigos(campo, sugestao.codigo, sugestao.descricao);
             fecha();
             input.focus();
         }
@@ -1579,17 +1842,16 @@
                 if (ativo >= 0 && !ul.hidden) {
                     escolhe(ativo);
                 } else if (input.value.trim()) {
-                    adicionaCodigos(campo, input.value);
-                    input.value = '';
+                    input.value = adicionaCodigos(campo, input.value);   // o recusado fica para corrigir
                     fecha();
                 } else if (e.key === 'Enter') {
                     aplicaFiltros();
                 }
             } else if (e.key === 'Escape') {
                 fecha();
-            } else if (e.key === 'Backspace' && !input.value && listas[campo].length) {
-                listas[campo].pop();
-                renderCaixa(campo);
+            } else if (e.key === 'Backspace' && !input.value) {
+                var listaDoModo = modos[campo] === 'ocultar' ? OCULTAVEIS[campo] : campo;   // apaga no modo atual
+                if (listas[listaDoModo].length) { listas[listaDoModo].pop(); renderCaixa(campo); }
             }
         });
 
@@ -1602,8 +1864,210 @@
         caixa.addEventListener('click', function (e) { if (e.target === caixa) { input.focus(); } });
     }
 
+    Object.keys(BASE_DO_OCULTO).forEach(function (oculto) { listas[oculto] = []; });
     CAMPOS_LISTA.forEach(function (campo) { listas[campo] = listaPadrao(campo); renderCaixa(campo); });
     document.querySelectorAll('.caixa-lista').forEach(ligaCaixa);
+
+    function mudaModo(campo, modo) {
+        modos[campo] = modo;
+        document.querySelectorAll('.modo-lista[data-campo="' + campo + '"] button').forEach(function (b) {
+            var ativo = b.dataset.modo === modo;
+            b.setAttribute('aria-checked', String(ativo));
+            b.tabIndex = ativo ? 0 : -1;
+        });
+        var caixa = document.querySelector('.caixa-lista[data-campo="' + campo + '"]');
+        caixa.classList.toggle('modo-ocultar', modo === 'ocultar');
+        var input = caixa.querySelector('input');
+        input.placeholder = modo === 'ocultar' ? 'a ocultar: ' + input.dataset.placeholder : input.dataset.placeholder;
+    }
+
+    document.querySelectorAll('.modo-lista').forEach(function (grupo) {
+        var campo = grupo.dataset.campo;
+        grupo.addEventListener('click', function (e) {
+            var btn = e.target.closest('button[data-modo]');
+            if (!btn) { return; }
+            mudaModo(campo, btn.dataset.modo);
+            document.getElementById('f-' + campo).focus();
+        });
+        grupo.addEventListener('keydown', function (e) {   // radiogroup: as setas trocam o modo (WAI-ARIA)
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].indexOf(e.key) < 0) { return; }
+            e.preventDefault();
+            var modo = modos[campo] === 'filtrar' ? 'ocultar' : 'filtrar';
+            mudaModo(campo, modo);
+            grupo.querySelector('button[data-modo="' + modo + '"]').focus();
+        });
+    });
+
+    /* ---------------- Menu "Filtrar por / Ocultar" nos códigos do card (16/10/2026) ---------------- */
+    // O botão aparece ao passar o mouse ou com o foco do teclado (no toque, sempre); o menu abre no clique (não só no
+    // hover: tem de funcionar no toque e no teclado). Parte dos filtros APLICADOS, inclui o código, refaz a busca e
+    // mostra um aviso com o efeito no total e "Desfazer" — em vez de pedir confirmação.
+    function formataNcm(codigo) {
+        var d = String(codigo).replace(/\D/g, '');
+        return d.length === 8 ? d.slice(0, 4) + '.' + d.slice(4, 6) + '.' + d.slice(6) : d;
+    }
+
+    function codigoDoMenu(campo, codigo) {
+        return campo === 'ncm' ? String(codigo || '').replace(/\D/g, '')
+                               : String(codigo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    function botaoAcoes(campo, codigo) {
+        codigo = codigoDoMenu(campo, codigo);
+        if (!codigo || !OCULTAVEIS[campo]) { return ''; }
+        var rotulo = 'Filtrar por ou ocultar ' + (campo === 'ncm' ? 'NCM ' + formataNcm(codigo) : 'origem ' + codigo);
+        return '<button type="button" class="btn-acoes-codigo" data-campo="' + campo + '" data-codigo="' +
+            escapeAttr(codigo) + '" aria-haspopup="menu" aria-expanded="false" title="' + escapeAttr(rotulo) +
+            '" aria-label="' + escapeAttr(rotulo) + '"><i class="fas fa-filter" aria-hidden="true"></i></button>';
+    }
+
+    function opcoesDoMenu(campo, codigo) {
+        // o código inteiro e o agrupamento: posição do NCM (4 dígitos) ou país do porto (2 letras)
+        var grupo = campo === 'ncm' ? codigo.slice(0, 4) : codigo.slice(0, 2);
+        var textos = campo === 'ncm'
+            ? ['Filtrar por NCM ' + formataNcm(codigo), 'Filtrar pela posição ' + grupo,
+               'Ocultar NCM ' + formataNcm(codigo), 'Ocultar a posição ' + grupo]
+            : ['Filtrar pela origem ' + codigo, 'Filtrar pelo país de origem ' + grupo,
+               'Ocultar a origem ' + codigo, 'Ocultar o país de origem ' + grupo];
+        var temGrupo = grupo.length >= MINIMO_OCULTAR && grupo !== codigo;
+        var opcoes = [];
+        [false, true].forEach(function (ocultar) {
+            var i = ocultar ? 2 : 0;
+            opcoes.push({ codigo: codigo, ocultar: ocultar, texto: textos[i] });
+            if (temGrupo) { opcoes.push({ codigo: grupo, ocultar: ocultar, texto: textos[i + 1] }); }
+        });
+        return opcoes;
+    }
+
+    var menu = { el: document.getElementById('menu-codigo'), botao: null, campo: null, opcoes: [] };
+    var toast = { el: document.getElementById('toast-navii'), texto: document.getElementById('toast-texto'),
+                  desfazer: document.getElementById('toast-desfazer'), filtrosAntes: null, base: '', totalAntes: null,
+                  esperando: false, timer: null };
+    document.body.appendChild(menu.el);    // fora do layout: posição pela página, sem herdar transformações
+    document.body.appendChild(toast.el);
+
+    function fechaMenu(devolveFoco) {
+        if (menu.el.hidden) { return; }
+        menu.el.hidden = true;
+        if (menu.botao) {
+            menu.botao.setAttribute('aria-expanded', 'false');
+            if (devolveFoco) { menu.botao.focus(); }
+        }
+        menu.botao = null;
+    }
+
+    function abreMenu(botao) {
+        var opcoes = opcoesDoMenu(botao.dataset.campo, botao.dataset.codigo);
+        menu.el.innerHTML = opcoes.map(function (o, i) {
+            return (o.ocultar && i > 0 && !opcoes[i - 1].ocultar ? '<li class="separador" role="separator"></li>' : '') +
+                '<li role="none"><button type="button" role="menuitem" tabindex="-1" data-i="' + i + '"' +
+                (o.ocultar ? ' class="item-ocultar"' : '') + '><i class="fas ' + (o.ocultar ? 'fa-eye-slash' : 'fa-filter') +
+                '" aria-hidden="true"></i>' + escapeHtml(o.texto) + '</button></li>';
+        }).join('');
+        menu.opcoes = opcoes;
+        menu.campo = botao.dataset.campo;
+        menu.botao = botao;
+        botao.setAttribute('aria-expanded', 'true');
+        menu.el.hidden = false;
+        var r = botao.getBoundingClientRect();
+        var largura = menu.el.offsetWidth;
+        menu.el.style.top = (window.scrollY + r.bottom + 4) + 'px';
+        menu.el.style.left = Math.max(8, Math.min(window.scrollX + r.left,
+            window.scrollX + document.documentElement.clientWidth - largura - 8)) + 'px';
+        menu.el.querySelector('button[data-i]').focus();
+    }
+
+    function mostraToast(texto, filtrosAntes, totalAntes) {   // filtrosAntes: o que "Desfazer" restaura (null = sem)
+        clearTimeout(toast.timer);
+        toast.base = texto;
+        toast.filtrosAntes = filtrosAntes;
+        toast.totalAntes = (totalAntes === null || totalAntes === undefined) ? null : totalAntes;
+        toast.esperando = !!filtrosAntes;
+        toast.texto.textContent = texto + (filtrosAntes ? '…' : '');
+        toast.desfazer.hidden = !filtrosAntes;
+        toast.el.hidden = false;
+        toast.timer = setTimeout(escondeToast, filtrosAntes ? 12000 : 8000);
+    }
+
+    function escondeToast() {
+        clearTimeout(toast.timer);
+        toast.el.hidden = true;
+        toast.filtrosAntes = null;
+        toast.esperando = false;
+    }
+
+    function totalNoToast() {   // a contagem da busca nova chegou: mostra o efeito no total
+        if (!toast.esperando || estadoBusca.total === null) { return; }
+        toast.esperando = false;
+        var depois = estadoBusca.total.toLocaleString('pt-BR');
+        toast.texto.textContent = toast.base + (toast.totalAntes !== null
+            ? ': de ' + toast.totalAntes.toLocaleString('pt-BR') + ' para ' + depois + ' contêiner(es)'
+            : ': ' + depois + ' contêiner(es)');
+    }
+
+    function restauraFiltros(filtros) {
+        preencheTela(filtros);
+        leFiltrosDaTela();
+        reiniciarBusca();
+    }
+
+    toast.desfazer.addEventListener('click', function () {
+        var filtros = toast.filtrosAntes;
+        escondeToast();
+        if (filtros) { restauraFiltros(filtros); }
+    });
+
+    function aplicaDoCard(campo, opcao) {
+        var antes = JSON.parse(JSON.stringify(estadoBusca.filtros));
+        var totalAntes = estadoBusca.total;
+        preencheTela(antes);   // parte do que está APLICADO (os cards na tela), não do que foi editado sem aplicar
+        var problema = incluiCodigo(campo, opcao.codigo, opcao.ocultar);
+        if (problema) {
+            preencheTela(antes);
+            mostraToast(problema, null);
+            return;
+        }
+        renderCaixa(campo);   // o painel mostra o que vai ser aplicado
+        leFiltrosDaTela();
+        reiniciarBusca();
+        mostraToast(opcao.texto.replace(/^Ocultar /, 'Ocultando ').replace(/^Filtrar /, 'Filtrando '),
+                    antes, totalAntes);
+        toast.desfazer.focus();   // o card de onde veio o clique sumiu na recarga: o foco não se perde
+    }
+
+    el.grid.addEventListener('click', function (e) {
+        var botao = e.target.closest('.btn-acoes-codigo');
+        if (!botao) { return; }
+        e.stopPropagation();
+        if (menu.botao === botao) { fechaMenu(true); return; }
+        fechaMenu(false);
+        abreMenu(botao);
+    });
+
+    menu.el.addEventListener('click', function (e) {
+        var item = e.target.closest('button[data-i]');
+        if (!item) { return; }
+        var opcao = menu.opcoes[parseInt(item.dataset.i, 10)];
+        var campo = menu.campo;
+        fechaMenu(true);
+        aplicaDoCard(campo, opcao);
+    });
+
+    menu.el.addEventListener('keydown', function (e) {
+        var itens = Array.prototype.slice.call(menu.el.querySelectorAll('button[data-i]'));
+        var i = itens.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); itens[(i + 1) % itens.length].focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); itens[(i - 1 + itens.length) % itens.length].focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); itens[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); itens[itens.length - 1].focus(); }
+        else if (e.key === 'Escape') { e.preventDefault(); fechaMenu(true); }
+        else if (e.key === 'Tab') { fechaMenu(false); }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!menu.el.hidden && !menu.el.contains(e.target)) { fechaMenu(false); }
+    });
+    window.addEventListener('resize', function () { fechaMenu(false); });
 
     /* ---------------- Leitura/aplicação dos filtros ---------------- */
     function filtrosDaTela() {
@@ -1611,6 +2075,9 @@
         var filtros = {};
         CAMPOS_LISTA.forEach(function (campo) {
             if (listas[campo].length) { filtros[campo] = listas[campo].slice(); }
+        });
+        Object.keys(BASE_DO_OCULTO).forEach(function (oculto) {
+            if (listas[oculto].length) { filtros[oculto] = listas[oculto].slice(); }
         });
         CAMPOS_TEXTO.forEach(function (campo) {
             var valor = document.getElementById('f-' + campo).value.trim();
@@ -1625,6 +2092,7 @@
         CHECKBOXES.forEach(function (campo) {
             if (document.getElementById('f-' + campo).checked) { filtros[campo] = 1; }
         });
+        if (!document.getElementById('f-incluir_sem_desembarque').checked) { filtros.so_com_desembarque = 1; }
         var risco = document.getElementById('f-risco').value;
         if (risco) { filtros.risco = risco; }
         var temDta = document.getElementById('f-tem_dta').value;
@@ -1640,6 +2108,8 @@
     }
 
     function preencheTela(filtros) {
+        Object.keys(BASE_DO_OCULTO).forEach(function (oculto) { listas[oculto] = (filtros[oculto] || []).slice(); });
+        Object.keys(OCULTAVEIS).forEach(function (campo) { avisoDoCampo(campo, ''); });
         CAMPOS_LISTA.forEach(function (campo) {
             listas[campo] = (filtros[campo] || []).slice();
             document.getElementById('f-' + campo).value = '';
@@ -1650,6 +2120,7 @@
         document.getElementById('f-ncms_max').value = ncmsMax;
         document.getElementById('valor-ncms_max').textContent = ncmsMax > 0 ? ncmsMax : 'Sem limite';
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
+        document.getElementById('f-incluir_sem_desembarque').checked = !filtros.so_com_desembarque;
         marcaTiposBl(filtros.tipo_bl || []);
         // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
         marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));

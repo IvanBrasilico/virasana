@@ -188,6 +188,43 @@ Regras e limitações (importantes):
 13. **Listas**: porto de atracação/origem/destino/baldeação, NCM e recinto aceitam vários valores
    ("OU"); na tela, cada valor é um chip, com autocompletar (portos/países e NCM das tabelas locais
    de referência, recintos de `ovr_recintos`).
+14. **Filtros OCULTAR** (16/10/2026; termo escolhido pelo usuário entre Ocultar, Não exibir e Exceto — "Excluir"
+   foi descartado porque, em sistema, quer dizer apagar). Só **NCM** e **porto de origem** (chaves
+   `ncm_ocultar`, `porto_origem_ocultar`). Regras — sistema de risco, **nunca sonegar informação**:
+   - NCM: o card some só quando **TODOS** os NCMs do contêiner batem com algum código oculto (um NCM não oculto
+     basta para aparecer); sem NCM declarado, ou com NCM vazio/NULL (desconhecido), o card aparece. Mesma chave
+     (CE + contêiner) do filtro positivo — o card lista os contêineres do CE, mas cada contêiner tem o seu card.
+   - Origem: porto vazio/NULL aparece (o `NOT (... LIKE ...)` do SQL daria NULL e o card sumiria).
+   - Código oculto igual ou prefixo de um código do filtro positivo do mesmo campo é **ignorado, com aviso**
+     (filtrar prevalece); o contrário é refinamento (filtrar 8471, ocultar 847130). Código oculto: só letras e
+     dígitos (curinga nunca vira LIKE que esconde tudo) e ao menos `MINIMO_OCULTAR` = 2 caracteres.
+   - Tela: seletor **Filtrar | Ocultar** no campo; chip oculto em vermelho, com olho cortado e borda tracejada (não
+     só a cor); botão no chip para trocar de modo; a tela recusa na hora (com aviso) o que o servidor ignoraria e
+     mantém no campo o código recusado. Nos cards, botão em cada NCM e na origem abre o menu Filtrar por / Ocultar
+     (código inteiro ou posição/país), que aplica, recarrega e mostra "de X para Y contêineres" com **Desfazer**
+     (em vez de pedir confirmação). Os avisos do servidor (filtro salvo ou link) aparecem sob a contagem.
+   - Testes: `test_navii_ocultar.py` (cenário adversarial: NCM NULL, '', misto, truncado, com pontos, mesmo
+     contêiner em outro CE, curingas, conflitos, porto NULL/''), conferidos com 7 mutantes (todos derrubados) e com
+     um roteiro de ponta a ponta no navegador (servidor local com os dados dos testes).
+15. **Cards ainda sem desembarque** (ticket dos usuários, 16/10/2026: confusos com cards da janela "Desembarque
+   efetivo" que não desembarcaram — entraram pela atracação prevista, a regra 3). Solução: o card diz isso em
+   destaque, com a data prevista — selo **Previsto · dd/mm** (hoje/futura) ou **Desembarque não informado**
+   (laranja, previsão vencida: falha de informação ou contêiner que não desceu), faixa no topo do card e a etapa
+   "Desembarque" como *previsto* (ponto tracejado). Regras:
+   - "Sem desembarque" do card = `_tem_desembarque_localizado` (o MESMO critério da janela, por candidato, numa
+     consulta só com os itens da página — `_itens_com_desembarque`): sem ciclo, ciclo sem data (loop antigo), e
+     pela família gravada pelo ciclo (`ciclodevida_ciclo_ce`). O card NÃO decide pelo ciclo que achou: ele procura
+     o ciclo pela família do Mercante, que pode divergir (caso K20 do teste).
+   - Data mostrada: a escala DENTRO do período (`busca_manifestos_navii(periodo=...)`), não a maior do manifesto.
+   - `previsaoAtracacao` vem do servidor (`_previsao_atracacao`, relativa a hoje): futura, hoje ou vencida.
+   - Caixa "Incluir os ainda sem desembarque" (marcada; regra 9, na dúvida exibir a mais): desmarcada = filtro
+     `so_com_desembarque`, nas duas janelas; na efetiva tira da consulta o ramo da atracação prevista (mais leve).
+   - **Descartado**: `Escala.dataEfetivaPrimeiraAtracacao` — quase nunca preenchida (usuário, 16/10/2026).
+   - Testes: `test_navii_sem_desembarque.py` (propriedade "quem sai com o filtro = quem tem o selo", nas duas
+     janelas; família divergente; ciclo sem data; desembarque fora do período; manifesto com duas escalas; busca
+     pelo contêiner), 7 mutantes no texto (todos derrubados) e roteiro no navegador.
+   - Pendência: o card cujo desembarque foi achado só pela família gravada pelo ciclo mostra "Sem ciclo de vida"
+     (sem a linha do tempo) — `busca_ciclos_navii` poderia procurar também por `ciclodevida_ciclo_ce`.
 
 ## Como a busca funciona (desenho atual)
 

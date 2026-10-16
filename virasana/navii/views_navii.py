@@ -29,7 +29,8 @@ from werkzeug.routing import BuildError
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import dta_navii, extrato_navii, filtros_salvos, referencias, risco_navii, uso_navii
 from virasana.navii.busca_navii import (
-    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS, busca_ces_navii,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
+    busca_ces_navii,
     conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
     _janela_previsao, sugere_recintos,
 )
@@ -109,6 +110,7 @@ def index():
         opcoes_tem_dta=dta_navii.OPCOES_TEM_DTA,
         risco_parametros_url=_url_parametros_risco(),
         segundos_lenta=uso_navii.SEGUNDOS_LENTA,
+        minimo_ocultar=MINIMO_OCULTAR,
     )
 
 
@@ -223,6 +225,8 @@ def api_ces():
 
     montados, t_cards = _cronometrado(monta_cards_navii, session, resultados)
     cards = [_serializa_card(card) for card in montados]
+    avisos = []   # códigos de OCULTAR ignorados (curtos ou que esconderiam um filtro positivo): a tela mostra
+    normaliza_filtros(filtros, avisos)
     next_cursor = cards[-1]['item_id'] if len(cards) == limit else None
 
     uso_navii.registra('pesquisa', _usuario(), perf_counter() - inicio, janela=tipo_janela,
@@ -235,6 +239,7 @@ def api_ces():
         'tempos': {'consulta': t_consulta, 'contagem': t_contagem, 'cards': t_cards},
         'tipo_janela': tipo_janela,
         'filtros': filtros,
+        'avisos': avisos,
     })
 
 

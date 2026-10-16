@@ -48,8 +48,8 @@ Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
 import os
 import re
 import sys
-from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
+from datetime import date, datetime, timedelta
+from typing import Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from sqlalchemy import (
     BigInteger, Column, MetaData, Table, VARCHAR, and_, false, func, join, literal, not_, or_, select, union,
@@ -117,10 +117,18 @@ TIPO_BL_UNICO = '10'
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
 CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
-                'estagio', 'conteiner', 'ce', 'dta')
+                'estagio', 'conteiner', 'ce', 'dta', 'ncm_ocultar', 'porto_origem_ocultar')
+# Filtros "OCULTAR" (pedido do usuário, 16/10/2026): campo -> campo base (os códigos são normalizados como os do
+# base). Escondem o card só quando ele SABE que bate — sem a informação, o card aparece (sistema de risco: nunca
+# sonegar informação). NCM: oculta só se TODOS os NCMs do contêiner batem. Ver `_criterio_ncm_ocultar`,
+# `_criterio_porto_ocultar` e `_resolve_conflitos_ocultar`.
+CAMPOS_OCULTAR = {'ncm_ocultar': 'ncm', 'porto_origem_ocultar': 'porto_origem'}
+ROTULOS_OCULTAR = {'ncm_ocultar': 'NCM', 'porto_origem_ocultar': 'origem'}
+MINIMO_OCULTAR = 2   # caracteres: capítulo do NCM, sigla do país
 # Filtros de marcar (sim/não). `concluido` é o filtro antigo "entregue ao importador" (links e filtros salvos
-# antigos): `normaliza_filtros` o converte no estágio "entregue".
-CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog')
+# antigos): `normaliza_filtros` o converte no estágio "entregue". `so_com_desembarque` (16/10/2026): sem os contêineres
+# ainda sem desembarque localizado — na tela, a caixa "Incluir os ainda sem desembarque" DESMARCADA.
+CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog', 'so_com_desembarque')
 # Filtros de escolha única. `risco`: faixa do risco histórico por CE (risco_navii.FILTROS_RISCO). `corad`: nível
 # do slider "Risco CORAD" (0 a CORAD_MAX; ver `_criterio_corad`). `tem_dta`: 'sim'/'nao' (dta_navii).
 CAMPOS_ESCOLHA = ('risco', 'corad', 'tem_dta')
@@ -240,6 +248,25 @@ def _existe_ciclo(*criterios, escaneamentos: bool = False):
     return or_(direto, and_(pode_ter_familia, pela_familia))
 
 
+def _tem_desembarque_localizado():
+    """O contêiner tem desembarque localizado pelo ciclo de vida (pelo CE ou pela família gravada pelo ciclo).
+    Critério ÚNICO da janela efetiva (sem ele, o contêiner entra pela atracação prevista), do filtro
+    `so_com_desembarque` e do selo "sem desembarque" do card (`_itens_com_desembarque`): o card nunca contradiz a
+    janela — a família que o card usa para achar o ciclo (`busca_familias_navii`, do Mercante) pode divergir da
+    gravada pelo ciclo de vida."""
+    return _existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None))
+
+
+def _itens_com_desembarque(session, ids: List[int]) -> Set[int]:
+    """IDs dos itens (da página) com desembarque localizado — `_tem_desembarque_localizado`, por candidato."""
+    if not ids:
+        return set()
+    q = (session.query(Item.ID)
+         .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
+         .filter(Item.ID.in_(ids), _tem_desembarque_localizado()))
+    return {id_ for id_, in q}
+
+
 def _lista_de_codigos(valor, separadores: str = r'[,;\s]+') -> List[str]:
     """'CNSHA, cnngb;SGSIN' ou ['CNSHA', 'CNNGB SGSIN'] -> ['CNSHA', 'cnngb', 'SGSIN']."""
     if valor is None:
@@ -282,12 +309,48 @@ def _normaliza_escolhas(filtros: dict) -> dict:
     return filtros
 
 
-def normaliza_filtros(filtros: Optional[dict]) -> dict:
+def _normaliza_oculto(campo: str, codigo: str, avisos: List[str]) -> str:
+    """Um código de filtro OCULTAR ('' = descartar). Só letras e dígitos — um curinga ('%', '_') no LIKE
+    esconderia TUDO — e ao menos MINIMO_OCULTAR caracteres (capítulo do NCM, sigla do país): um prefixo de 1
+    caractere esconderia capítulos/países inteiros por engano."""
+    codigo = re.sub(r'[^A-Z0-9]', '', _normaliza_codigo(CAMPOS_OCULTAR[campo], codigo).upper())
+    if codigo and len(codigo) < MINIMO_OCULTAR:
+        avisos.append(f'Ocultar {ROTULOS_OCULTAR[campo]} {codigo}: ignorado — use ao menos {MINIMO_OCULTAR} '
+                      f'caracteres ({"o capítulo" if campo == "ncm_ocultar" else "a sigla do país"}).')
+        return ''
+    return codigo
+
+
+def _resolve_conflitos_ocultar(filtros: dict, avisos: List[str]) -> dict:
+    """Código OCULTAR que é igual ou prefixo de um código do filtro positivo do mesmo campo esconderia o que o
+    usuário pediu para ver (ex.: filtrar NCM 84713012 e ocultar 8471): é ignorado, com aviso — filtrar prevalece,
+    para não sonegar informação. O contrário é um refinamento e vale (filtrar 8471, ocultar 84713012)."""
+    for oculto, base in CAMPOS_OCULTAR.items():
+        positivos = filtros.get(base) or []
+        validos = []
+        for codigo in filtros.get(oculto) or []:
+            cobertos = [p for p in positivos if p.startswith(codigo)]
+            if cobertos:
+                avisos.append(f'Ocultar {ROTULOS_OCULTAR[oculto]} {codigo}: ignorado — esconderia o filtro '
+                              f'{ROTULOS_OCULTAR[oculto]} {", ".join(cobertos)}.')
+            else:
+                validos.append(codigo)
+        if validos:
+            filtros[oculto] = validos
+        else:
+            filtros.pop(oculto, None)
+    return filtros
+
+
+def normaliza_filtros(filtros: Optional[dict], avisos: Optional[List[str]] = None) -> dict:
     """Padroniza o que o usuário digitou: os campos de CAMPOS_LISTA viram
     listas sem repetição, códigos de porto em maiúsculas e NCM só com dígitos
     (a base guarda '84713012'; o usuário pode digitar '8471.30.12'). Sem isso,
     'brssz' ou '8471.30' não achariam nada. Lista vazia remove o filtro.
-    Estágios desconhecidos são descartados; o filtro antigo `concluido` vira o estágio "entregue"."""
+    Estágios desconhecidos são descartados; o filtro antigo `concluido` vira o estágio "entregue".
+    Filtros OCULTAR: ver `_normaliza_oculto` e `_resolve_conflitos_ocultar`; o que for ignorado vai para `avisos`
+    (a tela mostra)."""
+    avisos = [] if avisos is None else avisos
     filtros = _normaliza_escolhas(dict(filtros or {}))
     if filtros.pop('concluido', None):
         filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
@@ -297,14 +360,17 @@ def normaliza_filtros(filtros: Optional[dict]) -> dict:
         codigos = []
         # o número do contêiner costuma vir com espaço ("ABCU 123456-7"): só vírgula/ponto e vírgula separam
         for codigo in _lista_de_codigos(filtros[campo], r'[,;]+' if campo == 'conteiner' else r'[,;\s]+'):
-            codigo = _normaliza_codigo(campo, codigo)
+            if campo in CAMPOS_OCULTAR:
+                codigo = _normaliza_oculto(campo, codigo, avisos)
+            else:
+                codigo = _normaliza_codigo(campo, codigo)
             if codigo and codigo not in codigos:
                 codigos.append(codigo)
         if codigos:
             filtros[campo] = codigos
         else:
             del filtros[campo]
-    return filtros
+    return _resolve_conflitos_ocultar(filtros, avisos)
 
 
 def _porto_ou_pais(coluna, valor: str):
@@ -327,6 +393,23 @@ def _algum_porto(coluna, valores):
     if completos:
         criterios.insert(0, coluna.in_(completos) if len(completos) > 1 else coluna == completos[0])
     return criterios[0] if len(criterios) == 1 else or_(*criterios)
+
+
+def _criterio_porto_ocultar(coluna, valores):
+    """OCULTAR porto/país: esconde só o card cujo porto BATE; porto vazio (NULL) continua visível — sem o
+    `IS NULL`, o `NOT (coluna LIKE ...)` do SQL daria NULL e o card sumiria (não sonegar informação)."""
+    return or_(coluna.is_(None), not_(_algum_porto(coluna, valores)))
+
+
+def _criterio_ncm_ocultar(ocultos: List[str]):
+    """OCULTAR NCM (decisão do usuário, 16/10/2026): esconde o card só quando TODOS os NCMs declarados para o
+    contêiner batem com algum código oculto — basta um NCM não oculto para o card aparecer. Sem NCM declarado, o
+    card aparece; NCM vazio (NULL ou '') conta como não oculto. Mesma chave (CE + contêiner) do filtro positivo e
+    dos NCMs do card; cada lado é um acesso indexado por candidato (`_existe`)."""
+    chave = (NCMItem.numeroCEMercante == Item.numeroCEmercante, NCMItem.codigoConteiner == Item.codigoConteiner)
+    bate = or_(*[NCMItem.identificacaoNCM.like(f'{ncm}%') for ncm in ocultos])
+    return or_(not_(_existe(NCMItem, *chave, bate)),
+               _existe(NCMItem, *chave, or_(NCMItem.identificacaoNCM.is_(None), not_(bate))))
 
 
 def _manifestos_com_atracacao_prevista(inicio: str, fim: str, porto=None):
@@ -371,7 +454,7 @@ def _itens_com_desembarque_efetivo(inicio: datetime, fim: datetime) -> list:
     return consultas
 
 
-def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None):
+def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None, incluir_previsao: bool = True):
     """A mesma janela de `_filtra_janela`, como CONDIÇÃO verificada por candidato (sem a tabela derivada):
     para quando outro filtro já escolhe poucos itens — o contêiner, pelo índice de `codigoConteiner`."""
     prevista = Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto))
@@ -379,12 +462,14 @@ def _janela_por_candidato(tipo_janela: str, inicio: str, fim: str, porto=None):
         return prevista
     inicio_dt = _parse_data(inicio)
     fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
-    return or_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.between(inicio_dt, fim_dt)),
-               and_(not_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None))), prevista))
+    efetiva = _existe_ciclo(CicloDeVidaImportacao.data_desembarque.between(inicio_dt, fim_dt))
+    if not incluir_previsao:
+        return efetiva
+    return or_(efetiva, and_(not_(_tem_desembarque_localizado()), prevista))
 
 
 def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str], porto=None,
-                   criterios_ce=(), conteineres=(), ces: Optional[List[str]] = None):
+                   criterios_ce=(), conteineres=(), ces: Optional[List[str]] = None, incluir_previsao: bool = True):
     """Restringe a query (Item, Conhecimento) aos contêineres da janela.
 
     - 'prevista': manifesto do CE com escala de data prevista de atracação no
@@ -413,18 +498,23 @@ def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str
     CE em `itensresumo` escolhe os poucos itens e a janela vira condição por candidato (`_janela_por_candidato`) —
     não calcula a janela inteira. Sem período (só com `ce`/`dta`; ver `_periodo_navii`), não há condição de data.
     `ces` None = sem filtro de CE; lista vazia = nenhum CE (ex.: DTA não encontrada).
+
+    `incluir_previsao` False (filtro `so_com_desembarque`, 16/10/2026): a janela efetiva fica só com o desembarque no
+    período, sem o ramo da atracação prevista (e mais leve).
     """
     if conteineres or ces is not None:
         if ces is not None:
             q = q.filter(Item.numeroCEmercante.in_(ces) if ces else false())
         if conteineres:
             q = q.filter(Item.codigoConteiner.in_(conteineres))
-        return q.filter(_janela_por_candidato(tipo_janela, inicio, fim, porto)) if inicio and fim else q
+        if not (inicio and fim):
+            return q
+        return q.filter(_janela_por_candidato(tipo_janela, inicio, fim, porto, incluir_previsao))
     if tipo_janela == 'prevista':
         return q.filter(Conhecimento.manifestoCE.in_(_manifestos_com_atracacao_prevista(inicio, fim, porto)))
     inicio_dt = _parse_data(inicio)
     fim_dt = _parse_data(fim) + timedelta(days=1, seconds=-1)  # dia final inteiro
-    sem_desembarque_localizado = not_(_existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None)))
+    sem_desembarque_localizado = not_(_tem_desembarque_localizado())
     itens_pela_atracacao_prevista = (
         select(Item.ID.label('item_id'))
         .select_from(Item)
@@ -435,10 +525,10 @@ def _filtra_janela(q, tipo_janela: str, inicio: Optional[str], fim: Optional[str
             sem_desembarque_localizado,
         )
     )
-    janela = union(
-        *_itens_com_desembarque_efetivo(inicio_dt, fim_dt),
-        itens_pela_atracacao_prevista,
-    ).subquery('janela')
+    consultas = _itens_com_desembarque_efetivo(inicio_dt, fim_dt)
+    if incluir_previsao:
+        consultas.append(itens_pela_atracacao_prevista)
+    janela = (union(*consultas) if len(consultas) > 1 else consultas[0]).subquery('janela')
     return q.join(janela, janela.c.item_id == Item.ID)
 
 
@@ -493,6 +583,8 @@ def monta_query_navii(
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
               ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
             - com_imagem (bool): equivalente a `exigir_escaneamento=True`
+            - so_com_desembarque (bool): só contêineres com desembarque localizado pelo ciclo de vida — na janela
+              efetiva, sem o ramo da atracação prevista (`_tem_desembarque_localizado`)
             - dta (str | lista): número da DTA (só letras e dígitos) — os cards dos CEs da DTA; sem
               data_inicio/data_fim, sem limite de data (como `ce`)
             - tem_dta (str): 'sim' (CE com DTA) ou 'nao' (sem DTA) — ver `dta_navii`
@@ -527,8 +619,11 @@ def monta_query_navii(
     # também dentro da janela (ver `_filtra_janela`).
     criterios_ce = _criterios_ce(filtros)
     q = _filtra_janela(q, tipo_janela, inicio, fim, filtros.get('porto_escala'), criterios_ce,
-                       filtros.get('conteiner'), _ces_alvo(session, filtros))
+                       filtros.get('conteiner'), _ces_alvo(session, filtros),
+                       incluir_previsao=not filtros.get('so_com_desembarque'))
     q = q.filter(*criterios_ce)
+    if filtros.get('so_com_desembarque') and tipo_janela == 'prevista':   # na efetiva, a própria janela já tira
+        q = q.filter(_tem_desembarque_localizado())
     if filtros.get('risco'):   # risco histórico por CE: faixa verificada por candidato
         q = q.filter(risco_navii.criterio(session, filtros['risco'], _existe))
     if filtros.get('tem_dta'):
@@ -554,6 +649,8 @@ def _criterios_ce(filtros: dict) -> list:
     )]
     if filtros.get('porto_origem'):
         criterios_ce.append(_algum_porto(Conhecimento.portoOrigemCarga, filtros['porto_origem']))
+    if filtros.get('porto_origem_ocultar'):
+        criterios_ce.append(_criterio_porto_ocultar(Conhecimento.portoOrigemCarga, filtros['porto_origem_ocultar']))
     if filtros.get('porto_destino'):
         criterios_ce.append(_algum_porto(Conhecimento.portoDestFinal, filtros['porto_destino']))
     if filtros.get('porto_baldeacao'):
@@ -603,6 +700,8 @@ def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
             NCMItem.codigoConteiner == Item.codigoConteiner,
             or_(*[NCMItem.identificacaoNCM.like(f'{ncm}%') for ncm in filtros['ncm']]),
         ))
+    if filtros.get('ncm_ocultar'):
+        q = q.filter(_criterio_ncm_ocultar(filtros['ncm_ocultar']))
 
     if filtros.get('sem_oog'):
         q = q.filter(or_(Item.isoCode.is_(None), not_(expressao_oog(Item.isoCode))))
@@ -639,6 +738,7 @@ class ResultadoNavii(NamedTuple):
     embarcacao: Optional[str]
     data_prevista_atracacao: Optional[str]
     familia: Optional[dict] = None   # ver `busca_familias_navii`
+    sem_desembarque: Optional[bool] = None   # `_itens_com_desembarque`; None = deduzir do ciclo (extrato)
 
 
 def busca_ces_navii(
@@ -673,9 +773,12 @@ def busca_ces_navii(
     familias = busca_familias_navii(session, [ce for _, ce in linhas])
     ciclos = busca_ciclos_navii(session, [item for item, _ in linhas],
                                 {numero: dados['familia'] for numero, dados in familias.items()})
+    filtros_normais = normaliza_filtros(filtros)
     manifestos = busca_manifestos_navii(
-        session, [ce.manifestoCE for _, ce in linhas], normaliza_filtros(filtros).get('porto_escala'),
+        session, [ce.manifestoCE for _, ce in linhas], filtros_normais.get('porto_escala'),
+        periodo=_periodo_navii(tipo_janela, filtros_normais),
     )
+    com_desembarque = _itens_com_desembarque(session, [item.ID for item, _ in linhas])
     resultado = []
     for item, ce in linhas:
         dados_manifesto = manifestos.get(ce.manifestoCE, {})
@@ -687,6 +790,7 @@ def busca_ces_navii(
             embarcacao=dados_manifesto.get('embarcacao'),
             data_prevista_atracacao=dados_manifesto.get('dataPrevistaAtracacao'),
             familia=familias.get(ce.numeroCEmercante),
+            sem_desembarque=item.ID not in com_desembarque,
         ))
     logger.debug(  # o uso da tela vai para o log com o selo NAVII_USO (uso_navii.py)
         f'busca_ces_navii: janela={tipo_janela} filtros={filtros} '
@@ -770,8 +874,20 @@ def busca_ciclos_navii(session, itens: List[Item],
     return resultado
 
 
+def _prefere_escala(nova: str, atual: Optional[str], periodo) -> bool:
+    """Qual data prevista mostrar no card: a de uma escala DENTRO do período da pesquisa (a que trouxe o card pela
+    janela) vence a de fora; no mesmo grupo, a maior."""
+    def dentro(data):
+        return bool(periodo and periodo[0] and periodo[1] and periodo[0] <= data[:10] <= periodo[1])
+    if not atual:
+        return True
+    if dentro(nova) != dentro(atual):
+        return dentro(nova)
+    return nova > atual
+
+
 def busca_manifestos_navii(
-    session, numeros_manifesto: Iterable[str], porto=None,
+    session, numeros_manifesto: Iterable[str], porto=None, periodo: Optional[Tuple[str, str]] = None,
 ) -> Dict[str, dict]:
     """Manifesto + dados da escala (embarcação, data prevista de atracação) dos
     CEs da página, em lote, por número do manifesto. Com `porto` (código ou
@@ -782,7 +898,8 @@ def busca_manifestos_navii(
         {numero: {'manifesto': Manifesto | None, 'embarcacao': str | None,
                   'dataPrevistaAtracacao': str | None}}
         Com mais de uma escala para o mesmo manifesto, usa a de maior data
-        prevista de atracação.
+        prevista de atracação — com `periodo` ('AAAA-MM-DD', 'AAAA-MM-DD'), a maior DENTRO do período, se houver
+        (16/10/2026: a maior de todas podia cair fora do período e confundir o card sem desembarque).
     """
     numeros = {n for n in numeros_manifesto if n}
     if not numeros:
@@ -803,7 +920,7 @@ def busca_manifestos_navii(
         dados = resultado.get(numero)
         if dados is None:
             continue
-        if data_prevista and (dados['dataPrevistaAtracacao'] or '') < data_prevista:
+        if data_prevista and _prefere_escala(data_prevista, dados['dataPrevistaAtracacao'], periodo):
             dados['dataPrevistaAtracacao'] = data_prevista
             dados['embarcacao'] = embarcacao or dados['embarcacao']
         elif not dados['embarcacao']:
@@ -1066,6 +1183,8 @@ def monta_card_navii(
     nomes_terminais: Optional[Dict[str, str]] = None,
     familia: Optional[dict] = None,
     fichas: Optional[List[dict]] = None,
+    sem_desembarque: Optional[bool] = None,
+    hoje: Optional[date] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
@@ -1087,7 +1206,14 @@ def monta_card_navii(
     `familia` vem de `busca_familias_navii` (filhotes do master); o ciclo pode ter vindo de outro CE da
     família (`cicloPorCE`). `fichas`: Fichas OVR do CE, da família ou abertas pelo contêiner
     (`fichas_ovr.fichas_do`), inclusive as FMAs (abandono).
+
+    `sem_desembarque` (16/10/2026): o contêiner ainda não tem desembarque localizado — na janela efetiva, o card
+    entrou pela atracação prevista. Vem de `_itens_com_desembarque` (o mesmo critério da janela); None = deduzir do
+    ciclo. Com `previsaoAtracacao` (`_previsao_atracacao`, relativa a `hoje`), a tela diz se o navio ainda vai
+    chegar ou se a previsão já passou sem desembarque informado.
     """
+    if sem_desembarque is None:
+        sem_desembarque = ciclo is None or ciclo.data_desembarque is None
     nomes_recintos = nomes_recintos or {}
     nomes_terminais = nomes_terminais or {}
     imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None] if ciclo else []
@@ -1135,6 +1261,8 @@ def monta_card_navii(
         'nomeEmbarcacao': referencias.nome_navio(embarcacao),
         'manifesto': dados_manifesto,
         'dataPrevistaAtracacao': data_prevista_atracacao,
+        'semDesembarque': sem_desembarque,
+        'previsaoAtracacao': _previsao_atracacao(data_prevista_atracacao, hoje),
         'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
@@ -1146,7 +1274,19 @@ def monta_card_navii(
     }
 
 
-def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
+def _previsao_atracacao(data_prevista: Optional[str], hoje: Optional[date] = None) -> Optional[dict]:
+    """{'data': 'AAAA-MM-DD', 'dias': até a previsão (negativo = já passou), 'situacao': 'futura' | 'hoje' |
+    'vencida'}; None sem data válida."""
+    try:
+        prevista = datetime.strptime((data_prevista or '')[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    dias = (prevista - (hoje or date.today())).days
+    return {'data': prevista.isoformat(), 'dias': dias,
+            'situacao': 'futura' if dias > 0 else ('hoje' if dias == 0 else 'vencida')}
+
+
+def monta_cards_navii(session, resultados: List[ResultadoNavii], hoje: Optional[date] = None) -> List[dict]:
     """Enriquece em lote (itens/NCMs, nomes de empresas e de recintos) uma
     página de `busca_ces_navii` e monta os cards — uma query por tipo de
     dado, só para os contêineres da página."""
@@ -1180,6 +1320,8 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii]) -> List[dict]:
                                         r.item.codigoConteiner if r.item is not None else None,
                                         fichas_por_ce, fichas_por_conteiner,
                                         familias.get(r.conhecimento.numeroCEmercante, ())),
+            sem_desembarque=r.sem_desembarque,
+            hoje=hoje,
         )
         for r in resultados
     ]

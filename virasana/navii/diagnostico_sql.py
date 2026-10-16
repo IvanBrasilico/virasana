@@ -47,7 +47,7 @@ from sqlalchemy.orm import sessionmaker
 
 from virasana.navii import busca_navii, dta_navii
 from virasana.navii.busca_navii import (
-    _periodo_navii, busca_ciclos_navii, busca_itens_navii,
+    _itens_com_desembarque, _periodo_navii, busca_ciclos_navii, busca_itens_navii,
     busca_manifestos_navii, busca_nomes_empresas, busca_nomes_recintos,
     monta_query_navii,
 )
@@ -98,10 +98,19 @@ CENARIOS = [
     ('risco CORAD: até alto (e não consta)', {'porto_escala': 'BRSSZ', 'corad': 1}),
     ('com DTA', {'porto_escala': 'BRSSZ', 'tem_dta': 'sim'}),
     ('número da DTA (sem período)', {'dta': ['2600000000']}),
+    # OCULTAR (16/10/2026): não estreitam a janela — o pior caso é ocultar muito (a página demora a encher)
+    ('ocultar NCM (capítulo comum)', {'porto_escala': 'BRSSZ', 'ncm_ocultar': '84'}),
+    ('ocultar NCM (posição rara)', {'porto_escala': 'BRSSZ', 'ncm_ocultar': '9797'}),
+    ('ocultar país de origem', {'porto_escala': 'BRSSZ', 'porto_origem_ocultar': 'CN'}),
+    ('filtrar NCM e ocultar subposição', {'porto_escala': 'BRSSZ', 'ncm': '8471', 'ncm_ocultar': '847130'}),
+    ('ocultar NCM e país juntos', {'porto_escala': 'BRSSZ', 'ncm_ocultar': ['84', '85'], 'porto_origem_ocultar': 'CN'}),
+    # caixa "Incluir os ainda sem desembarque" desmarcada (16/10/2026): na efetiva, sem o ramo da atracação prevista
+    ('só com desembarque (sem os da previsão)', {'porto_escala': 'BRSSZ', 'so_com_desembarque': True}),
 ]
 # --so-ciclo: a janela efetiva sem filtros e as buscas com filtro do ciclo de vida (imagem, recinto, estágio),
 # de contêiner/CE e do risco histórico por CE
-CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio', 'conteiner', 'ce', 'risco', 'corad', 'tem_dta', 'dta')
+CAMPOS_DO_CICLO = ('com_imagem', 'recinto', 'estagio', 'conteiner', 'ce', 'risco', 'corad', 'tem_dta', 'dta',
+                   'so_com_desembarque')
 CENARIOS_CICLO = [(d, f) for d, f in CENARIOS
                   if d == 'porto de atracação (padrão da tela)' or any(c in f for c in CAMPOS_DO_CICLO)]
 
@@ -390,6 +399,8 @@ class Diagnostico:
         itens_ficticios = [Item(numeroCEmercante=ce, codigoConteiner='ABCD1234567') for ce in CES_FICTICIOS]
         chamadas = [
             ('busca_ciclos_navii', lambda: busca_ciclos_navii(capturadora, itens_ficticios)),
+            ('_itens_com_desembarque (selo "sem desembarque")',
+             lambda: _itens_com_desembarque(capturadora, list(range(10 ** 8, 10 ** 8 + 20)))),
             ('busca_manifestos_navii', lambda: busca_manifestos_navii(capturadora, MANIFESTOS_FICTICIOS)),
             ('busca_itens_navii', lambda: busca_itens_navii(capturadora, CES_FICTICIOS)),
             ('busca_nomes_empresas', lambda: busca_nomes_empresas(capturadora, CES_FICTICIOS)),
