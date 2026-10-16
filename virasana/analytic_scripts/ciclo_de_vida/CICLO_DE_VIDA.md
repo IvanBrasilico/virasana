@@ -809,8 +809,17 @@ Santos Brasil 253, Embraport 38.
 - **Achado: 18 de 65 desembarques no Ecoporto (10 a 24/09) sem ciclo**, iguais antes e depois do refaz: o loop antigo
   não criava ciclo para o Ecoporto, o serviço só cria ao ver um evento novo do contêiner e o `--refaz-desde` só pegava
   contêiner que já tinha ciclo. Corrigido: `conteineres_do_periodo` inclui os contêineres com desembarque num
-  operador do escopo no período (teste `test_refaz_cria_ciclo_de_desembarque_sem_ciclo`). Rodar o refaz de novo
-  para criá-los.
+  operador do escopo no período (teste `test_refaz_cria_ciclo_de_desembarque_sem_ciclo`). **2º refaz (15/10, 20:57;
+  `virasana/sombra_pos2.log`)**: 214.809 contêineres, 216.244 ciclos atualizados e **0 inseridos** — os 18
+  continuam sem ciclo, porque esse refaz rodou com o código ANTERIOR (a correção foi comitada às 21:11). Os eventos
+  desde 25/08 (`virasana/eventos_sem_ciclo.log`) não têm nada antes do desembarque no Ecoporto e o núcleo gera o
+  ciclo normalmente (vazios com inspeção "vazio": 10 entregues pelo operador e 2 ainda lá; 2 cheios entregues pelo
+  operador; 2 TRA — Transbrasa e Marimex); falta só refazer com o código novo. O 19º (FLNU6804578, Embraport) é borda da janela da SOMBRA: desembarque em 04/09
+  (antes do início da carga da sombra, 06/09), remoção a bordo em 09–10/09 — gravado certo, no ciclo de 04/09.
+  Dado do Ecoporto a observar: em 2 dos 18 (WSCU6007441, TGHU0486292, mesmo CE) o DESEMBARQUE foi informado ~21 h
+  DEPOIS da pesagem, da inspeção e da saída — o ciclo fica "aberto no operador" (sem saída depois do desembarque) e
+  só fecharia por abandono. No resto, a sombra bate: seção 2b sem diferenças além do tempo (1 TRA provisório que
+  passou das 6 h), seção 4 sem "perdeu" (186 só imagem em 183 ciclos, fora da comparação), seção 10 sem divergências.
 - Para olhar depois: 7 ciclos abertos no operador/seco há mais de 93 dias (alerta do acompanhamento; eram 1 em
   02/10) e BTP com 67% dos escaneamentos com imagem (76% em 02/10) — ver "Imagens que faltam".
 
