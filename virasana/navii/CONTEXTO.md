@@ -622,7 +622,26 @@ são "Operação X". Fim do acompanhamento: evento 22 OU fase >= 3.
 **Fases**: 0 diagnóstico das Fichas atuais (`analytic_scripts/diagnostico_fichas_repressao.py`) -> 1 botão "Abrir
 Ficha" no card -> 2 aba "Fichas em acompanhamento" (card simplificado por Ficha, com o ciclo de vida de cada
 contêiner, últimos eventos e alertas: **saiu sem verificação física**, desembarcado sem bloqueio de CE, previsão
-vencida, sem auditor) -> 3 histórico e manual.
+vencida, sem auditor) -> 3 histórico e manual. Ajustes aprovados após a medição (17/10/2026): no diálogo, caixas
+opcionais "Bloqueio de CE já incluído" e "Verificação física agendada" (eventos 28/46, por nome); resumo nas observações
+com até 500 caracteres (se faltar, amplia-se o campo); fim do acompanhamento = evento especial 2 OU fase >= 3; na aba,
+só "saiu sem verificação física" é alerta (auditor e bloqueio viram informação).
+
+**Fase 1 FEITA (17/10/2026)** — "Abrir Ficha" no card:
+- Regra no Fichas: `bhadrasana2/bhadrasana/models/navii_ficha.py` (`previa`, `abre_ficha_navii`, `ERROS_DE_NEGOCIO`),
+  testes em `bhadrasana2/tests/test_navii_ficha.py` (14, rodar com `--rootdir=tests --ignore=ajna_commons`).
+  Armadilhas: o `__init__` de `BaseRastreavel` (OVR, RVF, ImagemRVF, EventoOVR) DESCARTA os argumentos nomeados
+  (menos `user_name`) — criar e atribuir campo a campo (`_novo`); o Fichas apaga o arquivo do GridFS ao excluir a
+  imagem — cada RVF ganha arquivo PRÓPRIO (nome `navii_rvf<id>_<ordem>_<nome>`), nunca compartilhado; eventos pelo
+  `gera_eventoovr(commit=False)` (mesma regra de fase/status), com `create_date` em segundos seguidos (ordem).
+- NAVI-I: `ficha_navii.py` (card do contêiner por CE + contêiner, sem limite de data; resumo, descrição da carga,
+  memória de cálculo, imagens lidas do GridFS do virasana, recinto atual; conexão própria com `MONGODB_RISCO`; o módulo
+  do Fichas é importado na hora — se falhar, 503 só nesta função); rota `GET|POST /navii/api/ficha` (prévia e
+  abertura; do cliente vêm só o resumo e as caixas); botão "Abrir Ficha" no cabeçalho do card e diálogo (Esc fecha,
+  foco volta ao botão; o botão vira o link "Ficha N"). Log `NAVII_USO acao=ficha`. Testes:
+  `test_navii_ficha_card.py` (tabelas REAIS do Fichas no SQLite + dois mongomock). 18 mutantes nos dois lados, todos
+  derrubados; roteiro no navegador com servidor de demonstração (nova, acrescentar, já existe).
+- Implantação: `git pull` do bhadrasana2 E do virasana; `MONGODB_RISCO` no ambiente do processo web do virasana.
 
 ## Pendências
 

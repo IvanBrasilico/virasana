@@ -12,6 +12,8 @@ Expõe:
   GET /navii/api/sugestoes -> autocompletar de porto, NCM e recinto
   GET|POST|DELETE /navii/api/filtros -> filtros salvos do usuário (MongoDB,
                              ver `filtros_salvos.py`)
+  GET|POST /navii/api/ficha -> abrir Ficha pelo card (tratamento do risco, `ficha_navii.py`): GET prévia
+                             para o diálogo; POST abre (ou acrescenta o contêiner à Ficha aberta do CE)
 
 A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`).
 
@@ -27,7 +29,9 @@ from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
-from virasana.navii import dta_navii, extrato_navii, filtros_salvos, referencias, risco_navii, uso_navii
+from virasana.navii import (
+    dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii, uso_navii,
+)
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
     busca_ces_navii,
@@ -111,6 +115,7 @@ def index():
         risco_parametros_url=_url_parametros_risco(),
         segundos_lenta=uso_navii.SEGUNDOS_LENTA,
         minimo_ocultar=MINIMO_OCULTAR,
+        ficha_url=url_for('navii.api_ficha'),
     )
 
 
@@ -269,6 +274,62 @@ def api_sugestoes():
     else:
         return jsonify({'erro': 'campo inválido'}), 400
     return jsonify({'sugestoes': sugestoes})
+
+
+@bp_navii.route('/api/ficha', methods=['GET', 'POST'])
+@login_required
+def api_ficha():
+    """Abrir Ficha pelo card — o tratamento do risco (`ficha_navii.py`; regra no Fichas, `navii_ficha.py`).
+
+    GET ?ce=&conteiner= -> prévia para o diálogo (o que será feito, impedimento, Fichas do CE, textos);
+    POST {ce, conteiner, resumo, bloqueio, agendada} -> abre a Ficha, ou acrescenta o contêiner à Ficha de
+    repressão aberta do CE. O servidor remonta tudo pelo card (do cliente vêm só o resumo e as caixas).
+    """
+    inicio = perf_counter()
+    usuario = _usuario()
+    if not usuario:
+        return jsonify({'erro': 'usuário não identificado'}), 401
+    dados = (request.get_json(silent=True) or {}) if request.method == 'POST' else request.args
+    ce, conteiner = (dados.get('ce') or '').strip(), (dados.get('conteiner') or '').strip()
+    try:
+        regra = ficha_navii.regra_do_fichas()
+    except Exception:  # noqa: o módulo do Fichas não carregou — só esta função fica indisponível
+        current_app.logger.exception('NAVI-I: módulo do Fichas (navii_ficha) não carregou')
+        return jsonify({'erro': 'Abertura de Ficha indisponível: o módulo do Fichas não carregou.'}), 503
+    session = current_app.config['db_session']
+    card = ficha_navii.card_do_conteiner(session, ce, conteiner) if ce and conteiner else None
+    if card is None:
+        return jsonify({'erro': 'Contêiner não encontrado neste CE.'}), 404
+    mongo_fichas = ficha_navii.mongodb_fichas(current_app.config)
+    if request.method == 'GET':
+        return jsonify(_previa_ficha(regra, session, usuario, card, mongo_fichas))
+    if mongo_fichas is None:
+        return jsonify({'erro': 'Banco de imagens do Fichas (MONGODB_RISCO) não configurado no servidor.'}), 503
+    try:
+        resultado = regra.abre_ficha_navii(session, mongo_fichas, usuario, ficha_navii.dados_da_ficha(
+            regra, current_app.config.get('mongodb'), card, dados.get('resumo'), dados.get('bloqueio'),
+            dados.get('agendada')))
+    except regra.ERROS_DE_NEGOCIO as err:
+        uso_navii.registra('ficha', usuario, perf_counter() - inicio, ce=ce, conteiner=conteiner, erro=str(err))
+        return jsonify({'erro': str(err)}), 400
+    uso_navii.registra('ficha', usuario, perf_counter() - inicio, ce=ce, conteiner=conteiner,
+                       resultado=resultado.acao, ficha=resultado.ovr_id)
+    return jsonify({'acao': resultado.acao, 'ovr_id': resultado.ovr_id, 'rvf_id': resultado.rvf_id,
+                    'eventos': resultado.eventos, 'imagens': resultado.imagens,
+                    'url': ficha_navii.url_da_ficha(resultado.ovr_id)})
+
+
+def _previa_ficha(regra, session, usuario: str, card: dict, mongo_fichas) -> dict:
+    previa = regra.previa(session, usuario, card['numeroCEmercante'], card['numeroConteiner'])
+    if mongo_fichas is None and not previa['impedimento']:
+        previa['impedimento'] = 'Banco de imagens do Fichas (MONGODB_RISCO) não configurado no servidor.'
+    for ficha in [previa['ficha'], *previa['outras']]:
+        if ficha:
+            ficha['url'] = ficha_navii.url_da_ficha(ficha['id'])
+    return {**previa, 'ce': card['numeroCEmercante'], 'conteiner': card['numeroConteiner'],
+            'resumo': ficha_navii.resumo_padrao(card), 'descricao': ficha_navii.descricao_carga(card),
+            'memoria': ficha_navii.memoria_risco(card), 'limiteResumo': ficha_navii.TAMANHO_RESUMO,
+            'imagens': min(len(card.get('imagens_ids') or []), ficha_navii.MAX_IMAGENS)}
 
 
 @bp_navii.route('/api/filtros', methods=['GET', 'POST', 'DELETE'])

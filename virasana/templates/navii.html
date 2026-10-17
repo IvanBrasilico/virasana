@@ -352,6 +352,39 @@
         .card-navii.concluido .status-navii { color: #168821; background: rgba(22,136,33,.1); }
         .card-navii.aberto .status-navii { color: #E8A33D; background: rgba(232,163,61,.15); }
         .card-navii.sem-ciclo .status-navii { color: #555; background: #EDEDED; }
+        /* ---------- Abrir Ficha pelo card (tratamento do risco, 17/10/2026) ---------- */
+        .btn-abrir-ficha {
+            display: inline-flex; align-items: center; gap: .25rem; margin-left: .25rem; padding: .0625rem .5rem;
+            border: 1px solid #1351B4; border-radius: 999px; background: #fff; color: #1351B4; cursor: pointer;
+            font-size: .6875rem; font-weight: 600; text-decoration: none; vertical-align: middle;
+        }
+        .btn-abrir-ficha:hover, .btn-abrir-ficha:focus { background: #E8EEF9; }
+        .btn-abrir-ficha.aberta { border-color: #168821; color: #168821; }
+        .dialogo-ficha-fundo {
+            position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,.45); padding: 1rem;
+        }
+        .dialogo-ficha-fundo[hidden] { display: none; }
+        .dialogo-ficha {
+            width: min(760px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff;
+            border-radius: 8px; padding: 1.25rem 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,.3);
+        }
+        .dialogo-ficha h2 { font-size: 1.125rem; margin: 0 0 .75rem; }
+        .dialogo-ficha .acao-ficha { padding: .5rem .75rem; border-radius: 6px; background: #E8EEF9; color: #0C326F;
+                                     font-size: .875rem; margin-bottom: .75rem; }
+        .dialogo-ficha .impedimento-ficha { padding: .5rem .75rem; border-radius: 6px; background: #FDE8E5;
+                                            color: #8B0A03; font-size: .875rem; margin-bottom: .75rem; }
+        .dialogo-ficha .outras-fichas { font-size: .8125rem; color: #444; margin-bottom: .75rem; }
+        .dialogo-ficha label { font-weight: 600; font-size: .8125rem; }
+        .dialogo-ficha textarea { width: 100%; min-height: 6rem; font-size: .875rem; padding: .5rem;
+                                  border: 1px solid #888; border-radius: 6px; }
+        .dialogo-ficha .contador { font-size: .75rem; color: #666; text-align: right; }
+        .dialogo-ficha .caixas-ficha { display: flex; flex-wrap: wrap; gap: 1rem; margin: .5rem 0; }
+        .dialogo-ficha details { margin-top: .5rem; font-size: .8125rem; }
+        .dialogo-ficha pre { white-space: pre-wrap; font-size: .75rem; background: #F8F8F8; padding: .5rem;
+                             max-height: 14rem; overflow: auto; border-radius: 4px; }
+        .dialogo-ficha .botoes-ficha { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+
         /* ---------- Ainda sem desembarque (16/10/2026): previsão futura = azul; já vencida = laranja ---------- */
         .card-navii.sem-desembarque .status-navii { color: #555; background: #EDEDED; }
         .card-navii.sem-desembarque.prevista .status-navii { color: #0C326F; background: #E8EEF9; }
@@ -712,6 +745,18 @@
             <span id="toast-texto"></span>
             <button type="button" id="toast-desfazer">Desfazer</button>
         </div>
+        <div class="dialogo-ficha-fundo" id="dialogo-ficha-fundo" hidden>
+            <div class="dialogo-ficha" id="dialogo-ficha" role="dialog" aria-modal="true"
+                 aria-labelledby="dialogo-ficha-titulo">
+                <h2 id="dialogo-ficha-titulo"><i class="fas fa-folder-plus" aria-hidden="true"></i>
+                    Abrir Ficha — repressão na importação</h2>
+                <div id="dialogo-ficha-corpo" aria-live="polite"></div>
+                <div class="botoes-ficha">
+                    <button type="button" class="br-button secondary small" id="ficha-cancelar">Cancelar</button>
+                    <button type="button" class="br-button primary small" id="ficha-confirmar" disabled>Abrir Ficha</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -760,6 +805,7 @@
     var BASE_DO_OCULTO = { ncm_ocultar: 'ncm', porto_origem_ocultar: 'porto_origem' };
     var NOMES_CAMPO = { ncm: 'NCM', porto_origem: 'origem' };
     var MINIMO_OCULTAR = {{ minimo_ocultar | tojson }};
+    var FICHA_URL = {{ ficha_url | tojson }};
     var modos = { ncm: 'filtrar', porto_origem: 'filtrar' };
     var rotulos = {
         conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
@@ -1413,6 +1459,7 @@
                                 montaSelosFichas(card) +
                                 montaSeloRisco(card) +
                                 montaSeloDta(card) +
+                                botaoAbrirFicha(card) +
                             '</div>' +
                         '</div>' +
                         '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
@@ -2068,6 +2115,185 @@
         if (!menu.el.hidden && !menu.el.contains(e.target)) { fechaMenu(false); }
     });
     window.addEventListener('resize', function () { fechaMenu(false); });
+
+    /* ---------------- Abrir Ficha pelo card (tratamento do risco, 17/10/2026) ---------------- */
+    // O servidor remonta tudo pelo card (CE, contêiner, risco, carga, imagens); daqui vão só o resumo editado e as
+    // caixas. A prévia diz o que vai acontecer (Ficha nova, contêiner na Ficha aberta do CE, ou já existe) e o que
+    // impede (usuário sem cadastro no Fichas, Ficha aberta com outro responsável, banco de imagens do Fichas).
+    function botaoAbrirFicha(card) {
+        if (!card.numeroCEmercante || !card.numeroConteiner) { return ''; }
+        return ' <button type="button" class="btn-abrir-ficha" data-ce="' + escapeAttr(card.numeroCEmercante) +
+            '" data-conteiner="' + escapeAttr(card.numeroConteiner) + '" title="Abrir Ficha de repressão na ' +
+            'importação para este contêiner (tratamento do risco)"><i class="fas fa-folder-plus" aria-hidden="true">' +
+            '</i> Abrir Ficha</button>';
+    }
+
+    var dialogoFicha = {
+        fundo: document.getElementById('dialogo-ficha-fundo'), corpo: document.getElementById('dialogo-ficha-corpo'),
+        confirmar: document.getElementById('ficha-confirmar'), cancelar: document.getElementById('ficha-cancelar'),
+        botao: null, previa: null
+    };
+    document.body.appendChild(dialogoFicha.fundo);
+
+    function linkFicha(ficha) {
+        return '<a href="' + escapeAttr(ficha.url) + '" target="_blank" rel="noopener">Ficha ' + escapeHtml(ficha.id) +
+            '</a>';
+    }
+
+    function textoAcaoFicha(p) {
+        if (p.acao === 'ja_existe') {
+            return 'O contêiner ' + escapeHtml(p.conteiner) + ' já está na ' + linkFicha(p.ficha) +
+                ' (' + escapeHtml(p.ficha.status || p.ficha.fase_descricao || '') + '): nada a fazer.';
+        }
+        if (p.acao === 'acrescentar') {
+            return 'O CE já tem a ' + linkFicha(p.ficha) + ' de repressão aberta (' +
+                escapeHtml(p.ficha.status || p.ficha.fase_descricao || '') + '): o contêiner ' +
+                escapeHtml(p.conteiner) + ' entra nela como nova verificação física (inspeção não invasiva).';
+        }
+        return 'Será aberta uma Ficha nova de repressão na importação para o CE ' + escapeHtml(p.ce) +
+            ', com você como responsável, e a verificação física (inspeção não invasiva) do contêiner ' +
+            escapeHtml(p.conteiner) + (p.imagens ? ' com ' + p.imagens + (p.imagens === 1 ? ' imagem' : ' imagens') +
+            ' de escaneamento.' : ', ainda sem imagem de escaneamento.');
+    }
+
+    function montaDialogoFicha(p) {
+        var html = '<div class="acao-ficha">' + textoAcaoFicha(p) + '</div>';
+        if (p.impedimento) { html += '<div class="impedimento-ficha" role="alert">' + escapeHtml(p.impedimento) + '</div>'; }
+        if (p.outras && p.outras.length) {
+            html += '<div class="outras-fichas">Outras Fichas deste CE: ' + p.outras.map(function (f) {
+                return linkFicha(f) + ' (' + escapeHtml(f.tipo || '') + ', ' + escapeHtml(f.fase_descricao || '') + ')';
+            }).join('; ') + '</div>';
+        }
+        if (p.acao === 'nova') {
+            html += '<label for="ficha-resumo">Observações da Ficha (resumo do risco)</label>' +
+                '<textarea id="ficha-resumo" maxlength="' + p.limiteResumo + '">' + escapeHtml(p.resumo) + '</textarea>' +
+                '<div class="contador" id="ficha-contador"></div>';
+        } else if (p.acao === 'acrescentar') {
+            html += '<div class="outras-fichas">As observações da Ficha não mudam; o risco deste contêiner vai na ' +
+                'verificação física.</div>';
+        }
+        if (p.acao !== 'ja_existe' && (p.opcoes.bloqueio || p.opcoes.agendada)) {
+            html += '<div class="caixas-ficha">' +
+                (p.opcoes.bloqueio ? '<span class="campo-checkbox"><input type="checkbox" id="ficha-bloqueio">' +
+                    '<label for="ficha-bloqueio">Bloqueio de CE já incluído</label></span>' : '') +
+                (p.opcoes.agendada ? '<span class="campo-checkbox"><input type="checkbox" id="ficha-agendada">' +
+                    '<label for="ficha-agendada">Verificação física agendada</label></span>' : '') + '</div>';
+        }
+        if (p.acao !== 'ja_existe') {
+            html += '<details><summary>O que vai na verificação física (descrição da carga)</summary><pre>' +
+                escapeHtml(p.descricao) + '</pre></details>' +
+                '<details><summary>Memória do risco (interna, não vai a documento do importador)</summary><pre>' +
+                escapeHtml(p.memoria) + '</pre></details>';
+        }
+        dialogoFicha.corpo.innerHTML = html;
+        var resumo = document.getElementById('ficha-resumo');
+        if (resumo) {
+            var conta = function () {
+                document.getElementById('ficha-contador').textContent = resumo.value.length + ' de ' + p.limiteResumo +
+                    ' caracteres';
+            };
+            resumo.addEventListener('input', conta);
+            conta();
+        }
+        dialogoFicha.confirmar.hidden = p.acao === 'ja_existe';
+        dialogoFicha.confirmar.disabled = !!p.impedimento;
+        dialogoFicha.confirmar.textContent = p.acao === 'acrescentar' ? 'Incluir na Ficha ' + p.ficha.id : 'Abrir Ficha';
+        dialogoFicha.cancelar.textContent = p.acao === 'ja_existe' ? 'Fechar' : 'Cancelar';
+        (resumo || (p.impedimento || p.acao === 'ja_existe' ? dialogoFicha.cancelar : dialogoFicha.confirmar)).focus();
+    }
+
+    function abreDialogoFicha(botao) {
+        dialogoFicha.botao = botao;
+        dialogoFicha.previa = null;
+        dialogoFicha.corpo.innerHTML = '<div class="acao-ficha">Carregando…</div>';
+        dialogoFicha.confirmar.hidden = false;
+        dialogoFicha.confirmar.disabled = true;
+        dialogoFicha.cancelar.textContent = 'Cancelar';
+        dialogoFicha.fundo.hidden = false;
+        dialogoFicha.cancelar.focus();
+        var params = new URLSearchParams({ ce: botao.dataset.ce, conteiner: botao.dataset.conteiner });
+        fetch(FICHA_URL + '?' + params.toString())
+            .then(function (resp) {
+                return resp.json().then(function (dados) {
+                    if (!resp.ok) { throw new Error(dados.erro || ('HTTP ' + resp.status)); }
+                    return dados;
+                });
+            })
+            .then(function (dados) { dialogoFicha.previa = dados; montaDialogoFicha(dados); })
+            .catch(function (erro) {
+                dialogoFicha.corpo.innerHTML = '<div class="impedimento-ficha" role="alert">' + escapeHtml(erro.message) +
+                    '</div>';
+            });
+    }
+
+    function fechaDialogoFicha() {
+        if (dialogoFicha.fundo.hidden) { return; }
+        dialogoFicha.fundo.hidden = true;
+        if (dialogoFicha.botao && document.body.contains(dialogoFicha.botao)) { dialogoFicha.botao.focus(); }
+    }
+
+    function marcaFichaNoCard(botao, resposta) {
+        var link = document.createElement('a');
+        link.className = 'btn-abrir-ficha aberta';
+        link.href = resposta.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.title = 'Ficha aberta pelo NAVI-I — abre no Fichas (nova aba)';
+        link.innerHTML = '<i class="fas fa-folder-open" aria-hidden="true"></i> Ficha ' + escapeHtml(resposta.ovr_id);
+        botao.replaceWith(link);
+        return link;
+    }
+
+    function confirmaFicha() {
+        var p = dialogoFicha.previa;
+        if (!p || p.impedimento) { return; }
+        var resumo = document.getElementById('ficha-resumo');
+        var bloqueio = document.getElementById('ficha-bloqueio');
+        var agendada = document.getElementById('ficha-agendada');
+        dialogoFicha.confirmar.disabled = true;
+        dialogoFicha.confirmar.textContent = 'Gravando…';
+        fetch(FICHA_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({ ce: p.ce, conteiner: p.conteiner, resumo: resumo ? resumo.value : null,
+                                   bloqueio: !!(bloqueio && bloqueio.checked), agendada: !!(agendada && agendada.checked) })
+        })
+            .then(function (resp) {
+                return resp.json().then(function (dados) {
+                    if (!resp.ok) { throw new Error(dados.erro || ('HTTP ' + resp.status)); }
+                    return dados;
+                });
+            })
+            .then(function (r) {
+                var texto = { nova: 'aberta', acrescentada: 'recebeu o contêiner', ja_existia: 'já tinha o contêiner' };
+                dialogoFicha.corpo.innerHTML = '<div class="acao-ficha" role="status"><a href="' + escapeAttr(r.url) +
+                    '" target="_blank" rel="noopener">Ficha ' + escapeHtml(r.ovr_id) + '</a> ' + (texto[r.acao] || r.acao) +
+                    (r.eventos && r.eventos.length ? '. Eventos: ' + escapeHtml(r.eventos.join(', ')) : '') +
+                    (r.acao !== 'ja_existia' ? '. Imagens anexadas: ' + r.imagens : '') + '.</div>';
+                dialogoFicha.confirmar.hidden = true;
+                dialogoFicha.cancelar.textContent = 'Fechar';
+                dialogoFicha.botao = marcaFichaNoCard(dialogoFicha.botao, r);
+                dialogoFicha.cancelar.focus();
+            })
+            .catch(function (erro) {
+                dialogoFicha.confirmar.disabled = false;
+                dialogoFicha.confirmar.textContent = 'Tentar de novo';
+                var aviso = document.createElement('div');
+                aviso.className = 'impedimento-ficha';
+                aviso.setAttribute('role', 'alert');
+                aviso.textContent = erro.message;
+                dialogoFicha.corpo.insertBefore(aviso, dialogoFicha.corpo.firstChild);
+            });
+    }
+
+    el.grid.addEventListener('click', function (e) {
+        var botao = e.target.closest('button.btn-abrir-ficha');
+        if (botao) { abreDialogoFicha(botao); }
+    });
+    dialogoFicha.confirmar.addEventListener('click', confirmaFicha);
+    dialogoFicha.cancelar.addEventListener('click', fechaDialogoFicha);
+    dialogoFicha.fundo.addEventListener('click', function (e) { if (e.target === dialogoFicha.fundo) { fechaDialogoFicha(); } });
+    dialogoFicha.fundo.addEventListener('keydown', function (e) { if (e.key === 'Escape') { fechaDialogoFicha(); } });
 
     /* ---------------- Leitura/aplicação dos filtros ---------------- */
     function filtrosDaTela() {
