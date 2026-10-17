@@ -572,6 +572,48 @@ só o período — o índice de data não cobre CE e contêiner. Índice sugerid
 `ALTER TABLE ciclodevida_ciclo_de_vida_importacao ADD INDEX ix_cdv_data_ce_conteiner (data_desembarque,
 numeroCEmercante, numeroConteiner), ALGORITHM=INPLACE, LOCK=NONE;`
 
+## Tratamento do risco: Fichas pelo NAVI-I (plano aprovado em 17/10/2026)
+
+Fluxo (teoria da análise de risco / compêndio da OMA): análise de risco (NAVI-I) -> tratamento do risco no **Fichas**
+(bhadrasana2). O analista que considera um card de risco abre, pelo card, uma Ficha de **Repressão na importação**
+(`tipooperacao = 1`); uma aba do NAVI-I acompanha essas Fichas (analista, auditor responsável, supervisor) até a
+**verificação física informada**; opcionalmente, as mais avançadas e o histórico.
+
+**O que o Fichas já tem** (código: `bhadrasana/models/ovr.py`, `rvf.py`, `ovrmanager.py`, `rvfmanager.py`; manual:
+`bhadrasana2/docs/site`, "Roteiro de uso na importação"):
+- Roteiro base: analista abre e encaminha ao chefe -> chefe programa a RVF, atribui auditor e responsável ->
+  verificação física informada (texto e fotos) -> providências (bloqueio do CE, laudos, intimações) -> encerramento.
+- Os tipos de evento são cadastráveis (`ovr_tiposevento`), mas o workflow se guia pelos **eventos especiais**
+  (`EventoEspecial`): 1 Responsável, 2 **RVF = "Verificação física informada"** (o Fichas gera ao informar RVF com 5
+  ou mais imagens), 5 Auditor responsável, 6 Mudança de setor, 7 Inspeção não invasiva, 4/8/9 encerramento. Há
+  também evento fixo por id no código (`assistente_checkapi`: id 20). **Usar o evento especial, nunca o id** (os ids
+  variam entre bases). Bloqueio de CE (28/24), "Verificação Física Agendada" (46) e "Interrupção de despacho" (34)
+  não têm evento especial — por nome.
+- Regras: todo evento muda a fase e o status (`tipoevento_id`) da Ficha, menos o "meramente informativo"; fase >= 3
+  (concluída/arquivada) bloqueia evento comum; evento exige ser o responsável; só perfil Operador/Supervisor cria;
+  "Minhas Fichas" mostra os setores do usuário e as Fichas com que ele interagiu. Usuário = CPF em `ovr_usuarios`.
+- **Imagens**: a RVF guarda as imagens no Mongo do Fichas (`MONGODB_RISCO`, banco `risco`; imagens das RVFs e anexos
+  dos eventos) — outro servidor/banco que o do virasana (`MONGODB_URI`, só as imagens de escaneamento). Ao ir para o
+  Fichas, a imagem é COPIADA e ganha outro `_id`. Atenção: `virasana/db.py` tem um `mongodb_risco = conn['risco']`
+  no servidor do VIRASANA — não é o banco de imagens do Fichas; a criação pelo NAVI-I abre a sua conexão com
+  `MONGODB_RISCO` (como `bhadrasana/main.py`).
+- O atalho antigo `/bhadrasana2/nova_inspecaoni/<imagem>` (GET; links em `view_file.html` e na exportação) reaproveita a
+  última Ficha do CE de QUALQUER tipo e fase, grava em vários commits, não leva o risco e geraria "Verificação física
+  informada" com 5 imagens — a versão nova corrige.
+
+**Decisões (usuário, 17/10/2026)**: (1) a regra de criação fica num módulo NOVO do bhadrasana2 (só aditivo, testado
+na suíte do Fichas, uma transação: Ficha, flag, eventos, RVF e imagens), chamado por um endpoint do NAVI-I (POST,
+CSRF e usuário do NAVI-I); (2) diálogo de confirmação no card (o que será criado, Fichas já abertas, texto do risco
+editável); (3) CE com Ficha de repressão ABERTA: o contêiner entra como nova RVF na mesma Ficha; (4) a aba lista
+todas as Fichas de repressão na importação dos setores do usuário, com o selo NAVI-I nas abertas pelo NAVI-I; (5)
+flag "NAVI-I" em `ovr_flags` (registro, sem DDL); (6) resumo do risco nas observações (1.000 caracteres) e a memória
+de cálculo completa na `descricao_interna` da RVF; (7) responsável inicial = o analista que abriu.
+
+**Fases**: 0 diagnóstico das Fichas atuais (`analytic_scripts/diagnostico_fichas_repressao.py`) -> 1 botão "Abrir
+Ficha" no card -> 2 aba "Fichas em acompanhamento" (card simplificado por Ficha, com o ciclo de vida de cada
+contêiner, últimos eventos e alertas: **saiu sem verificação física**, desembarcado sem bloqueio de CE, previsão
+vencida, sem auditor) -> 3 histórico e manual.
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
