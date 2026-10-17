@@ -1058,6 +1058,18 @@ class TestDiagnosticoSql(NaviiSqliteTestCase):
         self.assertIn('PÁGINA=ERRO', saida.getvalue())
         self.assertIn('1 queries medidas', saida.getvalue())
 
+    def test_capturadora_aceita_iteracao(self):
+        """A seção 5 mede as queries do enriquecimento capturando o SQL. `busca_ciclos_navii` e
+        `_itens_com_desembarque` iteram a query direto (`for ... in session.query(...)`): até 16/10/2026 a captura
+        falhava ("'QueryCapturada' object is not iterable") e as duas ficavam sem medição."""
+        from virasana.navii import diagnostico_sql as ds
+        capturadora = ds.SessaoCapturadora(self.session)
+        busca_ciclos_navii(capturadora, [Item(numeroCEmercante='CE1', codigoConteiner='C1')])
+        self.assertEqual(len(capturadora.capturadas), 1)
+        capturadora.capturadas.clear()
+        busca_navii._itens_com_desembarque(capturadora, [1, 2, 3])
+        self.assertEqual(len(capturadora.capturadas), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

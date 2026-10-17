@@ -495,6 +495,21 @@ Em 15/10/2026 (pedidos do usuário):
   `ajna_commons.flask.log`. A linha antiga `busca_ces_navii: ...` (INFO, logger do ciclo de vida) virou DEBUG.
   Exemplos de grep na Referência técnica do manual.
 
+### Sexta medição (16/10/2026, `--amostras --analyze` completo e depois `--so-ciclo`)
+
+- **Nenhuma regressão**: nos cenários das duas rodadas, 159 s contra 162 s em 15/10.
+- **Ocultar** (efetiva, porto BRSSZ, página / contagem): 1,6–2,2 s / 2,0–3,6 s — o nível do padrão da tela (2,1 / 2,7).
+  Prevista: até 1,2 s.
+- **Só com desembarque** (caixa "Incluir os ainda sem desembarque" desmarcada): efetiva **0,8 / 1,1 s** (o ramo da
+  atracação prevista custa ~1,2–1,5 s do padrão); prevista 0,7 / 0,7 s. A contagem separada dos "ainda sem
+  desembarque" no cabeçalho custaria ~1,1 s a mais por pesquisa (contagem sem a previsão) — não feita; quem quiser o
+  número desmarca a caixa.
+- **Mais lentos, todos sem porto de atracação** (a tela usa BRSSZ): "até 1 NCM distinto" contagem 11,2 s; "NCM completo"
+  página 9,4 s (com o porto, 3,1 s; em 30/09, 995 s); "NCM por prefixo" contagem 9,9 s. Candidatos a otimizar se o log
+  de uso (`NAVII_LENTA`) mostrar essas buscas na prática.
+- A seção 5 (enriquecimento) não media `busca_ciclos_navii` nem `_itens_com_desembarque`: a `SessaoCapturadora` não
+  aceitava iteração ("'QueryCapturada' object is not iterable"). Corrigido (`__iter__`), com teste.
+
 ### Quinta medição (15/10/2026, `--analyze --so-ciclo`, filtros novos)
 
 Janela efetiva 30/09–10/10, porto BRSSZ (página / contagem): padrão 2,6 s / 3,0 s; **risco "só alto"** 2,6 / 3,5;

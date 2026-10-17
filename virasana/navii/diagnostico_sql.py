@@ -147,6 +147,9 @@ class SessaoCapturadora:
                 capturadas.append(self._query.statement)
                 return []
 
+            def __iter__(self):   # `for linha in session.query(...)` (ex.: `_itens_com_desembarque`) também captura
+                return iter(self.all())
+
         return QueryCapturada(q)
 
     def execute(self, statement, *args, **kwargs):
