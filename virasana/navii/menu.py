@@ -12,6 +12,7 @@ from flask_nav.elements import Link, Separator, Subgroup, View
 
 ENTRADAS_NAVII = [
     ('NAVI-I — Análise de risco na importação', 'navii.index'),
+    ('NAVI-I — Fichas em acompanhamento', 'navii.fichas'),
     ('Entregas por CNPJ', 'entregas.index'),
     ('Transporte das apreensões', 'apreensoes.index'),
     ('Risco histórico das Fichas', 'risco_historico.index'),

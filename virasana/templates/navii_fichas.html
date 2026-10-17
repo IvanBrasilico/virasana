@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fichas em acompanhamento — NAVI-I</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .pagina { max-width: 1280px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+        .mono { font-family: monospace; }
+        .voltar { font-size: .8125rem; }
+        h1.titulo { font-size: 1.625rem; font-weight: 700; margin: .5rem 0 .25rem; display: flex; align-items: center;
+                    gap: .625rem; }
+        .marca { background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700; letter-spacing: .04em;
+                 padding: .25rem .625rem; border-radius: 4px; }
+        .subtitulo { color: #555; font-size: .875rem; max-width: 60rem; }
+        .abas { display: flex; gap: .25rem; border-bottom: 2px solid #E6E6E6; margin: 1rem 0; }
+        .abas a { padding: .5rem 1rem; font-weight: 600; font-size: .875rem; color: #1351B4; text-decoration: none;
+                  border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .abas a[aria-current="page"] { color: #1c1c1c; border-bottom-color: #1351B4; }
+        .barra { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: center; margin-bottom: .75rem; }
+        .barra .campo-checkbox { display: flex; align-items: center; gap: .375rem; font-size: .8125rem; }
+        .barra .campo-checkbox input { width: 1.05rem; height: 1.05rem; }
+        .quem { font-size: .8125rem; color: #555; }
+        .contagem { font-size: .875rem; color: #333; margin: .25rem 0 1rem; }
+        .contagem .com-alerta { color: #A41F14; font-weight: 700; }
+        .aviso { font-size: .8125rem; color: #8C4A00; margin-bottom: .75rem; }
+        .aviso:empty { display: none; }
+        .lista { display: flex; flex-direction: column; gap: 1rem; }
+        .card-ficha { background: #fff; border: 1px solid #E6E6E6; border-left: 4px solid #1351B4; border-radius: 8px;
+                      padding: 1rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+        .card-ficha.alerta { border-left-color: #A41F14; }
+        .card-ficha header { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; }
+        .numero-ficha { font-family: monospace; font-weight: 700; font-size: 1.0625rem; }
+        .selo { font-size: .6875rem; font-weight: 700; padding: .125rem .5rem; border-radius: 999px;
+                background: #EDF0F5; color: #1351B4; }
+        .selo.navii { background: #1351B4; color: #fff; }
+        .selo.fase-0 { background: #FFF5E0; color: #6B3A00; }
+        .selo.fase-2 { background: #EDEDED; color: #444; }
+        .idade, .setor { font-size: .75rem; color: #666; }
+        .alerta-ficha { margin: .625rem 0 0; padding: .5rem .75rem; border-radius: 6px; background: #FDE8E5;
+                        color: #8B0A03; font-size: .875rem; }
+        .linha-ficha, .marcos { font-size: .8125rem; color: #333; margin-top: .5rem; }
+        .marcos span + span::before { content: ' · '; color: #999; }
+        .sem { color: #888; }
+        table.conteineres { width: 100%; border-collapse: collapse; margin-top: .75rem; font-size: .8125rem; }
+        table.conteineres th { text-align: left; font-size: .6875rem; text-transform: uppercase; color: #666;
+                               border-bottom: 1px solid #E6E6E6; padding: .25rem .5rem; }
+        table.conteineres td { border-bottom: 1px solid #F0F0F0; padding: .375rem .5rem; vertical-align: middle; }
+        table.conteineres tr.alerta td { background: #FFF6F5; }
+        .miniatura { width: 72px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid #DDD; }
+        .situacao-alerta { color: #8B0A03; font-weight: 700; }
+        details.eventos { margin-top: .5rem; font-size: .8125rem; }
+        details.eventos ul { margin: .375rem 0 0; padding-left: 1.25rem; }
+        details.eventos li { margin-bottom: .25rem; }
+        .estado { color: #555; font-size: .875rem; margin: 1rem 0; }
+        @media (max-width: 720px) {
+            .pagina { padding: 1rem; }
+            table.conteineres th:nth-child(5), table.conteineres td:nth-child(5) { display: none; }
+        }
+    </style>
+</head>
+<body>
+<div class="pagina">
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <h1 class="titulo"><span class="marca">NAVI-I</span> Fichas em acompanhamento</h1>
+    <p class="subtitulo">
+        Tratamento do risco: as Fichas de <strong>repressão na importação</strong> ainda sem verificação física
+        informada, dos seus setores no Fichas e as em que você aparece (abriu, responsável, auditor) — com o ciclo de
+        vida de cada contêiner. As ações continuam no Fichas (o número da Ficha abre lá, em nova aba).
+    </p>
+    <nav class="abas" aria-label="NAVI-I">
+        <a href="{{ navii_url }}">Análise de risco</a>
+        <a href="{{ url_for('navii.fichas') }}" aria-current="page">Fichas em acompanhamento</a>
+    </nav>
+
+    <div class="barra" role="group" aria-label="Opções da lista">
+        <span class="campo-checkbox"><input type="checkbox" id="f-minhas"><label for="f-minhas">Só as minhas</label></span>
+        <span class="campo-checkbox"><input type="checkbox" id="f-navii"><label for="f-navii">Só as abertas pelo NAVI-I</label></span>
+        <span class="campo-checkbox"><input type="checkbox" id="f-verificadas">
+            <label for="f-verificadas">Incluir as com verificação física informada</label></span>
+        <button type="button" class="br-button secondary small" id="btn-atualizar">
+            <i class="fas fa-rotate-right" aria-hidden="true"></i> Atualizar</button>
+    </div>
+    <div class="quem" id="quem"></div>
+    <div class="contagem" id="contagem" role="status" aria-live="polite"></div>
+    <div class="aviso" id="aviso"></div>
+    <div class="lista" id="lista"></div>
+    <div class="estado" id="estado"></div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var API_URL = {{ api_url | tojson }};
+    var NAVII_URL = {{ navii_url | tojson }};
+    var EXTRATO_URL = {{ extrato_url | tojson }};
+    var IMAGEM_URL_TEMPLATE = {{ imagem_url_template | tojson }};
+    var OPCOES = ['minhas', 'navii', 'verificadas'];
+    var el = { lista: document.getElementById('lista'), contagem: document.getElementById('contagem'),
+               aviso: document.getElementById('aviso'), estado: document.getElementById('estado'),
+               quem: document.getElementById('quem') };
+
+    function escapeHtml(texto) {
+        return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function escapeAttr(texto) { return escapeHtml(texto); }
+
+    function formatarData(iso) {
+        if (!iso) { return '--'; }
+        var d = String(iso);
+        return d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4);
+    }
+
+    function pessoa(nome, vazio) {
+        return nome ? escapeHtml(nome) : '<span class="sem">' + vazio + '</span>';
+    }
+
+    function situacao(c) {
+        if (c.estagio) {
+            return (c.alerta ? '<span class="situacao-alerta"><i class="fas fa-triangle-exclamation" aria-hidden="true">' +
+                '</i> ' : '<span>') + escapeHtml(c.estagio.rotulo) + '</span>';
+        }
+        if (c.semDesembarque && c.previsao) {
+            return c.previsao.situacao === 'vencida'
+                ? 'Desembarque não informado (previsto ' + formatarData(c.previsao.data) + ')'
+                : 'Previsto · ' + formatarData(c.previsao.data);
+        }
+        return '<span class="sem">Ciclo de vida não localizado</span>';
+    }
+
+    function linkNavii(c, ce) {
+        var params = new URLSearchParams({ conteiner: c.numero });
+        if (ce) { params.set('ce', ce); }
+        return '<a class="mono" href="' + escapeAttr(NAVII_URL + '?' + params.toString()) + '" target="_blank" ' +
+            'rel="noopener" title="Card do contêiner no NAVI-I (nova aba)">' + escapeHtml(c.numero) + '</a>';
+    }
+
+    function miniatura(c) {
+        var esc = c.escaneamento;
+        if (!esc) { return '<span class="sem">sem escaneamento</span>'; }
+        var texto = formatarData(esc.data) + (esc.recinto ? ' · ' + escapeHtml(esc.recinto) : '');
+        if (!esc.imagem) { return texto + ' <span class="sem">(sem imagem)</span>'; }
+        return '<img class="miniatura" loading="lazy" alt="Imagem do escaneamento de ' + escapeAttr(c.numero) + '" src="' +
+            escapeAttr(IMAGEM_URL_TEMPLATE.replace('imagem_id', encodeURIComponent(esc.imagem))) + '"> ' + texto;
+    }
+
+    function linhaConteiner(c, ce) {
+        var onde = c.onde ? escapeHtml(c.onde.codigo) + (c.onde.nome ? ' ' + escapeHtml(c.onde.nome) : '') : '--';
+        var datas = c.semDesembarque ? '<span class="sem">sem desembarque</span>'
+            : formatarData(c.desembarque) + (c.saida ? ' → saiu ' + formatarData(c.saida) : '');
+        return '<tr' + (c.alerta ? ' class="alerta"' : '') + '><td>' + linkNavii(c, ce) + '</td><td>' + situacao(c) +
+            '</td><td>' + onde + '</td><td>' + datas + '</td><td>' + miniatura(c) + '</td></tr>';
+    }
+
+    function alertas(f) {
+        var saidos = f.conteineres.filter(function (c) { return c.alerta; });
+        if (!saidos.length) { return ''; }
+        return '<div class="alerta-ficha"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <strong>Alerta:' +
+            '</strong> ' + saidos.map(function (c) {
+                return 'contêiner ' + escapeHtml(c.numero) + ' ' + escapeHtml((c.estagio.rotulo || '').toLowerCase()) +
+                    (c.saida ? ' (saída em ' + formatarData(c.saida) + ')' : '');
+            }).join('; ') + ' sem verificação física informada.</div>';
+    }
+
+    function marcos(f) {
+        var verificacao = f.verificacao ? 'informada em ' + formatarData(f.verificacao)
+            : (f.agendada ? 'agendada em ' + formatarData(f.agendada) : '<span class="sem">não agendada</span>');
+        return '<div class="marcos"><span>Bloqueio de CE: ' + (f.bloqueio ? 'registrado em ' + formatarData(f.bloqueio)
+            : '<span class="sem">não registrado</span>') + '</span><span>Verificação física: ' + verificacao +
+            '</span></div>';
+    }
+
+    function eventos(f) {
+        if (!f.eventos.length) { return ''; }
+        return '<details class="eventos"><summary>Últimos eventos</summary><ul>' + f.eventos.map(function (e) {
+            return '<li>' + formatarData(e.data) + ' — <strong>' + escapeHtml(e.tipo) + '</strong>' +
+                (e.informativo ? ' (informativo)' : '') + (e.motivo ? ': ' + escapeHtml(e.motivo) : '') + '</li>';
+        }).join('') + '</ul></details>';
+    }
+
+    function montaCard(f) {
+        var ce = f.ce ? '<a class="mono" href="' + escapeAttr(EXTRATO_URL + '?' + new URLSearchParams({ CE: f.ce })) +
+            '" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">' + escapeHtml(f.ce) + '</a>'
+            : '<span class="sem">sem CE</span>';
+        var tabela = f.conteineres.length
+            ? '<table class="conteineres"><thead><tr><th>Contêiner</th><th>Situação</th><th>Onde</th><th>Desembarque</th>' +
+              '<th>Último escaneamento</th></tr></thead><tbody>' +
+              f.conteineres.map(function (c) { return linhaConteiner(c, f.ce); }).join('') + '</tbody></table>'
+            : '<div class="linha-ficha sem">Sem contêiner (nem na verificação física, nem no CE).</div>';
+        return '<article class="card-ficha' + (f.alerta ? ' alerta' : '') + '"><header>' +
+            '<a class="numero-ficha" href="' + escapeAttr(f.url) + '" target="_blank" rel="noopener" ' +
+            'title="Abrir a Ficha no Fichas (nova aba)">Ficha ' + escapeHtml(f.id) + '</a>' +
+            (f.navii ? '<span class="selo navii" title="Aberta pelo NAVI-I">NAVI-I</span>' : '') +
+            '<span class="selo fase-' + escapeAttr(f.fase) + '">' + escapeHtml(f.faseDescricao || '') +
+            (f.status ? ' · ' + escapeHtml(f.status) : '') + '</span>' +
+            '<span class="idade">aberta ' + (f.dias !== null ? 'há ' + f.dias + (f.dias === 1 ? ' dia' : ' dias') : '') +
+            ' (' + formatarData(f.aberta) + ')</span>' +
+            (f.setor ? '<span class="setor">' + escapeHtml(f.setor) + '</span>' : '') + '</header>' +
+            alertas(f) +
+            '<div class="linha-ficha">CE ' + ce + ' · Abriu: ' + pessoa(f.abriu, '--') + ' · Responsável: ' +
+            pessoa(f.responsavel, 'sem responsável') + ' · Auditor: ' + pessoa(f.auditor, 'sem auditor') + '</div>' +
+            marcos(f) + tabela + eventos(f) + '</article>';
+    }
+
+    function opcoesDaTela() {
+        var params = new URLSearchParams();
+        OPCOES.forEach(function (nome) { if (document.getElementById('f-' + nome).checked) { params.set(nome, '1'); } });
+        return params;
+    }
+
+    function carrega() {
+        var params = opcoesDaTela();
+        history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params.toString() : ''));
+        el.estado.textContent = 'Carregando…';
+        el.lista.innerHTML = '';
+        fetch(API_URL + (params.toString() ? '?' + params.toString() : ''))
+            .then(function (resp) {
+                return resp.json().then(function (dados) {
+                    if (!resp.ok) { throw new Error(dados.erro || ('HTTP ' + resp.status)); }
+                    return dados;
+                });
+            })
+            .then(function (dados) {
+                el.estado.textContent = '';
+                el.quem.textContent = dados.usuario ? dados.usuario.nome + ' — setores: ' + dados.setores.join(', ') : '';
+                el.aviso.textContent = dados.aviso || '';
+                el.contagem.innerHTML = dados.total + (dados.total === 1 ? ' Ficha' : ' Fichas') + ' em acompanhamento' +
+                    (dados.alertas ? ' · <span class="com-alerta">' + dados.alertas + ' com alerta</span>' : '');
+                el.lista.innerHTML = dados.fichas.map(montaCard).join('');
+                if (!dados.fichas.length && dados.usuario) {
+                    el.estado.textContent = 'Nenhuma Ficha em acompanhamento com estas opções.';
+                }
+            })
+            .catch(function (erro) { el.estado.textContent = 'Falha ao carregar: ' + erro.message; });
+    }
+
+    var inicial = new URLSearchParams(location.search);
+    OPCOES.forEach(function (nome) {
+        var caixa = document.getElementById('f-' + nome);
+        caixa.checked = inicial.get(nome) === '1';
+        caixa.addEventListener('change', carrega);
+    });
+    document.getElementById('btn-atualizar').addEventListener('click', carrega);
+    carrega();
+})();
+</script>
+</body>
+</html>

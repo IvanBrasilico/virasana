@@ -38,6 +38,7 @@ TELAS = [
     ('/risco_historico', 'Risco histórico das Fichas'),
     ('/risco_historico/parametros', 'Parâmetros do risco por CE'),
     ('/navii/extrato', 'Extrato do CE'),
+    ('/navii/fichas', 'Fichas em acompanhamento'),
     ('/completude_escaneamentos', 'Completude de escaneamentos'),
 ]
 

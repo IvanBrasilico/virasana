@@ -33,6 +33,10 @@
             font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
             display: flex; align-items: center; gap: .625rem;
         }
+        .abas-navii { display: flex; gap: .25rem; border-bottom: 2px solid #E6E6E6; margin-top: .75rem; }
+        .abas-navii a { padding: .375rem .875rem; font-weight: 600; font-size: .875rem; color: #1351B4;
+                        text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .abas-navii a[aria-current="page"] { color: #1c1c1c; border-bottom-color: #1351B4; }
         .cabecalho-pagina h1 .marca-navii {
             background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
             letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
@@ -526,6 +530,10 @@
                 contêineres/NCMs declarados. Ciclo de vida (API Recintos) e imagens de escaneamento são
                 exibidos quando localizados — não são obrigatórios.
             </p>
+            <nav class="abas-navii" aria-label="NAVI-I">
+                <a href="{{ url_for('navii.index') }}" aria-current="page">Análise de risco</a>
+                <a href="{{ url_for('navii.fichas') }}">Fichas em acompanhamento</a>
+            </nav>
         </div>
     </div>
 

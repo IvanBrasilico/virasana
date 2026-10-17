@@ -14,6 +14,8 @@ Expõe:
                              ver `filtros_salvos.py`)
   GET|POST /navii/api/ficha -> abrir Ficha pelo card (tratamento do risco, `ficha_navii.py`): GET prévia
                              para o diálogo; POST abre (ou acrescenta o contêiner à Ficha aberta do CE)
+  GET /navii/fichas        -> aba "Fichas em acompanhamento" (`acompanhamento_fichas.py`)
+  GET /navii/api/fichas    -> JSON da aba (?minhas=1&navii=1&verificadas=1)
 
 A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`).
 
@@ -30,7 +32,7 @@ from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import (
-    dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii, uso_navii,
+    acompanhamento_fichas, dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii, uso_navii,
 )
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
@@ -274,6 +276,31 @@ def api_sugestoes():
     else:
         return jsonify({'erro': 'campo inválido'}), 400
     return jsonify({'sugestoes': sugestoes})
+
+
+@bp_navii.route('/fichas', strict_slashes=False)  # sem redirect da barra final (proxy)
+@login_required
+def fichas():
+    """Aba "Fichas em acompanhamento": o tratamento do risco no Fichas (dados pela API, `api_fichas`)."""
+    uso_navii.registra('fichas', _usuario(), link=request.args.to_dict(flat=False) or None)
+    return render_template('navii_fichas.html', api_url=url_for('navii.api_fichas'),
+                           navii_url=url_for('navii.index'), extrato_url=url_for('navii.extrato'),
+                           imagem_url_template=_imagem_url_template())
+
+
+@bp_navii.route('/api/fichas')
+@login_required
+def api_fichas():
+    """Fichas de repressão na importação em acompanhamento (ver `acompanhamento_fichas.py`)."""
+    inicio = perf_counter()
+    usuario = _usuario()
+    if not usuario:
+        return jsonify({'erro': 'usuário não identificado'}), 401
+    opcoes = {nome: request.args.get(nome) in ('1', 'true') for nome in ('minhas', 'navii', 'verificadas')}
+    dados = acompanhamento_fichas.fichas_em_acompanhamento(current_app.config['db_session'], usuario, **opcoes)
+    uso_navii.registra('fichas', usuario, perf_counter() - inicio, pagina='api', total=dados['total'],
+                       alertas=dados['alertas'], **{k: '1' for k, v in opcoes.items() if v})
+    return jsonify(dados)
 
 
 @bp_navii.route('/api/ficha', methods=['GET', 'POST'])
