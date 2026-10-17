@@ -15,7 +15,7 @@ Fichas (agora = 17/10/2026):
 """
 import os
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import mock
 
 from flask import Flask
@@ -151,6 +151,8 @@ class TestCard(AcompanhamentoTestCase):
         self.assertEqual((c80['numero'], c80['estagio']['codigo'], c80['onde']['codigo']), ('C80', 'no_seco', '8932000'))
         self.assertEqual((c81['numero'], c81['semDesembarque'], c81['previsao']['situacao']), ('C81', True, 'vencida'))
         self.assertIsNone(c80['previsao'])                         # já desembarcou: a previsão não importa mais
+        self.assertEqual((c80['desembarque'][:10], c80['saida']), ('2026-01-12', None))   # saiu do porto para o
+        self.assertEqual(self.card(1)['conteineres'][0]['saida'][:10], '2026-01-14')    # seco: não é saída
         self.assertFalse(f2['alerta'])
         self.assertEqual((f2['agendada'][:10], f2['bloqueio']), ('2026-10-14', None))
 
@@ -241,6 +243,7 @@ class TestCasosLimite(AcompanhamentoTestCase):
         f2 = self.card(2)
         self.assertEqual((f2['responsavel'], f2['abriu'], f2['navii']), ('999.***.***-99', 'Chefe', False))
         self.assertEqual((f2['dias'], f2['setor']), (15, 'EQRIMP'))           # aberta em 02/10, agora 17/10 12h
+        self.assertEqual(self.card(7)['setor'], 'OUTRO')           # fora dos setores do usuário: o nome também
         with mock.patch.object(af, 'LIMITE_CARDS', 2):
             dados = self.lista()
         self.assertEqual(([f['id'] for f in dados['fichas']], dados['total'], dados['alertas']), ([1, 7], 4, 1))
@@ -284,6 +287,23 @@ class TestTelaEApi(AcompanhamentoTestCase):
         dados = self.client.get('/navii/api/fichas?verificadas=true', headers={'X-Usuario': ANALISTA}).get_json()
         self.assertEqual(dados['total'], 5)
         self.assertEqual(self.client.get('/navii/api/fichas').status_code, 401)
+
+    def test_link_do_conteiner_abre_o_card_no_navii(self):
+        """O link leva contêiner, CE e a janela (±1 dia do desembarque; sem desembarque, da previsão): sem período a
+        tela usaria o padrão e o contêiner antigo não apareceria. A busca do NAVI-I com esses parâmetros o encontra."""
+        fichas = {f['id']: f for f in self.client.get('/navii/api/fichas', headers={'X-Usuario': ANALISTA})
+                  .get_json()['fichas']}
+        c70, (c80, c81) = fichas[1]['conteineres'][0], fichas[2]['conteineres']
+        self.assertEqual(c70['navii'], {'conteiner': 'C70', 'ce': CE_A, 'tipo_janela': 'efetiva',
+                                        'data_inicio': '2026-01-10', 'data_fim': '2026-01-12'})
+        self.assertEqual((c80['navii']['tipo_janela'], c80['navii']['data_inicio']), ('efetiva', '2026-01-11'))
+        prevista = datetime.strptime(c81['previsao']['data'], '%Y-%m-%d')
+        self.assertEqual((c81['navii']['tipo_janela'], c81['navii']['data_fim']),
+                         ('prevista', f'{prevista + timedelta(days=1):%Y-%m-%d}'))
+        for conteiner in (c70, c80, c81):
+            cards = self.client.get('/navii/api/ces', query_string=conteiner['navii'],
+                                    headers={'X-Usuario': ANALISTA}).get_json()['cards']
+            self.assertEqual([c['numeroConteiner'] for c in cards], [conteiner['numero']])
 
     def test_pagina(self):
         html = self.client.get('/navii/fichas', headers={'X-Usuario': ANALISTA}).get_data(as_text=True)

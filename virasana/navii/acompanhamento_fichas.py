@@ -20,7 +20,7 @@ carregariam o registry inteiro do Fichas; `test_navii_acompanhamento` confere as
 import re
 import unicodedata
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -114,18 +114,21 @@ def descendentes(pais: Dict[str, Optional[str]], raiz: str) -> Set[str]:
     return vistos
 
 
-def usuario_e_setores(conexao, cpf: str) -> Tuple[Optional[dict], Dict[str, str]]:
-    """({cpf, nome, setor}, {setor: nome}) do usuário no Fichas; (None, {}) sem cadastro."""
+def usuario_e_setores(conexao, cpf: str) -> Tuple[Optional[dict], Dict[str, str], Dict[str, str]]:
+    """({cpf, nome, setor}, {setor do usuário: nome}, {todo setor: nome}) no Fichas; (None, {}, {}) sem cadastro.
+
+    Os setores do usuário são o dele e os subordinados; o nome de TODOS serve aos cards das Fichas em que ele aparece
+    fora dos seus setores."""
     linha = conexao.execute(select(USUARIOS.c.nome, USUARIOS.c.setor_id).where(USUARIOS.c.cpf == cpf)).first()
     if linha is None:
-        return None, {}
+        return None, {}, {}
     nomes, pais = {}, {}
     for id_, nome, pai in conexao.execute(select(SETORES.c.id, SETORES.c.nome, SETORES.c.pai_id)):
         nomes[_texto(id_)], pais[_texto(id_)] = _texto(nome), _texto(pai) or None
     setor = _texto(linha.setor_id)
     setores = descendentes(pais, setor) if setor else set()
     return ({'cpf': cpf, 'nome': _texto(linha.nome), 'setor': nomes.get(setor, setor)},
-            {s: nomes.get(s, s) for s in setores})
+            {s: nomes.get(s, s) for s in setores}, nomes)
 
 
 # ---------------------------------------------------------------- leitura das Fichas
@@ -230,15 +233,31 @@ def _ultimo_escaneamento(ciclo) -> Optional[dict]:
             'imagem': com_imagem[-1] if com_imagem else None}
 
 
-def _conteiner(numero: str, ciclo, previsao: Optional[dict], nomes_recintos: Dict[str, str],
+def _parametros_navii(numero: str, ce: str, ciclo, previsao: Optional[dict]) -> dict:
+    """Link para o card do contêiner no NAVI-I, na janela de ±1 dia do desembarque (efetiva) ou, sem desembarque, da
+    previsão de atracação (como o da completude): sem período, a tela usaria o padrão e o contêiner antigo sumiria."""
+    parametros = {'conteiner': numero, **({'ce': ce} if ce else {})}
+    desembarque = _data(ciclo.data_desembarque) if ciclo is not None else None
+    if desembarque is not None:
+        tipo, base = 'efetiva', desembarque.date()
+    elif previsao:
+        tipo, base = 'prevista', date.fromisoformat(previsao['data'])
+    else:
+        return parametros
+    return {**parametros, 'tipo_janela': tipo, 'data_inicio': f'{base - timedelta(days=1):%Y-%m-%d}',
+            'data_fim': f'{base + timedelta(days=1):%Y-%m-%d}'}
+
+
+def _conteiner(numero: str, ce: str, ciclo, previsao: Optional[dict], nomes_recintos: Dict[str, str],
                verificada: bool) -> dict:
     estagio = estagios_ciclo.estagio_do_ciclo(ciclo)
     sem_desembarque = ciclo is None or ciclo.data_desembarque is None
-    saida = (ciclo.data_saida_seco or ciclo.data_saida) if ciclo else None
+    # só a saída DEFINITIVA: a do porto rumo ao seco (data_saida, com o contêiner no seco) não é saída do controle
+    saida = (ciclo.data_saida_seco or ciclo.data_saida) if estagio in SAIU else None
     return {'numero': numero, 'estagio': estagios_ciclo.descreve(estagio), 'onde': _onde(ciclo, nomes_recintos),
             'desembarque': _iso(ciclo.data_desembarque) if ciclo else None, 'saida': _iso(saida),
             'semDesembarque': sem_desembarque, 'previsao': previsao if sem_desembarque else None,
-            'escaneamento': _ultimo_escaneamento(ciclo),
+            'escaneamento': _ultimo_escaneamento(ciclo), 'navii': _parametros_navii(numero, ce, ciclo, previsao),
             'alerta': estagio in SAIU and not verificada}
 
 
@@ -294,7 +313,7 @@ def fichas_em_acompanhamento(session, cpf: str, minhas: bool = False, navii: boo
     """{'usuario', 'setores', 'fichas' (cards; os com alerta primeiro), 'total', 'alertas', 'aviso'}."""
     agora = agora or datetime.now()
     conexao = session.connection()
-    usuario, setores = usuario_e_setores(conexao, cpf)
+    usuario, setores, nomes_setores = usuario_e_setores(conexao, cpf)
     if usuario is None:
         return {'usuario': None, 'setores': [], 'fichas': [], 'total': 0, 'alertas': 0,
                 'aviso': 'Seu usuário não tem cadastro no Fichas: peça o cadastro ao supervisor.'}
@@ -302,7 +321,7 @@ def fichas_em_acompanhamento(session, cpf: str, minhas: bool = False, navii: boo
     eventos = _eventos(conexao, [linha.id for linha in linhas])
     if not verificadas:
         linhas = [linha for linha in linhas if not _verificada(eventos.get(linha.id, []))]
-    cards = _monta_cards(session, conexao, linhas, eventos, setores, agora)
+    cards = _monta_cards(session, conexao, linhas, eventos, nomes_setores, agora)
     cards.sort(key=lambda c: (not c['alerta'], -(c['id'])))
     aviso = f'Mostrando as {LIMITE_CARDS} primeiras de {len(cards)}.' if len(cards) > LIMITE_CARDS else None
     return {'usuario': usuario, 'setores': sorted(setores.values()), 'fichas': cards[:LIMITE_CARDS],
@@ -333,7 +352,7 @@ def _cpfs(linhas, eventos: Dict[int, list]) -> Set[str]:
     return pessoas | citados
 
 
-def _monta_cards(session, conexao, linhas, eventos: Dict[int, list], setores: Dict[str, str],
+def _monta_cards(session, conexao, linhas, eventos: Dict[int, list], nomes_setores: Dict[str, str],
                  agora: datetime) -> List[dict]:
     lotes, com_flag = _rvfs_e_flags(conexao, [linha.id for linha in linhas])
     pares = _pares(session, linhas, lotes)
@@ -343,7 +362,7 @@ def _monta_cards(session, conexao, linhas, eventos: Dict[int, list], setores: Di
     for linha in linhas:
         evs = eventos.get(linha.id, [])
         verificada = _verificada(evs)
-        conteineres = [_conteiner(c, ciclos.get((ce, c)), previsoes.get(ce), nomes_recintos, verificada)
+        conteineres = [_conteiner(c, ce, ciclos.get((ce, c)), previsoes.get(ce), nomes_recintos, verificada)
                        for ce, c in pares[linha.id]]
-        cards.append(_card(linha, evs, conteineres, linha.id in com_flag, nomes, setores, agora))
+        cards.append(_card(linha, evs, conteineres, linha.id in com_flag, nomes, nomes_setores, agora))
     return cards

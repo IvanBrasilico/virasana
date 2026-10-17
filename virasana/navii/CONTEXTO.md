@@ -643,6 +643,29 @@ só "saiu sem verificação física" é alerta (auditor e bloqueio viram informa
   derrubados; roteiro no navegador com servidor de demonstração (nova, acrescentar, já existe).
 - Implantação: `git pull` do bhadrasana2 E do virasana; `MONGODB_RISCO` no ambiente do processo web do virasana.
 
+**Fase 2 FEITA (17/10/2026)** — aba "Fichas em acompanhamento" (`/navii/fichas`, API `GET /navii/api/fichas?minhas=
+&navii=&verificadas=`; abas "Análise de risco | Fichas em acompanhamento" no cabeçalho das duas telas e entrada no menu
+NAVII). Só no virasana e SOMENTE LEITURA:
+- `acompanhamento_fichas.py` declara as tabelas do Fichas com as colunas lidas (Core, como `fichas_ovr`; o teste
+  `TestColunas` confere contra os models) — não importa os models do bhadrasana. Quais: `tipooperacao = 1`, fase < 3,
+  sem evento especial 2 não excluído (com "verificadas", entram também), dos setores do usuário (o dele e os
+  subordinados em qualquer nível, pelo `pai_id`, à prova de ciclo no cadastro) OU em que ele abriu / é responsável /
+  auditor. Usuário sem cadastro no Fichas: aviso, lista vazia. Limites: 2.000 lidas, 200 cards (aviso).
+- Card: fase e status (último evento válido), pessoas (nome; sem cadastro, CPF mascarado), dias desde a abertura,
+  setor (nome de qualquer setor), bloqueio de CE (o primeiro, por nome), verificação agendada (a última) ou informada,
+  4 últimos eventos (CPF no motivo vira nome ou máscara). Contêineres: os das RVFs (`numerolote` normalizado); sem RVF
+  com contêiner, os do CE no Mercante (até 20). Por contêiner, o ciclo pelas buscas do NAVI-I em lote (família do
+  CE): estágio, onde está (seco: armazenagem), desembarque, saída SÓ a definitiva (entregue/reembarcado — a saída do
+  porto rumo ao seco não é saída), previsão de atracação se ainda sem desembarque, último escaneamento e a última
+  imagem. **Alerta (o único)**: contêiner entregue ou reembarcado sem verificação física informada — verificação
+  EXCLUÍDA não cala o alerta; os com alerta vêm primeiro.
+- Link do contêiner para o card no NAVI-I com CE e janela de ±1 dia do desembarque (efetiva) ou, sem desembarque, da
+  previsão (como a completude): sem período a tela usaria o padrão e o contêiner antigo não apareceria.
+- Testes: `test_navii_acompanhamento.py` (20; cenário F1–F9 com setores 1>2, 9 e 7<->8; inclui ida e volta do link na
+  `/navii/api/ces`). 42 mutantes, todos derrubados (escopo por papel, fase 3, outra flag, neto de setor, reembarcado,
+  excluída, limites, link). Roteiro no navegador com servidor de demonstração sob `/virasana`. Log `NAVII_USO
+  acao=fichas` (tela e api, com total e alertas).
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
