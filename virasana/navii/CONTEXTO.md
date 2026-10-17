@@ -609,6 +609,16 @@ todas as Fichas de repressão na importação dos setores do usuário, com o sel
 flag "NAVI-I" em `ovr_flags` (registro, sem DDL); (6) resumo do risco nas observações (1.000 caracteres) e a memória
 de cálculo completa na `descricao_interna` da RVF; (7) responsável inicial = o analista que abriu.
 
+**Medição de 17/10/2026** (`diagnostico_fichas_repressao.py`, 24 meses): 1.376 Fichas tipo 1 — **75% da SACIT**
+(conferência física de DTA canal vermelho: eventos 44/45, "conferência física realizada remotamente") e 22% da
+**EQRIMP** (a repressão de fato; padrão: abertura -> Bloqueio de CE incluído -> Verificação Física Agendada em
+minutos). Evento 22 em 19% (mediana 5,1 d, p90 17,8 d); auditor em 12% (mediana 46 d — não serve de alerta);
+bloqueio de CE em 5% (mediana 0,1 d); 78% das RVFs sem imagem e só 26% com contêiner (Fichas da EQRIMP nascem sem
+RVF: contêineres da aba vêm também do CE); 152 abertas sem o evento 22, 70% com mais de 1 ano (SACIT, paradas);
+ciclo de vida dos 75 contêineres dessas Fichas: 0 localizados (antigas; normalizar o contêiner); observações: 71%
+acima de 500 caracteres (resumo NAVI-I curto); atalho antigo usado em 3 Fichas; nenhum evento excluído; flags em uso
+são "Operação X". Fim do acompanhamento: evento 22 OU fase >= 3.
+
 **Fases**: 0 diagnóstico das Fichas atuais (`analytic_scripts/diagnostico_fichas_repressao.py`) -> 1 botão "Abrir
 Ficha" no card -> 2 aba "Fichas em acompanhamento" (card simplificado por Ficha, com o ciclo de vida de cada
 contêiner, últimos eventos e alertas: **saiu sem verificação física**, desembarcado sem bloqueio de CE, previsão
