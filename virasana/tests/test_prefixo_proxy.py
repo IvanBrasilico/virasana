@@ -104,7 +104,7 @@ class TestPrefixoProxy(unittest.TestCase):
     def test_navii_js_recebe_as_urls_das_apis_com_prefixo(self):
         html = self.get('/navii/').get_data(as_text=True)
         for esperado in ('/virasana/navii/api/ces', '/virasana/navii/api/sugestoes',
-                         '/virasana/navii/api/filtros', '/virasana/mini1/imagem_id'):
+                         '/virasana/navii/api/filtros', '/virasana/navii/api/uso', '/virasana/mini1/imagem_id'):
             self.assertIn(f'"{esperado}"', html)
 
     def test_navii_aberto_por_link_com_filtros_da_url(self):

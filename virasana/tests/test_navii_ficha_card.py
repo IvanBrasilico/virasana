@@ -17,7 +17,7 @@ from mongomock.gridfs import enable_gridfs_integration
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from virasana.navii import busca_navii, dta_navii, ficha_navii, fichas_ovr, tabelas_opcionais
+from virasana.navii import busca_navii, coleta_uso, dta_navii, ficha_navii, fichas_ovr, tabelas_opcionais
 from virasana.navii.busca_navii import tabela_recintos
 from virasana.navii.views_navii import bp_navii
 from virasana.tests.test_navii_busca_sqlite import TABELAS, cria_ce, cria_ciclo, monta_cenario
@@ -106,6 +106,16 @@ class TestApiFicha(FichaCardTestCase):
         self.assertIn('NCM 84713000', dados['descricao'])
         self.assertIn('Desembarque: 11/01/2026', dados['descricao'])
         self.assertEqual(dados['imagens'], 2)
+
+    def test_ficha_fica_registrada_na_pesquisa_de_onde_veio(self):
+        col = coleta_uso.colecao(self.mongo_virasana)
+        pesquisa = coleta_uso.registra_pesquisa(col, ANALISTA, '2', 'aba-0001-teste', None, 'tela', 'efetiva',
+                                                ('2026-01-01', '2026-01-31'), {}, 1, {}, [])
+        dados = self.abre(pesquisa=pesquisa).get_json()
+        [acao] = col.find_one({})['acoes']
+        self.assertEqual({k: acao[k] for k in ('t', 'ficha', 'resultado', 'ce', 'c')},
+                         {'t': 'ficha', 'ficha': dados['ovr_id'], 'resultado': 'nova', 'ce': CE_A, 'c': 'C70'})
+        self.assertEqual(self.abre(conteiner='C71', pesquisa='lixo').status_code, 200)   # sem pesquisa válida: abre
 
     def test_abre_e_clique_duplo(self):
         resposta = self.abre(resumo='  meu resumo editado ', bloqueio=True)

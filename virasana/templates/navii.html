@@ -814,7 +814,8 @@
     var NOMES_CAMPO = { ncm: 'NCM', porto_origem: 'origem' };
     var MINIMO_OCULTAR = {{ minimo_ocultar | tojson }};
     var FICHA_URL = {{ ficha_url | tojson }};
-    var modos = { ncm: 'filtrar', porto_origem: 'filtrar' };
+    var USO_URL = {{ uso_url | tojson }};
+    var modos ={ ncm: 'filtrar', porto_origem: 'filtrar' };
     var rotulos = {
         conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
@@ -1603,6 +1604,147 @@
                 : 'Atracação prevista de ' + de);
     }
 
+    // ---------------------------------------------------------------- coleta de uso (estatísticas de uso)
+    // O servidor grava cada pesquisa e os cards que enviou (coleta_uso.py); aqui só se medem os cards VISTOS — 50%
+    // do card na tela (ou o card cobrindo metade da tela) por 1 s seguido; a rolagem rápida não conta — e as
+    // interações, enviados em lotes: a cada 20 s, ao trocar de pesquisa e ao esconder ou fechar a aba. Os segundos
+    // vão acumulados (o servidor guarda o maior valor: reenviar não soma). Nada aqui pode atrapalhar a tela.
+    var USO_INTERVALO_MS = 20000;
+    var USO_LOTE = 200;
+    var INTERACOES_USO = [
+        ['.imagem-principal, .miniaturas-secundarias img', 'imagem'], ['.btn-expandir-descricao', 'descricao'],
+        ['a.link-ce, a.link-master', 'extrato'], ['.conteiner-titulo a', 'conteiner'],
+        ['button.btn-acoes-codigo', 'menu'], ['button.btn-abrir-ficha', 'ficha'], ['a.tag-ficha', 'fichas'],
+        ['summary', 'detalhes']
+    ];
+    // origem: de onde vem a PRÓXIMA pesquisa (tela, link, salvo, card, desfazer); anterior: a última desta aba
+    var uso = { aba: idDaAba(), origem: 'tela', pesquisa: null, anterior: null, cards: {}, visiveis: {} };
+
+    function idDaAba() {
+        // o mesmo id enquanto a aba do navegador existir (sessionStorage é por aba): agrupa a sessão de análise
+        var id = null;
+        try { id = sessionStorage.getItem('navii_aba'); } catch (e) { id = null; }
+        if (!id) {
+            id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+            try { sessionStorage.setItem('navii_aba', id); } catch (e) { /* sem armazenamento: um id por carga */ }
+        }
+        return id;
+    }
+
+    function cartaoUso(item) {
+        if (!uso.cards[item]) { uso.cards[item] = { s: 0, desde: null, x: {}, enviadoS: 0, enviadoX: 0 }; }
+        return uso.cards[item];
+    }
+
+    function abreTrecho(item) {
+        var c = cartaoUso(item);
+        if (c.desde === null && !document.hidden) { c.desde = Date.now(); }
+    }
+
+    function fechaTrecho(item) {
+        var c = uso.cards[item];
+        if (!c || c.desde === null) { return; }
+        var segundos = (Date.now() - c.desde) / 1000;
+        if (segundos >= 1) { c.s += segundos; }   // trecho de menos de 1 s: rolagem, não conta
+        c.desde = null;
+    }
+
+    var observadorUso = new IntersectionObserver(function (entradas) {
+        entradas.forEach(function (entrada) {
+            var item = entrada.target.dataset.item;
+            var metadeDaTela = entrada.rootBounds && entrada.intersectionRect.height >= entrada.rootBounds.height / 2;
+            if (entrada.isIntersecting && (entrada.intersectionRatio >= 0.5 || metadeDaTela)) {
+                uso.visiveis[item] = true;
+                abreTrecho(item);
+            } else {
+                delete uso.visiveis[item];
+                fechaTrecho(item);
+            }
+        });
+    }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+
+    function observaCardUso(elemento, card) {
+        if (card.item_id === null || card.item_id === undefined) { return; }
+        elemento.dataset.item = card.item_id;
+        observadorUso.observe(elemento);
+    }
+
+    function totalVisto(c) {
+        // acumulado + o trecho em curso (se já passou de 1 s), sem fechar o trecho
+        var emCurso = c.desde !== null ? (Date.now() - c.desde) / 1000 : 0;
+        return c.s + (emCurso >= 1 ? emCurso : 0);
+    }
+
+    function loteUso() {
+        var lote = [];
+        Object.keys(uso.cards).forEach(function (item) {
+            var c = uso.cards[item];
+            var s = Math.round(totalVisto(c) * 10) / 10;
+            var x = Object.keys(c.x);
+            if (lote.length < USO_LOTE && (s > c.enviadoS || x.length > c.enviadoX)) {
+                lote.push({ item: Number(item), s: s, x: x });
+                c.enviadoS = s;
+                c.enviadoX = x.length;
+            }
+        });
+        return lote;
+    }
+
+    function enviaUso() {
+        if (!uso.pesquisa) { return; }
+        var lote = loteUso();
+        if (!lote.length) { return; }
+        try {
+            fetch(USO_URL, {
+                method: 'POST', keepalive: true,
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+                body: JSON.stringify({ pesquisa: uso.pesquisa, vistos: lote })
+            }).catch(function () { return null; });   // coleta de uso é acessória: o lote se perde
+        } catch (e) { /* navegador sem fetch com keepalive: o lote se perde */ }
+    }
+
+    function cicloUso() {
+        enviaUso();
+        setTimeout(cicloUso, USO_INTERVALO_MS);
+    }
+
+    function encerraPesquisaUso() {
+        // antes de uma nova pesquisa (os cards da tela vão sumir): fecha os trechos e envia o que falta
+        Object.keys(uso.visiveis).forEach(fechaTrecho);
+        enviaUso();
+        observadorUso.disconnect();
+        if (uso.pesquisa) { uso.anterior = uso.pesquisa; }
+        uso.pesquisa = null;
+        uso.cards = {};
+        uso.visiveis = {};
+    }
+
+    function interacaoUso(e) {
+        var cartao = e.target.closest('.card-navii');
+        if (!cartao || !cartao.dataset.item) { return; }
+        for (var i = 0; i < INTERACOES_USO.length; i++) {
+            if (e.target.closest(INTERACOES_USO[i][0])) {
+                cartaoUso(cartao.dataset.item).x[INTERACOES_USO[i][1]] = true;
+                return;
+            }
+        }
+    }
+
+    el.grid.addEventListener('click', interacaoUso, true);
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            Object.keys(uso.visiveis).forEach(fechaTrecho);
+            enviaUso();
+        } else {
+            Object.keys(uso.visiveis).forEach(abreTrecho);
+        }
+    });
+    window.addEventListener('pagehide', function () {
+        Object.keys(uso.visiveis).forEach(fechaTrecho);
+        enviaUso();
+    });
+    setTimeout(cicloUso, USO_INTERVALO_MS);
+
     function carregarPagina() {
         if (estadoBusca.carregando || estadoBusca.fim) { return; }
         estadoBusca.carregando = true;
@@ -1623,7 +1765,15 @@
                 params.set(k, valor);
             }
         });
+        var primeira = !estadoBusca.cursor;
         if (estadoBusca.cursor) { params.set('cursor_id', estadoBusca.cursor); }
+        if (primeira) {   // coleta de uso: a aba, de onde veio e a pesquisa anterior; nas seguintes, o id da pesquisa
+            params.set('aba', uso.aba);
+            params.set('origem', uso.origem);
+            if (uso.anterior) { params.set('anterior', uso.anterior); }
+        } else if (uso.pesquisa) {
+            params.set('pesquisa', uso.pesquisa);
+        }
 
         var inicio = performance.now();
         fetch(API_URL + '?' + params.toString())
@@ -1636,7 +1786,15 @@
                 return resp.json();
             })
             .then(function (dados) {
-                dados.cards.forEach(function (card) { el.grid.appendChild(montaCard(card)); });
+                if (primeira) {
+                    uso.pesquisa = dados.pesquisa || null;
+                    uso.origem = 'tela';
+                }
+                dados.cards.forEach(function (card) {
+                    var elemento = montaCard(card);
+                    el.grid.appendChild(elemento);
+                    observaCardUso(elemento, card);
+                });
 
                 if (dados.cards.length === 0 && el.grid.children.length === 0) {
                     el.estadoVazio.hidden = false;
@@ -1667,6 +1825,7 @@
     }
 
     function reiniciarBusca() {
+        encerraPesquisaUso();   // a pesquisa que sai da tela: envia os cards vistos dela
         // sem CE, período vazio não vale: volta a sugestão da janela
         if (semPeriodo() && !semLimiteDeData(estadoBusca.filtros)) { aplicarDatasDefault(estadoBusca.tipo_janela); }
         estadoBusca.cursor = null;
@@ -2069,7 +2228,10 @@
     toast.desfazer.addEventListener('click', function () {
         var filtros = toast.filtrosAntes;
         escondeToast();
-        if (filtros) { restauraFiltros(filtros); }
+        if (filtros) {
+            uso.origem = 'desfazer';
+            restauraFiltros(filtros);
+        }
     });
 
     function aplicaDoCard(campo, opcao) {
@@ -2084,6 +2246,7 @@
         }
         renderCaixa(campo);   // o painel mostra o que vai ser aplicado
         leFiltrosDaTela();
+        uso.origem = 'card';
         reiniciarBusca();
         mostraToast(opcao.texto.replace(/^Ocultar /, 'Ocultando ').replace(/^Filtrar /, 'Filtrando '),
                     antes, totalAntes);
@@ -2264,7 +2427,8 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify({ ce: p.ce, conteiner: p.conteiner, resumo: resumo ? resumo.value : null,
-                                   bloqueio: !!(bloqueio && bloqueio.checked), agendada: !!(agendada && agendada.checked) })
+                                   bloqueio: !!(bloqueio && bloqueio.checked), agendada: !!(agendada && agendada.checked),
+                                   pesquisa: uso.pesquisa })
         })
             .then(function (resp) {
                 return resp.json().then(function (dados) {
@@ -2441,6 +2605,7 @@
         inputNomeSalvo.value = salvo.nome;
         avisoSalvos('Filtro "' + salvo.nome + '" aplicado.');
         leFiltrosDaTela();
+        uso.origem = 'salvo';
         reiniciarBusca();
     }
 
@@ -2512,6 +2677,7 @@
     }
 
     if (FILTROS_INICIAIS) {
+        uso.origem = 'link';
         aplicaFiltrosIniciais(FILTROS_INICIAIS);
     } else {
         aplicarDatasDefault(estadoBusca.tipo_janela);

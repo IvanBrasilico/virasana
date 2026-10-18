@@ -16,8 +16,11 @@ Expõe:
                              para o diálogo; POST abre (ou acrescenta o contêiner à Ficha aberta do CE)
   GET /navii/fichas        -> aba "Fichas em acompanhamento" (`acompanhamento_fichas.py`)
   GET /navii/api/fichas    -> JSON da aba (?minhas=1&navii=1&verificadas=1)
+  POST /navii/api/uso      -> cards vistos de uma pesquisa (segundos visíveis e interações), em lotes do navegador
 
-A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`).
+A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`). Para as
+estatísticas de uso, cada pesquisa fica no Mongo com os cards enviados e os vistos (`coleta_uso.py`): a 1ª página
+devolve o id da pesquisa (`pesquisa`), que o navegador manda nas páginas seguintes, nos vistos e no "Abrir Ficha".
 
 Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
@@ -32,13 +35,14 @@ from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import (
-    acompanhamento_fichas, dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii, uso_navii,
+    acompanhamento_fichas, coleta_uso, dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii,
+    uso_navii,
 )
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
     busca_ces_navii,
     conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
-    _janela_previsao, sugere_recintos,
+    _janela_previsao, _periodo_navii, sugere_recintos,
 )
 
 bp_navii = Blueprint(
@@ -118,6 +122,7 @@ def index():
         segundos_lenta=uso_navii.SEGUNDOS_LENTA,
         minimo_ocultar=MINIMO_OCULTAR,
         ficha_url=url_for('navii.api_ficha'),
+        uso_url=url_for('navii.api_uso'),
     )
 
 
@@ -235,6 +240,8 @@ def api_ces():
     avisos = []   # códigos de OCULTAR ignorados (curtos ou que esconderiam um filtro positivo): a tela mostra
     normaliza_filtros(filtros, avisos)
     next_cursor = cards[-1]['item_id'] if len(cards) == limit else None
+    tempos = {'consulta': t_consulta, 'contagem': t_contagem, 'cards': t_cards}
+    pesquisa = _registra_pesquisa(session, cursor_id, tipo_janela, filtros, total, tempos, cards)
 
     uso_navii.registra('pesquisa', _usuario(), perf_counter() - inicio, janela=tipo_janela,
                        pagina='1' if not cursor_id else 'seguinte', filtros=filtros, total=total, n_cards=len(cards),
@@ -243,11 +250,65 @@ def api_ces():
         'cards': cards,
         'next_cursor': next_cursor,
         'total': total,
-        'tempos': {'consulta': t_consulta, 'contagem': t_contagem, 'cards': t_cards},
+        'tempos': tempos,
         'tipo_janela': tipo_janela,
         'filtros': filtros,
         'avisos': avisos,
+        'pesquisa': pesquisa,
     })
+
+
+def _coleta(registro, padrao=None):
+    """Chama a coleta de uso (`coleta_uso.py`) com a coleção do Mongo, sem nunca derrubar a tela (como o log de
+    uso): sem Mongo configurado ou com falha, devolve `padrao`."""
+    db = current_app.config.get('mongodb')
+    if db is None or not _usuario():
+        return padrao
+    try:
+        return registro(coleta_uso.colecao(db))
+    except Exception:  # noqa: a coleta de uso é acessória
+        current_app.logger.warning('NAVI-I: falha na coleta de uso', exc_info=True)
+        return padrao
+
+
+def _setor(session, usuario) -> Optional[str]:
+    try:
+        return coleta_uso.setor_do_usuario(session, usuario)
+    except Exception:  # noqa: sem o setor, a pesquisa é gravada assim mesmo
+        current_app.logger.warning('NAVI-I: setor do usuário no Fichas não lido', exc_info=True)
+        return None
+
+
+def _registra_pesquisa(session, cursor_id, tipo_janela: str, filtros: dict, total, tempos: dict,
+                       cards: list) -> Optional[str]:
+    """Coleta de uso: a 1ª página grava a pesquisa (com a aba, a pesquisa anterior e a origem que o navegador manda)
+    e devolve o id; as seguintes acrescentam os cards à pesquisa do parâmetro `pesquisa` e o devolvem."""
+    usuario = _usuario()
+    if cursor_id:
+        pesquisa = request.args.get('pesquisa')
+        return pesquisa if _coleta(lambda col: coleta_uso.registra_pagina(col, pesquisa, usuario, cards)) else None
+    setor = _setor(session, usuario) if usuario else None
+    return _coleta(lambda col: coleta_uso.registra_pesquisa(
+        col, usuario, setor, request.args.get('aba'), request.args.get('anterior'), request.args.get('origem'),
+        tipo_janela, _periodo_navii(tipo_janela, filtros), normaliza_filtros(filtros), total, tempos, cards))
+
+
+@bp_navii.route('/api/uso', methods=['POST'])
+@login_required
+def api_uso():
+    """Cards vistos de uma pesquisa — {pesquisa, vistos: [{item, s: segundos visíveis acumulados, x: interações}]},
+    em lotes do navegador (`fetch keepalive`). O servidor só aceita cards que enviou ao usuário nessa pesquisa."""
+    usuario = _usuario()
+    if not usuario:
+        return jsonify({'erro': 'usuário não identificado'}), 401
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({'erro': 'corpo JSON esperado'}), 400
+    aceitos = _coleta(lambda col: coleta_uso.registra_vistos(col, dados.get('pesquisa'), usuario, dados.get('vistos')),
+                      padrao=0)
+    if aceitos is None:
+        return jsonify({'erro': 'pesquisa não encontrada'}), 404
+    return jsonify({'aceitos': aceitos})
 
 
 def _cronometrado(funcao, *args, **kwargs):
@@ -309,8 +370,9 @@ def api_ficha():
     """Abrir Ficha pelo card — o tratamento do risco (`ficha_navii.py`; regra no Fichas, `navii_ficha.py`).
 
     GET ?ce=&conteiner= -> prévia para o diálogo (o que será feito, impedimento, Fichas do CE, textos);
-    POST {ce, conteiner, resumo, bloqueio, agendada} -> abre a Ficha, ou acrescenta o contêiner à Ficha de
-    repressão aberta do CE. O servidor remonta tudo pelo card (do cliente vêm só o resumo e as caixas).
+    POST {ce, conteiner, resumo, bloqueio, agendada, pesquisa} -> abre a Ficha, ou acrescenta o contêiner à Ficha de
+    repressão aberta do CE. O servidor remonta tudo pelo card (do cliente vêm só o resumo e as caixas); a Ficha fica
+    registrada na pesquisa de onde veio (coleta de uso).
     """
     inicio = perf_counter()
     usuario = _usuario()
@@ -341,6 +403,8 @@ def api_ficha():
         return jsonify({'erro': str(err)}), 400
     uso_navii.registra('ficha', usuario, perf_counter() - inicio, ce=ce, conteiner=conteiner,
                        resultado=resultado.acao, ficha=resultado.ovr_id)
+    _coleta(lambda col: coleta_uso.registra_acao(col, dados.get('pesquisa'), usuario, {
+        't': 'ficha', 'ficha': resultado.ovr_id, 'resultado': resultado.acao, 'ce': ce, 'c': conteiner}))
     return jsonify({'acao': resultado.acao, 'ovr_id': resultado.ovr_id, 'rvf_id': resultado.rvf_id,
                     'eventos': resultado.eventos, 'imagens': resultado.imagens,
                     'url': ficha_navii.url_da_ficha(resultado.ovr_id)})

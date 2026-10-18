@@ -666,6 +666,84 @@ NAVII). Só no virasana e SOMENTE LEITURA:
   excluída, limites, link). Roteiro no navegador com servidor de demonstração sob `/virasana`. Log `NAVII_USO
   acao=fichas` (tela e api, com total e alertas).
 
+## Estatísticas de uso — aba gerencial (plano aprovado em 17/10/2026)
+
+Objetivo: medir o uso do NAVI-I e a produtividade por usuário/setor em períodos (ano, semestre, trimestre, mês,
+comparando com o anterior), o quanto do total se consegue analisar, o quanto os parâmetros consideram risco, e o
+que as pesquisas geraram no Fichas (Fichas abertas, verificação, resultado). Números RELATIVOS, não só absolutos.
+
+**Unidades**: pesquisa = 1ª página de uma busca (id do servidor; as seguintes pertencem a ela); sessão de análise =
+pesquisas da mesma aba do navegador sem pausa > 30 min; card carregado (contado no servidor) / **visto** (>= 50% na
+tela por 1 s seguido) / **examinado** (visto + interação: imagem, descrição, extrato, risco, menu Filtrar/Ocultar,
+Abrir Ficha) / acionado (Ficha). **Refinamento**: a cobertura conta CONTÊINERES DISTINTOS vistos por usuário/setor
+no período — refinar e rever não infla; pesquisas medem esforço; a pesquisa anterior da mesma aba fica guardada para
+classificar a transição depois.
+
+**Funil**: universo do período (mesma regra da contagem da tela, por janela e dia) -> selecionados pelos parâmetros
+(seletividade = total / universo, mediana; pesquisa sem filtro à parte) -> vistos (profundidade = vistos / total) ->
+examinados -> Fichas -> verificação informada -> com resultado. Cobertura = contêineres distintos vistos / universo,
+pela DATA DO CONTÊINER (desembarque ou previsão), não da pesquisa. Por usuário só números normalizados (vistos por
+hora ativa — pausas > 5 min fora —, Fichas por 100 examinados).
+
+**Coleta**: o servidor registra a pesquisa (usuário, setor no momento, janela, período, filtros normalizados, origem,
+total, tempos) e os cards enviados (item, posição, data de referência); o navegador (IntersectionObserver) manda em
+lotes os segundos visíveis e as interações (`POST /navii/api/uso`, CSRF, `fetch keepalive`) — o servidor só aceita
+cards que enviou àquele usuário naquela pesquisa. "Abrir Ficha" leva o id da pesquisa (vínculo exato). Nunca derruba
+a tela; o log `NAVII_USO` continua.
+
+**Fichas no período** (só leitura): repressão na importação abertas, NAVI-I x demais, status com as definições do
+dashboard de operações do Fichas (sem aberturas / RVF = aguardando saneamento / TG = mercadorias informadas /
+concluída / arquivada) e resultados (`ovr_resultados` por tipo e valor; valor do TG). Maturação: "resultado até hoje"
+com a idade mediana + comparação por coorte ("resultado em até N dias da abertura"). Atribuição certa (flag NAVI-I /
+id da pesquisa) e provável (Ficha aberta no Fichas com CE visto no NAVI-I pelo mesmo usuário até 30 dias antes).
+
+**Decisões (usuário, 17/10/2026)**: (1) armazenamento no **Mongo do virasana** (como os filtros salvos: sem DDL,
+formato flexível enquanto as definições são refinadas); (2) números por usuário: cada um vê os seus, o perfil
+**Supervisor** do Fichas (`ovr_perfis_usuarios`) vê os usuários dos seus setores (o dele e os subordinados), os demais
+só os totais por setor; o manual avisa que o uso é registrado; (3) definições de visto/examinado/sessão aprovadas;
+(4) atribuição provável incluída (F3); (5) sem histórico de logs a aproveitar (sistema ainda não em produção).
+
+**Fases**: F0 diagnóstico (custo da contagem do universo por dia; Fichas por período conferidas com o dashboard;
+tempo até o resultado, para a coorte) -> F1 coleta, sem tela (vai a produção cedo para juntar dados; um script confere
+os números) -> F2 aba "Estatísticas de uso" (funil até examinados, cobertura, seletividade, comparação de períodos,
+setor/usuário, planilha) -> F3 Fichas e resultado no período (funil completo, maturação, NAVI-I x demais, atribuição
+provável) -> F4 ajustes com dados reais.
+
+**F0 FEITA (17/10/2026)** — `analytic_scripts/diagnostico_estatisticas_uso.py` (reaproveita a carga do
+`diagnostico_fichas_repressao.py`; teste `test_diagnostico_estatisticas_uso.py`, 9 mutantes derrubados): universo dia a
+dia nas duas janelas com o tempo de cada contagem e a conferência "soma dos dias = período" (avisa DUPLA CONTAGEM);
+Fichas tipo 1 por mês (NAVI-I, RVF, só RVF de INI, verificação, TG, resultado, encerradas sem resultado); status do
+dashboard x proposto; resultados por tipo; maturação por coorte (em até 30/90/180/365 dias). **Achado de desenho**: o
+dashboard de operações chama de "aguardando saneamento" qualquer Ficha com RVF — a Ficha do NAVI-I nasce com a RVF da
+inspeção não invasiva, então a estatística usa a VERIFICAÇÃO FÍSICA INFORMADA (evento especial 2); resultado = TG ou
+`ovr_resultados`. **Falta rodar em produção** (`--dias-universo 30 --meses 24`) para decidir o universo sob demanda e o
+N da coorte.
+
+**F1 FEITA (17/10/2026)** — coleta, sem tela:
+- `navii/coleta_uso.py` (Mongo do virasana, coleção `navii_uso_pesquisas`, um documento por pesquisa; ver a docstring):
+  `registra_pesquisa` (1ª página: usuário, setor no Fichas no momento — `ovr_usuarios`, em cache 10 min —, aba,
+  anterior SÓ do mesmo usuário, origem da lista ou "outra", janela, período usado na busca, filtros normalizados sem as
+  datas, total, tempos, cards enviados com posição e dias de desembarque/previsão, até 1.000); `registra_pagina`
+  (páginas seguintes, só do dono; posição continua; `n_cards` conta todos); `registra_vistos` (só cards ENVIADOS àquele
+  usuário naquela pesquisa; segundos com `$max` — reenviar não soma —, teto de 3.600 s por card, NaN/booleano/negativo
+  descartados; interações da lista, com `$addToSet`; até 200 por lote); `registra_acao` (Ficha aberta pelo card).
+  **Visto** = segundos OU interação (quem clicou viu: examinados ⊂ vistos); **examinado** = com interação.
+- `views_navii.py`: a 1ª página de `/navii/api/ces` devolve `pesquisa`; as seguintes a recebem; `POST /navii/api/uso`
+  (401 sem usuário, 400 sem JSON, 404 pesquisa de outro/inexistente); "Abrir Ficha" grava a ação na pesquisa. Sem
+  Mongo, Mongo fora ou setor ilegível: a tela segue (`_coleta`/`_setor` engolem e registram WARNING).
+- `navii.html`: id da aba em `sessionStorage`; `IntersectionObserver` por card (>= 50% do card ou o card cobrindo
+  metade da tela; trecho < 1 s não conta; aba escondida fecha os trechos); interações por delegação (imagem,
+  descrição, extrato, contêiner, detalhes, menu Filtrar/Ocultar, Abrir Ficha, selo de Ficha); lotes a cada 20 s, ao
+  trocar de pesquisa (`reiniciarBusca` -> `encerraPesquisaUso`) e ao esconder/fechar a aba (`fetch keepalive`);
+  origem da pesquisa: link (URL), salvo, card, desfazer, tela.
+- Conferência: `analytic_scripts/diagnostico_coleta_uso.py --dias 7` (volume, sessões, cards enviados/vistos/
+  examinados somados e DISTINTOS por contêiner — a diferença é a repetição do refinamento —, profundidade, segundos por
+  card, transições mais/menos critérios, por usuário com CPF mascarado, Fichas). Protótipo das contas da F2.
+- Testes: `test_navii_coleta_uso.py` (17), `test_diagnostico_coleta_uso.py` (7), vínculo da Ficha em
+  `test_navii_ficha_card.py`; 30 + 9 mutantes derrubados. Roteiro no navegador (demo sob `/virasana`): link -> card ->
+  card -> desfazer encadeados pela `anterior`, vistos enviados na troca de pesquisa, 2ª página na mesma pesquisa.
+  Observação do roteiro: em tela estreita o card tem ~1.700 px — um card cobre a tela inteira e só ele conta (correto).
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
