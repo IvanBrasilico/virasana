@@ -841,6 +841,27 @@ prevista dia a dia: ainda não há desembarques do ciclo de vida nesse mês — 
   começando no meio: `desde` ("Cobertura desde DD/MM, início do registro do uso").
 - Testes e mutantes refeitos (F2a 36/36; F2b 14/15, o vivo equivalente); roteiro no navegador das duas mensagens.
 
+**F3 FEITA (18/10/2026)** — Fichas e resultado no período (`navii/resultado_fichas.py`, só leitura; para validar com
+usuários):
+- Fichas tipo 1 ABERTAS no período (`COALESCE(datahora, create_date)`, o último dia inteiro), por SETOR e ORIGEM:
+  'navii' = flag NAVI-I (só a Ficha NOVA: o "acrescentar contêiner" do card não põe a flag); 'provavel' = as demais
+  cujo CE foi VISTO (segundos ou clique; card só enviado não conta) no NAVI-I por QUEM ABRIU a Ficha até 30 dias
+  ANTES da abertura (depois não conta); 'demais'. Setores com mais Fichas primeiro.
+- Por grupo: abertas; verificação física informada (especial 2, não excluída — outro evento especial não conta) em
+  até 30 d e TG ou resultado em até 180 d, só entre as abertas há o prazo ou mais (senão "em maturação"; o prazo
+  exato conta); até hoje: com verificação, com resultado (TG ou `ovr_resultados`), encerradas sem resultado (fase >=
+  3 e sem resultado), em andamento; valor do TG e do PERDIMENTO (tipo 2 — crédito e multa não entram).
+- Na aba: seção "Fichas e resultado" (indicadores: Fichas pelo card, prováveis, Fichas pelo card por 1.000 cards
+  examinados, total; tabela por setor e origem); JSON `fichas` {atual, anterior, prazos, porMilExaminados}; aba
+  "Fichas" na planilha. Sem as tabelas do Fichas: `None` e a tela avisa.
+- Testes: `test_navii_resultado_fichas.py` (8; tabelas REAIS do Fichas; adversários: verificação excluída, outro
+  evento especial, outra flag, crédito, sem datahora, limites do dia, FMA, CE visto por outro usuário, depois da
+  abertura, 32 dias antes, card só enviado, Ficha do card com CE visto antes, encerrada COM resultado, mês em curso).
+  21 mutantes derrubados. Roteiro no navegador (demo com as tabelas do Fichas): mar/2026 e out/2026 ("em
+  maturação").
+- Pontos a validar com os usuários: a regra do "provável" (quem abriu, 30 dias antes); os prazos 30/180; ler a
+  comparação dentro do setor; se "encerradas sem resultado" e "em andamento" bastam; valores.
+
 **F1 FEITA (17/10/2026)** — coleta, sem tela:
 - `navii/coleta_uso.py` (Mongo do virasana, coleção `navii_uso_pesquisas`, um documento por pesquisa; ver a docstring):
   `registra_pesquisa` (1ª página: usuário, setor no Fichas no momento — `ovr_usuarios`, em cache 10 min —, aba,

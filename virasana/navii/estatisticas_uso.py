@@ -38,7 +38,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import pandas as pd
 from sqlalchemy import CHAR, Column, Integer, MetaData, Table, select
 
-from virasana.navii import acompanhamento_fichas, busca_navii, coleta_uso, tabelas_opcionais
+from virasana.navii import acompanhamento_fichas, busca_navii, coleta_uso, resultado_fichas, tabelas_opcionais
 
 PORTO_PADRAO = busca_navii.PORTO_ESCALA_PADRAO
 TIPOS = ('mes', 'trimestre', 'semestre', 'ano')
@@ -559,6 +559,7 @@ def estatisticas(session, db, cpf: str, tipo: str = 'mes', codigo: Optional[str]
     pessoas, setores = _nomes(session, {d['usuario'] for d in visiveis + visiveis_anteriores})
     atual = agrega(docs)
     pendentes = list(dict.fromkeys(faltam + faltam_anterior + faltam_dias))
+    fichas = _fichas(session, col, comp, agora, setores, len(atual.examinados))
     return {
         'periodo': _descreve(periodo, comp, agora.date()), 'porto': porto,
         'uso': {'atual': atual.numeros(), 'anterior': agrega(docs_anteriores).numeros()},
@@ -569,8 +570,21 @@ def estatisticas(session, db, cpf: str, tipo: str = 'mes', codigo: Optional[str]
         'usuarios': _linhas(visiveis, visiveis_anteriores, lambda d: d['usuario'], pessoas),
         'dias': por_dia(docs), 'acesso': {'supervisor': acesso.supervisor, 'setores': [
             {'codigo': s, 'nome': setores.get(s) or s} for s in sorted(acesso.setores)]},
-        'pendentes': [p.como_dict() for p in pendentes],
+        'pendentes': [p.como_dict() for p in pendentes], 'fichas': fichas,
     }
+
+
+def _fichas(session, col, comp: Comparacao, agora: datetime, setores: Dict[str, str], examinados: int) -> dict:
+    """F3 — as Fichas de repressão na importação abertas no período e no anterior (`resultado_fichas.py`), com os
+    prazos das coortes e as Fichas abertas pelo card por 1.000 cards examinados (o uso do período)."""
+    atual = resultado_fichas.resumo(session, col, *comp.atual, agora, setores)
+    anterior = resultado_fichas.resumo(session, col, *comp.anterior, agora, setores)
+    pelo_card = atual['origens']['navii']['abertas'] if atual else None
+    return {'atual': atual, 'anterior': anterior,
+            'prazos': {'verificacao': resultado_fichas.PRAZO_VERIFICACAO,
+                       'resultado': resultado_fichas.PRAZO_RESULTADO},
+            'porMilExaminados': round(1000 * pelo_card / examinados, 1) if pelo_card is not None and examinados
+            else None}
 
 
 # ---------------------------------------------------------------- planilha
@@ -581,6 +595,7 @@ INDICADORES = (('usuarios', 'Usuários ativos'), ('sessoes', 'Sessões de análi
                ('examinadosPorVistos', 'Examinados / vistos (%)'), ('acionados', 'Cards acionados (Abrir Ficha)'),
                ('fichasNovas', 'Fichas novas pelo card'), ('profundidade', 'Profundidade mediana (vistos / total, %)'),
                ('repetidos', 'Cards vistos de novo (refinamento)'))
+ROTULOS_ORIGEM = {'navii': 'Pelo card (NAVI-I)', 'provavel': 'Provável NAVI-I', 'demais': 'Demais', 'total': 'Total'}
 COLUNAS_LINHA = (('pesquisas', 'Pesquisas'), ('sessoes', 'Sessões'), ('horas', 'Horas'), ('vistos', 'Vistos'),
                  ('vistosPorHora', 'Vistos por hora'), ('examinadosPorVistos', 'Examinados / vistos (%)'),
                  ('acionados', 'Acionados'), ('fichasNovas', 'Fichas novas'))
@@ -613,6 +628,27 @@ def _tabela(linhas: List[dict], primeira: str) -> pd.DataFrame:
                         columns=[primeira] + [rotulo for _, rotulo in COLUNAS_LINHA] + ['Vistos (anterior)'])
 
 
+def _coorte(valor: dict) -> list:
+    return [valor['chegaram'], valor['elegiveis'], valor['percentual']]
+
+
+def _linhas_fichas(dados: dict) -> pd.DataFrame:
+    """Uma linha por setor e origem (e o total geral) das Fichas abertas no período."""
+    fichas = (dados.get('fichas') or {}).get('atual') or {'setores': []}
+    prazos = (dados.get('fichas') or {}).get('prazos') or {'verificacao': 30, 'resultado': 180}
+    linhas = []
+    for nome, bloco in [(s['nome'], s) for s in fichas['setores']] + ([('Todos', fichas)] if 'total' in fichas else []):
+        for origem, valores in list(bloco['origens'].items()) + [('total', bloco['total'])]:
+            linhas.append([nome, ROTULOS_ORIGEM[origem], valores['abertas'], *_coorte(valores['verificacao']),
+                           *_coorte(valores['resultado']), valores['comResultado'], valores['encerradasSemResultado'],
+                           valores['emAndamento'], valores['valorTG'], valores['valorPerdimento']])
+    v, r = prazos['verificacao'], prazos['resultado']
+    return pd.DataFrame(linhas, columns=[
+        'Setor', 'Origem', 'Abertas', f'Verificação em até {v} d', 'Elegíveis (verificação)', 'Verificação (%)',
+        f'TG ou resultado em até {r} d', 'Elegíveis (resultado)', 'TG ou resultado (%)', 'Com resultado (até hoje)',
+        'Encerradas sem resultado', 'Em andamento', 'Valor do TG', 'Valor do perdimento'])
+
+
 def planilha_xlsx(dados: dict) -> bytes:
     """A aba em planilha: Resumo (atual, anterior, variação), Por setor, Por usuário (só os que quem baixa vê) e Por
     dia; a primeira linha do resumo diz o período, o trecho comparado e o porto."""
@@ -630,6 +666,7 @@ def planilha_xlsx(dados: dict) -> bytes:
         _resumo(dados).to_excel(escritor, sheet_name='Resumo', index=False, startrow=len(sobre) + 2)
         _tabela(dados['setores'], 'Setor').to_excel(escritor, sheet_name='Por setor', index=False)
         _tabela(dados['usuarios'], 'Usuário').to_excel(escritor, sheet_name='Por usuário', index=False)
+        _linhas_fichas(dados).to_excel(escritor, sheet_name='Fichas', index=False)
         pd.DataFrame(dados['dias'], columns=['dia', 'pesquisas', 'usuarios', 'vistos']).rename(columns={
             'dia': 'Dia', 'pesquisas': 'Pesquisas', 'usuarios': 'Usuários', 'vistos': 'Cards vistos'}).to_excel(
             escritor, sheet_name='Por dia', index=False)

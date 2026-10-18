@@ -63,11 +63,15 @@
                          border-bottom: 1px solid #E6E6E6; padding: .375rem .5rem; }
         table.dados td { border-bottom: 1px solid #F0F0F0; padding: .375rem .5rem; }
         table.dados td.num, table.dados th.num { text-align: right; }
+        table.dados td.num { white-space: nowrap; }
         .rolavel { overflow-x: auto; }
         .grafico { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; padding: .75rem; }
         .grafico svg { width: 100%; height: 170px; display: block; }
         .grafico .barra { fill: #1351B4; }
         .grafico .eixo { font-size: 10px; fill: #666; }
+        table.dados tr.grupo td { font-weight: 700; background: #F3F6FB; }
+        table.dados tr.total td { font-weight: 600; border-top: 1px solid #DDD; }
+        table.dados td.origem { padding-left: 1.25rem; }
         details.sobre { margin-top: 2rem; font-size: .8125rem; color: #333; }
         details.sobre li { margin-bottom: .375rem; }
         .sem { color: #888; }
@@ -117,6 +121,12 @@
             <h2 id="t-uso">Uso</h2>
             <div class="grade" id="uso"></div>
         </section>
+        <section aria-labelledby="t-fichas">
+            <h2 id="t-fichas">Fichas e resultado (repressão na importação)</h2>
+            <p class="nota" id="nota-fichas"></p>
+            <div class="grade" id="fichas-indicadores"></div>
+            <div class="rolavel" id="fichas" style="margin-top: .75rem"></div>
+        </section>
         <section aria-labelledby="t-como">
             <h2 id="t-como">Como se pesquisa</h2>
             <div class="grade" id="como-indicadores"></div>
@@ -153,6 +163,12 @@
                     contra 1 a 17 de setembro).</li>
                 <li><strong>Por usuário</strong>: cada um vê a sua linha; o supervisor no Fichas vê os usuários dos seus
                     setores. Ordem alfabética: não é ranking.</li>
+                <li><strong>Fichas</strong>: as de repressão na importação abertas no período (pela data da Ficha).
+                    <em>Pelo card</em> = abertas pelo botão Abrir Ficha do NAVI-I; <em>provável NAVI-I</em> = abertas no
+                    Fichas por quem viu o CE no NAVI-I até 30 dias antes; <em>demais</em> = as outras. Verificação
+                    física informada em até 30 dias e TG ou resultado em até 180 dias contam só entre as Fichas abertas
+                    há esse tempo ou mais — as mais novas aparecem "em maturação". Compare dentro do mesmo setor: há
+                    setores em que a Ficha é outro processo (ex.: conferência de DTA).</li>
             </ul>
         </details>
     </div>
@@ -185,8 +201,11 @@
         funil: document.getElementById('funil'), uso: document.getElementById('uso'),
         comoIndicadores: document.getElementById('como-indicadores'), como: document.getElementById('como'),
         dias: document.getElementById('dias'), setores: document.getElementById('setores'),
-        usuarios: document.getElementById('usuarios'), acesso: document.getElementById('acesso')
+        usuarios: document.getElementById('usuarios'), acesso: document.getElementById('acesso'),
+        notaFichas: document.getElementById('nota-fichas'), fichas: document.getElementById('fichas'),
+        fichasIndicadores: document.getElementById('fichas-indicadores')
     };
+    var ROTULOS_ORIGEM_FICHA = { navii: 'Pelo card (NAVI-I)', provavel: 'Provável NAVI-I', demais: 'Demais' };
 
     function escapeHtml(texto) {
         return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, function (c) {
@@ -301,6 +320,59 @@
             }).join('') + '</tbody></table>';
     }
 
+    function moeda(valor) { return valor ? 'R$ ' + numero(valor, 2) : '—'; }
+
+    function coorteTexto(c) {
+        if (!c.elegiveis) {
+            return '<span class="sem" title="Nenhuma Ficha aberta há tempo suficiente">em maturação</span>';
+        }
+        return numero(c.chegaram) + ' de ' + numero(c.elegiveis) + ' (' + percentual(c.percentual) + ')';
+    }
+
+    function linhaFicha(rotulo, n, classe) {
+        return '<tr class="' + classe + '"><td' + (classe === 'origem' ? ' class="origem"' : '') + '>' +
+            escapeHtml(rotulo) + '</td><td class="num">' + numero(n.abertas) + '</td><td class="num">' +
+            coorteTexto(n.verificacao) + '</td><td class="num">' + coorteTexto(n.resultado) + '</td><td class="num">' +
+            numero(n.comResultado) + '</td><td class="num">' + numero(n.encerradasSemResultado) + '</td>' +
+            '<td class="num">' + numero(n.emAndamento) + '</td><td class="num">' + moeda(n.valorTG) + '</td>' +
+            '<td class="num">' + moeda(n.valorPerdimento) + '</td></tr>';
+    }
+
+    function linhasDoSetor(s) {
+        var linhas = '<tr class="grupo"><td colspan="9">' + escapeHtml(s.nome) + '</td></tr>';
+        Object.keys(ROTULOS_ORIGEM_FICHA).forEach(function (origem) {
+            if (s.origens[origem].abertas) { linhas += linhaFicha(ROTULOS_ORIGEM_FICHA[origem], s.origens[origem], 'origem'); }
+        });
+        return linhas + linhaFicha('Total do setor', s.total, 'total');
+    }
+
+    function montaFichas(dados) {
+        var f = dados.fichas, atual = f.atual, anterior = f.anterior;
+        if (!atual) {
+            el.notaFichas.textContent = 'As tabelas do Fichas não estão disponíveis neste servidor.';
+            el.fichasIndicadores.innerHTML = '';
+            el.fichas.innerHTML = '';
+            return;
+        }
+        var ant = anterior ? anterior.origens : null;
+        el.notaFichas.textContent = 'Fichas abertas no período (pela data da Ficha), por setor e origem. Verificação ' +
+            'física em até ' + f.prazos.verificacao + ' dias e TG ou resultado em até ' + f.prazos.resultado + ' dias ' +
+            'contam só entre as Fichas abertas há esse tempo ou mais. Compare o NAVI-I com as demais dentro do mesmo setor.';
+        el.fichasIndicadores.innerHTML =
+            indicador('Fichas pelo card (NAVI-I)', atual.origens.navii.abertas, ant ? ant.navii.abertas : undefined) +
+            indicador('Prováveis NAVI-I', atual.origens.provavel.abertas, ant ? ant.provavel.abertas : undefined, null,
+                      'Abertas no Fichas por quem viu o CE no NAVI-I até 30 dias antes') +
+            indicador('Fichas pelo card por 1.000 examinados', f.porMilExaminados, undefined, decimal) +
+            indicador('Fichas de repressão abertas', atual.total.abertas, anterior ? anterior.total.abertas : undefined);
+        if (!atual.setores.length) { el.fichas.innerHTML = '<p class="nota">Nenhuma Ficha aberta no período.</p>'; return; }
+        el.fichas.innerHTML = '<table class="dados"><thead><tr><th>Setor / origem</th><th class="num">Abertas</th>' +
+            '<th class="num">Verificação em até ' + f.prazos.verificacao + ' d</th><th class="num">TG ou resultado em ' +
+            'até ' + f.prazos.resultado + ' d</th><th class="num">Com resultado (até hoje)</th>' +
+            '<th class="num">Encerradas sem resultado</th><th class="num">Em andamento</th>' +
+            '<th class="num">Valor do TG</th><th class="num">Valor do perdimento</th></tr></thead><tbody>' +
+            atual.setores.map(linhasDoSetor).join('') + '</tbody></table>';
+    }
+
     function montaAcesso(dados) {
         el.acesso.textContent = dados.acesso.supervisor
             ? 'Como supervisor, você vê os usuários dos setores: ' + dados.acesso.setores.map(function (s) {
@@ -351,6 +423,7 @@
         montaPeriodo(dados.periodo);
         montaFunil(dados);
         montaUso(dados);
+        montaFichas(dados);
         montaComo(dados);
         montaDias(dados.dias);
         el.setores.innerHTML = tabelaLinhas(dados.setores, 'Setor');

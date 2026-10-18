@@ -127,7 +127,7 @@ class TestPlanilha(TelaTestCase):
     def test_abas_e_acesso(self):
         self.calcula()
         livro = self.planilha(SUP)
-        self.assertEqual(livro.sheetnames, ['Resumo', 'Por setor', 'Por usuário', 'Por dia'])
+        self.assertEqual(livro.sheetnames, ['Resumo', 'Por setor', 'Por usuário', 'Fichas', 'Por dia'])
         self.assertEqual(self.nomes(livro, 'Por usuário'), ['Abel', 'Ana'])
         self.assertEqual(self.nomes(self.planilha(BETO), 'Por usuário'), ['Beto'])
         self.assertEqual(self.nomes(livro, 'Por setor'), ['EQRIMP', 'SACIT', 'SUB'])
