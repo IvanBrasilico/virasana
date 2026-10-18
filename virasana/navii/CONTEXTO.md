@@ -906,7 +906,12 @@ reconstrói).
 
 **Carga**: inicial dos CEs dos últimos 3 meses; depois, a cada poucos minutos, os CEs novos pelo `ID` (o
 `last_modified` do CE NÃO tem índice) e os CEs dos manifestos com escala nova/alterada (`last_modified` indexado de
-`Escala`/`EscalaManifesto`). Retenção: 12 meses (apaga os mais antigos).
+`Escala`/`EscalaManifesto`). Retenção: 12 meses (apaga os mais antigos). **A janela é sempre por ID**: a
+`create_date` do CE é a da ÚLTIMA ALTERAÇÃO (ON UPDATE; ver `risco_historico/CONTEXTO.md`), e o menor ID com
+`create_date` recente é um CE antigo alterado. O ID de uma data sai da busca binária na chave primária
+(`DiagnosticoTexto.id_na_data`: a criação de um ID é a menor `create_date` do bloco de IDs a partir dele), que o F1
+reaproveita na carga inicial e na retenção. Nada de agregar ou varrer `conhecimentosresumo` (~28 M linhas, 13 GB de
+dados): só faixas de ID e índices.
 
 **Aba**: `/navii/texto`, o MESMO `navii.html` em "modo texto" (só o campo de texto — busca enquanto se digita, a partir
 de 3 caracteres — e o período, padrão previsão de atracação de hoje -15 a +30 dias; o menu Filtrar/Ocultar do card
@@ -925,6 +930,75 @@ telefone, e-mail, endereço, CPF/CNPJ) — indexados e exibidos como estão; sig
 nome em embarcador/consignatário e cobertura dos nomes, escalas por manifesto e Santos, CEs sem escala, cards por CE,
 tamanho estimado do índice) -> F1 índice (instalação, `texto_navii.py`, indexador, supervisor, testes com Meilisearch
 simulado) -> F2 aba -> F3 homologação e ajustes com os usuários.
+
+**F0 (`analytic_scripts/diagnostico_texto_navii.py`)**: a 1ª rodada em produção (18/10/2026) delimitou a janela pela
+`create_date`, pegou o ID 842.381 (CE antigo alterado) e agrupou ~27 M linhas por mais de uma hora, até cair a
+conexão (2013). Reescrito no mesmo dia: fronteiras de mês por ID (busca binária), CEs por mês = diferença das
+fronteiras (a tabela tem ~28,0 M linhas para AUTO_INCREMENT 28,3 M: quase sem lacunas; a amostra mede), exportação
+pelo índice `ix_tipoTrafego` dentro da faixa de IDs, campos/notify/empresas/escalas/cards numa AMOSTRA de blocos
+de IDs espalhados (20 mil IDs em blocos de 500), `max_statement_time` de 120 s por conexão (`--limite`; a seção que
+estoura registra o erro e o diagnóstico segue). Exemplos de notify inteiros (sem mascaramento). Volume informado
+pelo usuário: ~400 mil CEs por mês; o F0 do risco histórico mediu ~13 mil IDs por dia, ~27% de exportação.
+
+**Resultado do F0 (produção, 18/10/2026, ~1 min no total)**:
+- Volume: 340–410 mil IDs por mês, ~25% de exportação; importação 250–343 mil por mês (~10,4 mil por dia). Índice
+  de 3 meses ~0,95 M CEs; de 12 meses ~3,8 M. Lacunas de ID: 1%. Leitura pela chave: ~8 mil CEs/s (3 meses ~2 min,
+  12 meses ~10 min, sem a indexação).
+- Texto do resumo por CE: média 331 caracteres (descrição 202, embarcador 63) → índice ~1,2–3,3 GB (3 meses) e
+  ~5–13 GB (12 meses), antes dos campos que faltam (abaixo).
+- **`notify` e `cnpjNotify` vazios em 100% da amostra**: o parser (`integracao/mercante/mercante.py`,
+  `ParseXML._parse_node` faz `node.find(campo)`, só filhos diretos) não alcança `entregaExterior/notify` e
+  `entregaExterior/cnpjNotify`. Afeta também a Entregas por CNPJ (`entregas/busca_entregas.py` procura o CNPJ no
+  `cnpjNotify`, sempre vazio).
+- Consignatário: preenchido em 79%, sempre CNPJ; `laudo_empresas` tem nome para só 20% deles (embarcador com CNPJ:
+  21%, nome para 27%) — não serve de fonte de nomes. A consulta em lotes de 500 levou ~1 s por lote.
+- Escalas: 3% sem data de referência; 65% dos CEs do país têm escala em Santos (o manifesto lista as escalas do
+  navio). Do CE criado até a previsão de referência: p10 0, mediana 7, p90 15 dias.
+- Contêineres: 1 em 66%, 2–5 em 17%, mais de 5 em 3%, **nenhum em 14%** (sem card no NAVI-I).
+
+**XMLs do Mercante** (350 arquivos locais em `virasana/mercante`, 14/01/2026, 4.960 CEs de importação; scripts de
+análise fora do repositório): `entregaExterior/notify` 77% (média 68 caracteres; nome e endereço, 13% "SAME AS
+CONSIGNEE", 8% telefone, 3% e-mail; igual aos dados complementares em 33% dos CEs), `entregaExterior/cnpjNotify` 53%,
+`consignatario/dadosComplementaresConsignatario` 77% (nome do consignatário, 39% com endereço, 36% com o CNPJ no
+texto), `embarcador/idEmbarcador` 100% (16% com telefone, 39% endereço; quando há `cnpjShipper` — 11% — o resumo
+guarda só o CNPJ e perde o nome), `observacoes` 15% (média 148). Nada disso, além do `idEmbarcador`, chega ao
+`conhecimentosresumo`; os `dadosComplementaresConsignatario` provavelmente estão na tabela bruta
+`conhecimentosEmbarque` (o `_to_dict` manda a chave; a conferir). Movimento A: 44% dos CEs dos arquivos, mas quando
+o mesmo lote tem o anterior, A muda a descrição em 6% e o notify/nome em 2% — deixar as alterações de fora custa pouco
+no texto. **Decisão (usuário, 18/10/2026)**: o F1 usa só os campos que estão no SQL; a correção do parser fica
+PENDENTE (item 5 das Pendências). Os XMLs são apagados depois da carga no banco: não há histórico para reprocessar.
+
+**F1 — índice (18/10/2026, escrito e testado com Meilisearch simulado; falta instalar e ativar)**:
+- `navii/mercante_por_id.py`: `limites_dos_ids`, `criacao_do_id`, `id_na_data` (busca binária), `limita_tempo`
+  (`max_statement_time` por conexão) — saíram do diagnóstico, que agora os importa.
+- `navii/texto_navii.py`: `ClienteMeili` (REST por `requests`, sem SDK: índice, configuração, documentos, apagar por
+  filtro, tarefas com `espera`, busca), `cliente_do_ambiente` (`NAVII_MEILI_URL`, `NAVII_MEILI_CHAVE_BUSCA`,
+  `NAVII_MEILI_CHAVE_ESCRITA`), `referencia` (regra única, o diagnóstico usa a mesma), `documento_do_ce`,
+  `CONFIGURACAO`/`configuracao_difere`, `corpo_da_busca`/`le_resultado`/`busca` (`Resultado`, `Achado` com os
+  trechos marcados) e `trecho_html` (escapa o texto do CE; o encontrado vira `<mark>`).
+- **Documento** (chave `ce`): `id` (ID do Mercante: retenção e ordem), `manifesto`, `master`, `bl`, `embarcador` e
+  `consignatario` (o NOME: o da estrangeira ou o de `laudo_empresas` para o CNPJ — só 20% têm), `embarcadorCnpj` e
+  `consignatarioCnpj` (o CNPJ, em campo próprio), `notify`, `cnpjNotify` (vazios até a Pendência 5), `descricao`,
+  `transportador`, `origem`, `destino`, `referencia` (segundos da meia-noite UTC; None sem escala com data).
+- **Índice**: campos de busca nessa ordem de peso — nomes, notify, descrição, depois CNPJs e números; filtráveis
+  `referencia`, `id`, `origem`, `destino`; ranking padrão + `referencia:desc`; SEM tolerância a erro de digitação
+  nos CNPJs e números (com tolerância, um CNPJ de 14 dígitos aceitaria 2 dígitos trocados).
+- `navii/indexador_texto.py` (`Indexador`, serviço `supervisor_navii_texto.conf`, `autostart=false`): sessão nova por
+  volta; (1) CEs novos pelo ID em páginas de 2.000, até 10 por volta, exportação fora; (2) escalas e vínculos
+  escala-manifesto com `create_date`/`last_modified` desde a marca menos 5 min → refaz os CEs JÁ indexados (ID entre
+  as marcas) desses manifestos; (3) retenção uma vez por dia: `id < id_na_data(hoje - 12 meses)`. Marcas
+  (`id_inicial`, `ultimo_id`, `escalas_desde` — hora do BANCO —, `retencao_em`) no índice `navii_texto_estado`,
+  gravadas só depois de o Meilisearch confirmar as escritas. Sem marcas ou sem o índice de CEs: carga inicial (cria,
+  configura, marca no 1º ID de 3 meses atrás). Configuração conferida a cada volta e atualizada só se mudou.
+  `--simula` não escreve nada e funciona sem o Meilisearch (mede a carga no banco). `max_statement_time` de 300 s.
+- `navii/MEILISEARCH.md`: instalação no Rocky Linux 9 (binário de versão fixa, usuário próprio, systemd, só
+  127.0.0.1, chaves de busca e de escrita, dimensionamento, recarga do zero).
+- Testes: `test_navii_mercante_por_id.py`, `test_navii_texto.py` (sessão HTTP simulada) e
+  `test_navii_indexador_texto.py` (Meilisearch em memória, com falha de tarefa sob comando). Mutantes: 39/39.
+- **Ativação**: instalar (MEILISEARCH.md) → `indexador_texto.py --uma-vez --simula` (mede: conferir o tempo das
+  consultas de escala — `escalamanifestoresumo.escala` pode não ter índice) → `--uma-vez` → `--situacao` →
+  `supervisorctl start navii_texto` → acompanhar a carga (~60 voltas de 20 mil IDs) → conferir buscas pela API.
+  Depois, F2 (aba).
 
 ## Pendências
 
@@ -953,6 +1027,26 @@ Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amost
 4. **Ponte recinto ↔ terminal do manifesto**: abandonada por decisão do usuário (decisão 4). As
    duas linhas por terminal em `ovr_recintos` continuam sem vínculo; só importa se um dia o filtro
    de recinto precisar alcançar contêineres sem ciclo.
+5. **Parser da carga do Mercante perde textos do CE** (achado do F0 da busca por texto, 18/10/2026; fica para
+   depois por decisão do usuário). Em `integracao/mercante/mercante.py`, o `ParseXML._parse_node` faz
+   `node.find(campo)` — só filhos diretos —, então:
+   - `entregaExterior/notify` (77% dos CEs nos XMLs) e `entregaExterior/cnpjNotify` (53%) nunca são lidos: as
+     colunas `notify`/`cnpjNotify` existem na tabela bruta `conhecimentosEmbarque` e no `conhecimentosresumo`, mas
+     estão sempre vazias. Afeta a Entregas por CNPJ (`entregas/busca_entregas.py` procura o CNPJ no `cnpjNotify`);
+   - `consignatario/dadosComplementaresConsignatario` (77%: nome, muitas vezes endereço) só vai para a tabela bruta,
+     e só se ela tiver a coluna `dadoscomplementaresconsignatario` (o `_to_dict` manda a chave; conferir com
+     `SHOW COLUMNS FROM conhecimentosEmbarque LIKE 'dados%'` — se tiver, há histórico no banco);
+   - `observacoes` (15%, texto livre) não é lida;
+   - quando o embarcador tem `cnpjShipper` (11%), o `idEmbarcador` (nome e endereço) se perde: o resumo guarda só o
+     CNPJ.
+   O que fazer: ler os caminhos aninhados (`entregaExterior/notify` etc.) e cortar no tamanho das colunas (notify
+   200, cnpjNotify 45 — o MariaDB recusa texto maior, erro 1406); colunas novas para dados complementares,
+   observações e nome do embarcador na bruta e no resumo (`ALTER TABLE ... ADD COLUMN`, instantâneo no MariaDB 10.11
+   quando a coluna vai no fim) e no modelo `Conhecimento`. Vale só daí em diante (os XMLs são apagados depois da
+   carga). Qualquer UPDATE de preenchimento no `conhecimentosresumo` tem de fixar `create_date = create_date`, senão
+   a coluna (ON UPDATE) marca os CEs como alterados e o risco histórico re-extrai todos. O índice de texto já leva
+   `notify` e `cnpjNotify` no documento: passam a valer para os CEs novos sem mudar o índice; os campos novos entram
+   no `texto_navii.documento_do_ce`.
 
 Índices sugeridos, **não criados** (decisão do usuário/DBA, medir antes):
 
