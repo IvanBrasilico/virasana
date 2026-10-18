@@ -716,8 +716,87 @@ Fichas tipo 1 por mês (NAVI-I, RVF, só RVF de INI, verificação, TG, resultad
 dashboard x proposto; resultados por tipo; maturação por coorte (em até 30/90/180/365 dias). **Achado de desenho**: o
 dashboard de operações chama de "aguardando saneamento" qualquer Ficha com RVF — a Ficha do NAVI-I nasce com a RVF da
 inspeção não invasiva, então a estatística usa a VERIFICAÇÃO FÍSICA INFORMADA (evento especial 2); resultado = TG ou
-`ovr_resultados`. **Falta rodar em produção** (`--dias-universo 30 --meses 24`) para decidir o universo sob demanda e o
-N da coorte.
+`ovr_resultados`.
+
+**Medição de produção (17/10/2026, 30 dias, sem porto; `estatisticas_uso.log`)**:
+- Universo: efetiva 21–49 mil contêineres/dia, 0,8 s/dia (máx. 2,1 s), os 30 dias de uma vez em 11,4 s; prevista
+  20–55 mil/dia, 0,15 s/dia, período em 1,9 s. **A soma dos dias passou do período: 1,73x (efetiva) e 1,88x
+  (prevista)** — não é erro da busca: sem porto, o manifesto entra em CADA dia em que cai uma das suas escalas (uma
+  por porto em que o navio atraca; a efetiva repete menos porque só o ramo dos ainda sem desembarque usa a escala).
+  O universo NACIONAL por dia não soma: contar por período ou medir o do porto (`--porto`, acrescentado depois).
+- Fichas tipo 1: 1.375 em 25 meses (~55/mês); NAVI-I 0 (ainda não em produção); verificação informada 19%; TG 9%
+  (R$ 533 mi); resultado 9% (Perdimento em 122 Fichas, R$ 458 mi; Crédito em 1); arquivadas sem resultado 76% (a
+  conferência de DTA da SACIT — ver a medição anterior). **A fase do Fichas confirma a definição**: Concluída = com
+  resultado (122 de 123), Arquivada = sem resultado (1.040 de 1.041). O "aguardando saneamento" do dashboard (183)
+  mistura 136 sem verificação e 47 com verificação informada — confirma usar a verificação.
+- Maturação: verificação com mediana de 5 d e PLATÔ de 18–19% já em 30 d (a coorte de 30 d basta); TG ou resultado
+  3% em 30 d, 6% em 90, 9% em 180, 12% em 365 — ainda cresce em 1 ano (resultado: mediana 109 d, p90 250 d);
+  encerramento com mediana de 0,2 d (abre e fecha no mesmo dia: conferência).
+- Consequências para F2/F3: universo por período (não soma de dias) ou do porto; indicador rápido = verificação em
+  até 30 d; resultado por coorte "em até 180 d" (~3/4 do que chega em 1 ano) com aviso de maturação nos períodos
+  recentes; a base "NAVI-I x demais" separada por setor (a SACIT é outro processo). Seção 5 (por setor) e `--porto`
+  acrescentadas para a próxima rodada.
+
+**Segunda medição (17/10/2026, `--porto BRSSZ`; `estatisticas_uso_brssz.log`)**:
+- Com o porto da escala (o padrão da tela), a soma dos dias fica a ~1% do período: efetiva 357.192 x 354.269
+  (+0,8%), prevista 341.258 x 337.160 (+1,2%) — o excesso nacional era mesmo das escalas em outros portos. O resíduo
+  (~1%) são manifestos com mais de uma escala no próprio porto. Custo: efetiva 0,3 s/dia e 30 dias em 8 s; prevista
+  0,08 s/dia e 1,3 s o período. Santos é ~63% do nacional na efetiva (354 mil x 565 mil em 30 dias): o ramo do
+  desembarque não usa o porto (decisão 9), mas o ciclo de vida já é dos recintos daqui; quem caiu foi o ramo da
+  previsão de outros portos.
+- Destino final (`portoDestFinal`) NÃO é preciso para somar; mudaria o sentido do universo (tiraria a carga de
+  passagem que escala aqui) e o desalinharia da base das pesquisas (`porto_escala`) — a seletividade (total da
+  pesquisa / universo) precisa da mesma base. Pode servir de recorte (destino aqui x passagem), não de universo.
+- **Por setor (a descoberta principal)**: SACIT 1.027 Fichas (75%) com 0% de verificação, 0% de TG/resultado e 89%
+  encerradas sem resultado — é OUTRO processo (conferência de DTA); EDAIM 22, também sem verificação nem resultado;
+  **EQRIMP 299 (22%)**: verificação 85% (84% em até 30 d), TG ou resultado 32% em 90 d, 45% em 180 d, **56% em 1
+  ano**, 38% encerradas sem resultado. Os números agregados do tipo 1 não servem de base: a comparação "NAVI-I x
+  demais" fica DENTRO do setor (EQRIMP), e "resultado em até 180 d" pega ~80% do que chega em 1 ano.
+- Proposta para F2/F3 (a confirmar com o usuário): universo do porto da escala (BRSSZ, configurável), contado
+  EXATO por período civil (mês, trimestre, semestre, ano) e guardado depois que o período fecha — não a soma dos
+  dias (erro de ~1%); série diária só para gráfico; Fichas por setor, comparação NAVI-I x demais no mesmo setor,
+  verificação em até 30 d e TG ou resultado em até 180 d. **Aprovada pelo usuário (17/10/2026).**
+
+**Plano da F2 (aprovado em 17/10/2026)**: aba "Estatísticas de uso" — período civil (mês, trimestre, semestre, ano;
+setas), o em curso comparado com o MESMO TRECHO do anterior (1–17/out x 1–17/set); uso pela data da pesquisa,
+cobertura pela data do contêiner; blocos: funil (universo -> vistos -> examinados -> Fichas pelo card), uso (com
+variação), como se pesquisa (seletividade das pesquisas com critério, profundidade, origem, janela, filtros,
+transições), por setor, por usuário (acesso; ordem ALFABÉTICA, sem ranking; coluna principal "vistos por hora"),
+série diária, planilha xlsx. Universo: porto da escala, janela EFETIVA para a cobertura, exato por mês e somado para
+trimestre/semestre/ano (o resíduo só vem de manifesto com escalas no porto em meses diferentes — medir), guardado
+(`navii_uso_universo`; definitivo 15 dias após o fim, antes disso recalculado com mais de 6 h), calculado pela própria
+aba mês a mês com progresso (sem cron); por dia só para a seletividade (~1%). Entregas: F2a (cálculo, sem tela) e F2b
+(tela, API, planilha, manual).
+- Refinamento na F2a: a unidade dos cards é o ITEM do Mercante (`Item.ID` = o card: um contêiner num CE). É estável —
+  `resume_mercante.processa_resumo` insere uma vez e atualiza no lugar (só apaga com o CE). Os vistos já são
+  guardados por item: o ajuste da coleta previsto no plano NÃO é preciso. A mesma leitura explica o resíduo de ~1% do
+  universo por dia: a carga trata a ATUALIZAÇÃO de `EscalaManifesto` como inclusão (o manifesto fica com a escala
+  antiga e a nova).
+
+**F2a FEITA (17/10/2026)** — o cálculo, sem tela: `navii/estatisticas_uso.py` (ver a docstring).
+- Períodos (`Periodo`, `le_periodo` — códigos '2026-10', '2026-T4', '2026-S2', '2026'; ano >= 2000), `comparacao`
+  (em curso: até hoje x o mesmo número de dias do anterior, limitado ao fim dele; o último dia do mês ainda é parcial),
+  `pedacos` (o intervalo por mês civil).
+- Por pesquisa e agregação (`vistos`, `examinados`, `sessoes`, `minutos`, `transicao` — o script de conferência da
+  coleta passou a usá-los daqui —, `Agregado.numeros`: pesquisas, usuários, sessões, horas, enviados, vistos e
+  examinados DISTINTOS por item, repetidos, acionados (nova ou acrescentada; "já existia" não) e Fichas novas,
+  vistos/hora, examinados/vistos, acionados/examinados, profundidade mediana; `por_dia`).
+- Seletividade (`na_base`: com período e `porto_escala` = o porto; `com_criterio`: algum filtro além do porto; dias
+  até 92; falta de um dia = "sem universo").
+- Universo (`navii_uso_universo`, chave porto|janela|início|fim; `universo` soma os meses e diz o que falta;
+  `calcula_pendencias` com orçamento de segundos — ao menos um por chamada; `Pedaco.de_dict` valida o que a tela
+  devolve: janela válida, no máximo um mês).
+- Cobertura exata: `busca_navii.itens_na_janela` (NOVA, aditiva — "destes itens, quais estão na janela no porto",
+  `_janela_por_candidato` + `_criterios_ce`), porque o `monta_query_navii` normaliza o filtro `ce` para dígitos; o
+  teste confere que dá o MESMO conjunto da contagem da tela (com CE de exportação e escala em outro porto de
+  adversários). Margem de 30 dias antes e depois para as pesquisas que viram.
+- Acesso (`acesso_do_usuario`: `ovr_usuarios`/`ovr_setores`/`ovr_perfis_usuarios`, perfil 2 = Supervisor; sem as
+  tabelas ou sem cadastro, só ele) e `estatisticas(session, db, cpf, tipo, codigo, porto, agora)` -> o JSON da aba,
+  com `pendentes`.
+- Diagnóstico: `--meses-universo N` mede a soma dos N últimos meses fechados x os N meses de uma vez (falta rodar
+  em produção com `--porto BRSSZ`).
+- Testes: `test_navii_estatisticas_uso.py` (24), `test_diagnostico_estatisticas_uso.py` (12); 32 + 17 mutantes
+  derrubados.
 
 **F1 FEITA (17/10/2026)** — coleta, sem tela:
 - `navii/coleta_uso.py` (Mongo do virasana, coleção `navii_uso_pesquisas`, um documento por pesquisa; ver a docstring):

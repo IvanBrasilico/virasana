@@ -64,6 +64,7 @@ TESTES = [
     'virasana/tests/test_navii_ficha_card.py',
     'virasana/tests/test_navii_acompanhamento.py',
     'virasana/tests/test_navii_coleta_uso.py',
+    'virasana/tests/test_navii_estatisticas_uso.py',
     'virasana/tests/test_navii_fichas_ovr.py',
     'virasana/tests/test_navii_uso.py',
     'virasana/tests/test_entregas_cnpj.py',

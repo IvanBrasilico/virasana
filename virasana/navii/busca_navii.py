@@ -811,6 +811,20 @@ def conta_conteineres_navii(
     return q.with_entities(func.count(Item.ID)).scalar() or 0
 
 
+def itens_na_janela(session, tipo_janela: str, inicio: str, fim: str, porto, itens) -> set:
+    """Dos `itens` (Item.ID), os que estão na janela do período no porto da escala, sem outros filtros — a mesma
+    regra da contagem da tela (`conta_conteineres_navii` com só período e porto), verificada por candidato: barata
+    para poucos itens. Usada na cobertura das estatísticas de uso (`estatisticas_uso.py`)."""
+    if not itens:
+        return set()
+    consulta = (
+        session.query(Item.ID)
+        .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
+        .filter(Item.ID.in_(list(itens)), _janela_por_candidato(tipo_janela, inicio, fim, porto), *_criterios_ce({}))
+    )
+    return {item for (item,) in consulta}
+
+
 def _master_do(conhecimento: Conhecimento) -> Optional[str]:
     """CE master do conhecimento; o CE único costuma repetir o próprio número — não é vínculo."""
     master = conhecimento.numeroCEMaster

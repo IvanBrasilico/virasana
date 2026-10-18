@@ -5,16 +5,17 @@ Conferência da COLETA DE USO do NAVI-I (F1 das estatísticas de uso; `navii/col
 
   1. VOLUME: pesquisas, usuários, sessões de análise (mesma aba do navegador, pausa <= 30 min), por origem e janela,
      sem período, por dia;
-  2. CARDS: enviados, vistos e examinados — somados por pesquisa e DISTINTOS por contêiner (a diferença é o que o
-     refinamento repete); profundidade (vistos / total da pesquisa), vistos / enviados, segundos por card visto,
-     interações por tipo;
+  2. CARDS: enviados, vistos e examinados — somados por pesquisa e DISTINTOS por item (o card: um contêiner num CE;
+     a diferença é o que o refinamento repete); profundidade (vistos / total da pesquisa), vistos / enviados,
+     segundos por card visto, interações por tipo;
   3. TRANSIÇÕES entre pesquisas da mesma aba: repetida, mais critérios, menos critérios, mudança, outra janela/período;
-  4. POR USUÁRIO (CPF mascarado): pesquisas, sessões, minutos de sessão, contêineres distintos vistos e examinados,
+  4. POR USUÁRIO (CPF mascarado): pesquisas, sessões, minutos de sessão, cards distintos vistos e examinados,
      vistos por hora de sessão, Fichas abertas;
   5. AÇÕES: Fichas abertas pelo card, por resultado.
 
 Minutos de sessão: do início da 1ª pesquisa à última gravação (`atualizado`) de cada sessão — aproximação, os cards
-vistos chegam em lotes de 20 s. Somente leitura.
+vistos chegam em lotes de 20 s. As contas por pesquisa (vistos, sessões, transições) são as da aba
+(`navii/estatisticas_uso.py`). Somente leitura.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     python virasana/analytic_scripts/diagnostico_coleta_uso.py --dias 7 --saida coleta_uso.log
@@ -24,7 +25,7 @@ import statistics
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -32,8 +33,7 @@ sys.path.append('../ajna_docs/commons')
 from virasana.analytic_scripts.diagnostico_fichas_repressao import mascara_cpf  # noqa: E402
 from virasana.analytic_scripts.diagnostico_risco_perdimentos import Diagnostico  # noqa: E402
 from virasana.navii import coleta_uso  # noqa: E402
-
-PAUSA_SESSAO = timedelta(minutes=30)
+from virasana.navii.estatisticas_uso import examinados, minutos, sessoes, transicao, vistos  # noqa: E402
 
 
 def quartis(valores: List[float], unidade: str = '') -> str:
@@ -49,63 +49,6 @@ def quartis(valores: List[float], unidade: str = '') -> str:
 
 def pct(parte: float, total: float) -> str:
     return f'{100 * parte / total:.0f}%' if total else '-'
-
-
-def vistos(doc: dict) -> Set[str]:
-    """Cards vistos: com segundos visíveis OU interação (quem clicou viu) — examinados ficam dentro dos vistos."""
-    return {item for item, visto in (doc.get('vistos') or {}).items() if visto.get('s') or visto.get('x')}
-
-
-def examinados(doc: dict) -> Set[str]:
-    return {item for item, visto in (doc.get('vistos') or {}).items() if visto.get('x')}
-
-
-def conteineres(doc: dict, itens: Set[str]) -> Set[Tuple[str, str]]:
-    """(contêiner, CE) dos itens — a unidade da cobertura (refinar e rever o mesmo contêiner não conta duas vezes)."""
-    return {(card.get('c') or '', card.get('ce') or '') for card in doc.get('cards', []) if str(card.get('i')) in itens}
-
-
-def sessoes(docs: List[dict]) -> List[List[dict]]:
-    """Pesquisas do mesmo usuário e aba, em ordem, cortadas a cada pausa maior que PAUSA_SESSAO."""
-    por_aba: Dict[Tuple, List[dict]] = defaultdict(list)
-    for doc in docs:
-        por_aba[(doc['usuario'], doc.get('aba') or str(doc['_id']))].append(doc)
-    resultado = []
-    for lista in por_aba.values():
-        lista.sort(key=lambda d: d['inicio'])
-        atual = [lista[0]]
-        for doc in lista[1:]:
-            if doc['inicio'] - max(d.get('atualizado') or d['inicio'] for d in atual) > PAUSA_SESSAO:
-                resultado.append(atual)
-                atual = []
-            atual.append(doc)
-        resultado.append(atual)
-    return resultado
-
-
-def minutos(sessao: List[dict]) -> float:
-    fim = max(d.get('atualizado') or d['inicio'] for d in sessao)
-    return max((fim - min(d['inicio'] for d in sessao)).total_seconds() / 60, 0)
-
-
-def _criterios(filtros: Optional[dict]) -> Set[Tuple[str, str]]:
-    criterios = set()
-    for campo, valor in (filtros or {}).items():
-        for v in (valor if isinstance(valor, list) else [valor]):
-            criterios.add((campo, str(v)))
-    return criterios
-
-
-def transicao(antes: dict, depois: dict) -> str:
-    """Como a pesquisa mudou em relação à anterior da mesma aba (os critérios são os pares campo/valor)."""
-    if (antes.get('janela'), antes.get('periodo')) != (depois.get('janela'), depois.get('periodo')):
-        return 'outra janela ou período'
-    a, b = _criterios(antes.get('filtros')), _criterios(depois.get('filtros'))
-    if a == b:
-        return 'repetida'
-    if a < b:
-        return 'mais critérios'
-    return 'menos critérios' if b < a else 'mudança de critérios'
 
 
 class DiagnosticoColeta(Diagnostico):
@@ -151,9 +94,9 @@ class DiagnosticoColeta(Diagnostico):
         enviados = sum(d.get('n_cards', 0) for d in self.docs)
         somados_vistos = sum(len(vistos(d)) for d in self.docs)
         somados_examinados = sum(len(examinados(d)) for d in self.docs)
-        distintos_vistos = {c for d in self.docs for c in conteineres(d, vistos(d))}
-        distintos_examinados = {c for d in self.docs for c in conteineres(d, examinados(d))}
-        self.tabela(['cards', 'somados por pesquisa', 'contêineres distintos'], [
+        distintos_vistos = set().union(*(vistos(d) for d in self.docs))
+        distintos_examinados = set().union(*(examinados(d) for d in self.docs))
+        self.tabela(['cards', 'somados por pesquisa', 'distintos (item)'], [
             ('enviados', enviados, '-'), ('vistos', somados_vistos, len(distintos_vistos)),
             ('examinados', somados_examinados, len(distintos_examinados))])
         self.escreve(f'Vistos / enviados: {pct(somados_vistos, enviados)}; repetição pelo refinamento: '
@@ -181,9 +124,9 @@ class DiagnosticoColeta(Diagnostico):
         for usuario, lista in sorted(por_usuario.items()):
             docs = [d for sessao in lista for d in sessao]
             minutos_sessao = sum(minutos(sessao) for sessao in lista)
-            distintos = {c for d in docs for c in conteineres(d, vistos(d))}
+            distintos = set().union(*(vistos(d) for d in docs))
             linhas.append((mascara_cpf(usuario), len(docs), len(lista), f'{minutos_sessao:.0f}', len(distintos),
-                           len({c for d in docs for c in conteineres(d, examinados(d))}),
+                           len(set().union(*(examinados(d) for d in docs))),
                            f'{60 * len(distintos) / minutos_sessao:.0f}' if minutos_sessao else '-',
                            sum(1 for d in docs for a in d.get('acoes', []) if a.get('t') == 'ficha')))
         self.tabela(['usuário', 'pesquisas', 'sessões', 'minutos', 'vistos', 'examinados', 'vistos/hora', 'Fichas'],

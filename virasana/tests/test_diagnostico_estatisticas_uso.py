@@ -10,6 +10,7 @@ Fichas (agora = 17/10/2026; universo: tipo 1 dos últimos 24 meses):
   F6 15/03 verificação EXCLUÍDA (não conta) e TG +5 d: aberta com TG
   F7 01/04 TG +10 d e encerrada exatamente no 30º dia: encerrada COM resultado só pelo TG (conta "em até 30 d")
   F8 01/05 multa (resultado) +15 d, sem TG nem RVF: aberta com resultado; 169 dias, fora da coorte de 180
+Setores: 1 EQUIPE A (F1, F2, F3, F6), 0 SACIT (F7, F8; id menor, mas menos Fichas), 5 (só a F4: vai para a linha dos pequenos).
 Universo: o cenário da busca do NAVI-I (desembarques em 11 e 12/01; atracação prevista em 10/01).
 """
 import io
@@ -61,12 +62,13 @@ def monta_banco(engine):
             dict(id=40, nome='Inspeção não Invasiva', fase=1, eventoespecial=7),
             dict(id=50, nome='Encerramento com resultado', fase=3, eventoespecial=8),
             dict(id=15, nome='Encerramento sem resultado', fase=4, eventoespecial=9)])
+        insere(con, 'ovr_setores', [dict(id='1', nome='EQUIPE A'), dict(id='0', nome='SACIT')])
         base = dict(tipooperacao=1, fase=1, setor_id='1', user_name=CPF, responsavel_cpf=CPF)
         insere(con, 'ovr_ovrs', [
             dict(base, id=1, datahora=d(1, 8)), dict(base, id=2, datahora=d(1, 3), fase=3),
-            dict(base, id=3, datahora=d(10, 3), fase=4), dict(base, id=4, datahora=d(10, 10)),
+            dict(base, id=3, datahora=d(10, 3), fase=4), dict(base, id=4, datahora=d(10, 10), setor_id='5'),
             dict(base, id=5, datahora=d(1, 3), tipooperacao=0), dict(base, id=6, datahora=d(15, 3)),
-            dict(base, id=7, datahora=d(1, 4), fase=3), dict(base, id=8, datahora=d(1, 5))])
+            dict(base, id=7, datahora=d(1, 4), fase=3, setor_id='0'), dict(base, id=8, datahora=d(1, 5), setor_id='0')])
         insere(con, 'ovr_eventos', [
             dict(id=1, ovr_id=1, create_date=d(1, 8), tipoevento_id=40),
             dict(id=2, ovr_id=2, create_date=d(1, 3, 10), tipoevento_id=22),
@@ -95,7 +97,8 @@ class TestFichas(unittest.TestCase):
         saida = io.StringIO()
         with engine.connect() as conexao:
             cls.diag = deu.DiagnosticoEstatisticas(conexao, saida, agora=AGORA)
-            cls.diag.roda()
+            with mock.patch.object(deu, 'MINIMO_SETOR', 2):
+                cls.diag.roda()
         cls.log = saida.getvalue()
 
     def linha(self, inicio):
@@ -106,7 +109,7 @@ class TestFichas(unittest.TestCase):
 
     def test_sem_erro_e_sem_universo(self):
         self.assertNotIn('!! ERRO', self.log)
-        self.assertIn('sem sessão do NAVI-I', self.log)
+        self.assertIn('sem sessão do NAVI-I ou sem dias', self.log)
         self.assertEqual(sorted(self.diag.fichas), [1, 2, 3, 4, 6, 7, 8])
 
     def test_por_mes(self):
@@ -140,6 +143,15 @@ class TestFichas(unittest.TestCase):
         self.assertEqual(self.celulas('resultado (ovr_resultados)')[3:], ['1/6 (17%)', '1/5 (20%)', '1/4 (25%)', '-'])
         self.assertEqual(self.celulas('encerramento')[3:], ['1/6 (17%)', '2/5 (40%)', '3/4 (75%)', '-'])   # F7: dia 30
 
+    def test_por_setor_separa_os_processos(self):
+        # setor | fichas | verificação | encerradas sem resultado | verificação 30 d | TG ou resultado 90/180/365 d
+        self.assertEqual(self.celulas('1 EQUIPE A'), ['1 EQUIPE A', '4', '1 (25%)', '1 (25%)', '1/4 (25%)', '2/3 (67%)',
+                                                      '2/3 (67%)', '-'])
+        self.assertEqual(self.celulas('0 SACIT'), ['0 SACIT', '2', '0 (0%)', '0 (0%)', '0/2 (0%)', '2/2 (100%)',
+                                                   '1/1 (100%)', '-'])
+        self.assertIn('Setores com menos de 2 Fichas: 1 Fichas.', self.log)
+        self.assertLess(self.log.index('1 EQUIPE A'), self.log.index('0 SACIT'))        # o maior primeiro
+
     def test_sigilo(self):
         self.assertNotIn(CPF, self.log)
 
@@ -165,6 +177,52 @@ class TestUniverso(unittest.TestCase):
             self.assertRegex(log, rf'Janela "{janela}":(.|\n)*?Soma dos dias: {direto}; contagem do período de uma '
                                   rf'vez: {direto} ')
         self.assertEqual(len(re.findall(r'^\d\d/01/2026', log, re.MULTILINE)), 30)          # 15 dias x 2 janelas
+
+    def test_universo_do_porto_e_sem_dias(self):
+        recebidos = []
+
+        def falsa(session, janela, filtros):
+            recebidos.append(filtros)
+            return 1
+        self.diag.porto = 'BRSSZ'
+        with mock.patch.object(busca_navii, 'conta_conteineres_navii', falsa):
+            self.diag.secao_universo()
+        self.assertTrue(recebidos and all(f.get('porto_escala') == ['BRSSZ'] for f in recebidos))
+        self.assertIn('Porto: BRSSZ', self.saida.getvalue())
+        self.diag.dias_universo = 0
+        with mock.patch.object(busca_navii, 'conta_conteineres_navii', falsa):
+            self.diag.secao_universo()
+        self.assertEqual(len(recebidos), 2 * 16)                           # (15 dias + o período) x 2 janelas
+        self.assertIn('seção não rodada', self.saida.getvalue())
+
+    def test_meses_exatos_somados_x_de_uma_vez(self):
+        self.diag.dias_universo, self.diag.meses_universo = 0, 2
+        self.diag.agora = datetime(2026, 3, 15)                             # meses fechados: jan e fev
+        self.diag.secao_universo()
+        log = self.saida.getvalue()
+        for janela in deu.JANELAS:
+            jan, fev, juntos = (busca_navii.conta_conteineres_navii(self.session, janela, {
+                'data_inicio': a, 'data_fim': b}) for a, b in (('2026-01-01', '2026-01-31'),
+                                                              ('2026-02-01', '2026-02-28'), ('2026-01-01', '2026-02-28')))
+            self.assertRegex(log, rf'Janela "{janela}", meses exatos:(.|\n)*?Soma dos meses: {jan + fev}; os 2 meses '
+                                  rf'de uma vez: {juntos} ')
+        self.assertIn('01/2026', log)
+        self.diag.agora = datetime(2026, 1, 10)                              # vira o ano
+        self.assertEqual(self.diag.meses_fechados(), [(date(2025, 11, 1), date(2025, 11, 30)),
+                                                      (date(2025, 12, 1), date(2025, 12, 31))])
+
+    def test_meses_com_diferenca_e_com_erro(self):
+        def falsa(session, janela, filtros):
+            if janela == 'prevista' and filtros['data_fim'] == '2026-01-31':
+                raise ValueError('banco fora')                  # só janeiro falha; os 2 meses juntos contam
+            return 18 if filtros['data_inicio'][5:7] != filtros['data_fim'][5:7] else 10
+        self.diag.dias_universo, self.diag.meses_universo, self.diag.agora = 0, 2, datetime(2026, 3, 15)
+        with mock.patch.object(busca_navii, 'conta_conteineres_navii', falsa):
+            self.diag.secao_universo()
+        log = self.saida.getvalue()
+        self.assertIn('Soma dos meses: 20; os 2 meses de uma vez: 18', log)
+        self.assertIn('diferença 2 (11.11%)', log)
+        self.assertIn('Sem a comparação: alguma contagem falhou.', log)
 
     def test_dupla_contagem_e_erro_aparecem(self):
         def falsa(session, janela, filtros):

@@ -14,14 +14,24 @@ Diagnóstico para as ESTATÍSTICAS DE USO do NAVI-I (aba gerencial, plano aprova
      a VERIFICAÇÃO FÍSICA INFORMADA. Resultado = TG ou `ovr_resultados` (resultados por tipo e valor);
   4. MATURAÇÃO: dias da abertura até a verificação informada, o TG, o resultado e o encerramento e, por prazo (30,
      90, 180, 365 dias), quantas Fichas com idade suficiente chegaram a cada marco nesse prazo — para escolher o N da
-     comparação por coorte ("com resultado em até N dias da abertura").
+     comparação por coorte ("com resultado em até N dias da abertura");
+  5. POR SETOR: o que cada setor faz com a Ficha (verificação, encerradas sem resultado, coortes) — a base da
+     comparação "NAVI-I x demais" não pode misturar processos diferentes (ex.: conferência de DTA canal vermelho).
+
+Medição de 17/10/2026 (produção, sem porto): a soma dos dias passou do período em ~1,7x (efetiva) e ~1,9x (prevista).
+Sem filtro de porto, o manifesto entra em CADA dia em que uma das suas escalas (uma por porto em que o navio atraca)
+cai — o universo nacional por dia não soma. `--porto` mede o universo do porto (filtro `porto_escala`; o desembarque
+efetivo não usa o porto — decisão 9 do NAVI-I). Segunda medição (com o porto): a soma dos dias fica a ~1% do período
+(a carga do Mercante trata a atualização de escala como inclusão). A aba soma MESES exatos para trimestre, semestre e
+ano: `--meses-universo N` mede a soma dos N últimos meses fechados contra os N meses contados de uma vez.
 
 Somente leitura; não imprime CPF nem nome. Reaproveita a carga do `diagnostico_fichas_repressao.py`. As datas do TG
 e do resultado são as do REGISTRO no Fichas (`create_date`).
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --saida estatisticas_uso.log
-    python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 30 --meses 36
+    python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 30 --porto BRSSZ
+    python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 0 --meses-universo 3 --porto BRSSZ
 """
 import argparse
 import sys
@@ -29,7 +39,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -50,6 +60,7 @@ TIPOS_RESULTADO = {1: 'Apreensão', 2: 'Perdimento', 3: 'Crédito', 4: 'Sanção
 JANELAS = ('efetiva', 'prevista')
 FLAG_NAVII = 'NAVI-I'
 PRAZOS = (30, 90, 180, 365)
+MINIMO_SETOR = 20                # setores com menos Fichas vão para uma linha só
 MARCOS = ('verificação informada', 'TG', 'resultado (ovr_resultados)', 'TG ou resultado', 'encerramento')
 SITUACOES = (('abertas', 'aberta'), ('NAVI-I', 'navii'), ('com RVF', 'rvf'), ('só RVF de INI', 'so_ini'),
              ('verificação informada', 'verificacao'), ('com TG', 'tg'), ('com resultado', 'resultado'),
@@ -83,16 +94,18 @@ def _primeira(datas) -> Optional[datetime]:
 class DiagnosticoEstatisticas(DiagnosticoFichas):
     """A carga das Fichas do diagnóstico da fase 0 + TG e resultados com data; o universo pela sessão do NAVI-I."""
 
-    SECOES = ('secao_universo', 'secao_mensal', 'secao_status', 'secao_maturacao')
+    SECOES = ('secao_universo', 'secao_mensal', 'secao_status', 'secao_maturacao', 'secao_setores')
     SQL_TGS = ('SELECT t.ovr_id, t.create_date, t.valor FROM ovr_tgovr t JOIN ovr_ovrs o ON o.id = t.ovr_id '
                'WHERE o.tipooperacao = :tipo AND COALESCE(o.datahora, o.create_date) >= :desde')
     SQL_RESULTADOS = ('SELECT r.ovr_id, r.create_date, r.tipo_resultado, r.valor FROM ovr_resultados r '
                       'JOIN ovr_ovrs o ON o.id = r.ovr_id '
                       'WHERE o.tipooperacao = :tipo AND COALESCE(o.datahora, o.create_date) >= :desde')
 
-    def __init__(self, conexao, saida, session=None, dias_universo: int = 14, **opcoes):
+    def __init__(self, conexao, saida, session=None, dias_universo: int = 14, porto: Optional[str] = None,
+                 meses_universo: int = 0, **opcoes):
         super().__init__(conexao, saida, **opcoes)
-        self.session, self.dias_universo = session, dias_universo
+        self.session, self.dias_universo, self.porto = session, dias_universo, porto
+        self.meses_universo = meses_universo
         self.tgs: Dict[int, list] = defaultdict(list)
         self.resultados: Dict[int, list] = defaultdict(list)
 
@@ -132,20 +145,52 @@ class DiagnosticoEstatisticas(DiagnosticoFichas):
     # ---------------------------------------------------------------- 1. universo
     def secao_universo(self):
         self.titulo('1. UNIVERSO: a contagem da tela, sem filtros, dia a dia (custo; soma dos dias = período)')
-        if self.session is None:
-            self.escreve('(sem sessão do NAVI-I: seção não rodada)')
+        if self.session is None or (self.dias_universo <= 0 and self.meses_universo <= 0):
+            self.escreve('(sem sessão do NAVI-I ou sem dias e meses: seção não rodada)')
             return
+        self.escreve(f'Porto: {self.porto} (só a atracação prevista; o desembarque efetivo não usa o porto)'
+                     if self.porto else 'Sem porto: o país inteiro.')
         fim = self.agora.date() - timedelta(days=1)
         dias = [fim - timedelta(days=n) for n in range(self.dias_universo - 1, -1, -1)]
         for janela in JANELAS:
-            self.universo_da_janela(janela, dias)
+            if dias:
+                self.universo_da_janela(janela, dias)
+            if self.meses_universo > 0:
+                self.universo_dos_meses(janela)
+
+    def meses_fechados(self) -> List[Tuple[date, date]]:
+        """Os `meses_universo` últimos meses fechados (antes do mês de hoje), do mais antigo ao mais novo."""
+        meses, fim = [], self.agora.date().replace(day=1) - timedelta(days=1)
+        for _ in range(self.meses_universo):
+            meses.insert(0, (fim.replace(day=1), fim))
+            fim = fim.replace(day=1) - timedelta(days=1)
+        return meses
+
+    def universo_dos_meses(self, janela: str):
+        """A soma dos meses exatos x os meses contados de uma vez (a aba soma meses para trimestre, semestre e ano)."""
+        self.escreve()
+        self.escreve(f'Janela "{janela}", meses exatos:')
+        meses = self.meses_fechados()
+        por_mes = [(inicio, *self.universo(janela, inicio, fim)) for inicio, fim in meses]
+        self.tabela(['mês', 'contêineres', 'segundos'],
+                    [(f'{inicio:%m/%Y}', total, f'{segundos:.2f}') for inicio, total, segundos in por_mes])
+        periodo, segundos = self.universo(janela, meses[0][0], meses[-1][1])
+        validos = [total for _, total, _ in por_mes if total is not None]
+        if periodo is None or len(validos) < len(meses):
+            self.escreve('Sem a comparação: alguma contagem falhou.')
+            return
+        soma = sum(validos)
+        self.escreve(f'Soma dos meses: {soma}; os {len(meses)} meses de uma vez: {periodo} ({segundos:.2f} s) — '
+                     f'diferença {soma - periodo} ({100 * (soma - periodo) / periodo if periodo else 0:.2f}%).')
 
     def universo(self, janela: str, inicio: date, fim: date):
         """(contêineres, segundos) da contagem da tela no período; (None, s) em erro — o diagnóstico segue."""
         comeco = time.perf_counter()
         try:
-            total = busca_navii.conta_conteineres_navii(
-                self.session, janela, {'data_inicio': inicio.isoformat(), 'data_fim': fim.isoformat()})
+            filtros = {'data_inicio': inicio.isoformat(), 'data_fim': fim.isoformat()}
+            if self.porto:
+                filtros['porto_escala'] = [self.porto]
+            total = busca_navii.conta_conteineres_navii(self.session, janela, filtros)
         except Exception as err:  # noqa: o log deve seguir mesmo se uma contagem falhar
             self.session.rollback()
             self.escreve(f'!! ERRO na contagem ({janela}, {inicio} a {fim}): {err}')
@@ -226,6 +271,28 @@ class DiagnosticoEstatisticas(DiagnosticoFichas):
         self.escreve('"em até N d": entre as Fichas abertas há N dias ou mais, quantas chegaram ao marco em até N dias '
                      '— a base da comparação justa entre períodos.')
 
+    # ---------------------------------------------------------------- 5. por setor
+    def secao_setores(self):
+        self.titulo(f'5. POR SETOR (os com {MINIMO_SETOR} Fichas ou mais): a base da comparação NAVI-I x demais')
+        por_setor: Dict[str, list] = defaultdict(list)
+        for ficha in self.fichas.values():
+            por_setor[ficha.setor].append(ficha)
+        grandes = sorted((s for s in por_setor if len(por_setor[s]) >= MINIMO_SETOR), key=lambda s: -len(por_setor[s]))
+        self.tabela(['setor', 'fichas', 'verificação informada', 'encerradas sem resultado', 'verificação em até 30 d',
+                     'TG ou resultado em até 90 d', 'em até 180 d', 'em até 365 d'],
+                    [self.linha_do_setor(setor, por_setor[setor]) for setor in grandes])
+        pequenos = [f for s, lista in por_setor.items() if s not in grandes for f in lista]
+        self.escreve(f'Setores com menos de {MINIMO_SETOR} Fichas: {len(pequenos)} Fichas.')
+
+    def linha_do_setor(self, setor: str, fichas: list) -> list:
+        situacoes = [self.situacao(f) for f in fichas]
+        marcos = {f.id: self.marcos(f) for f in fichas}
+        verificacao = {i: self.dias_ate(self.fichas[i], m['verificação informada']) for i, m in marcos.items()}
+        resultado = {i: self.dias_ate(self.fichas[i], m['TG ou resultado']) for i, m in marcos.items()}
+        return [self.nome_setor(setor), len(fichas), pct(sum(s.verificacao for s in situacoes), len(fichas)),
+                pct(sum(s.sem_resultado for s in situacoes), len(fichas)), self.no_prazo(verificacao, 30),
+                *[self.no_prazo(resultado, prazo) for prazo in (90, 180, 365)]]
+
     def no_prazo(self, dias: Dict[int, Optional[float]], prazo: int) -> str:
         elegiveis = [ovr_id for ovr_id in dias if self.idade_dias(self.fichas[ovr_id]) >= prazo]
         if not elegiveis:
@@ -239,7 +306,10 @@ def main():  # pragma: no cover - depende do banco real
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
     parser.add_argument('--meses', type=int, default=24, help='Fichas abertas nos últimos N meses (padrão 24)')
     parser.add_argument('--dias-universo', type=int, default=14,
-                        help='quantos dias (até ontem) contar no universo, por janela (padrão 14)')
+                        help='quantos dias (até ontem) contar no universo, por janela (padrão 14; 0 = não contar)')
+    parser.add_argument('--porto', help='universo do porto (filtro porto_escala, ex.: BRSSZ); sem: o país inteiro')
+    parser.add_argument('--meses-universo', type=int, default=0,
+                        help='soma dos N últimos meses fechados x os N meses de uma vez (padrão 0 = não medir)')
     parser.add_argument('--saida', default=datetime.now().strftime('estatisticas_uso_%Y%m%d_%H%M%S.log'))
     args = parser.parse_args()
     uri = args.uri
@@ -249,7 +319,7 @@ def main():  # pragma: no cover - depende do banco real
     with engine.connect() as conexao, open(args.saida, 'w', encoding='utf-8') as saida:
         session = Session(bind=conexao)
         diag = DiagnosticoEstatisticas(conexao, saida, session=session, dias_universo=args.dias_universo,
-                                       meses=args.meses)
+                                       porto=args.porto, meses_universo=args.meses_universo, meses=args.meses)
         diag.escreve(f'Diagnóstico para as estatísticas de uso ({TIPOS_OPERACAO[TIPO_REPRESSAO_IMPORTACAO]}) — '
                      f'{datetime.now():%Y-%m-%d %H:%M:%S}')
         diag.escreve(f'Banco: {engine.url.render_as_string(hide_password=True)}')
