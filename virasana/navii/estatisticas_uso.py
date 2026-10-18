@@ -11,16 +11,22 @@ F2a: o CÁLCULO, sem tela — períodos, métricas, acesso e o universo (com cac
 - Dois relógios: o USO conta pela data da pesquisa; a COBERTURA, pela data do contêiner — os itens vistos (nas
   pesquisas de MARGEM_COBERTURA antes a MARGEM_COBERTURA depois do período) que estão no universo do período, pela
   mesma regra da contagem da tela (restrita aos CEs vistos: barata).
-- Universo: porto da escala (BRSSZ por padrão), janela efetiva, exato por MÊS civil (o mês em curso até hoje) e
-  somado; guardado em `navii_uso_universo` — definitivo DIAS_ATE_DEFINITIVO dias depois do fim do pedaço (o ciclo de
-  vida chega atrasado), antes disso recalculado com mais de VALIDADE_UNIVERSO. Por DIA, só para a seletividade de
-  cada pesquisa (erro de ~1%: a carga do Mercante trata a atualização de escala como inclusão).
+- Universo: porto da escala (BRSSZ por padrão), janela efetiva, SOMA DE DIAS (medição de 17/10/2026: um mês "frio"
+  leva ~130 s numa consulta — mais que os 30 s do gunicorn —, um dia frio até ~7,5 s; a soma dos dias fica ~0,1-0,8%
+  acima do período contado de uma vez: a carga do Mercante trata a atualização de escala como inclusão, e o manifesto
+  entra nos dias das duas escalas). Guardado em `navii_uso_universo`, um documento por dia — definitivo
+  DIAS_ATE_DEFINITIVO dias depois do dia (o ciclo de vida chega atrasado), antes disso recalculado com mais de
+  VALIDADE_UNIVERSO. Os mesmos dias servem à seletividade de cada pesquisa. A tela pede os dias que faltam, UM por
+  pedaço (um pedaço maior seria uma consulta longa de propósito).
+- A cobertura começa no INÍCIO DO REGISTRO do uso (a primeira pesquisa gravada): antes dele ela não é zero, é
+  desconhecida — e não se calcula universo de dias sem uso.
 - Seletividade: total da pesquisa / universo dos dias da pesquisa, na mesma janela — só das pesquisas na base (com
   período e com `porto_escala` = o porto) e com algum critério além do porto; as sem critério são "navegação".
 - Acesso: cada um vê a sua linha; o Supervisor do Fichas (`ovr_perfis_usuarios`) vê os usuários dos seus setores (o
   dele e os subordinados), pelo setor gravado NA PESQUISA (quem mudou de setor fica com o da época); todos veem os
   totais e os setores. Por usuário, ordem alfabética, sem ranking.
 """
+import io
 import re
 import statistics
 import time
@@ -29,6 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
+import pandas as pd
 from sqlalchemy import CHAR, Column, Integer, MetaData, Table, select
 
 from virasana.navii import acompanhamento_fichas, busca_navii, coleta_uso, tabelas_opcionais
@@ -125,14 +132,8 @@ def comparacao(periodo: Periodo, hoje: date) -> Comparacao:
     return Comparacao((periodo.inicio, periodo.fim), (anterior.inicio, anterior.fim), False)
 
 
-def pedacos(inicio: date, fim: date) -> List[Tuple[date, date]]:
-    """O intervalo cortado nos meses civis (o pedaço de cada mês)."""
-    resultado, dia = [], inicio
-    while dia <= fim:
-        ultimo = min(_fim_do_mes(dia), fim)
-        resultado.append((dia, ultimo))
-        dia = ultimo + timedelta(days=1)
-    return resultado
+def dias_entre(inicio: date, fim: date) -> List[date]:
+    return [inicio + timedelta(days=n) for n in range((fim - inicio).days + 1)]
 
 
 # ---------------------------------------------------------------- por pesquisa
@@ -349,7 +350,7 @@ def _chave(porto: str, janela: str, inicio: date, fim: date) -> str:
 
 @dataclass(frozen=True)
 class Pedaco:
-    """Um pedaço do universo a calcular: janela e intervalo (um mês, ou um dia)."""
+    """Um pedaço do universo a calcular: janela e dia (`inicio` = `fim`)."""
     janela: str
     inicio: date
     fim: date
@@ -363,8 +364,8 @@ class Pedaco:
         if not isinstance(dados, dict) or dados.get('janela') not in busca_navii.TIPOS_JANELA_VALIDOS:
             raise ValueError('Pedaço do universo inválido.')
         inicio, fim = date.fromisoformat(str(dados.get('inicio'))), date.fromisoformat(str(dados.get('fim')))
-        if fim < inicio or (fim - inicio).days > 31:
-            raise ValueError('Pedaço do universo inválido: no máximo um mês.')
+        if fim != inicio:
+            raise ValueError('Pedaço do universo inválido: um dia por vez.')
         return cls(dados['janela'], inicio, fim)
 
 
@@ -376,9 +377,25 @@ def _vencido(doc: dict, fim: date, agora: datetime) -> bool:
     return agora - calculado > VALIDADE_UNIVERSO
 
 
+def universo_dos_dias(col, porto: str, chaves: Iterable[Tuple[str, date]],
+                      agora: datetime) -> Tuple[Dict[Tuple[str, date], int], List[Pedaco]]:
+    """({(janela, dia): total} dos dias guardados e válidos, os dias que faltam) — numa consulta só."""
+    chaves = sorted(set(chaves), key=lambda c: (str(c[0]), c[1]))
+    ids = [_chave(porto, janela, dia, dia) for janela, dia in chaves]
+    guardados = {doc['_id']: doc for doc in col.find({'_id': {'$in': ids}})} if ids else {}
+    diario, faltam = {}, []
+    for (janela, dia), id_ in zip(chaves, ids):
+        doc = guardados.get(id_)
+        if doc is None or _vencido(doc, dia, agora):
+            faltam.append(Pedaco(janela, dia, dia))
+        else:
+            diario[(janela, dia)] = doc['total']
+    return diario, faltam
+
+
 def universo_guardado(col, porto: str, pedaco: Pedaco, agora: datetime) -> Optional[int]:
-    doc = col.find_one({'_id': _chave(porto, pedaco.janela, pedaco.inicio, pedaco.fim)})
-    return None if doc is None or _vencido(doc, pedaco.fim, agora) else doc['total']
+    chave = (pedaco.janela, pedaco.inicio)
+    return universo_dos_dias(col, porto, [chave], agora)[0].get(chave)
 
 
 def calcula_universo(session, col, porto: str, pedaco: Pedaco, agora: datetime) -> int:
@@ -392,31 +409,13 @@ def calcula_universo(session, col, porto: str, pedaco: Pedaco, agora: datetime) 
 
 def universo(col, porto: str, inicio: date, fim: date, agora: datetime,
              janela: str = JANELA_COBERTURA) -> Tuple[Optional[int], List[Pedaco]]:
-    """(soma dos meses guardados, pedaços que faltam) — a soma é None enquanto faltar algum."""
-    total, faltam = 0, []
-    for a, b in pedacos(inicio, fim):
-        valor = universo_guardado(col, porto, Pedaco(janela, a, b), agora)
-        if valor is None:
-            faltam.append(Pedaco(janela, a, b))
-        else:
-            total += valor
-    return (None if faltam else total), faltam
-
-
-def universo_diario(col, porto: str, chaves: Iterable[Tuple[str, date]],
-                    agora: datetime) -> Tuple[Dict[Tuple[str, date], int], List[Pedaco]]:
-    diario, faltam = {}, []
-    for janela, dia in sorted(chaves, key=lambda c: (str(c[0]), c[1])):
-        valor = universo_guardado(col, porto, Pedaco(janela, dia, dia), agora)
-        if valor is None:
-            faltam.append(Pedaco(janela, dia, dia))
-        else:
-            diario[(janela, dia)] = valor
-    return diario, faltam
+    """(soma dos dias guardados, dias que faltam) — a soma é None enquanto faltar algum."""
+    diario, faltam = universo_dos_dias(col, porto, [(janela, dia) for dia in dias_entre(inicio, fim)], agora)
+    return (None if faltam else sum(diario.values())), faltam
 
 
 def calcula_pendencias(session, col, porto: str, pendentes: List[Pedaco], agora: datetime,
-                       orcamento: float = 8.0, relogio=time.monotonic) -> List[Pedaco]:
+                       orcamento: float = 5.0, relogio=time.monotonic) -> List[Pedaco]:
     """Calcula os pedaços até estourar o orçamento de segundos (ao menos um); devolve os que faltam — a tela chama de
     novo até zerar (cada chamada cabe no tempo do proxy)."""
     comeco = relogio()
@@ -485,17 +484,31 @@ def pesquisas(col, inicio: date, fim: date) -> List[dict]:
                          PROJECAO))
 
 
-def _cobertura(session, col, col_universo, porto: str, intervalo: Tuple[date, date], agora: datetime):
-    """({universo, vistos, percentual} ou None, pedaços que faltam). Os vistos vêm das pesquisas de MARGEM_COBERTURA
-    antes a MARGEM_COBERTURA depois do intervalo."""
+def inicio_do_registro(col) -> Optional[date]:
+    """O dia da primeira pesquisa gravada (antes dele, a cobertura é desconhecida, não zero)."""
+    primeira = next(iter(col.find({}, {'inicio': 1}).sort('inicio', 1).limit(1)), None)
+    return primeira['inicio'].date() if primeira else None
+
+
+def _cobertura(session, col, col_universo, porto: str, intervalo: Tuple[date, date], agora: datetime,
+               desde: Optional[date]):
+    """({universo, vistos, percentual, examinados, examinadosPorVistos, desde} ou None, pedaços que faltam) — o funil
+    todo na base da data do contêiner, a partir do início do registro do uso (`desde`; o intervalo todo antes dele:
+    None, sem pendências). Os vistos vêm das pesquisas de MARGEM_COBERTURA antes a MARGEM_COBERTURA depois."""
     inicio, fim = intervalo
+    if desde is None or fim < desde:
+        return None, []
+    inicio = max(inicio, desde)
     total, faltam = universo(col_universo, porto, inicio, fim, agora)
     if total is None:
         return None, faltam
-    itens = set().union(*(vistos(d) for d in pesquisas(col, inicio - MARGEM_COBERTURA,
-                                                       min(fim + MARGEM_COBERTURA, agora.date()))))
+    docs = pesquisas(col, inicio - MARGEM_COBERTURA, min(fim + MARGEM_COBERTURA, agora.date()))
+    itens = set().union(*(vistos(d) for d in docs))
     no_universo = itens_no_universo(session, porto, inicio, fim, itens) if itens else set()
-    return {'universo': total, 'vistos': len(no_universo), 'percentual': _pct(len(no_universo), total)}, []
+    examinados_no_universo = no_universo & set().union(*(examinados(d) for d in docs))
+    return {'universo': total, 'vistos': len(no_universo), 'percentual': _pct(len(no_universo), total),
+            'examinados': len(examinados_no_universo),
+            'examinadosPorVistos': _pct(len(examinados_no_universo), len(no_universo)), 'desde': inicio.isoformat()}, []
 
 
 def _linhas(docs: List[dict], docs_anteriores: List[dict], chave, nomes: Dict[str, str]) -> List[dict]:
@@ -537,9 +550,10 @@ def estatisticas(session, db, cpf: str, tipo: str = 'mes', codigo: Optional[str]
     col, col_universo = coleta_uso.colecao(db), colecao_universo(db)
     docs, docs_anteriores = pesquisas(col, *comp.atual), pesquisas(col, *comp.anterior)
     acesso = acesso_do_usuario(session, cpf)
-    cobertura, faltam = _cobertura(session, col, col_universo, porto, comp.atual, agora)
-    cobertura_anterior, faltam_anterior = _cobertura(session, col, col_universo, porto, comp.anterior, agora)
-    diario, faltam_dias = universo_diario(col_universo, porto, dias_necessarios(docs, porto), agora)
+    desde = inicio_do_registro(col)
+    cobertura, faltam = _cobertura(session, col, col_universo, porto, comp.atual, agora, desde)
+    cobertura_anterior, faltam_anterior = _cobertura(session, col, col_universo, porto, comp.anterior, agora, desde)
+    diario, faltam_dias = universo_dos_dias(col_universo, porto, dias_necessarios(docs, porto), agora)
     visiveis = [d for d in docs if acesso.ve(d['usuario'], d.get('setor'))]
     visiveis_anteriores = [d for d in docs_anteriores if acesso.ve(d['usuario'], d.get('setor'))]
     pessoas, setores = _nomes(session, {d['usuario'] for d in visiveis + visiveis_anteriores})
@@ -548,10 +562,75 @@ def estatisticas(session, db, cpf: str, tipo: str = 'mes', codigo: Optional[str]
     return {
         'periodo': _descreve(periodo, comp, agora.date()), 'porto': porto,
         'uso': {'atual': atual.numeros(), 'anterior': agrega(docs_anteriores).numeros()},
-        'cobertura': {'atual': cobertura, 'anterior': cobertura_anterior},
+        'cobertura': {'atual': cobertura, 'anterior': cobertura_anterior,
+                      'inicioDoRegistro': desde.isoformat() if desde else None},
         'seletividade': seletividade(docs, porto, diario), 'como': _como(atual),
         'setores': _linhas(docs, docs_anteriores, _setor, setores),
         'usuarios': _linhas(visiveis, visiveis_anteriores, lambda d: d['usuario'], pessoas),
-        'dias': por_dia(docs), 'acesso': {'supervisor': acesso.supervisor, 'setores': sorted(acesso.setores)},
+        'dias': por_dia(docs), 'acesso': {'supervisor': acesso.supervisor, 'setores': [
+            {'codigo': s, 'nome': setores.get(s) or s} for s in sorted(acesso.setores)]},
         'pendentes': [p.como_dict() for p in pendentes],
     }
+
+
+# ---------------------------------------------------------------- planilha
+
+INDICADORES = (('usuarios', 'Usuários ativos'), ('sessoes', 'Sessões de análise'), ('pesquisas', 'Pesquisas'),
+               ('horas', 'Horas de sessão'), ('vistos', 'Cards vistos (distintos)'),
+               ('vistosPorHora', 'Cards vistos por hora de sessão'), ('examinados', 'Cards examinados'),
+               ('examinadosPorVistos', 'Examinados / vistos (%)'), ('acionados', 'Cards acionados (Abrir Ficha)'),
+               ('fichasNovas', 'Fichas novas pelo card'), ('profundidade', 'Profundidade mediana (vistos / total, %)'),
+               ('repetidos', 'Cards vistos de novo (refinamento)'))
+COLUNAS_LINHA = (('pesquisas', 'Pesquisas'), ('sessoes', 'Sessões'), ('horas', 'Horas'), ('vistos', 'Vistos'),
+                 ('vistosPorHora', 'Vistos por hora'), ('examinadosPorVistos', 'Examinados / vistos (%)'),
+                 ('acionados', 'Acionados'), ('fichasNovas', 'Fichas novas'))
+
+
+def variacao(atual, anterior) -> Optional[float]:
+    """Variação % do anterior para o atual; None sem um dos dois ou com o anterior zero (a tela diz "novo")."""
+    if atual is None or anterior is None or not anterior:
+        return None
+    return round(100 * (atual - anterior) / anterior, 1)
+
+
+def _resumo(dados: dict) -> pd.DataFrame:
+    atual, anterior = dados['uso']['atual'], dados['uso']['anterior']
+    linhas = [(rotulo, atual[chave], anterior[chave], variacao(atual[chave], anterior[chave]))
+              for chave, rotulo in INDICADORES]
+    cobertura, cobertura_anterior = dados['cobertura']['atual'] or {}, dados['cobertura']['anterior'] or {}
+    for chave, rotulo in (('universo', 'Universo do porto (contêineres que chegaram)'),
+                          ('vistos', 'Contêineres do universo vistos'), ('percentual', 'Cobertura (%)'),
+                          ('examinados', 'Contêineres do universo examinados')):
+        valor, valor_anterior = cobertura.get(chave), cobertura_anterior.get(chave)
+        linhas.append((rotulo, valor, valor_anterior, variacao(valor, valor_anterior)))
+    linhas.append(('Seletividade mediana das pesquisas com critério (%)', dados['seletividade']['mediana'], None, None))
+    return pd.DataFrame(linhas, columns=['Indicador', 'Atual', 'Anterior', 'Variação (%)'])
+
+
+def _tabela(linhas: List[dict], primeira: str) -> pd.DataFrame:
+    return pd.DataFrame([[linha['nome']] + [linha['atual'][chave] for chave, _ in COLUNAS_LINHA]
+                         + [linha['anterior']['vistos']] for linha in linhas],
+                        columns=[primeira] + [rotulo for _, rotulo in COLUNAS_LINHA] + ['Vistos (anterior)'])
+
+
+def planilha_xlsx(dados: dict) -> bytes:
+    """A aba em planilha: Resumo (atual, anterior, variação), Por setor, Por usuário (só os que quem baixa vê) e Por
+    dia; a primeira linha do resumo diz o período, o trecho comparado e o porto."""
+    periodo = dados['periodo']
+    sobre = pd.DataFrame([
+        ('Período', f"{periodo['rotulo']} ({periodo['inicio']} a {periodo['fim']})"
+                    + (' — em curso' if periodo['parcial'] else '')),
+        ('Comparado com', f"{periodo['anterior']['rotulo']} ({periodo['anterior']['inicio']} a "
+                          f"{periodo['anterior']['fim']})"),
+        ('Porto do universo', dados['porto']),
+        ('Universo', 'em cálculo' if dados['pendentes'] else 'completo')], columns=['Item', 'Valor'])
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as escritor:
+        sobre.to_excel(escritor, sheet_name='Resumo', index=False)
+        _resumo(dados).to_excel(escritor, sheet_name='Resumo', index=False, startrow=len(sobre) + 2)
+        _tabela(dados['setores'], 'Setor').to_excel(escritor, sheet_name='Por setor', index=False)
+        _tabela(dados['usuarios'], 'Usuário').to_excel(escritor, sheet_name='Por usuário', index=False)
+        pd.DataFrame(dados['dias'], columns=['dia', 'pesquisas', 'usuarios', 'vistos']).rename(columns={
+            'dia': 'Dia', 'pesquisas': 'Pesquisas', 'usuarios': 'Usuários', 'vistos': 'Cards vistos'}).to_excel(
+            escritor, sheet_name='Por dia', index=False)
+    return buffer.getvalue()

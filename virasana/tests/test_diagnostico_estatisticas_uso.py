@@ -10,7 +10,8 @@ Fichas (agora = 17/10/2026; universo: tipo 1 dos últimos 24 meses):
   F6 15/03 verificação EXCLUÍDA (não conta) e TG +5 d: aberta com TG
   F7 01/04 TG +10 d e encerrada exatamente no 30º dia: encerrada COM resultado só pelo TG (conta "em até 30 d")
   F8 01/05 multa (resultado) +15 d, sem TG nem RVF: aberta com resultado; 169 dias, fora da coorte de 180
-Setores: 1 EQUIPE A (F1, F2, F3, F6), 0 SACIT (F7, F8; id menor, mas menos Fichas), 5 (só a F4: vai para a linha dos pequenos).
+Setores: 1 EQUIPE A (F1, F2, F3, F6), 0 SACIT (F7, F8; id menor, mas menos Fichas), 5 (só a F4: vai para a linha
+dos pequenos).
 Universo: o cenário da busca do NAVI-I (desembarques em 11 e 12/01; atracação prevista em 10/01).
 """
 import io
@@ -201,15 +202,27 @@ class TestUniverso(unittest.TestCase):
         self.diag.secao_universo()
         log = self.saida.getvalue()
         for janela in deu.JANELAS:
+            periodos = (('2026-01-01', '2026-01-31'), ('2026-02-01', '2026-02-28'), ('2026-01-01', '2026-02-28'))
             jan, fev, juntos = (busca_navii.conta_conteineres_navii(self.session, janela, {
-                'data_inicio': a, 'data_fim': b}) for a, b in (('2026-01-01', '2026-01-31'),
-                                                              ('2026-02-01', '2026-02-28'), ('2026-01-01', '2026-02-28')))
+                'data_inicio': a, 'data_fim': b}) for a, b in periodos)
             self.assertRegex(log, rf'Janela "{janela}", meses exatos:(.|\n)*?Soma dos meses: {jan + fev}; os 2 meses '
                                   rf'de uma vez: {juntos} ')
         self.assertIn('01/2026', log)
         self.diag.agora = datetime(2026, 1, 10)                              # vira o ano
         self.assertEqual(self.diag.meses_fechados(), [(date(2025, 11, 1), date(2025, 11, 30)),
                                                       (date(2025, 12, 1), date(2025, 12, 31))])
+
+    def test_dias_antigos_ate(self):
+        recebidos = []
+
+        def falsa(session, janela, filtros):
+            recebidos.append((filtros['data_inicio'], filtros['data_fim']))
+            return 1
+        self.diag.dias_universo, self.diag.ate = 3, date(2026, 1, 12)
+        with mock.patch.object(busca_navii, 'conta_conteineres_navii', falsa):
+            self.diag.secao_universo()
+        self.assertEqual(recebidos[:4], [('2026-01-10', '2026-01-10'), ('2026-01-11', '2026-01-11'),
+                                         ('2026-01-12', '2026-01-12'), ('2026-01-10', '2026-01-12')])
 
     def test_meses_com_diferenca_e_com_erro(self):
         def falsa(session, janela, filtros):

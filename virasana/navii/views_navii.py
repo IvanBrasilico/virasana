@@ -17,6 +17,10 @@ Expõe:
   GET /navii/fichas        -> aba "Fichas em acompanhamento" (`acompanhamento_fichas.py`)
   GET /navii/api/fichas    -> JSON da aba (?minhas=1&navii=1&verificadas=1)
   POST /navii/api/uso      -> cards vistos de uma pesquisa (segundos visíveis e interações), em lotes do navegador
+  GET /navii/estatisticas  -> aba "Estatísticas de uso" (`estatisticas_uso.py`); JSON em /navii/api/estatisticas
+                             (?tipo=mes|trimestre|semestre|ano&codigo=2026-10), planilha em
+                             /navii/estatisticas/planilha; POST /navii/api/estatisticas/universo calcula os pedaços
+                             do universo que faltam (a tela chama até zerar)
 
 A tela, a pesquisa e o extrato deixam uma linha `NAVII_USO` no log do servidor (`uso_navii.py`). Para as
 estatísticas de uso, cada pesquisa fica no Mongo com os cards enviados e os vistos (`coleta_uso.py`): a 1ª página
@@ -25,18 +29,19 @@ devolve o id da pesquisa (`pesquisa`), que o navegador manda nas páginas seguin
 Depende de `busca_ces_navii`, `conta_conteineres_navii` e `monta_cards_navii`,
 definidos em `busca_navii.py`.
 """
+import io
 from datetime import datetime
 from time import perf_counter
 from typing import Optional
 
-from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import (
-    acompanhamento_fichas, coleta_uso, dta_navii, extrato_navii, ficha_navii, filtros_salvos, referencias, risco_navii,
-    uso_navii,
+    acompanhamento_fichas, coleta_uso, dta_navii, estatisticas_uso, extrato_navii, ficha_navii, filtros_salvos,
+    referencias, risco_navii, uso_navii,
 )
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
@@ -362,6 +367,95 @@ def api_fichas():
     uso_navii.registra('fichas', usuario, perf_counter() - inicio, pagina='api', total=dados['total'],
                        alertas=dados['alertas'], **{k: '1' for k, v in opcoes.items() if v})
     return jsonify(dados)
+
+
+MAX_PENDENTES = 2000          # dias do universo por chamada (um ano e o anterior, nas duas janelas)
+ORCAMENTO_UNIVERSO = 5.0      # segundos por chamada: um dia frio leva até ~7,5 s; cabe nos 30 s do gunicorn
+
+
+@bp_navii.route('/estatisticas', strict_slashes=False)  # sem redirect da barra final (proxy)
+@login_required
+def estatisticas():
+    """Aba "Estatísticas de uso" (dados pela API, `api_estatisticas`; cálculo em `estatisticas_uso.py`)."""
+    uso_navii.registra('estatisticas', _usuario(), link=request.args.to_dict(flat=False) or None)
+    return render_template('navii_estatisticas.html', api_url=url_for('navii.api_estatisticas'),
+                           universo_url=url_for('navii.api_estatisticas_universo'),
+                           planilha_url=url_for('navii.planilha_estatisticas'), navii_url=url_for('navii.index'),
+                           fichas_url=url_for('navii.fichas'))
+
+
+def _porto_estatisticas() -> str:
+    return current_app.config.get('navii_porto_estatisticas') or estatisticas_uso.PORTO_PADRAO
+
+
+def _dados_estatisticas():
+    """(dados, None) ou (None, resposta de erro): 401 sem usuário, 503 sem o Mongo, 400 com período inválido."""
+    usuario = _usuario()
+    if not usuario:
+        return None, (jsonify({'erro': 'usuário não identificado'}), 401)
+    db = current_app.config.get('mongodb')
+    if db is None:
+        return None, (jsonify({'erro': 'Banco do uso (Mongo) não configurado no servidor.'}), 503)
+    try:
+        return estatisticas_uso.estatisticas(current_app.config['db_session'], db, usuario,
+                                             request.args.get('tipo') or 'mes', request.args.get('codigo'),
+                                             _porto_estatisticas()), None
+    except ValueError as err:
+        return None, (jsonify({'erro': str(err)}), 400)
+
+
+@bp_navii.route('/api/estatisticas')
+@login_required
+def api_estatisticas():
+    """As estatísticas de uso do período para o usuário logado (o acesso por usuário é decidido no servidor)."""
+    inicio = perf_counter()
+    dados, erro = _dados_estatisticas()
+    if erro:
+        return erro
+    uso_navii.registra('estatisticas', _usuario(), perf_counter() - inicio, pagina='api',
+                       periodo=dados['periodo']['codigo'], pendentes=len(dados['pendentes']))
+    return jsonify(dados)
+
+
+@bp_navii.route('/api/estatisticas/universo', methods=['POST'])
+@login_required
+def api_estatisticas_universo():
+    """Calcula, até o orçamento de segundos, os pedaços do universo que a tela recebeu em `pendentes`; devolve os
+    `restantes` (a tela chama de novo até zerar)."""
+    inicio = perf_counter()
+    usuario = _usuario()
+    if not usuario:
+        return jsonify({'erro': 'usuário não identificado'}), 401
+    db = current_app.config.get('mongodb')
+    if db is None:
+        return jsonify({'erro': 'Banco do uso (Mongo) não configurado no servidor.'}), 503
+    corpo = request.get_json(silent=True)
+    pendentes = corpo.get('pendentes') if isinstance(corpo, dict) else None
+    if not isinstance(pendentes, list) or len(pendentes) > MAX_PENDENTES:
+        return jsonify({'erro': f'Lista de pendentes inválida (no máximo {MAX_PENDENTES}).'}), 400
+    try:
+        pedacos = [estatisticas_uso.Pedaco.de_dict(p) for p in pendentes]
+    except ValueError as err:
+        return jsonify({'erro': str(err)}), 400
+    restantes = estatisticas_uso.calcula_pendencias(
+        current_app.config['db_session'], estatisticas_uso.colecao_universo(db), _porto_estatisticas(), pedacos,
+        datetime.now(), orcamento=ORCAMENTO_UNIVERSO)
+    uso_navii.registra('estatisticas', usuario, perf_counter() - inicio, pagina='universo',
+                       calculados=len(pedacos) - len(restantes), restantes=len(restantes))
+    return jsonify({'restantes': [p.como_dict() for p in restantes], 'calculados': len(pedacos) - len(restantes)})
+
+
+@bp_navii.route('/estatisticas/planilha')
+@login_required
+def planilha_estatisticas():
+    """A aba em planilha Excel (só as linhas por usuário que quem baixa pode ver)."""
+    dados, erro = _dados_estatisticas()
+    if erro:
+        return erro
+    uso_navii.registra('estatisticas', _usuario(), pagina='planilha', periodo=dados['periodo']['codigo'])
+    return send_file(io.BytesIO(estatisticas_uso.planilha_xlsx(dados)), as_attachment=True,
+                     download_name=f"estatisticas_navii_{dados['periodo']['codigo']}.xlsx",
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @bp_navii.route('/api/ficha', methods=['GET', 'POST'])

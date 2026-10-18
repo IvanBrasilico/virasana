@@ -798,6 +798,49 @@ aba mês a mês com progresso (sem cron); por dia só para a seletividade (~1%).
 - Testes: `test_navii_estatisticas_uso.py` (24), `test_diagnostico_estatisticas_uso.py` (12); 32 + 17 mutantes
   derrubados.
 
+**F2b FEITA (17/10/2026)** — a aba "Estatísticas de uso":
+- Rotas (`views_navii.py`): `GET /navii/estatisticas` (tela), `GET /navii/api/estatisticas?tipo=&codigo=` (401 sem
+  usuário, 503 sem o Mongo, 400 período inválido), `POST /navii/api/estatisticas/universo {pendentes}` (até
+  MAX_PENDENTES=1000 pedaços, cada um validado por `Pedaco.de_dict`; calcula com ORCAMENTO_UNIVERSO=8 s e devolve os
+  `restantes`), `GET /navii/estatisticas/planilha` (xlsx: Resumo, Por setor, Por usuário — só os que quem baixa vê —,
+  Por dia). Porto: `BRSSZ` ou a config `navii_porto_estatisticas`. Log `NAVII_USO acao=estatisticas`.
+- Módulo: a cobertura passou a ter também os EXAMINADOS no universo (o funil todo na base da data do contêiner);
+  `acesso.setores` com nome (o setor sem pesquisas aparecia só como código); `planilha_xlsx`, `variacao`.
+- Tela (`navii_estatisticas.html`): tipos Mês/Trimestre/Semestre/Ano e setas (a seguinte desabilitada no período em
+  curso), nota do trecho comparado, progresso do cálculo do universo (chama até zerar, no máximo 2 rodadas por
+  período), funil (universo -> vistos -> examinados), uso com variação (sem cor de "bom/ruim"), como se pesquisa,
+  barras por dia (SVG, sem biblioteca), tabelas por setor e por usuário, "Como os números são contados". Abas nas três
+  telas e entrada no menu NAVII.
+- Testes: `test_navii_estatisticas_tela.py` (6) + proxy (a tela em TELAS; o teste das funções do JS passou a cobrir as
+  três telas — pegou uma chamada indireta). 15 mutantes: 14 derrubados; o vivo é equivalente (o `login_required` já
+  barra o sem usuário). Roteiro no navegador (demo sob `/virasana`, como Supervisor): jan/2026 bate com os testes
+  (universo 4, vistos 3 = 75%, examinados 1, seletividade 50%), 1º tri soma os meses (6 contêineres), mês em curso com
+  o mesmo trecho, planilha conferida, largura de celular sem rolagem lateral.
+- Falta: rodar `--meses-universo 3 --porto BRSSZ` em produção; levar coleta + aba à homologação.
+
+**Medição dos meses (17/10/2026, `meses_universo.log`, porto BRSSZ)**: soma dos meses x os 3 meses de uma vez:
+efetiva +0,34% (1.085.940 x 1.082.309), prevista +0,66% — a soma dos meses serve. **Mas o TEMPO**: julho e agosto
+levaram 131 s e 134 s CADA (cache frio do banco); setembro 12,6 s; os 3 meses de uma vez, depois, 27 s. O virasana
+roda no gunicorn SEM `--timeout` (supervisor_virasana.conf): vale o padrão de 30 s — um pedaço de mês frio derrubaria
+o worker antes de gravar, e a aba falharia para sempre nos meses antigos. **A F2b NÃO deve ir à homologação assim.**
+Opções levadas ao usuário: (A) universo = soma de DIAS, calculados pela aba sob demanda (cada dia cabe na
+requisição; +~0,8% sobre o exato, constante entre períodos); (B) meses exatos por um script agendado, a aba só lê;
+(C) A + B. `--ate AAAA-MM-DD` no diagnóstico mede dias antigos (frios) para confirmar a (A).
+
+**Dias frios (18/10/2026, `dias_frios.log`, 22–31/05, porto BRSSZ)**: efetiva até 7,5 s por dia (média 3 s; o
+período, depois de aquecido, 1,8 s); prevista ~0,1 s; soma dos dias +0,12% do período. Em maio a efetiva é IGUAL à
+prevista dia a dia: ainda não há desembarques do ciclo de vida nesse mês — tudo entra pela previsão.
+**Opção (A) adotada** (a medição era a condição combinada):
+- Universo = SOMA DE DIAS (`universo_dos_dias`, uma consulta `$in` no Mongo; `dias_entre`; o `pedacos` por mês saiu).
+- `Pedaco.de_dict` só aceita UM dia: um pedaço maior seria uma consulta longa a pedido do cliente (derrubaria o
+  worker de 30 s). ORCAMENTO_UNIVERSO = 5 s (um dia frio que comece no limite termina bem antes dos 30 s);
+  MAX_PENDENTES = 2000.
+- A cobertura começa no INÍCIO DO REGISTRO do uso (`inicio_do_registro`: a primeira pesquisa gravada): antes dele é
+  desconhecida, não zero — e não se calcula universo de dias sem uso (abrir "Ano" no primeiro ano não dispara
+  centenas de dias). Período todo antes: cobertura None e sem pendências ("Sem registro de uso neste período");
+  começando no meio: `desde` ("Cobertura desde DD/MM, início do registro do uso").
+- Testes e mutantes refeitos (F2a 36/36; F2b 14/15, o vivo equivalente); roteiro no navegador das duas mensagens.
+
 **F1 FEITA (17/10/2026)** — coleta, sem tela:
 - `navii/coleta_uso.py` (Mongo do virasana, coleção `navii_uso_pesquisas`, um documento por pesquisa; ver a docstring):
   `registra_pesquisa` (1ª página: usuário, setor no Fichas no momento — `ovr_usuarios`, em cache 10 min —, aba,

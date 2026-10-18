@@ -32,6 +32,7 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --saida estatisticas_uso.log
     python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 30 --porto BRSSZ
     python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 0 --meses-universo 3 --porto BRSSZ
+    python virasana/analytic_scripts/diagnostico_estatisticas_uso.py --dias-universo 10 --ate 2026-05-31 --porto BRSSZ
 """
 import argparse
 import sys
@@ -102,10 +103,10 @@ class DiagnosticoEstatisticas(DiagnosticoFichas):
                       'WHERE o.tipooperacao = :tipo AND COALESCE(o.datahora, o.create_date) >= :desde')
 
     def __init__(self, conexao, saida, session=None, dias_universo: int = 14, porto: Optional[str] = None,
-                 meses_universo: int = 0, **opcoes):
+                 meses_universo: int = 0, ate: Optional[date] = None, **opcoes):
         super().__init__(conexao, saida, **opcoes)
         self.session, self.dias_universo, self.porto = session, dias_universo, porto
-        self.meses_universo = meses_universo
+        self.meses_universo, self.ate = meses_universo, ate
         self.tgs: Dict[int, list] = defaultdict(list)
         self.resultados: Dict[int, list] = defaultdict(list)
 
@@ -150,7 +151,7 @@ class DiagnosticoEstatisticas(DiagnosticoFichas):
             return
         self.escreve(f'Porto: {self.porto} (só a atracação prevista; o desembarque efetivo não usa o porto)'
                      if self.porto else 'Sem porto: o país inteiro.')
-        fim = self.agora.date() - timedelta(days=1)
+        fim = self.ate or self.agora.date() - timedelta(days=1)     # `--ate`: dias antigos (cache frio do banco)
         dias = [fim - timedelta(days=n) for n in range(self.dias_universo - 1, -1, -1)]
         for janela in JANELAS:
             if dias:
@@ -308,6 +309,8 @@ def main():  # pragma: no cover - depende do banco real
     parser.add_argument('--dias-universo', type=int, default=14,
                         help='quantos dias (até ontem) contar no universo, por janela (padrão 14; 0 = não contar)')
     parser.add_argument('--porto', help='universo do porto (filtro porto_escala, ex.: BRSSZ); sem: o país inteiro')
+    parser.add_argument('--ate', type=lambda v: datetime.strptime(v, '%Y-%m-%d').date(), metavar='AAAA-MM-DD',
+                        help='último dia do universo dia a dia (padrão: ontem) — para medir dias antigos')
     parser.add_argument('--meses-universo', type=int, default=0,
                         help='soma dos N últimos meses fechados x os N meses de uma vez (padrão 0 = não medir)')
     parser.add_argument('--saida', default=datetime.now().strftime('estatisticas_uso_%Y%m%d_%H%M%S.log'))
@@ -319,7 +322,8 @@ def main():  # pragma: no cover - depende do banco real
     with engine.connect() as conexao, open(args.saida, 'w', encoding='utf-8') as saida:
         session = Session(bind=conexao)
         diag = DiagnosticoEstatisticas(conexao, saida, session=session, dias_universo=args.dias_universo,
-                                       porto=args.porto, meses_universo=args.meses_universo, meses=args.meses)
+                                       porto=args.porto, meses_universo=args.meses_universo, ate=args.ate,
+                                       meses=args.meses)
         diag.escreve(f'Diagnóstico para as estatísticas de uso ({TIPOS_OPERACAO[TIPO_REPRESSAO_IMPORTACAO]}) — '
                      f'{datetime.now():%Y-%m-%d %H:%M:%S}')
         diag.escreve(f'Banco: {engine.url.render_as_string(hide_password=True)}')

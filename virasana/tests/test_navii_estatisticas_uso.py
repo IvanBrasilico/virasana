@@ -6,7 +6,8 @@ desembarque; C2 e C6 (sem desembarque; escala E1 prevista para 10/01) pela previ
 
 Pesquisas (coleta real no mongomock; agora = 17/10/2026, então jan/2026 é período FECHADO):
   p0 20/12/2025 ANA  (setor 2) vê C2                   -> uso de dez; cobertura de jan (dentro da margem de 30 d)
-  p1 12/01      ANA  (setor 2) NCM, total 2, vê C1 e C3 -> seletividade 2 / (2+1+1) = 50%
+  p1 12/01      ANA  (setor 2) NCM, total 2, vê C1 e C3 (C3 com clique: examinado fora do universo)
+                                                      -> seletividade 2 / (2+1+1) = 50%
   p2 20/01      BETO (setor 9) só o porto (navegação), vê C1 de novo (repetido)
   p5 25/01      GRAND(setor 3, neto do 1) navegação, não vê nada
   p3 20/02      ANA  vê C6 (só clique)                  -> cobertura de jan (margem), uso de fev
@@ -72,17 +73,17 @@ class TestPeriodos(unittest.TestCase):
         self.assertEqual(eu.comparacao(setembro, d('2026-10-17')),
                          eu.Comparacao((d('2026-09-01'), d('2026-09-30')), (d('2026-08-01'), d('2026-08-31')), False))
 
-    def test_pedacos_por_mes(self):
-        self.assertEqual(eu.pedacos(d('2026-09-15'), d('2026-11-03')),
-                         [(d('2026-09-15'), d('2026-09-30')), (d('2026-10-01'), d('2026-10-31')),
-                          (d('2026-11-01'), d('2026-11-03'))])
-        self.assertEqual(eu.pedacos(d('2025-12-31'), d('2026-01-01')),
-                         [(d('2025-12-31'), d('2025-12-31')), (d('2026-01-01'), d('2026-01-01'))])
+    def test_dias_entre(self):
+        self.assertEqual(eu.dias_entre(d('2025-12-31'), d('2026-01-02')),
+                         [d('2025-12-31'), d('2026-01-01'), d('2026-01-02')])
+        self.assertEqual(eu.dias_entre(d('2026-01-01'), d('2026-01-01')), [d('2026-01-01')])
+        self.assertEqual(len(eu.dias_entre(d('2024-01-01'), d('2024-12-31'))), 366)
 
     def test_pedaco_vindo_da_tela(self):
-        self.assertEqual(eu.Pedaco.de_dict({'janela': 'efetiva', 'inicio': '2026-01-01', 'fim': '2026-01-31'}),
-                         eu.Pedaco('efetiva', d('2026-01-01'), d('2026-01-31')))
-        for ruim in ({'janela': 'x', 'inicio': '2026-01-01', 'fim': '2026-01-02'},
+        self.assertEqual(eu.Pedaco.de_dict({'janela': 'prevista', 'inicio': '2026-01-05', 'fim': '2026-01-05'}),
+                         eu.Pedaco('prevista', d('2026-01-05'), d('2026-01-05')))
+        for ruim in ({'janela': 'x', 'inicio': '2026-01-01', 'fim': '2026-01-01'},
+                     {'janela': 'efetiva', 'inicio': '2026-01-01', 'fim': '2026-01-02'},     # dois dias: consulta longa
                      {'janela': 'efetiva', 'inicio': '2026-01-01', 'fim': '2026-12-31'},     # um ano de uma vez
                      {'janela': 'efetiva', 'inicio': '2026-02-01', 'fim': '2026-01-01'}, {'janela': 'efetiva'}, []):
             with self.subTest(ruim=ruim), self.assertRaises(ValueError):
@@ -103,8 +104,8 @@ class TestAgregacao(unittest.TestCase):
         monta_coleta(self.col)
         p2 = self.col.find_one({'origem': 'card'})['_id']
         for ficha, resultado in ((77, 'ja_existia'), (78, 'acrescentada')):
-            coleta_uso.registra_acao(self.col, p2, '52998224725', {'t': 'ficha', 'ficha': ficha, 'resultado': resultado},
-                                     agora=datetime(2026, 10, 17, 9, 6))
+            acao = {'t': 'ficha', 'ficha': ficha, 'resultado': resultado}
+            coleta_uso.registra_acao(self.col, p2, '52998224725', acao, agora=datetime(2026, 10, 17, 9, 6))
 
     def test_numeros(self):
         docs = eu.pesquisas(self.col, d('2026-10-17'), d('2026-10-17'))
@@ -190,12 +191,13 @@ class TestUniverso(CenarioTestCase):
         adiciona_adversarios(self.session)
         self.item = {c: i for i, c in self.session.query(busca_navii.Item.ID, busca_navii.Item.codigoConteiner)}
 
-    def test_calcula_guarda_e_soma_os_meses(self):
+    def test_calcula_guarda_e_soma_os_dias(self):
         total, faltam = eu.universo(self.col_universo, 'BRSSZ', d('2026-01-01'), d('2026-02-28'), AGORA)
         self.assertIsNone(total)
-        self.assertEqual(faltam, [eu.Pedaco('efetiva', d('2026-01-01'), d('2026-01-31')),
-                                  eu.Pedaco('efetiva', d('2026-02-01'), d('2026-02-28'))])
-        self.assertEqual(eu.calcula_pendencias(self.session, self.col_universo, 'BRSSZ', faltam, AGORA), [])
+        self.assertEqual(faltam, [eu.Pedaco('efetiva', dia, dia) for dia in eu.dias_entre(d('2026-01-01'),
+                                                                                          d('2026-02-28'))])
+        self.assertEqual(eu.calcula_pendencias(self.session, self.col_universo, 'BRSSZ', faltam, AGORA,
+                                               orcamento=1000), [])
         total, faltam = eu.universo(self.col_universo, 'BRSSZ', d('2026-01-01'), d('2026-02-28'), AGORA)
         self.assertEqual((total, faltam), (self.conta('2026-01-01', '2026-01-31') + self.conta('2026-02-01',
                                                                                                '2026-02-28'), []))
@@ -206,15 +208,15 @@ class TestUniverso(CenarioTestCase):
         self.assertIsNone(eu.universo(self.col_universo, 'BRRIG', d('2026-01-01'), d('2026-01-31'), AGORA)[0])
 
     def test_validade_e_definitivo(self):
-        recente = eu.Pedaco('efetiva', d('2026-10-01'), d('2026-10-16'))
+        recente = eu.Pedaco('efetiva', d('2026-10-16'), d('2026-10-16'))
         eu.calcula_universo(self.session, self.col_universo, 'BRSSZ', recente, AGORA)
         self.assertIsNotNone(eu.universo_guardado(self.col_universo, 'BRSSZ', recente, AGORA.replace(hour=17)))
         self.assertIsNone(eu.universo_guardado(self.col_universo, 'BRSSZ', recente, AGORA.replace(hour=19)))  # >6 h
-        janeiro = eu.Pedaco('efetiva', d('2026-01-01'), d('2026-01-31'))
-        eu.calcula_universo(self.session, self.col_universo, 'BRSSZ', janeiro, datetime(2026, 2, 15))   # 15 dias
-        self.assertIsNone(eu.universo_guardado(self.col_universo, 'BRSSZ', janeiro, AGORA))             # não basta
-        eu.calcula_universo(self.session, self.col_universo, 'BRSSZ', janeiro, datetime(2026, 2, 16))
-        self.assertEqual(eu.universo_guardado(self.col_universo, 'BRSSZ', janeiro, datetime(2030, 1, 1)), 4)
+        dia10 = eu.Pedaco('efetiva', d('2026-01-10'), d('2026-01-10'))                 # C2 e C6 pela previsão
+        eu.calcula_universo(self.session, self.col_universo, 'BRSSZ', dia10, datetime(2026, 1, 25))   # 15 dias
+        self.assertIsNone(eu.universo_guardado(self.col_universo, 'BRSSZ', dia10, AGORA))             # não basta
+        eu.calcula_universo(self.session, self.col_universo, 'BRSSZ', dia10, datetime(2026, 1, 26))
+        self.assertEqual(eu.universo_guardado(self.col_universo, 'BRSSZ', dia10, datetime(2030, 1, 1)), 2)
 
     def test_orcamento_de_tempo(self):
         pedacos = [eu.Pedaco('efetiva', d(f'2026-01-0{n}'), d(f'2026-01-0{n}')) for n in (1, 2, 3)]
@@ -239,21 +241,46 @@ class TestUniverso(CenarioTestCase):
                              pela_tela)
 
 
+def cria_fichas(session):
+    """As tabelas do Fichas que o acesso lê: setores 1 DIREP > 2 EQRIMP > 3 SUB e 9 SACIT; SUP (setor 1) Supervisor,
+    ANA (2) e BETO (9) Operadores, GRAND (3, nome Abel: a ordem pelo nome difere da pelo CPF)."""
+    motor = session.get_bind()
+    for tabela in (af.USUARIOS, af.SETORES, eu.PERFIS):
+        tabela.create(motor)
+    session.execute(af.SETORES.insert(), [
+        {'id': '1', 'nome': 'DIREP', 'pai_id': None}, {'id': '2', 'nome': 'EQRIMP', 'pai_id': '1'},
+        {'id': '3', 'nome': 'SUB', 'pai_id': '2'}, {'id': '9', 'nome': 'SACIT', 'pai_id': None}])
+    session.execute(af.USUARIOS.insert(), [
+        {'cpf': ANA, 'nome': 'Ana', 'setor_id': '2'}, {'cpf': BETO, 'nome': 'Beto', 'setor_id': '9'},
+        {'cpf': SUP, 'nome': 'Sup', 'setor_id': '1'}, {'cpf': GRAND, 'nome': 'Abel', 'setor_id': '3'}])
+    session.execute(eu.PERFIS.insert(), [{'cpf': SUP, 'perfil': 2}, {'cpf': ANA, 'perfil': 1},
+                                         {'cpf': BETO, 'perfil': 1}])
+
+
+def registra_pesquisas(col, item):
+    """As pesquisas p0..p5 da docstring do módulo, gravadas pela coleta real."""
+    ncm = {'porto_escala': ['BRSSZ'], 'ncm': ['8471']}
+    so_porto = {'porto_escala': ['BRSSZ']}
+    for usuario, setor, quando, filtros, total, periodo, vistos in (
+            (ANA, '2', datetime(2025, 12, 20, 10), so_porto, 1, ('2025-12-15', '2025-12-25'), [('C2', 1, [])]),
+            (ANA, '2', datetime(2026, 1, 12, 10), ncm, 2, ('2026-01-05', '2026-01-15'),
+             [('C1', 5, []), ('C3', 3, ['extrato'])]),          # C3 examinado, mas fora do universo de jan
+            (BETO, '9', datetime(2026, 1, 20, 9), so_porto, 4, ('2026-01-15', '2026-01-25'), [('C1', 2, [])]),
+            (GRAND, '3', datetime(2026, 1, 25, 9), so_porto, 4, ('2026-01-15', '2026-01-25'), []),
+            (ANA, '2', datetime(2026, 2, 20, 9), so_porto, 4, ('2026-01-01', '2026-01-31'), [('C6', 0, ['imagem'])]),
+            (ANA, '2', datetime(2026, 3, 5, 9), so_porto, 4, ('2026-01-01', '2026-01-31'), [('C4', 4, [])])):
+        cards = [{'item_id': item[c], 'numeroConteiner': c} for c, _, _ in vistos]
+        id_ = coleta_uso.registra_pesquisa(col, usuario, setor, f'aba-{usuario}', None, 'tela', 'efetiva', periodo,
+                                           filtros, total, {}, cards, agora=quando)
+        coleta_uso.registra_vistos(col, id_, usuario, [{'item': item[c], 's': s, 'x': x} for c, s, x in vistos],
+                                   quando)
+
+
 class TestAcesso(CenarioTestCase):
 
     def setUp(self):
         super().setUp()
-        motor = self.session.get_bind()
-        for tabela in (af.USUARIOS, af.SETORES, eu.PERFIS):
-            tabela.create(motor)
-        self.session.execute(af.SETORES.insert(), [
-            {'id': '1', 'nome': 'DIREP', 'pai_id': None}, {'id': '2', 'nome': 'EQRIMP', 'pai_id': '1'},
-            {'id': '3', 'nome': 'SUB', 'pai_id': '2'}, {'id': '9', 'nome': 'SACIT', 'pai_id': None}])
-        self.session.execute(af.USUARIOS.insert(), [
-            {'cpf': ANA, 'nome': 'Ana', 'setor_id': '2'}, {'cpf': BETO, 'nome': 'Beto', 'setor_id': '9'},
-            {'cpf': SUP, 'nome': 'Sup', 'setor_id': '1'}, {'cpf': GRAND, 'nome': 'Abel', 'setor_id': '3'}])
-        self.session.execute(eu.PERFIS.insert(), [{'cpf': SUP, 'perfil': 2}, {'cpf': ANA, 'perfil': 1},
-                                                  {'cpf': BETO, 'perfil': 1}])
+        cria_fichas(self.session)
 
     def test_supervisor_ve_os_seus_setores_em_qualquer_nivel(self):
         sup = eu.acesso_do_usuario(self.session, SUP)
@@ -274,26 +301,12 @@ class TestAcesso(CenarioTestCase):
         self.assertEqual(eu.acesso_do_usuario(session, SUP), eu.Acesso(SUP))
 
 
-class TestEstatisticas(TestAcesso):
+class TestEstatisticas(CenarioTestCase):
 
     def setUp(self):
         super().setUp()
-        ncm = {'porto_escala': ['BRSSZ'], 'ncm': ['8471']}
-        so_porto = {'porto_escala': ['BRSSZ']}
-        for usuario, setor, quando, filtros, total, periodo, vistos in (
-                (ANA, '2', datetime(2025, 12, 20, 10), so_porto, 1, ('2025-12-15', '2025-12-25'), [('C2', 1, [])]),
-                (ANA, '2', datetime(2026, 1, 12, 10), ncm, 2, ('2026-01-05', '2026-01-15'),
-                 [('C1', 5, []), ('C3', 3, [])]),
-                (BETO, '9', datetime(2026, 1, 20, 9), so_porto, 4, ('2026-01-15', '2026-01-25'), [('C1', 2, [])]),
-                (GRAND, '3', datetime(2026, 1, 25, 9), so_porto, 4, ('2026-01-15', '2026-01-25'), []),
-                (ANA, '2', datetime(2026, 2, 20, 9), so_porto, 4, ('2026-01-01', '2026-01-31'),
-                 [('C6', 0, ['imagem'])]),
-                (ANA, '2', datetime(2026, 3, 5, 9), so_porto, 4, ('2026-01-01', '2026-01-31'), [('C4', 4, [])])):
-            cards = [{'item_id': self.item[c], 'numeroConteiner': c} for c, _, _ in vistos]
-            id_ = coleta_uso.registra_pesquisa(self.col, usuario, setor, f'aba-{usuario}', None, 'tela', 'efetiva',
-                                               periodo, filtros, total, {}, cards, agora=quando)
-            lote = [{'item': self.item[c], 's': s, 'x': x} for c, s, x in vistos]
-            coleta_uso.registra_vistos(self.col, id_, usuario, lote, quando)
+        cria_fichas(self.session)
+        registra_pesquisas(self.col, self.item)
 
     def estatisticas(self, cpf=ANA, codigo='2026-01'):
         return eu.estatisticas(self.session, self.db, cpf, 'mes', codigo, agora=AGORA)
@@ -306,14 +319,26 @@ class TestEstatisticas(TestAcesso):
     def test_primeiro_pede_o_universo_depois_mostra_tudo(self):
         dados = self.estatisticas()
         self.assertIsNone(dados['cobertura']['atual'])
-        self.assertEqual(len(dados['pendentes']), 2 + 11)                   # jan e dez (meses) + 11 dias de p1
+        # jan inteiro (31 dias) + dez desde o início do registro (20/12: 12 dias); os 11 dias de p1 já estão em jan
+        self.assertEqual(len(dados['pendentes']), 31 + 12)
         self.calcula_tudo(dados)
         dados = self.estatisticas()
         self.assertEqual(dados['pendentes'], [])
-        self.assertEqual(dados['cobertura']['atual'], {'universo': 4, 'vistos': 3, 'percentual': 75.0})
-        self.assertEqual(dados['cobertura']['anterior'], {'universo': 0, 'vistos': 0, 'percentual': None})
+        self.assertEqual(dados['cobertura']['atual'], {'universo': 4, 'vistos': 3, 'percentual': 75.0,
+                                                       'examinados': 1, 'examinadosPorVistos': 33.3,   # o C6
+                                                       'desde': '2026-01-01'})
+        self.assertEqual(dados['cobertura']['anterior'], {'universo': 0, 'vistos': 0, 'percentual': None,
+                                                          'examinados': 0, 'examinadosPorVistos': None,
+                                                          'desde': '2025-12-20'})     # o registro começou em 20/12
+        self.assertEqual(dados['cobertura']['inicioDoRegistro'], '2025-12-20')
         self.assertEqual(dados['seletividade'], {'mediana': 50.0, 'pesquisas': 1, 'navegacao': 2, 'foraDaBase': 0,
                                                  'semUniverso': 0})
+
+    def test_antes_do_registro_nao_ha_cobertura_nem_calculo(self):
+        dados = self.estatisticas(codigo='2025-11')
+        self.assertEqual((dados['cobertura']['atual'], dados['cobertura']['anterior'], dados['pendentes']),
+                         (None, None, []))
+        self.assertEqual(eu.inicio_do_registro(coleta_uso.colecao(mongomock.MongoClient()['vazio'])), None)
 
     def test_uso_e_comparacao(self):
         dados = self.estatisticas()
@@ -332,6 +357,9 @@ class TestEstatisticas(TestAcesso):
         self.assertEqual([linha['nome'] for linha in self.estatisticas(BETO)['usuarios']], ['Beto'])
         self.assertEqual([linha['nome'] for linha in self.estatisticas(BETO)['setores']], ['EQRIMP', 'SACIT', 'SUB'])
         self.assertEqual([linha['nome'] for linha in self.estatisticas(SEM_CADASTRO)['usuarios']], [])
+        self.assertEqual(self.estatisticas(SUP)['acesso'], {'supervisor': True, 'setores': [
+            {'codigo': '1', 'nome': 'DIREP'}, {'codigo': '2', 'nome': 'EQRIMP'}, {'codigo': '3', 'nome': 'SUB'}]})
+        self.assertEqual(self.estatisticas(ANA)['acesso']['supervisor'], False)
 
     def test_quem_mudou_de_setor_fica_com_o_da_epoca(self):
         self.session.execute(af.USUARIOS.update().where(af.USUARIOS.c.cpf == ANA).values(setor_id='9'))
