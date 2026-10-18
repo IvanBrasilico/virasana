@@ -887,6 +887,45 @@ usuários):
   card -> desfazer encadeados pela `anterior`, vistos enviados na troca de pesquisa, 2ª página na mesma pesquisa.
   Observação do roteiro: em tela estreita o card tem ~1.700 px — um card cobre a tela inteira e só ele conta (correto).
 
+## Busca por texto — Meilisearch (plano aprovado em 18/10/2026)
+
+Item 4 do backlog antigo ("linguagem natural"). Caso de uso: achar CEs por um texto digitado — embarcador mesmo com
+erro de digitação, e-mail, telefone, endereço ou nome que às vezes só está no `notify` — e ver os cards mais
+relevantes (e, entre eles, os mais recentes) primeiro. É busca por PALAVRAS tolerante a erro (não semântica; o modo
+híbrido com embeddings do Meilisearch fica para depois, se precisar).
+
+**Desenho**: Meilisearch (binário único, versão fixa, systemd no Rocky Linux 9, só em 127.0.0.1, chave mestra; o
+virasana usa uma chave de busca e o indexador uma de escrita; o navegador NUNCA fala com o Meilisearch). Um documento
+por CE (chave `numeroCEmercante`): `numeroCEMaster`, `numeroCEmercante`, `codigoEmpresaNavegacao`, `consignatario`,
+`descricao`, `embarcador`, `portoDestFinal`, `portoOrigemCarga`, `numConhecimento`, `cnpjNotify`, `notify` + os NOMES
+do consignatário e do embarcador quando o campo guarda CNPJ (`laudo_empresas`; os dois campos guardam o CNPJ da
+empresa BR ou o nome da estrangeira) + a DATA DE REFERÊNCIA (previsão de atracação da escala em Santos; sem ela, a
+primeira escala) para filtrar e desempatar. Pesos: embarcador, nomes, notify, descrição, CNPJs e números; sem
+tolerância a erro nos números. Ranking: relevância, depois os mais recentes. O índice é derivado do MariaDB (perdeu,
+reconstrói).
+
+**Carga**: inicial dos CEs dos últimos 3 meses; depois, a cada poucos minutos, os CEs novos pelo `ID` (o
+`last_modified` do CE NÃO tem índice) e os CEs dos manifestos com escala nova/alterada (`last_modified` indexado de
+`Escala`/`EscalaManifesto`). Retenção: 12 meses (apaga os mais antigos).
+
+**Aba**: `/navii/texto`, o MESMO `navii.html` em "modo texto" (só o campo de texto — busca enquanto se digita, a partir
+de 3 caracteres — e o período, padrão previsão de atracação de hoje -15 a +30 dias; o menu Filtrar/Ocultar do card
+escondido); a API do virasana consulta o Meilisearch, monta os cards dos CEs da página pelo caminho existente e os
+reordena pela relevância; cada card mostra o TRECHO ENCONTRADO ("encontrado em: notify — ..."); rolagem infinita;
+coleta de uso com origem "texto". Se o Meilisearch cair, só esta aba avisa.
+
+**Decisões (usuário, 18/10/2026)**: card no mesmo template em modo texto; TODOS os CEs de importação do país; data de
+referência = escala em Santos (senão a primeira); alterações do próprio CE depois de indexado FICAM DE FORA por
+enquanto (sem re-sync); retenção de 12 meses; indexador em serviço próprio no supervisor (separado do ciclo de vida).
+**Sem mascaramento**: o sistema é de uso interno da Receita Federal e os usuários têm acesso a esses dados (nome,
+telefone, e-mail, endereço, CPF/CNPJ) — indexados e exibidos como estão; sigilo/LGPD não é requisito de desenho aqui
+(o controle de acesso por perfil/setor, quando pedido, é regra de negócio).
+
+**Fases**: F0 diagnóstico só SQL (CEs por mês, preenchimento e tamanho dos campos, e-mail/telefone no notify, CNPJ x
+nome em embarcador/consignatário e cobertura dos nomes, escalas por manifesto e Santos, CEs sem escala, cards por CE,
+tamanho estimado do índice) -> F1 índice (instalação, `texto_navii.py`, indexador, supervisor, testes com Meilisearch
+simulado) -> F2 aba -> F3 homologação e ajustes com os usuários.
+
 ## Pendências
 
 Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amostras`, e
