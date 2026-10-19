@@ -49,7 +49,7 @@ from virasana.navii import (
     referencias, risco_navii, texto_navii, uso_navii,
 )
 from virasana.navii.busca_navii import (
-    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, CAMPOS_PESO, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
     busca_ces_navii,
     conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
     _janela_previsao, _periodo_navii, sugere_recintos,
@@ -230,7 +230,8 @@ def _filtros_da_requisicao() -> dict:
         valores = [v for v in request.args.getlist(campo) if v.strip()]
         if valores:
             filtros[campo] = valores
-    for campo in ('produto', 'empresa') + CAMPOS_ESCOLHA:
+    # peso: a normalização (busca_navii) converte e descarta o inválido
+    for campo in ('produto', 'empresa') + CAMPOS_ESCOLHA + CAMPOS_PESO:
         valor = (request.args.get(campo) or '').strip()
         if valor:
             filtros[campo] = valor

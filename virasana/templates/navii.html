@@ -664,6 +664,22 @@
                 <input id="f-ncms_max" type="range" min="0" max="20" step="1" value="0" />
             </div>
 
+            <div class="campo">
+                <span class="rotulo-campo">Peso bruto declarado do contêiner (kg)</span>
+                <div class="campo-datas">
+                    <div class="br-input">
+                        <label for="f-peso_min">De</label>
+                        <input id="f-peso_min" type="number" min="0" step="any" inputmode="decimal" placeholder="mínimo" />
+                    </div>
+                    <div class="br-input">
+                        <label for="f-peso_max">Até</label>
+                        <input id="f-peso_max" type="number" min="0" step="any" inputmode="decimal" placeholder="máximo" />
+                    </div>
+                </div>
+                <div class="dica-lista">O peso do contêiner do card (no Mercante), não o total do CE. Um lado vazio = sem
+                    limite desse lado; com faixa, os contêineres sem peso declarado ficam de fora.</div>
+            </div>
+
             <div class="campo campo-slider">
                 <div class="campo-checkbox mb-1">
                     <input id="f-corad-ligado" type="checkbox" />
@@ -877,6 +893,7 @@
         conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', estagio: 'Estágio', corad: 'Risco CORAD',
+        peso_min: 'Peso do contêiner ≥', peso_max: 'Peso do contêiner ≤',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
         risco: 'Risco histórico', ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem',
         so_com_desembarque: 'Só com desembarque'
@@ -1072,7 +1089,8 @@
                     : (chave === 'risco' ? (FILTROS_RISCO[valor] || valor)
                     : (chave === 'tem_dta' ? (OPCOES_TEM_DTA[valor] || valor)
                         : (chave === 'corad' ? textoCorad(valor)
-                            : (Array.isArray(valor) ? valor.join(', ') : valor))))));
+                            : (chave === 'peso_min' || chave === 'peso_max' ? formatarPeso(valor)
+                                : (Array.isArray(valor) ? valor.join(', ') : valor)))))));
             var chip = document.createElement('span');
             chip.className = 'br-tag ' + (BASE_DO_OCULTO[chave] ? 'tag-ocultar' : 'tag-neutra');
             chip.innerHTML = (BASE_DO_OCULTO[chave] ? '<i class="fas fa-eye-slash" aria-hidden="true"></i> ' : '') +
@@ -2673,6 +2691,17 @@
         });
         var ncmsMax = parseInt(document.getElementById('f-ncms_max').value, 10);
         if (ncmsMax > 0) { filtros.ncms_max = ncmsMax; }
+        ['peso_min', 'peso_max'].forEach(function (campo) {   // o campo numérico usa ponto decimal
+            var peso = parseFloat(document.getElementById('f-' + campo).value);
+            if (!isNaN(peso) && peso >= 0) { filtros[campo] = peso; }
+        });
+        if (filtros.peso_min !== undefined && filtros.peso_max !== undefined && filtros.peso_min > filtros.peso_max) {
+            var menor = filtros.peso_max;   // faixa invertida: troca (o servidor faz o mesmo)
+            filtros.peso_max = filtros.peso_min;
+            filtros.peso_min = menor;
+            document.getElementById('f-peso_min').value = filtros.peso_min;
+            document.getElementById('f-peso_max').value = filtros.peso_max;
+        }
         var tiposBl = tiposBlMarcados();
         if (tiposBl.length) { filtros.tipo_bl = tiposBl; }
         var estagios = estagiosMarcados();
@@ -2707,6 +2736,10 @@
         var ncmsMax = filtros.ncms_max || 0;
         document.getElementById('f-ncms_max').value = ncmsMax;
         document.getElementById('valor-ncms_max').textContent = ncmsMax > 0 ? ncmsMax : 'Sem limite';
+        ['peso_min', 'peso_max'].forEach(function (campo) {
+            var peso = filtros[campo];
+            document.getElementById('f-' + campo).value = (peso === undefined || peso === null) ? '' : peso;
+        });
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
         document.getElementById('f-incluir_sem_desembarque').checked = !filtros.so_com_desembarque;
         marcaTiposBl(filtros.tipo_bl || []);

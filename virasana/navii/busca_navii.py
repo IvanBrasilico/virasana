@@ -45,6 +45,7 @@ Fora de escopo por enquanto (sem fonte de dados/implementação ainda):
   - Resolução de CPF (bagagens_pessoas) — embarcador/consignatário do
     Conhecimento só guardam CNPJ ou nome estrangeiro, nunca CPF.
 """
+import math
 import os
 import re
 import sys
@@ -52,7 +53,8 @@ from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from sqlalchemy import (
-    BigInteger, Column, MetaData, Table, VARCHAR, and_, false, func, join, literal, not_, or_, select, union,
+    BigInteger, Column, MetaData, Numeric, Table, VARCHAR, and_, cast, false, func, join, literal, not_, or_, select,
+    union,
 )
 from sqlalchemy.orm import selectinload, undefer_group
 
@@ -132,6 +134,9 @@ CAMPOS_MARCAVEIS = ('concluido', 'com_imagem', 'sem_oog', 'so_com_desembarque')
 # Filtros de escolha única. `risco`: faixa do risco histórico por CE (risco_navii.FILTROS_RISCO). `corad`: nível
 # do slider "Risco CORAD" (0 a CORAD_MAX; ver `_criterio_corad`). `tem_dta`: 'sim'/'nao' (dta_navii).
 CAMPOS_ESCOLHA = ('risco', 'corad', 'tem_dta')
+# Faixa do peso bruto declarado do CONTÊINER (Item.pesoBruto, kg), inclusiva; 20/10/2026 (decisão do usuário: o
+# peso do contêiner do card, não o total do CE)
+CAMPOS_PESO = ('peso_min', 'peso_max')
 # Matriz de risco CORAD (`matriz_risco_corad`, classe `MatrizCorad` do Fichas): classificacao_aniita_imp de 1 (alto)
 # a 4 por raiz de CNPJ. Rótulos do slider (pedido do usuário, 15/10/2026); 0 = não consta (risco não apurado).
 CORAD_MAX = 4
@@ -342,6 +347,24 @@ def _resolve_conflitos_ocultar(filtros: dict, avisos: List[str]) -> dict:
     return filtros
 
 
+def _normaliza_peso(filtros: dict) -> dict:
+    """Faixa de peso: número >= 0 (ponto ou vírgula decimal); vazio, inválido ou negativo sai do filtro; faixa
+    invertida é trocada. Inteiro fica inteiro (o chip e o filtro salvo mostram 25000, não 25000.0)."""
+    for campo in CAMPOS_PESO:
+        if campo not in filtros:
+            continue
+        valor = filtros[campo]
+        numero_da_tela = isinstance(valor, (int, float)) and not isinstance(valor, bool)
+        numero = float(valor) if numero_da_tela else _texto_para_float(valor)
+        if numero is None or not math.isfinite(numero) or numero < 0:
+            del filtros[campo]
+        else:
+            filtros[campo] = int(numero) if numero.is_integer() else numero
+    if 'peso_min' in filtros and 'peso_max' in filtros and filtros['peso_min'] > filtros['peso_max']:
+        filtros['peso_min'], filtros['peso_max'] = filtros['peso_max'], filtros['peso_min']
+    return filtros
+
+
 def normaliza_filtros(filtros: Optional[dict], avisos: Optional[List[str]] = None) -> dict:
     """Padroniza o que o usuário digitou: os campos de CAMPOS_LISTA viram
     listas sem repetição, códigos de porto em maiúsculas e NCM só com dígitos
@@ -351,7 +374,7 @@ def normaliza_filtros(filtros: Optional[dict], avisos: Optional[List[str]] = Non
     Filtros OCULTAR: ver `_normaliza_oculto` e `_resolve_conflitos_ocultar`; o que for ignorado vai para `avisos`
     (a tela mostra)."""
     avisos = [] if avisos is None else avisos
-    filtros = _normaliza_escolhas(dict(filtros or {}))
+    filtros = _normaliza_peso(_normaliza_escolhas(dict(filtros or {})))
     if filtros.pop('concluido', None):
         filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
     for campo in CAMPOS_LISTA:
@@ -580,6 +603,8 @@ def monta_query_navii(
             - estagio (str | lista): estágio do contêiner no ciclo de vida (no_operador, em_transito,
               no_seco, entregue, embarcado, incompleto — ver `estagios_ciclo`) — exige ciclo de vida.
               `concluido` (bool, filtro antigo) = estágio "entregue".
+            - peso_min / peso_max (número, kg): faixa INCLUSIVA do peso bruto declarado do contêiner (Item.pesoBruto);
+              com faixa, o contêiner sem peso declarado fica de fora (`_criterios_peso`)
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
               ("até N NCMs distintos"; CE sem NCM declarado conta como 0)
             - com_imagem (bool): equivalente a `exigir_escaneamento=True`
@@ -687,6 +712,26 @@ def _criterio_corad(nivel: int):
     return or_(Conhecimento.consignatario.is_(None), func.length(consignatario) != 14, not_(classificado_acima))
 
 
+def _peso_declarado():
+    """Item.pesoBruto (texto do Mercante, ponto ou vírgula decimal — como `_texto_para_float`) como número; vazio ou
+    inválido vira 0."""
+    return cast(func.replace(func.trim(func.coalesce(Item.pesoBruto, '')), ',', '.'), Numeric(15, 3))
+
+
+def _criterios_peso(filtros: dict) -> list:
+    """Faixa do peso declarado do contêiner (inclusiva). Com faixa, o contêiner sem peso declarado (ou inválido)
+    fica de fora. Condição na própria linha do candidato: não custa consulta extra."""
+    if not any(campo in filtros for campo in CAMPOS_PESO):
+        return []
+    peso = _peso_declarado()
+    criterios = [peso > 0]
+    if 'peso_min' in filtros:
+        criterios.append(peso >= filtros['peso_min'])
+    if 'peso_max' in filtros:
+        criterios.append(peso <= filtros['peso_max'])
+    return criterios
+
+
 def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
     """Filtros em outras tabelas (imagem, NCM, recinto, entregue, qtde. de
     NCMs), verificados por candidato da janela com `_existe`/subquery."""
@@ -705,6 +750,7 @@ def _filtra_por_candidato(q, filtros: dict, exigir_escaneamento: bool):
 
     if filtros.get('sem_oog'):
         q = q.filter(or_(Item.isoCode.is_(None), not_(expressao_oog(Item.isoCode))))
+    q = q.filter(*_criterios_peso(filtros))
 
     if filtros.get('recinto'):
         recintos = filtros['recinto']

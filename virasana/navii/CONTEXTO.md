@@ -225,6 +225,16 @@ Regras e limitações (importantes):
      pelo contêiner), 7 mutantes no texto (todos derrubados) e roteiro no navegador.
    - Pendência: o card cujo desembarque foi achado só pela família gravada pelo ciclo mostra "Sem ciclo de vida"
      (sem a linha do tempo) — `busca_ciclos_navii` poderia procurar também por `ciclodevida_ciclo_ce`.
+16. **Faixa de peso** (20/10/2026): filtros `peso_min`/`peso_max` (kg, `CAMPOS_PESO`) sobre o peso bruto declarado
+   do **CONTÊINER** (`Item.pesoBruto`) — escolha do usuário entre o do contêiner e o total do CE (o "Peso bruto
+   total" do card, que exigiria somar os itens do CE por candidato). Regras: faixa inclusiva; um lado vazio = sem
+   limite; com faixa, o contêiner sem peso declarado (vazio ou inválido) fica de fora; faixa invertida é trocada
+   (servidor e tela); valor inválido ou negativo é descartado (`_normaliza_peso`). SQL: `CAST(REPLACE(TRIM(...),
+   ',', '.') AS DECIMAL(15,3))` na linha do candidato (`_criterios_peso`, sem consulta extra) — a mesma leitura do
+   `_texto_para_float` do card (ponto ou vírgula decimal; separador de milhar não é tratado em nenhum dos dois).
+   Também nos filtros salvos, nos chips ("1.200,5 kg") e nos rótulos das estatísticas. Testes:
+   `test_navii_filtro_peso.py` (ponto, vírgula, vazio, inválido, espaços, pontas, faixa invertida, contagem, filtro
+   salvo, API, tela), 12 mutantes (todos derrubados) e roteiro no navegador.
 
 ## Como a busca funciona (desenho atual)
 
@@ -1010,7 +1020,8 @@ PENDENTE (item 5 das Pendências). Os XMLs são apagados depois da carga no banc
   `supervisorctl start navii_texto` → acompanhar a carga (~60 voltas de 20 mil IDs) → conferir buscas pela API.
   Depois, F2 (aba). **Conferido pelo usuário em 19/10/2026** (carga e `--busca`).
 
-**F2 — aba (19/10/2026, escrita e testada; falta ativar)**. Plano aprovado com uma mudança do usuário: a busca dispara
+**F2 — aba (19/10/2026, escrita, testada e ATIVADA em produção no mesmo dia — conferido pelo usuário)**. Plano
+aprovado com uma mudança do usuário: a busca dispara
 a partir de **5** caracteres (não 3). Decisão: CE sem item no Mercante aparece numa linha compacta (CE, trecho,
 extrato), sem card.
 - `views_navii.py`: `GET /navii/texto` (o mesmo `navii.html`, `modo_texto=True`; `?q=` abre buscando; o contexto

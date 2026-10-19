@@ -22,13 +22,14 @@ from datetime import datetime
 from typing import List, Optional
 
 from virasana.navii.busca_navii import (
-    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, TIPOS_JANELA_VALIDOS, normaliza_filtros,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, CAMPOS_PESO, TIPOS_JANELA_VALIDOS, normaliza_filtros,
 )
 
 COLECAO = 'navii_filtros_salvos'
 TAMANHO_MAXIMO_NOME = 60
 MAXIMO_POR_USUARIO = 100
-CAMPOS_SALVAVEIS = CAMPOS_LISTA + CAMPOS_MARCAVEIS + CAMPOS_ESCOLHA + ('produto', 'empresa', 'ncms_max')
+CAMPOS_SALVAVEIS = (CAMPOS_LISTA + CAMPOS_MARCAVEIS + CAMPOS_ESCOLHA + CAMPOS_PESO
+                    + ('produto', 'empresa', 'ncms_max'))
 
 
 class FiltroInvalido(ValueError):
@@ -65,7 +66,7 @@ def limpa_filtros(filtros: Optional[dict]) -> dict:
                     limpos[campo] = int(valor)
             except (TypeError, ValueError):
                 raise FiltroInvalido('Quantidade máxima de NCMs inválida.')
-        elif campo in CAMPOS_LISTA or campo == 'corad':   # corad: inteiro 0..4 (o nível 0 também vale)
+        elif campo in CAMPOS_LISTA or campo in CAMPOS_PESO or campo == 'corad':   # corad 0..4; peso: número >= 0
             limpos[campo] = valor
         elif str(valor).strip():
             limpos[campo] = str(valor).strip()
