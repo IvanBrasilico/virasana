@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content="{% if csrf_token is defined %}{{ csrf_token() }}{% endif %}" />
-    <title>NAVI-I — Análise de risco na importação</title>
+    <title>NAVI-I — {% if modo_texto %}Busca por texto{% else %}Análise de risco na importação{% endif %}</title>
 
     <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -515,6 +515,22 @@
         .estado-vazio .icone { font-size: 2.5rem; color: #B3B3B3; margin-bottom: .75rem; }
         .estado-carregando { text-align: center; padding: 1.5rem; color: #666; }
         #sentinela { height: 1px; }
+
+        /* ---------- Aba "Busca por texto" (modo texto do mesmo template) ---------- */
+        .layout-navii.modo-texto .painel-filtros, .layout-navii.modo-texto #btn-toggle-filtros { display: none; }
+        .barra-texto { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: flex-end; margin-bottom: 1rem; }
+        .barra-texto .campo-texto { flex: 1 1 22rem; min-width: 0; }
+        .barra-texto .campo-texto input { width: 100%; }
+        .barra-texto .campo-data-texto { flex: 0 1 11rem; min-width: 9rem; }
+        .barra-texto .dica-texto { flex: 1 1 100%; margin: 0; font-size: .75rem; color: #666; line-height: 1.35; }
+        .trechos-texto { border-left: 3px solid #1351B4; background: #F0F5FC; padding: .375rem .625rem;
+                         margin: .25rem 0 .625rem; font-size: .8125rem; overflow-wrap: anywhere; }
+        .trechos-texto .rotulo-mini { display: block; margin-bottom: .125rem; }
+        .trechos-texto .campo-trecho { font-weight: 600; }
+        .trechos-texto mark { background: #FFE58A; color: inherit; padding: 0 .1em; }
+        .linha-sem-card { padding: .5rem .75rem; border: 1px dashed #B0B0B0; border-radius: 6px; margin-bottom: .75rem;
+                          font-size: .875rem; overflow-wrap: anywhere; }
+        .linha-sem-card .tag-sem-card { font-size: .75rem; color: #666; }
     </style>
 </head>
 <body>
@@ -526,20 +542,28 @@
         <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
             <h1><span class="marca-navii">NAVI-I</span> Análise de risco na importação</h1>
             <p class="page-subtitle text-down-01 mb-0 mt-1">
+                {% if modo_texto %}
+                Busca por palavras nos CEs de importação (embarcador, consignatário, notify, descrição da mercadoria,
+                CNPJs e números), tolerante a erros de digitação nos nomes. Os CEs vêm do mais relevante para o menos
+                relevante, com os cards dos contêineres e o trecho onde o texto foi encontrado.
+                {% else %}
                 Contêineres declarados em CEs mercante (exceto exportação) no período selecionado, com dados do Mercante e
                 contêineres/NCMs declarados. Ciclo de vida (API Recintos) e imagens de escaneamento são
                 exibidos quando localizados — não são obrigatórios.
+                {% endif %}
             </p>
             <nav class="abas-navii" aria-label="NAVI-I">
-                <a href="{{ url_for('navii.index') }}" aria-current="page">Análise de risco</a>
+                <a href="{{ url_for('navii.index') }}"{% if not modo_texto %} aria-current="page"{% endif %}>Análise de risco</a>
+                <a href="{{ url_for('navii.texto') }}"{% if modo_texto %} aria-current="page"{% endif %}>Busca por texto</a>
                 <a href="{{ url_for('navii.fichas') }}">Fichas em acompanhamento</a>
                 <a href="{{ url_for('navii.estatisticas') }}">Estatísticas de uso</a>
             </nav>
         </div>
     </div>
 
-    <div class="layout-navii" id="layout-navii">
-        <aside class="painel-filtros" id="painel-filtros">
+    <div class="layout-navii{% if modo_texto %} modo-texto{% endif %}" id="layout-navii">
+        {# no modo texto o painel fica no DOM (o script da aba de análise o usa), escondido #}
+        <aside class="painel-filtros" id="painel-filtros"{% if modo_texto %} hidden{% endif %}>
             <div class="titulo-filtros"><i class="fas fa-sliders-h" aria-hidden="true"></i> Filtros</div>
 
             <div class="campo">
@@ -726,6 +750,26 @@
         </aside>
 
         <main class="painel-resultados">
+            {% if modo_texto %}
+            <div class="barra-texto" role="search">
+                <div class="br-input campo-texto">
+                    <label for="t-texto">Texto</label>
+                    <input id="t-texto" type="search" autocomplete="off" maxlength="200" value="{{ texto_inicial }}"
+                           placeholder="nome de empresa, mercadoria, CNPJ, CE, BL…" aria-describedby="t-dica" />
+                </div>
+                <div class="br-input campo-data-texto">
+                    <label for="t-de">Atracação prevista de</label>
+                    <input id="t-de" type="date" />
+                </div>
+                <div class="br-input campo-data-texto">
+                    <label for="t-ate">até</label>
+                    <input id="t-ate" type="date" />
+                </div>
+                <p class="dica-texto" id="t-dica">A busca começa a partir de {{ minimo_texto }} caracteres. Nomes,
+                    notify e descrição aceitam erro de digitação; CNPJ, CE, BL e manifesto, só o número exato (ou o
+                    começo dele, se for a última palavra). Datas vazias: sem limite de data (inclui os CEs sem escala).</p>
+            </div>
+            {% endif %}
             <div class="barra-ferramentas">
                 <button class="btn-toggle-filtros" id="btn-toggle-filtros" type="button"
                         title="Mostrar/ocultar filtros" aria-label="Mostrar/ocultar filtros">
@@ -743,8 +787,13 @@
 
             <div id="estado-vazio" class="estado-vazio" hidden>
                 <div class="icone"><i class="fas fa-box-open" aria-hidden="true"></i></div>
+                {% if modo_texto %}
+                <h3 class="mb-1">Nenhum CE encontrado</h3>
+                <p class="page-subtitle">Confira o texto ou amplie o período (datas vazias: sem limite de data).</p>
+                {% else %}
                 <h3 class="mb-1">Nenhum contêiner encontrado</h3>
                 <p class="page-subtitle">Ajuste os filtros ou o período e tente novamente.</p>
+                {% endif %}
             </div>
 
             <div id="sentinela"></div>
@@ -816,6 +865,13 @@
     var MINIMO_OCULTAR = {{ minimo_ocultar | tojson }};
     var FICHA_URL = {{ ficha_url | tojson }};
     var USO_URL = {{ uso_url | tojson }};
+    // Aba "Busca por texto": o mesmo template em modo texto (ver views_navii.api_texto)
+    var MODO_TEXTO = {{ modo_texto | tojson }};
+    var TEXTO_URL = {{ texto_url | tojson }};
+    var MINIMO_TEXTO = {{ minimo_texto | tojson }};
+    var PERIODO_TEXTO = {{ periodo_texto | tojson }};
+    var TEXTO_INICIAL = {{ texto_inicial | tojson }};
+    var ESPERA_TEXTO_MS = 600;   // pausa na digitação antes de buscar: uma pesquisa por pausa, não por tecla
     var modos ={ ncm: 'filtrar', porto_origem: 'filtrar' };
     var rotulos = {
         conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'DTA', porto_escala: 'Atracação em', ncm: 'NCM', produto: 'Produto', porto_origem: 'Origem',
@@ -849,7 +905,13 @@
         total: null,
         tempos: null,
         carregando: false,
-        fim: false
+        fim: false,
+        // modo texto: o texto e o período da busca em curso, a próxima página e o número do pedido (a resposta de
+        // uma busca que já foi trocada por outra é descartada)
+        texto: '',
+        chaveTexto: null,
+        pagina: 0,
+        pedido: 0
     };
 
     var el = {
@@ -1426,6 +1488,28 @@
             escapeHtml(c.rotulo) + '</span>';
     }
 
+    function montaTrechos(trechos) {
+        // busca por texto: onde o texto foi encontrado (o HTML vem do servidor já escapado, com o achado em <mark>)
+        if (!trechos || !trechos.length) { return ''; }
+        return '<div class="trechos-texto"><span class="rotulo-mini"><i class="fas fa-search" aria-hidden="true"></i>' +
+            'Encontrado em</span>' + trechos.map(function (t) {
+                return '<div class="trecho-texto"><span class="campo-trecho">' + escapeHtml(t.campo) + ':</span> ' +
+                    t.html + '</div>';
+            }).join('') + '</div>';
+    }
+
+    function montaLinhaSemCard(achado) {
+        // CE achado pela busca por texto sem item no Mercante: sem card, só a linha com o extrato
+        var div = document.createElement('div');
+        div.className = 'linha-sem-card';
+        div.innerHTML = '<span class="texto-mono">CE <a class="link-ce" href="' + escapeAttr(urlDoCE(achado.ce)) +
+            '" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">' + escapeHtml(achado.ce) + '</a></span> ' +
+            '<span class="tag-sem-card">sem contêiner no Mercante: sem card — veja o extrato</span>' +
+            (achado.referencia ? ' · atracação prevista ' + escapeHtml(formatarDataBR(achado.referencia)) : '') +
+            montaTrechos(achado.trechos);
+        return div;
+    }
+
     function montaCard(card) {
         var div = document.createElement('div');
         var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
@@ -1448,6 +1532,7 @@
                 htmlImagens +
                 '<div class="bloco-dados">' +
                     montaFaixaSemDesembarque(card) +
+                    montaTrechos(card.trechos) +
                     '<div class="cabecalho-card">' +
                         '<div>' +
                             '<h3 class="conteiner-titulo texto-mono">' + (card.numeroConteiner
@@ -1529,11 +1614,16 @@
     // primeira página; consulta e cards são da última página carregada; a resposta é o que o
     // navegador esperou até os cards aparecerem (inclui rede).
     var SEGUNDOS_LENTO = {{ segundos_lenta | default(10) | tojson }};  // uso_navii.SEGUNDOS_LENTA (log NAVII_LENTA)
-    var AJUDA_TEMPOS = 'Contagem: total de contêineres do filtro (feita só na primeira página).\n' +
-        'Consulta: busca da página de cards no banco.\n' +
-        'Cards: montagem dos cards da página (imagens, ciclo de vida, fichas, risco, DTA e CORAD).\n' +
-        'Resposta: tempo total até os cards aparecerem na tela, incluindo a rede.\n' +
-        'Para acelerar: restrinja o período, informe o porto ou acrescente filtros.';
+    var AJUDA_TEMPOS = MODO_TEXTO
+        ? 'Busca: consulta ao índice de texto (os CEs da página, na ordem de relevância).\n' +
+          'Consulta: busca dos contêineres desses CEs no banco.\n' +
+          'Cards: montagem dos cards da página (imagens, ciclo de vida, fichas, risco, DTA e CORAD).\n' +
+          'Resposta: tempo total até os cards aparecerem na tela, incluindo a rede.'
+        : 'Contagem: total de contêineres do filtro (feita só na primeira página).\n' +
+          'Consulta: busca da página de cards no banco.\n' +
+          'Cards: montagem dos cards da página (imagens, ciclo de vida, fichas, risco, DTA e CORAD).\n' +
+          'Resposta: tempo total até os cards aparecerem na tela, incluindo a rede.\n' +
+          'Para acelerar: restrinja o período, informe o porto ou acrescente filtros.';
 
     function formataSegundos(segundos) {
         if (segundos === null || segundos === undefined) { return '—'; }
@@ -1555,7 +1645,9 @@
 
     function textoTempos(t) {
         var partes = [];
-        if (t.contagem !== null && t.contagem !== undefined) { partes.push('contagem ' + formataSegundos(t.contagem)); }
+        if (t.contagem !== null && t.contagem !== undefined) {   // no modo texto, a busca no índice (toda página)
+            partes.push((MODO_TEXTO ? 'busca ' : 'contagem ') + formataSegundos(t.contagem));
+        }
         var pagina = 'consulta ' + formataSegundos(t.consulta) + ' + cards ' + formataSegundos(t.cards);
         partes.push(t.paginas > 1 ? 'última página: ' + pagina : pagina);
         partes.push('resposta ' + formataSegundos(t.resposta));
@@ -1563,9 +1655,12 @@
     }
 
     function atualizaContagem() {
-        var carregados = el.grid.children.length;
+        var carregados = MODO_TEXTO ? el.grid.querySelectorAll('.card-navii').length : el.grid.children.length;
         var partes = [];
-        if (estadoBusca.total !== null) {
+        if (estadoBusca.total !== null && MODO_TEXTO) {   // a busca por texto conta CEs (o Meilisearch estima)
+            partes.push(estadoBusca.total.toLocaleString('pt-BR') + ' CE(s) encontrado(s)' + (estadoBusca.total >= 1000
+                ? ' — a busca mostra os 1.000 mais relevantes: refine o texto ou o período' : ''));
+        } else if (estadoBusca.total !== null) {
             partes.push(estadoBusca.total.toLocaleString('pt-BR') + ' contêiner(es) encontrado(s) com este filtro');
         }
         partes.push(carregados + ' card(s) carregado(s)');
@@ -1596,7 +1691,18 @@
         estadoBusca.periodo = { inicio: '', fim: '' };
     }
 
+    function textoPeriodoTexto(p) {
+        if (p.inicio && p.fim) { return 'Atracação prevista de ' + formatarDataBR(p.inicio) + ' a ' + formatarDataBR(p.fim); }
+        if (p.inicio) { return 'Atracação prevista a partir de ' + formatarDataBR(p.inicio); }
+        if (p.fim) { return 'Atracação prevista até ' + formatarDataBR(p.fim); }
+        return 'Período: sem limite de data (inclui os CEs sem escala)';
+    }
+
     function atualizaPeriodoAtivo() {
+        if (MODO_TEXTO) {
+            el.periodoAtivo.textContent = estadoBusca.texto ? textoPeriodoTexto(estadoBusca.periodo) : '';
+            return;
+        }
         var de = formatarDataBR(estadoBusca.periodo.inicio) + ' a ' + formatarDataBR(estadoBusca.periodo.fim);
         el.periodoAtivo.textContent = semPeriodo() ? 'Período: sem limite de data (filtro por CE ou DTA)'
             : (estadoBusca.tipo_janela === 'efetiva'
@@ -1746,7 +1852,83 @@
     });
     setTimeout(cicloUso, USO_INTERVALO_MS);
 
+    function carregarPaginaTexto() {
+        if (estadoBusca.carregando || estadoBusca.fim || estadoBusca.texto.length < MINIMO_TEXTO) { return; }
+        estadoBusca.carregando = true;
+        var pedido = estadoBusca.pedido;
+        el.estado.textContent = 'Carregando…';
+        el.estado.className = 'estado-carregando';
+        el.estadoVazio.hidden = true;
+
+        var params = new URLSearchParams({ q: estadoBusca.texto, pagina: estadoBusca.pagina });
+        if (estadoBusca.periodo.inicio) { params.set('de', estadoBusca.periodo.inicio); }
+        if (estadoBusca.periodo.fim) { params.set('ate', estadoBusca.periodo.fim); }
+        var primeira = estadoBusca.pagina === 0;
+        if (primeira) {   // coleta de uso, como na aba de análise
+            params.set('aba', uso.aba);
+            params.set('origem', uso.origem);
+            if (uso.anterior) { params.set('anterior', uso.anterior); }
+        } else if (uso.pesquisa) {
+            params.set('pesquisa', uso.pesquisa);
+        }
+
+        var inicio = performance.now();
+        fetch(TEXTO_URL + '?' + params.toString())
+            .then(function (resp) {
+                if (!resp.ok) {
+                    return resp.json().catch(function () { return {}; }).then(function (erro) {
+                        throw new Error(erro.erro || ('Erro ' + resp.status));
+                    });
+                }
+                return resp.json();
+            })
+            .then(function (dados) {
+                if (pedido !== estadoBusca.pedido) { return; }   // o texto mudou enquanto esperava: descarta
+                if (primeira) {
+                    uso.pesquisa = dados.pesquisa || null;
+                    uso.origem = 'texto';
+                }
+                dados.cards.forEach(function (card) {
+                    var elemento = montaCard(card);
+                    el.grid.appendChild(elemento);
+                    observaCardUso(elemento, card);
+                });
+                (dados.sem_card || []).forEach(function (achado) { el.grid.appendChild(montaLinhaSemCard(achado)); });
+                el.estado.textContent = '';
+                el.estadoVazio.hidden = el.grid.children.length > 0;
+                estadoBusca.pagina = dados.proxima;
+                estadoBusca.fim = dados.proxima === null;
+                if (estadoBusca.fim && el.grid.children.length > 0) { el.estado.textContent = 'Fim dos resultados.'; }
+                if (dados.total !== null && dados.total !== undefined) { estadoBusca.total = dados.total; }
+                el.avisos.textContent = (dados.avisos || []).join(' ');
+                if (dados.tempos) {
+                    guardaTempos({ contagem: dados.tempos.busca, consulta: dados.tempos.consulta,
+                                   cards: dados.tempos.cards }, inicio);
+                }
+                atualizaContagem();
+            })
+            .catch(function (e) {
+                if (pedido !== estadoBusca.pedido) { return; }
+                el.estado.textContent = 'Falha na busca por texto: ' + e.message;
+                el.estado.className = 'estado-carregando text-danger';
+                estadoBusca.fim = true;
+            })
+            .finally(function () {
+                if (pedido !== estadoBusca.pedido) { return; }
+                estadoBusca.carregando = false;
+                continuaSeVisivel();
+            });
+    }
+
+    function continuaSeVisivel() {
+        // página curta (ex.: só CEs sem card): o fim da lista continua à vista e o observador não dispara de novo
+        if (!estadoBusca.fim && el.sentinela.getBoundingClientRect().top < window.innerHeight + 200) {
+            setTimeout(carregarPagina, 0);
+        }
+    }
+
     function carregarPagina() {
+        if (MODO_TEXTO) { carregarPaginaTexto(); return; }
         if (estadoBusca.carregando || estadoBusca.fim) { return; }
         estadoBusca.carregando = true;
         el.estado.textContent = 'Carregando…';
@@ -1827,8 +2009,14 @@
 
     function reiniciarBusca() {
         encerraPesquisaUso();   // a pesquisa que sai da tela: envia os cards vistos dela
-        // sem CE, período vazio não vale: volta a sugestão da janela
-        if (semPeriodo() && !semLimiteDeData(estadoBusca.filtros)) { aplicarDatasDefault(estadoBusca.tipo_janela); }
+        if (MODO_TEXTO) {   // um pedido novo: a resposta de uma busca anterior ainda em curso é descartada
+            estadoBusca.pedido += 1;
+            estadoBusca.carregando = false;
+            estadoBusca.pagina = 0;
+        } else if (semPeriodo() && !semLimiteDeData(estadoBusca.filtros)) {
+            // sem CE, período vazio não vale: volta a sugestão da janela
+            aplicarDatasDefault(estadoBusca.tipo_janela);
+        }
         estadoBusca.cursor = null;
         estadoBusca.total = null;
         estadoBusca.tempos = null;
@@ -2128,6 +2316,7 @@
     }
 
     function botaoAcoes(campo, codigo) {
+        if (MODO_TEXTO) { return ''; }   // busca por texto: sem filtros, sem o menu Filtrar/Ocultar
         codigo = codigoDoMenu(campo, codigo);
         if (!codigo || !OCULTAVEIS[campo]) { return ''; }
         var rotulo = 'Filtrar por ou ocultar ' + (campo === 'ncm' ? 'NCM ' + formataNcm(codigo) : 'origem ' + codigo);
@@ -2677,16 +2866,68 @@
         preencheTela(inicial.filtros || {});
     }
 
-    if (FILTROS_INICIAIS) {
-        uso.origem = 'link';
-        aplicaFiltrosIniciais(FILTROS_INICIAIS);
-    } else {
-        aplicarDatasDefault(estadoBusca.tipo_janela);
+    /* ---------------- Modo texto (aba "Busca por texto") ---------------- */
+    var esperaTexto = null;
+
+    function camposTexto() {
+        return { texto: document.getElementById('t-texto'), de: document.getElementById('t-de'),
+                 ate: document.getElementById('t-ate') };
     }
-    leFiltrosDaTela();
-    montaChips();
-    atualizaPeriodoAtivo();
-    carregarPagina();
+
+    function disparaTexto() {
+        var c = camposTexto();
+        estadoBusca.texto = c.texto.value.trim().replace(/\s+/g, ' ');
+        estadoBusca.periodo = { inicio: c.de.value, fim: c.ate.value };
+        estadoBusca.chaveTexto = [estadoBusca.texto, c.de.value, c.ate.value].join('|');
+        reiniciarBusca();
+    }
+
+    function buscaTexto(imediata) {
+        // dispara depois de uma pausa na digitação (ou já, com Enter e nas datas), com MINIMO_TEXTO caracteres
+        clearTimeout(esperaTexto);
+        var c = camposTexto();
+        var texto = c.texto.value.trim().replace(/\s+/g, ' ');
+        if (texto.length < MINIMO_TEXTO) {
+            if (!el.grid.children.length) {
+                el.estado.className = 'estado-carregando';
+                el.estado.textContent = 'Digite pelo menos ' + MINIMO_TEXTO + ' caracteres para buscar.';
+            }
+            return;
+        }
+        var chave = [texto, c.de.value, c.ate.value].join('|');
+        if (chave === estadoBusca.chaveTexto && !imediata) { return; }   // nada mudou (ex.: espaço no fim)
+        esperaTexto = setTimeout(disparaTexto, imediata ? 0 : ESPERA_TEXTO_MS);
+    }
+
+    function iniciaModoTexto() {
+        var c = camposTexto();
+        c.de.value = PERIODO_TEXTO.inicio;
+        c.ate.value = PERIODO_TEXTO.fim;
+        c.texto.addEventListener('input', function () { buscaTexto(false); });
+        c.texto.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); buscaTexto(true); }
+        });
+        c.de.addEventListener('change', function () { buscaTexto(true); });
+        c.ate.addEventListener('change', function () { buscaTexto(true); });
+        uso.origem = TEXTO_INICIAL ? 'link' : 'texto';
+        buscaTexto(true);   // com ?q= na URL, já busca; sem, mostra quantos caracteres faltam
+        c.texto.focus();
+    }
+
+    if (MODO_TEXTO) {
+        iniciaModoTexto();
+    } else {
+        if (FILTROS_INICIAIS) {
+            uso.origem = 'link';
+            aplicaFiltrosIniciais(FILTROS_INICIAIS);
+        } else {
+            aplicarDatasDefault(estadoBusca.tipo_janela);
+        }
+        leFiltrosDaTela();
+        montaChips();
+        atualizaPeriodoAtivo();
+        carregarPagina();
+    }
 })();
 </script>
 

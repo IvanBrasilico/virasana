@@ -24,6 +24,7 @@ que não acha).
 Uso (na raiz do repositório virasana, com SQL_URI e as variáveis NAVII_MEILI_*):
     MEILI_MASTER_KEY='...' python virasana/navii/indexador_texto.py --chaves   # uma vez: as chaves (UID fixo)
     python virasana/navii/indexador_texto.py --situacao
+    python virasana/navii/indexador_texto.py --busca "texto" --de 2026-10-01 --ate 2026-10-31   # como a aba
     python virasana/navii/indexador_texto.py --uma-vez --simula      # lê e monta, não escreve nada
     python virasana/navii/indexador_texto.py                          # serviço (supervisor_navii_texto.conf)
 """
@@ -309,6 +310,9 @@ def problema_no_ambiente(args, ambiente) -> Optional[str]:
         if not ambiente.get(tn.VARIAVEL_MESTRA):
             return (f'--chaves precisa da chave mestra (a de /etc/meilisearch.env) em {tn.VARIAVEL_MESTRA}, só nesta '
                     f"sessão do terminal: export {tn.VARIAVEL_MESTRA}='...'")
+    elif args.busca:
+        if not ambiente.get(tn.VARIAVEL_BUSCA):
+            return f'--busca usa a chave de busca: defina {tn.VARIAVEL_BUSCA} (a linha export do --chaves)'
     elif not args.simula and not ambiente.get(tn.VARIAVEL_ESCRITA):
         return (f'{tn.VARIAVEL_ESCRITA} não está definida neste ambiente. Gere as chaves com --chaves (precisa de '
                 f'{tn.VARIAVEL_MESTRA}) e defina a variável onde estão SQL_URI e as outras do indexador.')
@@ -333,6 +337,21 @@ def relatorio_de_chaves(chaves: tn.Chaves, url: str) -> str:
     return '\n'.join(linhas)
 
 
+def mostra_busca(resultado: tn.Resultado) -> str:
+    """O resultado de `--busca` para o terminal: CE, data de referência e os trechos, com o encontrado entre [ ]."""
+    linhas = [f'{resultado.total} CEs (estimativa do Meilisearch); mostrando {len(resultado.achados)}']
+    for achado in resultado.achados:
+        data = f'{achado.referencia:%d/%m/%Y}' if achado.referencia else 'sem data de referência'
+        linhas.append(f'CE {achado.ce} — {data}')
+        linhas += [f'    {rotulo}: {trecho.replace(tn.MARCA_INICIO, "[").replace(tn.MARCA_FIM, "]")}'
+                   for rotulo, trecho in achado.trechos]
+    return '\n'.join(linhas)
+
+
+def _dia(valor: str):
+    return datetime.strptime(valor, '%Y-%m-%d').date()
+
+
 def _argumentos(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
@@ -343,6 +362,11 @@ def _argumentos(argv=None):
     parser.add_argument('--chaves', action='store_true',
                         help=f'cria (se faltam) as chaves de busca e de escrita e mostra os valores; usa a chave '
                              f'mestra em {tn.VARIAVEL_MESTRA}. Não lê o banco')
+    parser.add_argument('--busca', metavar='TEXTO',
+                        help=f'consulta o índice como a aba Texto fará (chave {tn.VARIAVEL_BUSCA}) e sai')
+    parser.add_argument('--de', type=_dia, metavar='AAAA-MM-DD', help='--busca: previsão de atracação a partir de')
+    parser.add_argument('--ate', type=_dia, metavar='AAAA-MM-DD', help='--busca: ... até (inclusive)')
+    parser.add_argument('--quantos', type=int, default=10, help='--busca: CEs mostrados (padrão 10)')
     parser.add_argument('--intervalo', type=int, default=120, help='segundos entre as voltas sem fila (padrão 120)')
     parser.add_argument('--limite', type=float, default=LIMITE_CONSULTA,
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
@@ -358,6 +382,10 @@ def main(argv=None):  # pragma: no cover - depende do banco e do Meilisearch rea
     if args.chaves:
         mestre = tn.cliente_do_ambiente(tn.VARIAVEL_MESTRA)
         print(relatorio_de_chaves(tn.garante_chaves(mestre), mestre.url))
+        return
+    if args.busca:
+        busca = tn.cliente_do_ambiente(tn.VARIAVEL_BUSCA)
+        print(mostra_busca(tn.busca(busca, args.busca, args.de, args.ate, args.quantos)))
         return
     uri = args.uri
     if not uri:

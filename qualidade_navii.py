@@ -71,6 +71,7 @@ TESTES = [
     'virasana/tests/test_navii_mercante_por_id.py',
     'virasana/tests/test_navii_texto.py',
     'virasana/tests/test_navii_indexador_texto.py',
+    'virasana/tests/test_navii_texto_tela.py',
     'virasana/tests/test_navii_fichas_ovr.py',
     'virasana/tests/test_navii_uso.py',
     'virasana/tests/test_entregas_cnpj.py',

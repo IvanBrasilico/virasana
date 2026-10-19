@@ -92,6 +92,7 @@
     </p>
     <nav class="abas" aria-label="NAVI-I">
         <a href="{{ navii_url }}">Análise de risco</a>
+        <a href="{{ url_for('navii.texto') }}">Busca por texto</a>
         <a href="{{ fichas_url }}">Fichas em acompanhamento</a>
         <a href="{{ url_for('navii.estatisticas') }}" aria-current="page">Estatísticas de uso</a>
     </nav>
@@ -190,8 +191,9 @@
         ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem', so_com_desembarque: 'Só com desembarque'
     };
     var ROTULOS_ORIGEM = { tela: 'Na tela', link: 'Por link', salvo: 'Filtro salvo', card: 'Pelo card',
-                           desfazer: 'Desfazer', outra: 'Outra' };
-    var ROTULOS_JANELA = { efetiva: 'Desembarque efetivo', prevista: 'Previsão de atracação' };
+                           desfazer: 'Desfazer', texto: 'Busca por texto', outra: 'Outra' };
+    var ROTULOS_JANELA = { efetiva: 'Desembarque efetivo', prevista: 'Previsão de atracação',
+                           texto: 'Busca por texto' };
     var estado = { tipo: 'mes', codigo: null, dados: null, tentativas: 0 };
     var el = {
         rotulo: document.getElementById('rotulo-periodo'), nota: document.getElementById('nota-periodo'),

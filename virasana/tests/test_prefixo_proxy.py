@@ -38,6 +38,7 @@ TELAS = [
     ('/risco_historico', 'Risco histórico das Fichas'),
     ('/risco_historico/parametros', 'Parâmetros do risco por CE'),
     ('/navii/extrato', 'Extrato do CE'),
+    ('/navii/texto', 'Busca por texto'),
     ('/navii/fichas', 'Fichas em acompanhamento'),
     ('/navii/estatisticas', 'Estatísticas de uso'),
     ('/completude_escaneamentos', 'Completude de escaneamentos'),
@@ -105,7 +106,8 @@ class TestPrefixoProxy(unittest.TestCase):
     def test_navii_js_recebe_as_urls_das_apis_com_prefixo(self):
         html = self.get('/navii/').get_data(as_text=True)
         for esperado in ('/virasana/navii/api/ces', '/virasana/navii/api/sugestoes',
-                         '/virasana/navii/api/filtros', '/virasana/navii/api/uso', '/virasana/mini1/imagem_id'):
+                         '/virasana/navii/api/filtros', '/virasana/navii/api/uso', '/virasana/mini1/imagem_id',
+                         '/virasana/navii/api/texto'):
             self.assertIn(f'"{esperado}"', html)
 
     def test_navii_aberto_por_link_com_filtros_da_url(self):
@@ -161,7 +163,8 @@ class TestPrefixoProxy(unittest.TestCase):
         """O JS dos cards vive no template e os testes não o executam: confere, sem strings nem comentários, que
         toda função chamada está definida (em 15/10/2026 uma edição apagou funções do risco e quebrou os cards).
         Vale também para as abas (Fichas em acompanhamento, Estatísticas de uso)."""
-        for caminho, esperada in (('/navii/', 'montaSeloRisco'), ('/navii/fichas', 'montaCard'),
+        for caminho, esperada in (('/navii/', 'montaSeloRisco'), ('/navii/texto', 'carregarPaginaTexto'),
+                                  ('/navii/fichas', 'montaCard'),
                                   ('/navii/estatisticas', 'calculaUniverso')):
             with self.subTest(tela=caminho):
                 html = self.get(caminho).get_data(as_text=True)

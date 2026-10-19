@@ -164,9 +164,9 @@ class ClienteMeili:
         return self._pede('GET', '/keys', params={'limit': 1000}).get('results', [])
 
 
-def cliente_do_ambiente(variavel_chave: str, ambiente=os.environ) -> ClienteMeili:
+def cliente_do_ambiente(variavel_chave: str, ambiente=os.environ, timeout: float = 30) -> ClienteMeili:
     """Cliente com a URL de `NAVII_MEILI_URL` e a chave da variável indicada (busca, escrita ou a mestra)."""
-    return ClienteMeili(ambiente.get('NAVII_MEILI_URL') or URL_PADRAO, ambiente.get(variavel_chave, ''))
+    return ClienteMeili(ambiente.get('NAVII_MEILI_URL') or URL_PADRAO, ambiente.get(variavel_chave, ''), timeout)
 
 
 class Chaves(NamedTuple):

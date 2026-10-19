@@ -999,6 +999,10 @@ PENDENTE (item 5 das Pendências). Os XMLs são apagados depois da carga no banc
   --chaves` (com `MEILI_MASTER_KEY` só na sessão) cria o que falta, mostra sempre os mesmos valores em linhas
   `export` e lista as chaves "NAVI-I" avulsas para apagar; o indexador confere o ambiente antes de começar
   (`problema_no_ambiente`) e o 401/403 diz qual variável conferir.
+- **Ativação (19/10/2026)**: Meilisearch instalado; 1ª volta da carga inicial em produção — marca no ID 27.200.326
+  (CEs criados desde 20/07/2026), 20 mil IDs em 7,8 s (com a espera da indexação), 16.428 documentos (18% de
+  exportação fora), ~1,19 M IDs na fila (~60 voltas). `--busca "texto" [--de --ate]` consulta o índice pelo mesmo
+  `texto_navii.busca` da aba (chave de busca): conferência da API real antes do F2.
 - Testes: `test_navii_mercante_por_id.py`, `test_navii_texto.py` (sessão HTTP simulada) e
   `test_navii_indexador_texto.py` (Meilisearch em memória, com falha de tarefa sob comando). Mutantes: 39/39.
 - **Ativação**: instalar (MEILISEARCH.md) → `indexador_texto.py --uma-vez --simula` (mede: conferir o tempo das

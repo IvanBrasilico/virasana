@@ -135,7 +135,16 @@ sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl sta
 ```
 
 A carga inicial anda em voltas de 20 mil IDs (10 páginas de 2.000), sem pausa enquanto houver fila; `--situacao`
-mostra os IDs que faltam. Depois, uma volta a cada 2 minutos.
+mostra os IDs que faltam. Depois, uma volta a cada 2 minutos. Na 1ª instalação (19/10/2026), cada volta levou ~8 s.
+
+Conferir a busca (o mesmo código da aba Texto, com a chave de busca):
+
+```bash
+export NAVII_MEILI_CHAVE_BUSCA='...'        # a do --chaves
+virasana-venv/bin/python virasana/navii/indexador_texto.py --busca "nome de um embarcador conhecido"
+virasana-venv/bin/python virasana/navii/indexador_texto.py --busca "mesmo nome com um erro de digitacao" --de 2026-10-01 --ate 2026-11-15
+virasana-venv/bin/python virasana/navii/indexador_texto.py --busca "<CNPJ de 14 dígitos>"
+```
 
 ## Operação
 

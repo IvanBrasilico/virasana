@@ -276,6 +276,24 @@ class TestLinhaDeComando(unittest.TestCase):
         self.assertIsNone(problema(it._argumentos([]), {'NAVII_MEILI_CHAVE_ESCRITA': 'e'}))
         self.assertIn('MEILI_MASTER_KEY', problema(it._argumentos(['--chaves']), {'NAVII_MEILI_CHAVE_ESCRITA': 'e'}))
         self.assertIsNone(problema(it._argumentos(['--chaves']), {'MEILI_MASTER_KEY': 'm'}))
+        self.assertIn('NAVII_MEILI_CHAVE_BUSCA', problema(it._argumentos(['--busca', 'acme']),
+                                                          {'NAVII_MEILI_CHAVE_ESCRITA': 'e'}))
+        self.assertIsNone(problema(it._argumentos(['--busca', 'acme']), {'NAVII_MEILI_CHAVE_BUSCA': 'b'}))
+
+    def test_argumentos_da_busca(self):
+        args = it._argumentos(['--busca', 'acme co', '--de', '2026-10-01', '--ate', '2026-10-31', '--quantos', '3'])
+        self.assertEqual((args.busca, args.de, args.ate, args.quantos),
+                         ('acme co', datetime(2026, 10, 1).date(), datetime(2026, 10, 31).date(), 3))
+
+    def test_mostra_busca(self):
+        resultado = tn.Resultado(42, [
+            tn.Achado('152605000000001', datetime(2026, 10, 20).date(),
+                      [('embarcador', '\x02ACME\x03 CO'), ('descrição', '…pecas da \x02acme\x03…')]),
+            tn.Achado('152605000000002', None, [])])
+        self.assertEqual(it.mostra_busca(resultado).splitlines(), [
+            '42 CEs (estimativa do Meilisearch); mostrando 2',
+            'CE 152605000000001 — 20/10/2026', '    embarcador: [ACME] CO', '    descrição: …pecas da [acme]…',
+            'CE 152605000000002 — sem data de referência'])
 
     def test_relatorio_de_chaves(self):
         chaves = tn.Chaves({tn.VARIAVEL_BUSCA: 'b1', tn.VARIAVEL_ESCRITA: 'e1'}, [tn.VARIAVEL_BUSCA],

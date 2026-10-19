@@ -8,7 +8,8 @@ uma busca; as seguintes pertencem a ela):
 
     {'usuario': CPF, 'setor': setor no Fichas no momento (ou None), 'aba': id da aba do navegador,
      'anterior': id da pesquisa anterior da mesma aba (só se for do mesmo usuário), 'origem': tela | link | salvo |
-     card | desfazer | outra, 'inicio', 'atualizado', 'janela', 'periodo': {inicio, fim} (o usado na busca; None =
+     card | desfazer | texto | outra, 'inicio', 'atualizado', 'janela' (prevista | efetiva | texto — a aba "Busca
+     por texto", com filtros {'texto': ...} e total em CEs), 'periodo': {inicio, fim} (o usado na busca; None =
      sem limite de data), 'filtros' (normalizados, sem as datas), 'total', 'tempos', 'paginas', 'n_cards' (todos os
      enviados), 'cards': [{i: item, c: contêiner, ce, p: posição, d: dia do desembarque, pr: dia da previsão}] (até
      MAX_CARDS), 'vistos': {item: {s: segundos visíveis, x: [interações]}}, 'acoes': [{t: 'ficha', ...}]}
@@ -35,7 +36,7 @@ from virasana.navii import tabelas_opcionais
 from virasana.navii.acompanhamento_fichas import USUARIOS
 
 COLECAO = 'navii_uso_pesquisas'
-ORIGENS = ('tela', 'link', 'salvo', 'card', 'desfazer')
+ORIGENS = ('tela', 'link', 'salvo', 'card', 'desfazer', 'texto')     # texto: aba "Busca por texto"
 INTERACOES = ('imagem', 'descricao', 'extrato', 'conteiner', 'detalhes', 'menu', 'ficha', 'fichas')
 MAX_CARDS = 1000                 # cards enviados guardados por pesquisa (50 páginas de 20)
 MAX_LOTE = 200                   # cards por envio do navegador
