@@ -1008,7 +1008,35 @@ PENDENTE (item 5 das Pendências). Os XMLs são apagados depois da carga no banc
 - **Ativação**: instalar (MEILISEARCH.md) → `indexador_texto.py --uma-vez --simula` (mede: conferir o tempo das
   consultas de escala — `escalamanifestoresumo.escala` pode não ter índice) → `--uma-vez` → `--situacao` →
   `supervisorctl start navii_texto` → acompanhar a carga (~60 voltas de 20 mil IDs) → conferir buscas pela API.
-  Depois, F2 (aba).
+  Depois, F2 (aba). **Conferido pelo usuário em 19/10/2026** (carga e `--busca`).
+
+**F2 — aba (19/10/2026, escrita e testada; falta ativar)**. Plano aprovado com uma mudança do usuário: a busca dispara
+a partir de **5** caracteres (não 3). Decisão: CE sem item no Mercante aparece numa linha compacta (CE, trecho,
+extrato), sem card.
+- `views_navii.py`: `GET /navii/texto` (o mesmo `navii.html`, `modo_texto=True`; `?q=` abre buscando; o contexto
+  das duas abas sai de `_contexto_da_tela`) e `GET /navii/api/texto?q=&de=&ate=&pagina=`: `texto_navii.busca`
+  (`CES_POR_PAGINA_TEXTO` = 10 CEs por página, timeout de 10 s) → `cards_do_texto`: `busca_ces_navii` com o filtro
+  `ce` (sem limite de data; até `MAX_CARDS_TEXTO` = 300 cards por página, com aviso se passar) → `monta_cards_navii`
+  → ordem da relevância dos CEs (sort estável: dentro do CE, Item.ID decrescente) → `trechos` em cada card (HTML do
+  `trecho_html`, já escapado) e `sem_card`. `total` = CEs (estimativa do Meilisearch; ele pagina até 1.000). Sem a
+  chave ou com o Meilisearch fora: 503 com mensagem (só esta aba). Cliente de busca: `app.config['navii_meili']`
+  (testes, demonstração) ou o do ambiente (`NAVII_MEILI_CHAVE_BUSCA`).
+- Coleta de uso: origem nova `texto` (`coleta_uso.ORIGENS`), janela `texto`, filtros `{'texto': ...}`, período (de,
+  ate) só quando os dois vêm; `_registra_pesquisa` virou `_registra_na_coleta` (comum às duas abas). As estatísticas
+  rotulam origem e janela ("Busca por texto"); a seletividade ignora essas pesquisas (sem porto da base).
+- `navii.html` em modo texto: painel de filtros no DOM mas escondido (o script da análise o usa), barra com texto e
+  período (padrão `periodo_texto_padrao`: hoje -15 a +30), pausa de 600 ms na digitação (uma pesquisa por pausa; Enter
+  e datas disparam já), `estadoBusca.pedido` descarta a resposta de uma busca já trocada, `carregarPaginaTexto` pagina
+  por número, `continuaSeVisivel` carrega a próxima quando a página é curta e o fim da lista segue à vista,
+  `montaTrechos` no card ("Encontrado em"), `montaLinhaSemCard`, `botaoAcoes` vazio (sem Filtrar/Ocultar). A aba
+  "Busca por texto" nas quatro telas (abas com quebra de linha no celular) e no menu NAVII.
+- Testes: `test_navii_texto_tela.py` (Meilisearch simulado: ordem contra a dos IDs, trechos escapados, sem_card,
+  páginas, 5 caracteres, data inválida, 503, cliente do ambiente, página cortada, coleta) e a tela em
+  `test_prefixo_proxy.py` (inclusive as funções do JS). Mutantes 18/18. E2E no navegador (servidor de demonstração com
+  busca simulada): pausa na digitação (1 pedido), período no filtro, rolagem, link `?q=` (origem `link`), página curta,
+  `<script>` da descrição escapado, celular sem rolagem lateral, aba de análise igual.
+- **Ativação**: `NAVII_MEILI_CHAVE_BUSCA` (a do `--chaves`) no ambiente do programa `virasana` do supervisor e
+  reiniciar o virasana. Depois, F3: homologação com os usuários.
 
 ## Pendências
 
