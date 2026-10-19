@@ -51,6 +51,24 @@ ROTULOS = {'embarcador': 'embarcador', 'consignatario': 'consignatário', 'notif
 MARCA_INICIO, MARCA_FIM = '\x02', '\x03'     # marcas do trecho encontrado (o texto do CE não é HTML)
 TAMANHO_TRECHO = 20                          # palavras em volta do que foi encontrado
 
+# Chaves de API com UID FIXO. O Meilisearch calcula o valor da chave a partir do UID e da chave mestra: criar de novo
+# não duplica (o UID repetido é recusado) e o valor sai sempre o mesmo (`GET /keys/<uid>`) enquanto a mestra não
+# mudar. Sem UID, cada `POST /keys` cria uma chave nova (foi o que confundiu a 1ª instalação, 19/10/2026).
+VARIAVEL_MESTRA = 'MEILI_MASTER_KEY'
+VARIAVEL_BUSCA = 'NAVII_MEILI_CHAVE_BUSCA'
+VARIAVEL_ESCRITA = 'NAVII_MEILI_CHAVE_ESCRITA'
+DESCRICAO_CHAVES = 'NAVI-I'
+CHAVES = {
+    VARIAVEL_BUSCA: {'uid': '60a06578-9886-4ce7-b119-c46f8b7b0f38', 'name': 'navii-busca',
+                     'description': 'NAVI-I busca (virasana)', 'actions': ['search'], 'indexes': [INDICE],
+                     'expiresAt': None},
+    VARIAVEL_ESCRITA: {'uid': 'decbba99-9480-42e9-b988-4f794eefc34e', 'name': 'navii-indexador',
+                       'description': 'NAVI-I indexador',
+                       'actions': ['documents.*', 'indexes.create', 'indexes.get', 'settings.*', 'tasks.get',
+                                   'stats.get'],
+                       'indexes': [INDICE, INDICE_ESTADO], 'expiresAt': None},
+}
+
 
 class ErroMeili(Exception):
     pass
@@ -80,6 +98,9 @@ class ClienteMeili:
                 detalhe = resposta.json().get('message', '')
             except ValueError:
                 detalhe = resposta.text[:200]
+            if resposta.status_code in (401, 403):
+                detalhe += (f' — chave ausente ou sem permissão: confira {VARIAVEL_ESCRITA} (indexador) ou '
+                            f'{VARIAVEL_BUSCA} (virasana); para gerar, indexador_texto.py --chaves')
             raise ErroMeili(f'{metodo} {caminho}: HTTP {resposta.status_code} {detalhe}')
         return resposta.json() if resposta.content else {}
 
@@ -132,10 +153,46 @@ class ClienteMeili:
                 raise ErroMeili(f'tarefa {uid} ainda {status} depois de {limite:.0f} s')
             self.dorme(pausa)
 
+    # chaves de API (só com a chave mestra)
+    def chave(self, uid: str) -> Optional[dict]:
+        return self._pede('GET', f'/keys/{uid}', nao_achou=lambda: None)
+
+    def cria_chave(self, definicao: dict) -> dict:
+        return self._pede('POST', '/keys', json=definicao)
+
+    def chaves(self) -> List[dict]:
+        return self._pede('GET', '/keys', params={'limit': 1000}).get('results', [])
+
 
 def cliente_do_ambiente(variavel_chave: str, ambiente=os.environ) -> ClienteMeili:
-    """Cliente com a URL de `NAVII_MEILI_URL` e a chave da variável indicada (busca ou escrita)."""
+    """Cliente com a URL de `NAVII_MEILI_URL` e a chave da variável indicada (busca, escrita ou a mestra)."""
     return ClienteMeili(ambiente.get('NAVII_MEILI_URL') or URL_PADRAO, ambiente.get(variavel_chave, ''))
+
+
+class Chaves(NamedTuple):
+    valores: Dict[str, str]          # variável de ambiente -> valor da chave
+    criadas: List[str]               # variáveis cuja chave foi criada agora
+    divergentes: List[str]           # chave existente com ações ou índices diferentes da definição
+    avulsas: List[dict]              # outras chaves "NAVI-I" (criadas sem UID fixo): podem ser apagadas
+
+
+def garante_chaves(cliente_mestre: ClienteMeili) -> Chaves:
+    """Cria as chaves de busca e de escrita que faltam (UID fixo) e devolve os valores. Rodar de novo devolve os
+    mesmos valores, sem criar nada."""
+    valores, criadas, divergentes = {}, [], []
+    for variavel, definicao in CHAVES.items():
+        existente = cliente_mestre.chave(definicao['uid'])
+        if existente is None:
+            existente = cliente_mestre.cria_chave(definicao)
+            criadas.append(variavel)
+        elif (sorted(existente.get('actions') or []) != sorted(definicao['actions']) or
+              sorted(existente.get('indexes') or []) != sorted(definicao['indexes'])):
+            divergentes.append(variavel)
+        valores[variavel] = existente['key']
+    fixas = {definicao['uid'] for definicao in CHAVES.values()}
+    avulsas = [c for c in cliente_mestre.chaves()
+               if (c.get('description') or '').startswith(DESCRICAO_CHAVES) and c.get('uid') not in fixas]
+    return Chaves(valores, criadas, divergentes, avulsas)
 
 
 # ---------------------------------------------------------------- documento

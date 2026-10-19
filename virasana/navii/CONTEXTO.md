@@ -993,6 +993,12 @@ PENDENTE (item 5 das Pendências). Os XMLs são apagados depois da carga no banc
   `--simula` não escreve nada e funciona sem o Meilisearch (mede a carga no banco). `max_statement_time` de 300 s.
 - `navii/MEILISEARCH.md`: instalação no Rocky Linux 9 (binário de versão fixa, usuário próprio, systemd, só
   127.0.0.1, chaves de busca e de escrita, dimensionamento, recarga do zero).
+- **Chaves (19/10/2026, na 1ª instalação)**: o `curl -X POST /keys` da 1ª versão do MEILISEARCH.md criava uma chave
+  NOVA a cada execução (valor diferente), e o indexador sem `NAVII_MEILI_CHAVE_ESCRITA` caía em HTTP 401. Agora as
+  chaves têm UID FIXO (`texto_navii.CHAVES`; o valor é derivado do UID e da chave mestra): `indexador_texto.py
+  --chaves` (com `MEILI_MASTER_KEY` só na sessão) cria o que falta, mostra sempre os mesmos valores em linhas
+  `export` e lista as chaves "NAVI-I" avulsas para apagar; o indexador confere o ambiente antes de começar
+  (`problema_no_ambiente`) e o 401/403 diz qual variável conferir.
 - Testes: `test_navii_mercante_por_id.py`, `test_navii_texto.py` (sessão HTTP simulada) e
   `test_navii_indexador_texto.py` (Meilisearch em memória, com falha de tarefa sob comando). Mutantes: 39/39.
 - **Ativação**: instalar (MEILISEARCH.md) → `indexador_texto.py --uma-vez --simula` (mede: conferir o tempo das

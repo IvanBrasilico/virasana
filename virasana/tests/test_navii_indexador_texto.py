@@ -266,6 +266,31 @@ class TestVoltasSeguintes(unittest.TestCase):
         self.assertEqual(situacao['documentos no índice'], 3)
 
 
+class TestLinhaDeComando(unittest.TestCase):
+
+    def test_ambiente(self):
+        problema = it.problema_no_ambiente
+        self.assertIn('NAVII_MEILI_CHAVE_ESCRITA não está definida', problema(it._argumentos(['--uma-vez']), {}))
+        self.assertIn('NAVII_MEILI_CHAVE_ESCRITA', problema(it._argumentos(['--situacao']), {}))
+        self.assertIsNone(problema(it._argumentos(['--uma-vez', '--simula']), {}))      # mede sem as chaves
+        self.assertIsNone(problema(it._argumentos([]), {'NAVII_MEILI_CHAVE_ESCRITA': 'e'}))
+        self.assertIn('MEILI_MASTER_KEY', problema(it._argumentos(['--chaves']), {'NAVII_MEILI_CHAVE_ESCRITA': 'e'}))
+        self.assertIsNone(problema(it._argumentos(['--chaves']), {'MEILI_MASTER_KEY': 'm'}))
+
+    def test_relatorio_de_chaves(self):
+        chaves = tn.Chaves({tn.VARIAVEL_BUSCA: 'b1', tn.VARIAVEL_ESCRITA: 'e1'}, [tn.VARIAVEL_BUSCA],
+                           [tn.VARIAVEL_ESCRITA], [{'uid': 'u-velha', 'description': 'NAVI-I indexador',
+                                                    'createdAt': '2026-10-19T15:00:00Z'}])
+        relatorio = it.relatorio_de_chaves(chaves, 'http://127.0.0.1:7700').splitlines()
+        self.assertIn("export NAVII_MEILI_CHAVE_BUSCA='b1'", relatorio)
+        self.assertIn("export NAVII_MEILI_CHAVE_ESCRITA='e1'", relatorio)
+        self.assertIn('# criadas agora: NAVII_MEILI_CHAVE_BUSCA', relatorio)
+        uid_escrita = tn.CHAVES[tn.VARIAVEL_ESCRITA]['uid']
+        self.assertTrue(any(linha.startswith('# ATENÇÃO') and f'/keys/{uid_escrita}' in linha for linha in relatorio))
+        self.assertIn('curl -X DELETE http://127.0.0.1:7700/keys/u-velha -H "Authorization: Bearer $MEILI_MASTER_KEY"'
+                      '   # NAVI-I indexador, criada em 2026-10-19T15:00:00Z', relatorio)
+
+
 class TestPaginasESimulacao(unittest.TestCase):
 
     def test_carga_em_paginas_com_fila(self):

@@ -93,24 +93,32 @@ ss -ltnp | grep 7700                           # só 127.0.0.1:7700 — nenhuma 
 
 ## 4. Chaves (uma de busca, uma de escrita)
 
-Com a chave mestra só para criar as outras (não usar a mestra no virasana):
+A chave mestra só cria as outras; o virasana e o indexador nunca a usam. As duas chaves têm **UID fixo** (definido
+em `texto_navii.CHAVES`): o Meilisearch calcula o valor da chave a partir do UID e da chave mestra, então o comando
+abaixo pode rodar quantas vezes for preciso — cria só o que falta e mostra **sempre os mesmos valores** (enquanto a
+chave mestra não mudar). Não use `curl -X POST /keys` sem UID: cada chamada cria uma chave nova, com outro valor.
 
 ```bash
-MESTRA='<a chave mestra>'
-curl -s -X POST http://127.0.0.1:7700/keys -H "Authorization: Bearer $MESTRA" -H 'Content-Type: application/json' \
-  --data '{"description": "NAVI-I busca (virasana)", "actions": ["search"], "indexes": ["navii_ces"], "expiresAt": null}'
-curl -s -X POST http://127.0.0.1:7700/keys -H "Authorization: Bearer $MESTRA" -H 'Content-Type: application/json' \
-  --data '{"description": "NAVI-I indexador", "actions": ["documents.*", "indexes.create", "indexes.get", "settings.*", "tasks.get", "stats.get"], "indexes": ["navii_ces", "navii_texto_estado"], "expiresAt": null}'
+cd /home/ajna/apps/ajna/virasana
+export MEILI_MASTER_KEY="$(sudo grep '^MEILI_MASTER_KEY=' /etc/meilisearch.env | cut -d= -f2-)"   # só nesta sessão
+virasana-venv/bin/python virasana/navii/indexador_texto.py --chaves
+unset MEILI_MASTER_KEY
 ```
 
-O campo `key` de cada resposta é a chave. Variáveis de ambiente (no mesmo lugar onde estão `SQL_URI` e
-`MONGODB_URI` para o supervisor — **não** no repositório):
+A saída traz as linhas `export NAVII_MEILI_CHAVE_BUSCA='...'` e `export NAVII_MEILI_CHAVE_ESCRITA='...'` e, se houver,
+os comandos para apagar as chaves "NAVI-I" avulsas criadas antes com `curl` (não são usadas).
+
+Variáveis de ambiente — **não** no repositório; no mesmo lugar onde o supervisor recebe `SQL_URI` (para achar:
+`sudo grep -rn SQL_URI /etc/supervisord.conf /etc/supervisord.d/ /etc/environment ~ajna/.bashrc ~ajna/.bash_profile`):
 
 | Variável | Quem usa | Valor |
 |---|---|---|
-| `NAVII_MEILI_URL` | virasana e indexador | `http://127.0.0.1:7700` (é o padrão) |
-| `NAVII_MEILI_CHAVE_BUSCA` | virasana (aba Texto, F2) | a chave "NAVI-I busca" |
-| `NAVII_MEILI_CHAVE_ESCRITA` | indexador | a chave "NAVI-I indexador" |
+| `NAVII_MEILI_URL` | virasana e indexador | `http://127.0.0.1:7700` (é o padrão; só se mudar) |
+| `NAVII_MEILI_CHAVE_BUSCA` | virasana (aba Texto, F2) | a linha `export NAVII_MEILI_CHAVE_BUSCA` do `--chaves` |
+| `NAVII_MEILI_CHAVE_ESCRITA` | indexador | a linha `export NAVII_MEILI_CHAVE_ESCRITA` do `--chaves` |
+
+Se a chave mestra mudar, os valores mudam: rode `--chaves` de novo e atualize as variáveis. Sem a variável, o
+indexador para logo avisando qual falta (a não ser com `--simula`).
 
 ## 5. Indexador (supervisor)
 
@@ -118,6 +126,7 @@ Ver `supervisor_navii_texto.conf` na raiz do virasana (`autostart=false` até a 
 
 ```bash
 cd /home/ajna/apps/ajna/virasana
+export NAVII_MEILI_CHAVE_ESCRITA='...'      # a do --chaves (no terminal, para os testes manuais)
 virasana-venv/bin/python virasana/navii/indexador_texto.py --uma-vez --simula   # mede uma volta, não escreve
 virasana-venv/bin/python virasana/navii/indexador_texto.py --uma-vez            # 1ª volta: cria o índice e a marca
 virasana-venv/bin/python virasana/navii/indexador_texto.py --situacao

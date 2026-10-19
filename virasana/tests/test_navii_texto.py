@@ -2,6 +2,7 @@
 documento do CE, data de referência, configuração do índice e leitura do resultado da busca."""
 import json
 import unittest
+import uuid
 from datetime import date, datetime
 from types import SimpleNamespace
 
@@ -98,6 +99,52 @@ class TestCliente(unittest.TestCase):
                                                                      'NAVII_MEILI_CHAVE_BUSCA': 'b'})
         self.assertEqual((cliente.url, cliente.cabecalhos), ('http://127.0.0.1:7701', {'Authorization': 'Bearer b'}))
         self.assertEqual(tn.cliente_do_ambiente('X', {}).url, tn.URL_PADRAO)
+
+
+class TestChaves(unittest.TestCase):
+    BUSCA, ESCRITA = tn.CHAVES[tn.VARIAVEL_BUSCA], tn.CHAVES[tn.VARIAVEL_ESCRITA]
+
+    def test_definicoes(self):
+        uids = [uuid.UUID(d['uid']) for d in tn.CHAVES.values()]
+        self.assertEqual([u.version for u in uids], [4, 4])
+        self.assertEqual(len(set(uids)), 2)
+        self.assertEqual((self.BUSCA['actions'], self.BUSCA['indexes']), (['search'], [tn.INDICE]))
+        self.assertEqual(sorted(self.ESCRITA['indexes']), sorted([tn.INDICE, tn.INDICE_ESTADO]))
+        self.assertNotIn('*', self.ESCRITA['actions'])
+        self.assertTrue(all(d['description'].startswith(tn.DESCRICAO_CHAVES) and d['expiresAt'] is None
+                            for d in tn.CHAVES.values()))
+
+    def test_cria_so_a_que_falta_e_lista_as_avulsas(self):
+        existente = {**self.ESCRITA, 'key': 'chave-escrita'}
+        sessao = SessaoFalsa(
+            Resposta(404, {'message': 'API key not found.'}),                  # busca: não existe
+            Resposta(201, {**self.BUSCA, 'key': 'chave-busca'}),               # ... criada com o UID fixo
+            Resposta(200, existente),                                          # escrita: já existe
+            Resposta(200, {'results': [
+                {**self.BUSCA, 'key': 'chave-busca'}, existente,
+                {'uid': 'u-velha', 'description': 'NAVI-I busca (virasana)', 'key': 'k1'},   # do curl antigo
+                {'uid': 'u-padrao', 'description': 'Use it to search from the frontend', 'key': 'k2'}]}))
+        chaves = tn.garante_chaves(tn.ClienteMeili(chave='mestra', sessao=sessao))
+        self.assertEqual(chaves.valores, {tn.VARIAVEL_BUSCA: 'chave-busca', tn.VARIAVEL_ESCRITA: 'chave-escrita'})
+        self.assertEqual((chaves.criadas, chaves.divergentes), ([tn.VARIAVEL_BUSCA], []))
+        self.assertEqual([c['uid'] for c in chaves.avulsas], ['u-velha'])
+        metodos = [(p[0], p[1].replace(tn.URL_PADRAO, '')) for p in sessao.pedidos]
+        self.assertEqual(metodos, [('GET', f'/keys/{self.BUSCA["uid"]}'), ('POST', '/keys'),
+                                   ('GET', f'/keys/{self.ESCRITA["uid"]}'), ('GET', '/keys')])
+        self.assertEqual(sessao.pedidos[1][4]['json'], self.BUSCA)               # com o UID: não duplica
+        self.assertEqual(sessao.pedidos[0][2], {'Authorization': 'Bearer mestra'})
+
+    def test_chave_existente_com_permissoes_diferentes(self):
+        sessao = SessaoFalsa(Resposta(200, {**self.BUSCA, 'key': 'b'}),
+                             Resposta(200, {**self.ESCRITA, 'actions': ['*'], 'key': 'e'}),
+                             Resposta(200, {'results': []}))
+        chaves = tn.garante_chaves(tn.ClienteMeili(sessao=sessao))
+        self.assertEqual((chaves.criadas, chaves.divergentes), ([], [tn.VARIAVEL_ESCRITA]))
+
+    def test_sem_chave_a_mensagem_diz_o_que_fazer(self):
+        sessao = SessaoFalsa(Resposta(401, {'message': 'The Authorization header is missing.'}))
+        with self.assertRaisesRegex(tn.ErroMeili, 'HTTP 401 .*NAVII_MEILI_CHAVE_ESCRITA.*--chaves'):
+            tn.ClienteMeili(sessao=sessao).documento(tn.INDICE_ESTADO, 'marcas')
 
 
 class TestDocumento(unittest.TestCase):

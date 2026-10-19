@@ -22,6 +22,7 @@ A muda o texto em 2% a 6% das vezes). CE excluído no Mercante continua no índi
 que não acha).
 
 Uso (na raiz do repositório virasana, com SQL_URI e as variáveis NAVII_MEILI_*):
+    MEILI_MASTER_KEY='...' python virasana/navii/indexador_texto.py --chaves   # uma vez: as chaves (UID fixo)
     python virasana/navii/indexador_texto.py --situacao
     python virasana/navii/indexador_texto.py --uma-vez --simula      # lê e monta, não escreve nada
     python virasana/navii/indexador_texto.py                          # serviço (supervisor_navii_texto.conf)
@@ -29,6 +30,7 @@ Uso (na raiz do repositório virasana, com SQL_URI e as variáveis NAVII_MEILI_*
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from collections import Counter, defaultdict
@@ -301,6 +303,36 @@ class Indexador:
                 'indexando agora': estatisticas.get('isIndexing')}
 
 
+def problema_no_ambiente(args, ambiente) -> Optional[str]:
+    """O que falta no ambiente para o comando pedido (None se nada)."""
+    if args.chaves:
+        if not ambiente.get(tn.VARIAVEL_MESTRA):
+            return (f'--chaves precisa da chave mestra (a de /etc/meilisearch.env) em {tn.VARIAVEL_MESTRA}, só nesta '
+                    f"sessão do terminal: export {tn.VARIAVEL_MESTRA}='...'")
+    elif not args.simula and not ambiente.get(tn.VARIAVEL_ESCRITA):
+        return (f'{tn.VARIAVEL_ESCRITA} não está definida neste ambiente. Gere as chaves com --chaves (precisa de '
+                f'{tn.VARIAVEL_MESTRA}) e defina a variável onde estão SQL_URI e as outras do indexador.')
+    return None
+
+
+def relatorio_de_chaves(chaves: tn.Chaves, url: str) -> str:
+    """As linhas `export` (os valores se repetem a cada execução) e o que apagar ou conferir."""
+    apaga = f'curl -X DELETE {url}/keys/{{uid}} -H "Authorization: Bearer ${tn.VARIAVEL_MESTRA}"'
+    linhas = ['# Chaves do NAVI-I (UID fixo: o mesmo valor a cada execução, enquanto a chave mestra não mudar)']
+    linhas += [f"export {variavel}='{valor}'" for variavel, valor in chaves.valores.items()]
+    if chaves.criadas:
+        linhas.append(f'# criadas agora: {", ".join(chaves.criadas)}')
+    for variavel in chaves.divergentes:
+        uid = tn.CHAVES[variavel]['uid']
+        linhas.append(f'# ATENÇÃO: a chave de {variavel} tem ações ou índices diferentes da definição. Apague e rode '
+                      f'--chaves de novo: {apaga.format(uid=uid)}')
+    if chaves.avulsas:
+        linhas.append('# Chaves "NAVI-I" avulsas (criadas antes, sem UID fixo) — não são usadas; podem ser apagadas:')
+        linhas += [f'{apaga.format(uid=c["uid"])}   # {c.get("description")}, criada em {c.get("createdAt")}'
+                   for c in chaves.avulsas]
+    return '\n'.join(linhas)
+
+
 def _argumentos(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
@@ -308,6 +340,9 @@ def _argumentos(argv=None):
     parser.add_argument('--simula', action='store_true', help='lê e monta os documentos, não escreve nada')
     parser.add_argument('--uma-vez', action='store_true', help='uma volta só (sem laço)')
     parser.add_argument('--situacao', action='store_true', help='mostra as marcas e o tamanho do índice e sai')
+    parser.add_argument('--chaves', action='store_true',
+                        help=f'cria (se faltam) as chaves de busca e de escrita e mostra os valores; usa a chave '
+                             f'mestra em {tn.VARIAVEL_MESTRA}. Não lê o banco')
     parser.add_argument('--intervalo', type=int, default=120, help='segundos entre as voltas sem fila (padrão 120)')
     parser.add_argument('--limite', type=float, default=LIMITE_CONSULTA,
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
@@ -317,12 +352,19 @@ def _argumentos(argv=None):
 def main(argv=None):  # pragma: no cover - depende do banco e do Meilisearch reais
     args = _argumentos(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s', stream=sys.stdout)
+    problema = problema_no_ambiente(args, os.environ)
+    if problema:
+        sys.exit(problema)
+    if args.chaves:
+        mestre = tn.cliente_do_ambiente(tn.VARIAVEL_MESTRA)
+        print(relatorio_de_chaves(tn.garante_chaves(mestre), mestre.url))
+        return
     uri = args.uri
     if not uri:
         from ajna_commons.flask.conf import SQL_URI as uri
     engine = create_engine(uri, pool_pre_ping=True)
     limita_tempo(engine, args.limite)
-    cliente = tn.cliente_do_ambiente('NAVII_MEILI_CHAVE_ESCRITA')
+    cliente = tn.cliente_do_ambiente(tn.VARIAVEL_ESCRITA)
     logger.info(f'Indexador da busca por texto — banco {engine.url.render_as_string(hide_password=True)}, '
                 f'Meilisearch {cliente.url}{" — SIMULAÇÃO" * args.simula}')
     indexador = Indexador(sessionmaker(bind=engine), cliente, porto=args.porto, simula=args.simula)
