@@ -954,3 +954,103 @@ Ordem aprovada: D1 e P0 juntos (diagnósticos para rodar em produção) e D2 em 
    Critério para ampliar (por operador): ciclos completos e incompletos no padrão de Santos, CE principal com
    confiança alta na maioria, imagens ligadas às inspeções. Se passar, o escopo vira parâmetro (unidade + lista de
    operadores) no serviço, com as escalas pelo porto do operador.
+
+**Resultado da sombra MultiRio + Suape (produção, 20/10/2026; desembarques de 18/09 a 18/10; log
+`virasana/sombra_rio_suape.log`)** — 3.016 ciclos (MultiRio 2.016, Suape 1.000; ~1.450 desembarques/dia no escopo,
++30% sobre Santos). Base de comparação: a sombra de Santos de 15/10 (`virasana/sombra_pos2.log`, 10.017 ciclos).
+
+| | MultiRio + Suape | Santos |
+|---|---|---|
+| passagem (embarque no mesmo operador) | 50% | 24% |
+| entregue pelo operador (dos quais voltaram ao mesmo operador) | 22,5% (52%) | 34% (21%) |
+| TRA (recinto seco) | 1 ciclo | 23% |
+| aberto no operador | 24% (16% da amostra com < 7 dias) | 11% (amostra sem < 7 dias) |
+| incompletos / saída duvidosa | 1,2% / 1,0% | 2% / 0,04% |
+| CE alta / média / baixa / sem CE | 31% / 30% / 1% / 38% | 60% / 8,5% / 0,5% / 31% |
+| CEs declarados nos eventos por contêiner | 0,50 | 0,80 |
+| escala declarada no desembarque NÃO confere com o manifesto do CE (não vazios) | 9,6% | 1,3% |
+| ciclos com escaneamento | 12% (MultiRio 19%, Suape 3%) | 65% |
+
+- **Imagens: critério atendido** — MultiRio +3 h em 381 de 383 inspeções (resíduo ≤ 10 min), Suape 28 de 29;
+  a defasagem do item 1 está confirmada. 38 inspeções "em trânsito" (8,5%; Santos 1,4%), 34 delas no ICTSI:
+  contêiner do MultiRio escaneado no ICTSI (escâner compartilhado no Caju?) — a confirmar.
+- **Ciclos: no padrão de Santos, com o perfil de porto concentrador** — metade é passagem (transbordo e
+  cabotagem), quase não há TRA, metade das entregas volta vazia ao mesmo terminal (a fronteira já trata);
+  incompletos abaixo de Santos. O "aberto no operador" maior se explica em boa parte pela amostra mais recente
+  (`--ignorar-ultimos-dias 2`); separar por idade no CSV.
+- **CE: critério NÃO atendido** — confiança alta em 31%. Os eventos declaram menos CE (0,50 por contêiner) e a
+  confiança média ("só o Mercante, uma família possível") é a regra. Mais grave: a escala declarada no desembarque
+  não confere com o manifesto do CE escolhido em 9,6% dos não vazios (Santos 1,3%) — suspeita: o CE de OUTRA perna
+  (a cabotagem ou o transbordo seguinte, com escala dentro dos ±15 dias) ganha do CE da chegada. Contribuem as
+  duas regras fixas de Santos: `carga_ciclo._escalas` prefere as datas de BRSSZ, e `ces_do_ciclo.importacao_de_santos`
+  exige o prefixo 15 no CE (pelos exemplos do D1, o CE emitido no Rio começa com 13 e o de Suape com 07; o
+  estrangeiro, com 00).
+- **Suape tem pouco ganho em imagem** — 3% dos ciclos com inspeção e 93% dos cards BRSUA sem imagem no D1: o
+  terminal quase não transmite inspeção de importação. O ganho lá seria só o acompanhamento (entrega, passagem).
+- ~~CE: critério NÃO atendido~~ — **CORRIGIDO pelo CSV** (`virasana/sombra_rio_suape.csv`, mesma rodada): a confiança
+  média é a carga de PASSAGEM com CE emitido fora (prefixos 00, 12, 17, 18...), que nunca é declarado nos eventos
+  do terminal — e a escala confere em 100% desses. Separando por tipo de CE:
+
+  | | MultiRio | Suape |
+  |---|---|---|
+  | CE de importação local (Rio 13, Suape 07): ciclos / confiança alta | 332 / **69%** | 679 / **85%** |
+  | ... fluxo passagem / com escaneamento | 0 / **78%** | 3 / **3,5%** |
+  | CE emitido fora (transbordo, cabotagem): ciclos / passagem / média | 653 / 82% / 96% | 165 / 87% / 41% |
+  | sem CE (passagem, 59% no MultiRio) / vazio no Mercante | 615 / 416 | 122 / 34 |
+  | escala declarada não confere (não vazios com CE) | 4% | 14% (37 deles com CE alta: dado de escala do terminal) |
+  | aberto, por idade do desembarque < 7 / 7–13 / 14–20 / 21+ dias | 80% / 40% / 15% / 6% | 68% / 22% / 7% / 4% |
+
+  A hipótese da "outra perna" caiu; a preferência por BRSSZ não pesa (nenhum CE emitido em Santos no MultiRio, 6 em
+  Suape); o prefixo 15 de `importacao_de_santos` só afeta o TRA provisório, que não existe nesses portos. As
+  propostas (A) e (B) da rodada anterior ficam sem necessidade para ampliar. Pontos de atenção: no MultiRio, 27% da
+  importação local com 21+ dias ainda "no operador" (Suape 10%) — conferir saídas não informadas em amostras;
+  **Suape quase não transmite inspeção de importação** (3,5%; no D1 os cards BRSUA ficaram 93% sem imagem também no
+  Mongo) — dado a cobrar do terminal, não da heurística.
+
+**Diretriz do usuário (20/10/2026)**: a base recebe, fora de Santos, só os dados dos OPERADORES PORTUÁRIOS, e
+nesses portos há poucos recintos secos — a carga quase sempre fica no operador. O ciclo "simplificado" (só a parte
+do operador) deve cobrir a quase totalidade dos casos; o usuário vai pesquisar os demais recintos secos do Brasil
+para começar a alimentar a base. O núcleo atual já é esse ciclo quando não há eventos de seco (MultiRio e Suape:
+1 TRA em 3.016 ciclos).
+
+**Eventos e imagens por operador fora de Santos** (D1, 14 dias; a verificação pedida pelo usuário — por operador,
+se a base tem EmbarqueDesembarque, AcessoVeiculo, PesagemVeiculo, InspecaoNaoInvasiva e imagem no Mongo):
+
+| operador (`e_operador`) | D / E | acessos (sem contêiner) | pesagens (sem contêiner) | inspeções | imagem no Mongo | ciclo simplificado |
+|---|---|---|---|---|---|---|
+| 7921303 MultiRio | 13.316 / 12.245 | 9.358 (60%) | 5.649 (71%) | 5.271 | 99% (+3 h) | **sim** (sombra OK) |
+| 4931303 Suape | 6.209 / 7.431 | 14.936 (37%) | 278 (0%) | 1.133 | 100% (+3 h) | **sim** (sombra OK; pouca inspeção) |
+| 3111401 Pecém | 7.977 / 6.562 | 21.274 (70%) | 9.602 (63%) | 5.034 | 57% (+3 h) | a medir na sombra |
+| 7921302 Rio ICTSI | 4.486 / 3.787 | 11.935 (**100%**) | 12.555 (77%) | 13.395 | 99% (+3 h) | não: acesso sem contêiner (saída só pela placa) |
+| 7961304 Itaguaí | 1.584 / 1.205 | **0** | **0** | 233 | 100% (+3 h) | não: sem acesso, só D/E e inspeção |
+| Santos (referência) | 65.611 / 72.939 | 262.649 (53%) | 259.685 (49%) | 69.334 | — | — |
+
+Fora do cadastro (`ovr_recintos` sem `e_operador`), com todos os eventos e volume de terminal: **9101602, 9981403,
+9801303** (12 a 16 mil D cada) — as imagens deles NÃO estão no Mongo; e 0301304/0301302 (acessos, pesagens e
+inspeções, sem D/E). Entrar no ciclo exige cadastrá-los (decisão do usuário, no Fichas).
+
+**Resultado do P0 — pesagens (produção, 20/10/2026; pesagens de 06 a 20/10; log `virasana/pesagens.log`; amostra de
+200 pesagens com contêiner nos 15 recintos de maior volume — MultiRio, Suape e ICTSI ficaram fora da amostra)**:
+- **A pesagem é um evento de gate**: em ~95% há acesso efetivado da mesma placa no mesmo recinto em até 2 min (até
+  10 min na Transbrasa; Pecém 18% sem acesso em 6 h). Captura automática ~100% nos terminais (Pecém 36%, Movecta 22%,
+  Suape 0%). Placa em 100% — **nenhuma pesagem sem placa: o RTG não chega à base**.
+- **Divisão**: 10 kg na maioria; 20 kg no MultiRio, Marimex, Localfrio CLIA, Fassina e outros; 1 kg no ICTSI e no
+  Deicmar Outeirinhos. Peso **fora da divisão ≤ 1%** em todos: sinal fraco, fica como marca.
+- **Tara do conjunto**: par na visita (mediana 14.940 kg; p10 11.950, p90 16.350) em 34–64% nos terminais;
+  **`taraConjunto` da API − par: mediana 0, p10 −10, p90 +160 kg; > 500 kg só em 8%** — onde dá para comparar, ela
+  é confiável. Sem usá-la, "sem tara" foi 34–83% da amostra.
+- **Medido x declarado (prévia)**: coerente 5–48%, digitação 1–15%, divergência 1–14%; diferença p10 −100%,
+  mediana 0, p90 +88%. As amostras mostram **quatro defeitos das regras provisórias** — o número de divergências
+  está inflado:
+  1. **contêiner vazio na pesagem** (bruto − conjunto ≈ tara do contêiner: devolução/retirada de vazio) virou
+     "digitação ÷100" ou "sem dado" (ex.: 9.470 − 7.310 − 2.150 = 10 kg x 4.904 declarados);
+  2. **pesagem sem o contêiner** (o caminhão chega para retirar, com o número já informado: bruto ≈ conjunto) —
+     não é a pesagem carregada;
+  3. **declarado = item de UM CE** (o emitido por último, até 120 dias antes): em carga consolidada cada filhote tem
+     só a sua parte do peso do contêiner; e uma pesagem de EXPORTAÇÃO é comparada com a importação anterior do mesmo
+     contêiner (ex.: 26.850 medidos x 4.801 declarados). Falta validar a mesma operação;
+  4. **padrões de digitação com a tolerância de 5% explicam diferenças pequenas** (+8% e −7% viraram "dígitos
+     vizinhos trocados"); declarado de 1 kg virou "÷100".
+- A consulta das candidatas a tara por placa estourou o `max_statement_time` em 2 lotes (138 s) — no P1, buscar
+  pela visita (contêiner + janela curta).
+- Proposta de calibração (P0b) e desenho do P1: na resposta de 20/10/2026, aguardando aprovação.
