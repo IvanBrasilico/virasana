@@ -1099,3 +1099,20 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_ace
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --operadores 7921302 \
     --dias 30 --ignorar-ultimos-dias 2 --conteineres 3000 --mongo --csv sombra_ictsi.csv --saida sombra_ictsi.log
 ```
+
+**Resultado D3 + sombra do ICTSI (produção, 20/10/2026; `virasana/acesso_placa.log`, `sombra_ictsi.log/.csv`)**:
+- **O ICTSI informa embarque e desembarque TROCADOS**: dos 4.465 "D" em 14 dias, 100% sem nada depois no recinto
+  (nem inspeção, nem pesagem, nem E); dos 3.769 "E", nenhum com D antes e 60% com inspeção/pesagem depois. Na sombra,
+  2.997 de 3.000 ciclos "abertos no operador"; a escala do "D" confere com o manifesto do CE em 17% (MultiRio 96%) e o
+  CE de importação do Rio (prefixo 13) não aparece. Exemplos do D1: MNBU3924552 — E em Santos 15/10, "E" no ICTSI
+  16/10 18:07 e inspeção 18:25. Causa provável: "E" lido como Entrada (no terminal) e "D" como Despacho. A comunicar
+  ao terminal/Alfândega. **Incluir o ICTSI sem destrocar criaria ~4,5 mil ciclos falsos a cada 14 dias.**
+- **Regra da placa**: inspeção do ICTSI (e do BTP) vem SEM placa — só a pesagem serve. Precisão no controle BTP
+  96,7% (3.463 iguais, 118 diferentes). Cobertura no ICTSI: entradas 35%, **saídas só 4%** (a pesagem com contêiner é
+  quase só na entrada); com 30 min sobe a 26% nas saídas, mas casaria a pesagem de entrada da mesma visita — não usar.
+  Serve para limitar o ciclo (reentrada), não para achar a entrega.
+- **Próximo passo (iniciado, nada editado ainda)**: `carga_ciclo.OPERADORES_D_E_TROCADOS` (vazio por padrão) e
+  `tipo_movimento(tipo, recinto, trocados)` na carga; `filtro_desembarques(escopo, trocados)` nas consultas de "D"
+  (sombra: `conteineres`, `desembarques_por_dia`; serviço: `conteineres_do_periodo`); opção `--d-e-trocados 7921302` na
+  sombra; testes; depois o usuário roda a sombra do ICTSI destrocada (e a de Santos com a opção, para ver a seção 2b).
+  Prever data de corte quando o ICTSI corrigir a origem (o histórico continua trocado).
