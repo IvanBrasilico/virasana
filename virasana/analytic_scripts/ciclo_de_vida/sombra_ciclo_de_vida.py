@@ -48,6 +48,13 @@ Uso (na raiz do repositório virasana):
     python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py
     python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --dias 30 --conteineres 3000
     python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --mongo --csv sombra.csv
+    python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --operadores 7921303 4931303 --mongo
+
+--operadores (20/10/2026): mede a heurística em OUTRO escopo antes de ampliá-lo (ex.: MultiRio 7921303 e Suape
+4931303, CICLO_DE_VIDA.md "Fora de Santos e pesagens"). Lá não há ciclo atual: as seções que comparam com ele ficam
+vazias e valem a situação, as etapas, os CEs, os escaneamentos novos e as imagens. Use --ignorar-ultimos-dias 2 (o
+atraso do loop antigo não existe fora de Santos). As escalas ainda preferem BRSSZ (`carga_ciclo._escalas`): sem
+efeito na medição, ajustar ao porto do operador se o escopo for ampliado.
 """
 import argparse
 import csv
@@ -235,9 +242,11 @@ class Carregador(CargaCiclo):
 class Sombra(Diagnostico):
     """Executa a sombra e escreve o relatório (reaproveita a saída do diagnóstico do ciclo de vida)."""
 
-    def __init__(self, conexao, saida, inicio, fim, conteineres=3000, amostras=5, agora=None):
+    def __init__(self, conexao, saida, inicio, fim, conteineres=3000, amostras=5, agora=None,
+                 escopo: Optional[Set[str]] = None):
         super().__init__(conexao, saida, inicio, fim, agora=agora, amostras=amostras)
         self.limite_conteineres = conteineres
+        self.escopo_pedido = set(escopo) if escopo else None   # --operadores: mede outro escopo (ex.: fora de Santos)
         self.linhas: List[dict] = []
         self.ciclos: Dict[int, ldt.CicloCalculado] = {}
         self.nomes: Dict[str, str] = {}
@@ -255,11 +264,14 @@ class Sombra(Diagnostico):
     def executa(self):
         carregador = Carregador(self, self.periodo['inicio'], self.periodo['fim'])
         escopo, operadores, self.nomes = carregador.operadores()
+        if self.escopo_pedido:
+            escopo = self.escopo_pedido
         self.titulo('0. PARÂMETROS E OPERADORES DO ESCOPO')
         self.escreve(f'Período dos desembarques: {self.periodo["inicio"]:%Y-%m-%d} a {self.periodo["fim"]:%Y-%m-%d}; '
                      f'agora = {self.agora:%Y-%m-%d %H:%M}; até {self.limite_conteineres} contêineres; '
                      f'parâmetros: {ldt.Parametros()}')
-        self.tabela(['operador do escopo (unidade 0817800)', 'nome'], [(c, self.nomes.get(c)) for c in sorted(escopo)])
+        origem = '--operadores' if self.escopo_pedido else 'unidade 0817800'
+        self.tabela([f'operador do escopo ({origem})', 'nome'], [(c, self.nomes.get(c)) for c in sorted(escopo)])
         self.por_dia = carregador.desembarques_por_dia(escopo)
         self.ultimo_com_ciclo = carregador.ultimo_desembarque_com_ciclo()
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
@@ -705,6 +717,9 @@ def main():
     parser.add_argument('--amostras', type=int, default=5, help='amostras por tipo de divergência')
     parser.add_argument('--mongo', action='store_true', help='inclui a seção das imagens (MONGODB_URI do ajna_commons)')
     parser.add_argument('--csv', help='grava uma linha por ciclo com a comparação (separador ;)')
+    parser.add_argument('--operadores', nargs='+',
+                        help='escopo = estes operadores (códigos Siscomex) no lugar dos de Santos — mede a heurística '
+                             'em outro porto antes de ampliar o escopo (ex.: 7921303 4931303)')
     parser.add_argument('--saida', default=datetime.now().strftime('ciclo_de_vida_sombra_%Y%m%d_%H%M%S.log'))
     args = parser.parse_args()
     uri = args.uri
@@ -719,7 +734,7 @@ def main():
     inicio = fim - timedelta(days=args.dias)
     engine = create_engine(uri)
     with engine.connect() as conexao, open(args.saida, 'w', encoding='utf-8') as saida:
-        sombra = Sombra(conexao, saida, inicio, fim, args.conteineres, args.amostras)
+        sombra = Sombra(conexao, saida, inicio, fim, args.conteineres, args.amostras, escopo=args.operadores)
         sombra.escreve(f'Modo sombra da heurística v2 do Ciclo de Vida — {datetime.now():%Y-%m-%d %H:%M:%S} '
                        f'(somente leitura)')
         sombra.escreve(f'Banco: {engine.url.render_as_string(hide_password=True)}')

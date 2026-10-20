@@ -933,3 +933,24 @@ Ordem aprovada: D1 e P0 juntos (diagnósticos para rodar em produção) e D2 em 
 - **Fallback conferido nos exemplos**: Rio pela inspeção no dia da chegada; Suape no dia da previsão; carga de
   passagem para o exterior (ESBCN, ILASH, ITGOA) pela inspeção na baldeação no Rio ou em Santos, 6 a 20 dias depois da
   previsão (dentro da janela de 30 dias). 6% dos cards sem previsão (destinos no exterior sem escala).
+
+**Decisões depois do D1 (usuário, 20/10/2026)**:
+1. **Feito** — `imagens_ciclo.DEFASAGEM_HORAS` ganhou a defasagem medida (+3 h) de 7921302, 7921303, 4931303,
+   7961304 e 3111401 (antes tentavam +3 h e +0 h; a imagem a +0 h deixa de ser ligada a uma inspeção desses
+   recintos). O máximo continua 3 h: as folgas da consulta ao Mongo não mudam.
+2. **Medir antes de ampliar o escopo** a **MultiRio (7921303) e Suape (4931303)**, que se comportam como Santos.
+   O Rio ICTSI (acesso sem contêiner, "E" que parece desembarque sem CE) e Itaguaí (sem acesso nem pesagem) ficam
+   FORA. A sombra ganhou `--operadores` (escopo explícito no lugar dos operadores da 0817800; teste
+   `TestOutroEscopo`; mutantes 4/4). Lá não há ciclo atual: as seções que comparam com ele saem vazias — valem a
+   situação, as etapas, os CEs, os escaneamentos e as imagens (`--mongo`). As escalas ainda preferem BRSSZ
+   (`carga_ciclo._escalas`): sem efeito na medição (janela de ±15 dias); ajustar ao porto do operador se o escopo
+   for ampliado.
+   ```
+   cd /home/ajna/apps/ajna/virasana
+   virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py \
+       --operadores 7921303 4931303 --dias 30 --ignorar-ultimos-dias 2 --conteineres 3000 --mongo \
+       --saida sombra_rio_suape.log
+   ```
+   Critério para ampliar (por operador): ciclos completos e incompletos no padrão de Santos, CE principal com
+   confiança alta na maioria, imagens ligadas às inspeções. Se passar, o escopo vira parâmetro (unidade + lista de
+   operadores) no serviço, com as escalas pelo porto do operador.

@@ -22,6 +22,9 @@ DEFASAGEM_HORAS = {
     '8931304': 3, '8931305': 3, '8931318': 3, '8931339': 3, '8931342': 3, '8931356': 3, '8931359': 3,
     '8933202': 3, '8933206': 3,
     '8931309': 0, '8931364': 0, '8931404': 0, '8933001': 0, '8933204': 0,
+    # fora de Santos, medido no D1 (diagnostico_ciclo_outros_portos, 20/10/2026): 99 a 100% das imagens a +3 h —
+    # Rio ICTSI e MultiRio, Suape, Itaguaí; Pecém (57% com imagem, todas a +3 h)
+    '7921302': 3, '7921303': 3, '4931303': 3, '7961304': 3, '3111401': 3,
 }
 DEFASAGENS_SEM_MEDICAO = (3, 0)
 JANELA_MINUTOS = 15

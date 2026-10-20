@@ -79,6 +79,13 @@ class TestEscolhe(unittest.TestCase):
                                      [(d(29, 13), IMG_DEPOIS), (d(26), IMG_DEPOIS)]))
         self.assertIsNone(fb.escolhe(self.INICIO, self.FIM, [], []))
 
+    def test_defasagem_medida_do_recinto(self):
+        # D1 (20/10/2026): no 7921302 a imagem fica a +3 h da inspeção; uma a +0 h não é dela (vira "só imagem")
+        from virasana.analytic_scripts.ciclo_de_vida.imagens_ciclo import defasagens_do
+        self.assertEqual(defasagens_do(RIO), (3,))
+        achado = fb.escolhe(self.INICIO, self.FIM, [fb.Inspecao(d(18, 8), RIO, False)], [(d(18, 8, 5), IMG_RIO_1)])
+        self.assertEqual(achado['origem'], fb.SO_IMAGEM)
+
     def test_limite_de_imagens(self):
         imagens = [(d(18, h), str(ObjectId())) for h in range(12)]
         self.assertEqual(len(fb.escolhe(self.INICIO, self.FIM, [], imagens)['imagens']), fb.MAXIMO_IMAGENS)

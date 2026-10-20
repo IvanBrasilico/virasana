@@ -507,6 +507,21 @@ class TestSombra(unittest.TestCase):
         self.assertEqual(list(linhas[0]), sombra.COLUNAS_CSV)
 
 
+class TestOutroEscopo(unittest.TestCase):
+    """--operadores (20/10/2026): mede a heurística em outro porto — só o CTRR, desembarcado no Rio."""
+
+    def test_escopo_pedido(self):
+        session = cria_sessao()
+        monta(session)
+        saida = io.StringIO()
+        no_rio = sombra.Sombra(session.connection(), saida, INICIO, FIM, conteineres=100, agora=AGORA,
+                               escopo={RIO})
+        self.assertEqual(sombra.roda(no_rio), [])
+        self.assertEqual(sorted({linha['conteiner'] for linha in no_rio.linhas}), ['CTRR'])
+        self.assertIn('operador do escopo (--operadores)', saida.getvalue())
+        session.close()
+
+
 class TestSemEscopo(unittest.TestCase):
 
     def test_sem_operadores_no_escopo_nao_consulta(self):
