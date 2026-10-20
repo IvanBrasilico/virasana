@@ -307,6 +307,32 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual((estatisticas['contêineres'], estatisticas['ciclos inseridos']), (2, 1))
         self.assertEqual((self.ciclo('CTRB')['fluxo'], self.ciclo('CTRB')['situacao']), (ldt.OPERADOR, ldt.CONCLUIDO))
 
+    def test_escopo_com_operadores_fora_de_santos(self):
+        """Ampliação do escopo (20/10/2026): lista EXPLÍCITA; só entra quem também é e_operador no cadastro."""
+        from unittest import mock
+        from virasana.analytic_scripts.ciclo_de_vida import carga_ciclo
+        self.assertEqual(carga_ciclo.OPERADORES_FORA_DE_SANTOS, {'7921303', '4931303', '3111401'})   # sem ICTSI
+        with self.engine.connect() as c:
+            consulta = sv.ConsultaSQL(c)
+            self.assertEqual(carga_ciclo.CargaCiclo(consulta, d(1), d(10)).operadores()[0], {BTP, ECO})
+            with mock.patch.object(carga_ciclo, 'OPERADORES_FORA_DE_SANTOS', frozenset({RIO, EADI})):
+                self.assertEqual(carga_ciclo.CargaCiclo(consulta, d(1), d(10)).operadores()[0], {BTP, ECO, RIO})
+
+    def test_refaz_so_os_operadores_novos(self):
+        """--refaz-operadores: ao ampliar o escopo, cria os ciclos do Rio (CTRX) sem refazer os de Santos."""
+        from unittest import mock
+        from virasana.analytic_scripts.ciclo_de_vida import carga_ciclo
+        with self.engine.connect() as c:
+            self.assertEqual(self.servico.conteineres_do_periodo(c, d(1), d(10), [RIO]), [])   # fora do escopo
+        with mock.patch.object(carga_ciclo, 'OPERADORES_FORA_DE_SANTOS', frozenset({RIO})):
+            with self.engine.connect() as c:
+                self.assertEqual(self.servico.conteineres_do_periodo(c, d(1), d(10), [RIO]), ['CTRX'])
+            estatisticas = self.servico.refaz(d(1), d(10), operadores=[RIO])
+        self.assertEqual((estatisticas['contêineres'], estatisticas['ciclos inseridos']), (1, 1))
+        self.assertEqual(self.ciclo('CTRX')['codigoRecintoDesembarque'], RIO)
+        self.assertEqual(sv._argumentos(['--refaz-desde', '2026-07-19', '--refaz-operadores', '7921303', '4931303'])
+                         .refaz_operadores, ['7921303', '4931303'])
+
     def test_refaz_segue_quando_uma_parte_falha(self):
         from unittest import mock
         with mock.patch.object(self.servico, 'processa', side_effect=[RuntimeError('chave duplicada'), Counter()]) \

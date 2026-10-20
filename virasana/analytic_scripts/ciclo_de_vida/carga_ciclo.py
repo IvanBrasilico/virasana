@@ -20,6 +20,15 @@ from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import JANELA_ESCALA_D
 
 UNIDADE_SANTOS = '0817800'
 PORTO_SANTOS = 'BRSSZ'
+# Ampliação do escopo (usuário, 20/10/2026): fora de Santos a base só recebe os OPERADORES PORTUÁRIOS e quase não há
+# recinto seco — o ciclo "simplificado" (só a estada no operador) cobre quase tudo. Lista EXPLÍCITA, medida antes na
+# sombra (`--operadores`; CICLO_DE_VIDA.md, "Fora de Santos e pesagens"). Só entra quem também é `e_operador` no
+# cadastro. Fora: Rio ICTSI 7921302 (acesso sem contêiner) e Itaguaí 7961304 (sem acesso nem pesagem).
+OPERADORES_FORA_DE_SANTOS = frozenset({
+    '7921303',      # MultiRio
+    '4931303',      # Tecon Suape
+    '3111401',      # Porto de Pecém
+})
 MARGEM_EVENTOS_DIAS = 2
 TAMANHO_LOTE = 500
 
@@ -112,10 +121,11 @@ class CargaCiclo:
         self.tipos: Dict[str, Counter] = defaultdict(Counter)   # contêiner -> tipos informados nos eventos
 
     def operadores(self):
-        """(escopo Santos, todos os operadores, {código: nome})."""
+        """(escopo — operadores de Santos e os de OPERADORES_FORA_DE_SANTOS —, todos os operadores, {código: nome})."""
         linhas = self.diag.consulta('SELECT cod_siscomex, nome, e_operador, cod_unidade FROM ovr_recintos '
                                     "WHERE cod_siscomex IS NOT NULL AND cod_siscomex <> ''")
-        escopo = {cod for cod, _, e_op, unidade in linhas if e_op and _unidade(unidade) == UNIDADE_SANTOS}
+        escopo = {cod for cod, _, e_op, unidade in linhas
+                  if e_op and (_unidade(unidade) == UNIDADE_SANTOS or cod in OPERADORES_FORA_DE_SANTOS)}
         todos = {cod for cod, _, e_op, _ in linhas if e_op}
         return escopo, todos, {cod: nome for cod, nome, _, _ in linhas}
 

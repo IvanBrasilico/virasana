@@ -24,7 +24,8 @@ A cada volta:
      vai ao log, o ciclo segue. Desligada com `--sem-risco` e em `--simula`.
 
 Escopo: desembarques nos operadores de Santos (`ovr_recintos.e_operador` com `cod_unidade = 0817800`,
-inclui o Ecoporto). Na primeira volta (sem marcas), lê os eventos desde `--desde` (padrão: 7 dias).
+inclui o Ecoporto) e, desde 20/10/2026, nos de `carga_ciclo.OPERADORES_FORA_DE_SANTOS` (MultiRio, Suape, Pecém).
+Na primeira volta (sem marcas), lê os eventos desde `--desde` (padrão: 7 dias).
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     SERVICO=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py
@@ -33,12 +34,16 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     virasana-venv/bin/python $SERVICO                                    # contínuo (supervisor)
     virasana-venv/bin/python $SERVICO --reprocessa 5000                  # etapa 6: pendentes antigos
     virasana-venv/bin/python $SERVICO --refaz-desde 2026-09-01           # refaz uma vez (depois de mudar o núcleo)
+    virasana-venv/bin/python $SERVICO --refaz-desde 2026-07-19 --refaz-operadores 7921303 4931303 3111401
+                                                                         # cria os ciclos dos operadores novos
 
 `--refaz-desde DATA [--refaz-ate DATA]` (15/10/2026): refaz UMA VEZ os ciclos — abertos E concluídos — dos contêineres
 desembarcados no período (o serviço contínuo só refaz o que tem evento novo ou está aberto; depois de uma mudança do
 núcleo, os concluídos ficariam com o resultado antigo). Os mais recentes primeiro, em partes, com o progresso no log;
 uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo) vai ao log e as outras seguem. Entram também
 os contêineres com desembarque no escopo e ainda SEM ciclo (ex.: desembarques no Ecoporto de antes do serviço).
+Com `--refaz-operadores` (20/10/2026), só os contêineres desembarcados NESSES operadores do escopo: ao ampliar o escopo,
+cria os ciclos do período sem refazer os de Santos.
 """
 import argparse
 import logging
@@ -274,10 +279,12 @@ class Servico:
             if not cheio:
                 time.sleep(intervalo)
 
-    def conteineres_do_periodo(self, conexao, desde: datetime, ate: datetime) -> List[str]:
+    def conteineres_do_periodo(self, conexao, desde: datetime, ate: datetime,
+                               operadores: Optional[Iterable[str]] = None) -> List[str]:
         """Contêineres desembarcados no período, os mais recentes primeiro: os com ciclo (de qualquer versão) e os
         com desembarque num operador do escopo e SEM ciclo — o loop antigo não criava ciclo para o desembarque no
-        Ecoporto, e o serviço só cria ao ver um evento novo do contêiner (sombra de 15/10/2026: 18 de 65)."""
+        Ecoporto, e o serviço só cria ao ver um evento novo do contêiner (sombra de 15/10/2026: 18 de 65).
+        `operadores`: só os desembarcados nesses operadores do escopo (com ou sem ciclo)."""
         ultimo: Dict[str, datetime] = {}
         consulta = (select(CICLOS.c.numeroConteiner, func.max(CICLOS.c.data_desembarque))
                     .where(CICLOS.c.data_desembarque >= desde, CICLOS.c.data_desembarque < ate,
@@ -285,22 +292,26 @@ class Servico:
                     .group_by(CICLOS.c.numeroConteiner))
         consulta_sql = ConsultaSQL(conexao)
         escopo, _, _ = CargaCiclo(consulta_sql, desde, ate).operadores()
+        if operadores:
+            escopo = escopo & set(operadores)
         desembarques = consulta_sql.consulta(
             'SELECT numeroConteiner, MAX(dataHoraOcorrencia) FROM apirecintos_embarquedesembarque '
             "WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo AND dataHoraOcorrencia >= :desde "
             'AND dataHoraOcorrencia < :ate GROUP BY numeroConteiner',
             {'escopo': sorted(escopo), 'desde': desde, 'ate': ate}, listas=('escopo',)) if escopo else []
-        for conteiner, data in list(conexao.execute(consulta)) + desembarques:
+        com_ciclo = [] if operadores else list(conexao.execute(consulta))
+        for conteiner, data in com_ciclo + desembarques:
             conteiner, data = (conteiner or '').strip(), _data(data)
             if conteiner and data and (conteiner not in ultimo or data > ultimo[conteiner]):
                 ultimo[conteiner] = data
         return sorted(ultimo, key=lambda c: (ultimo[c], c), reverse=True)
 
-    def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000) -> Counter:
+    def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000,
+              operadores: Optional[Iterable[str]] = None) -> Counter:
         """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo)."""
         ate = ate or self.relogio()
         with self.engine.connect() as conexao:
-            conteineres = self.conteineres_do_periodo(conexao, desde, ate)
+            conteineres = self.conteineres_do_periodo(conexao, desde, ate, operadores)
         logger.info(f'refazer: {len(conteineres)} contêineres desembarcados de {desde:%Y-%m-%d} a {ate:%Y-%m-%d}')
         estatisticas = Counter()
         for i in range(0, len(conteineres), parte):
@@ -362,6 +373,8 @@ def _argumentos(argv=None):
                         help='refaz uma vez os ciclos (abertos e concluídos) desembarcados desde esta data e sai')
     parser.add_argument('--refaz-ate', type=lambda v: datetime.strptime(v, '%Y-%m-%d'), metavar='AAAA-MM-DD',
                         help='... até esta data (padrão: agora)')
+    parser.add_argument('--refaz-operadores', nargs='+', metavar='CODIGO',
+                        help='... só os desembarcados nesses operadores do escopo (ao ampliar o escopo)')
     parser.add_argument('--sem-mongo', action='store_true', help='não procura as imagens no Mongo')
     parser.add_argument('--sem-risco', action='store_true',
                         help='desliga a etapa do risco histórico por CE (virasana/risco_historico/etapa.py)')
@@ -381,7 +394,7 @@ def main(argv=None):  # pragma: no cover - depende do banco real
                 f'{" — SIMULAÇÃO" * args.simula}')
     servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco)
     if args.refaz_desde:
-        servico.refaz(args.refaz_desde, args.refaz_ate)
+        servico.refaz(args.refaz_desde, args.refaz_ate, operadores=args.refaz_operadores)
     elif args.reprocessa:
         servico.reprocessa(args.reprocessa)
     elif args.uma_vez:

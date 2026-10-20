@@ -7,7 +7,8 @@ Santos num período e COMPARA com os ciclos atuais (gravados pelo `manager_ciclo
 **Somente leitura: não grava nada no banco.** Não traz placa, CPF nem nome de motorista.
 
 Escopo (decisão do usuário): operadores de Santos = `ovr_recintos.e_operador` e `cod_unidade =
-'0817800'` (Alfândega de Santos). "Operadores" para a linha do tempo = todos os `e_operador` mais os
+'0817800'` (Alfândega de Santos) e, desde 20/10/2026, os de `carga_ciclo.OPERADORES_FORA_DE_SANTOS` — o mesmo
+escopo do serviço. "Operadores" para a linha do tempo = todos os `e_operador` mais os
 recintos que registram embarque/desembarque nos eventos carregados (são terminais portuários).
 
 Amostra: contêineres ESPALHADOS pelo período (ordem pseudoaleatória fixa pelo id, reprodutível) — a
@@ -270,7 +271,7 @@ class Sombra(Diagnostico):
         self.escreve(f'Período dos desembarques: {self.periodo["inicio"]:%Y-%m-%d} a {self.periodo["fim"]:%Y-%m-%d}; '
                      f'agora = {self.agora:%Y-%m-%d %H:%M}; até {self.limite_conteineres} contêineres; '
                      f'parâmetros: {ldt.Parametros()}')
-        origem = '--operadores' if self.escopo_pedido else 'unidade 0817800'
+        origem = '--operadores' if self.escopo_pedido else 'unidade 0817800 e lista fora de Santos'
         self.tabela([f'operador do escopo ({origem})', 'nome'], [(c, self.nomes.get(c)) for c in sorted(escopo)])
         self.por_dia = carregador.desembarques_por_dia(escopo)
         self.ultimo_com_ciclo = carregador.ultimo_desembarque_com_ciclo()

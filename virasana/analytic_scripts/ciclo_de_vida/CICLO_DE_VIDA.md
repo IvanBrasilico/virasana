@@ -1053,4 +1053,49 @@ inspeções, sem D/E). Entrar no ciclo exige cadastrá-los (decisão do usuário
      vizinhos trocados"); declarado de 1 kg virou "÷100".
 - A consulta das candidatas a tara por placa estourou o `max_statement_time` em 2 lotes (138 s) — no P1, buscar
   pela visita (contêiner + janela curta).
-- Proposta de calibração (P0b) e desenho do P1: na resposta de 20/10/2026, aguardando aprovação.
+- Proposta de calibração (P0b) e desenho do P1: na resposta de 20/10/2026. O usuário aprovou usar a `taraConjunto`
+  da API como 3ª fonte da tara (depois do par na visita e da pesagem vazia em 7 dias), com a origem marcada.
+
+**Sombra de Pecém (produção, 20/10/2026; `virasana/sombra_pecem.log` + CSV)** — 3.007 ciclos: passagem 35%, entregue
+pelo operador 31%, aberto 31%, incompletos 2,4%. CE de importação local (prefixo 04): 1.055 ciclos, confiança alta
+só 19% (média 75%; os eventos declaram 0,31 CE por contêiner, contra 0,50 no Rio/Suape e 0,80 em Santos), escala
+declarada não confere em 21%, escaneamento em 31%, aberto com 21+ dias 15%. **Imagem: 72% das inspeções sem imagem
+no Mongo** (167 de 600 com imagem, todas a +3 h) — como nos terminais fora do cadastro, a integração das imagens
+falta. Nada quebra; o ciclo dá o desembarque e o escaneamento.
+
+**Prioridades do usuário para esses portos (20/10/2026)**: desembarque, imagem, escaneamento e pesagem, nesta ordem
+— a saída vem depois.
+
+**Ampliação do escopo — FEITA no código (20/10/2026), falta ativar**: `carga_ciclo.OPERADORES_FORA_DE_SANTOS` =
+MultiRio 7921303, Suape 4931303 e Pecém 3111401 (lista explícita; só entra quem também é `e_operador`). O serviço e a
+sombra usam o mesmo escopo. `servico_ciclo_de_vida.py --refaz-desde DATA --refaz-operadores ...` cria os ciclos do
+período só desses operadores, sem refazer Santos. Testes `test_escopo_com_operadores_fora_de_santos` e
+`test_refaz_so_os_operadores_novos`. Efeitos:
+- os cards do NAVI-I desses portos passam a ter a imagem pelo ciclo; o fallback continua para o resto;
+- a completude "no operador" ganha as linhas deles (Suape ~97% sem escaneamento: dado real);
+- o risco histórico passa a ver os CEs deles;
+- ~2 mil desembarques/dia a mais (+40% sobre Santos).
+Ativação:
+```
+cd /home/ajna/apps/ajna/virasana
+S=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py
+virasana-venv/bin/python $S --homologacao --refaz-desde 2026-10-13 --refaz-operadores 7921303 4931303 3111401 --simula
+# depois do deploy e do restart do serviço no supervisor (o escopo novo vale a partir dele):
+virasana-venv/bin/python $S --refaz-desde 2026-07-19 --refaz-operadores 7921303 4931303 3111401
+```
+
+**Rio ICTSI — D3 (`diagnostico_acesso_pela_placa.py`, escrito em 20/10/2026, falta rodar)**: o problema lá é o ACESSO
+sem contêiner (100%) — a saída do operador não se liga ao ciclo — e parte dos desembarques informada como "E" (D1:
+57% da amostra). O desembarque, a imagem (99%) e o escaneamento (13 mil inspeções em 14 dias) existem. Regra
+proposta, pura em `acesso_pela_placa.py`: o acesso recebe o contêiner da pesagem/inspeção da MESMA placa, no MESMO
+recinto, a até 5 min; dois contêineres na janela = ambíguo. O D3 mede no ICTSI a cobertura por janela e direção, a
+**precisão num controle que informa o contêiner** (BTP: deduz ignorando o informado e confere), o que vem depois de
+cada D (inspeção, pesagem, embarque, saída deduzida) e os "E que parecem desembarque". Testes
+`test_acesso_pela_placa.py` e `test_diagnostico_acesso_pela_placa.py`; mutantes 16/16 (com o escopo). Se a precisão
+for alta, a regra entra na carga SÓ para operadores marcados (ICTSI), sem efeito nos demais; o ICTSI entra no escopo
+depois de uma sombra com ela.
+```
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_acesso_pela_placa.py --saida acesso_placa.log
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py --operadores 7921302 \
+    --dias 30 --ignorar-ultimos-dias 2 --conteineres 3000 --mongo --csv sombra_ictsi.csv --saida sombra_ictsi.log
+```
