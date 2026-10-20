@@ -235,6 +235,15 @@ Regras e limitações (importantes):
    Também nos filtros salvos, nos chips ("1.200,5 kg") e nos rótulos das estatísticas. Testes:
    `test_navii_filtro_peso.py` (ponto, vírgula, vazio, inválido, espaços, pontas, faixa invertida, contagem, filtro
    salvo, API, tela), 12 mutantes (todos derrubados) e roteiro no navegador.
+17. **Imagem pelo contêiner e data, sem ciclo de vida** (20/10/2026; plano em
+   `analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md`, "Fora de Santos e pesagens", D2). O ciclo de vida só cobre
+   Santos; fora dele (ex.: GSLU2053602 escaneado no Rio, 7921302) o card ficava sem imagem. `imagem_fallback.py`,
+   só nos cards SEM imagem do ciclo: janela da operação do CE (previsão de atracação −2 a +30 dias; sem previsão, o
+   desembarque do ciclo), cortada no 1º evento de outra operação depois da 1ª saída (embarque, desembarque, entrada
+   vazio); prefere a inspeção CHEIA da API e a imagem pela defasagem do recinto (confiança média); sem inspeção, só
+   a imagem do Mongo (`numeroinformado` + `dataescaneamento`), fora as perto de inspeção vazia (confiança baixa).
+   O card leva `imagemFallback` e o painel de imagens, o selo com a origem. Acessório: falha só vai ao log. O filtro
+   "Somente com imagem" continua só pelo ciclo. Testes em `test_navii_imagem_fallback.py`.
 
 ## Como a busca funciona (desenho atual)
 

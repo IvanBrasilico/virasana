@@ -846,3 +846,90 @@ implícita, escaneamento fora e confiança; filtro de **estágio** (`estagios_ci
 
 Ajustes pontuais de baixo risco que podem vir antes (se aprovados): tirar o atraso dos desembarques
 novos; corrigir o fuso da busca no Mongo; desligar o atalho `saidas_novas_operadores` (código morto).
+
+## Fora de Santos e pesagens (plano APROVADO pelo usuário em 20/10/2026)
+
+**Problema 1 — portos fora de Santos sem ciclo e sem imagem.** Causa principal já conhecida: o escopo do v2
+(decisão de 01/10/2026) é **só Santos** — `carga_ciclo.operadores()` abre ciclo apenas nos operadores
+`e_operador` da unidade 0817800; o loop antigo também só cobria Santos. O card do NAVI-I só mostra a imagem que
+vem do ciclo. Exemplo do usuário: CE 132605338073101 (destino BRRIO), GSLU2053602 — D 13/10 e E 15/10 no 8931356
+(passagem em Santos, viagem 620N), "E" 16/10 no 7921302 (Rio) da MESMA viagem 620N, que parece um desembarque
+informado como embarque; inspeções 18/10 05:00 no 7921302 (vazio = não) e imagens no Mongo às 08:00 (+3 h). O
+7921302 também omite o contêiner nos acessos (a inspeção traz).
+
+- **D1 — `diagnostico_ciclo_outros_portos.py`** (só leitura): eventos por recinto fora da 0817800 e qualidade
+  (acessos sem contêiner, inspeções, pesagens), "E" que parece desembarque, efeito no NAVI-I (cards de CEs com
+  destino fora de Santos: com ciclo, com imagem, imagem achável pelo fallback), defasagem imagem − inspeção por
+  recinto, linhas do tempo de amostra. Depois, por unidade, decidir ampliar o escopo (a sombra pode ganhar
+  `--unidade`).
+- **D2 — fallback da imagem no card do NAVI-I** (aprovado): só nos cards sem imagem do ciclo; janela da operação
+  do CE (previsão de atracação −2 a +30 dias, cortada no 1º evento do contêiner que indique outra operação);
+  preferir a inspeção da API (cheia) e a imagem pela defasagem do recinto (`imagens_ciclo.escolhe_imagem`); sem
+  inspeção, a imagem do Mongo só por `numeroinformado` + `dataescaneamento` (confiança menor); selo no card com a
+  origem. O filtro "Somente com imagem" continua só pelo ciclo.
+
+**Problema 2 — pesagens (PesagemVeiculo) no ciclo.** Mecânica parecida com o escaneamento (descarga → pesagem →
+saída; entrada no seco → pesagem → saída); balança muitas vezes integrada ao gate. Peso do contêiner = conjunto
+carregado − conjunto descarregado (mesmas placas); no RTG (guindaste, sem placa) o peso já é o do contêiner. Regras
+do usuário: `taraConjunto` da API não é confiável — preferir uma pesagem recente do conjunto sem contêiner;
+resolução das balanças rodoviárias 10/20/50/70 kg, RTG 50/100 kg — peso fora da divisão indica valor digitado,
+não lido da balança como manda o SICA; `capturaAutoPeso` existe; erros de digitação comuns (12350 x 1235).
+**Base de comparação (usuário, 20/10/2026): medido − tara do contêiner = `Item.pesoBruto` (Mercante).**
+
+- **P0 — `diagnostico_pesagens.py`** (só leitura): preenchimento por recinto, resolução de cada balança, pesagem x
+  gate, tara (par na mesma visita, pesagem vazia recente, `taraConjunto`), RTG, medido x declarado e padrões de
+  digitação, conjunto com dois contêineres.
+- **P1 — captura** (DDL aditiva pelo usuário/DBA): tabela `ciclodevida_pesagem` (cada pesagem ligada, tara e
+  origem, peso do contêiner, captura automática, confiança, motivo) + resumo no ciclo (peso medido, diferença,
+  diagnóstico).
+- **P2 — diagnóstico da divergência** (função pura): coerente; digitação provável (×10ⁿ, dígito a mais/a menos,
+  vizinhos trocados); pesagem digitada (fora da divisão/sem captura automática); dois contêineres no conjunto;
+  divergência relevante (possível fraude); sem pesagem/tara confiável. Tolerâncias a partir do P0.
+- **P3 — tela**: peso medido x declarado no card (diferença e selo), expansão com as pesagens brutas e o
+  diagnóstico; filtros por diferença %, ordem de grandeza e diagnóstico (pelas colunas do ciclo).
+- Riscos: a carga da API (bhadrasana2, `get_listaConteineresUld`/`get_listaSemirreboque`) grava só o 1º contêiner
+  e o 1º semirreboque da lista — conjunto com dois contêineres de 20' (ou bitrem) põe o peso todo no 1º e o 2º fica
+  sem pesagem (o P0 mede; corrigir de vez = gravar a lista inteira, decisão do usuário); as pesagens só entram nos
+  ciclos que existem (Santos) até a decisão do D1.
+
+Ordem aprovada: D1 e P0 juntos (diagnósticos para rodar em produção) e D2 em paralelo; P1–P3 depois dos números.
+
+**Andamento (20/10/2026)**:
+- **D2 feito** — `navii/imagem_fallback.py` (regra pura `janela`/`corta`/`escolhe` + `completa_cards`, uma consulta
+  por tabela de eventos e uma ao Mongo por página), ligado em `views_navii._monta_cards_com_imagens` (abas de
+  análise e de texto; falha só vai ao log). O card leva `imagemFallback` {origem, confiança, detalhe} e o painel de
+  imagens mostra o selo (âmbar = pela inspeção, laranja = só a imagem). Testes `test_navii_imagem_fallback.py`
+  (caso do usuário reproduzido: as duas imagens das 08:00 entram, as de outra operação não); E2E no navegador.
+- **D1 e P0 escritos, falta rodar em produção** — `diagnostico_ciclo_outros_portos.py` (o D1 mede o fallback
+  com o mesmo `imagem_fallback`) e `diagnostico_pesagens.py` (regras em `pesagens_ciclo.py`: divisão da balança,
+  tara do contêiner, padrões de digitação, classificação prévia, par da tara). Testes:
+  `test_diagnostico_ciclo_outros_portos.py`, `test_diagnostico_pesagens.py`, `test_pesagens_ciclo.py`.
+  Mutantes 28/28 (um deles mostrou que na balança de 1 kg o peso fracionado também é digitado — regra corrigida).
+  ```
+  cd /home/ajna/apps/ajna/virasana
+  D=virasana/analytic_scripts/ciclo_de_vida
+  virasana-venv/bin/python $D/diagnostico_ciclo_outros_portos.py --saida outros_portos.log
+  virasana-venv/bin/python $D/diagnostico_pesagens.py --saida pesagens.log
+  ```
+
+**Resultado do D1 (produção, 20/10/2026; eventos de 06 a 20/10, log `virasana/outros_portos.log`)**:
+- **Cadastro**: fora da 0817800, só 5 operadores estão em `ovr_recintos` (Pecém 3111401, Suape 4931303, Rio ICTSI
+  7921302 e MultiRio 7921303, Itaguaí 7961304). Terminais de grande volume NÃO estão cadastrados (9101602, 9981403,
+  9801303 — 12 a 16 mil desembarques cada em 14 dias —, 0301302/0301304 e dezenas de recintos 8932xxx/69xxxxx).
+- **Acessos sem contêiner** ~50% em todos (Santos 53%): normal (caminhão sem contêiner). Exceções: RIO_ICTSI
+  **100%** (nunca informa o contêiner no acesso — confirma o usuário), 0301302, 6911101, 8932722, 0301402 (100%);
+  Itaguaí não informa acesso nem pesagem (0 em 14 dias). Inspeções quase sempre com contêiner (6911101: 100% sem).
+- **"E" que parece desembarque**: RIO_ICTSI 57% da amostra de embarques (sem entrada nem D antes, com inspeção
+  depois), todos SEM CE declarado; 42% sem outros eventos (o acesso sem contêiner esconde a entrada). Exemplos:
+  passagem por Santos (D e E no 8931356) e depois "E" no ICTSI com inspeções. MultiRio, Suape e Pecém se comportam
+  como Santos (embarque com entrada no gate antes ou passagem).
+- **NAVI-I (1.500 cards de CEs com destino fora de Santos)**: 7% com ciclo (o contêiner passou por Santos), ~0% com
+  imagem do ciclo; o **fallback recupera 9%** no total — **BRRIO 85%** (ICTSI e MultiRio), Suape 4%, ARBUE 5%
+  (passagem pelo Rio). 91% continuam sem imagem.
+- **Por que o resto continua sem imagem**: as imagens desses escâneres NÃO estão no Mongo do AJNA — 9801303,
+  9101602, 9981403 e 0301304: 100% das inspeções sem imagem em ±6 h. Com imagem: ICTSI e MultiRio 99%, Suape 100%,
+  Itaguaí 100%, Pecém 57% (todos **+3 h**). Itapoá, Navegantes, Itajaí, Paranaguá, Manaus etc. não têm o que mostrar
+  — não é falha da heurística.
+- **Fallback conferido nos exemplos**: Rio pela inspeção no dia da chegada; Suape no dia da previsão; carga de
+  passagem para o exterior (ESBCN, ILASH, ITGOA) pela inspeção na baldeação no Rio ou em Santos, 6 a 20 dias depois da
+  previsão (dentro da janela de 30 dias). 6% dos cards sem previsão (destinos no exterior sem escala).

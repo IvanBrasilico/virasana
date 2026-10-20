@@ -238,6 +238,10 @@
         /* ---------- Painel de imagens: maior, em destaque, com lupa/expansão ---------- */
         /* align-self: o painel não estica até a altura do card (virava uma coluna preta) */
         .painel-imagens { background: #1c1c1c; border-radius: 6px; overflow: hidden; align-self: start; }
+        /* imagem pelo contêiner e data, sem ciclo de vida (fallback): a origem, em âmbar (confiança baixa: laranja) */
+        .origem-imagem { background: #3D3000; color: #FFE08A; font-size: .6875rem; line-height: 1.35;
+                         padding: .375rem .625rem; }
+        .origem-imagem.baixa { background: #4A2200; color: #FFC38A; }
         .imagem-principal {
             width: 100%; height: 20rem; display: flex; align-items: center; justify-content: center;
             overflow: hidden; background: #000; position: relative; cursor: zoom-in;
@@ -1146,9 +1150,21 @@
                     '<span class="dica-zoom"><i class="fas fa-search-plus" aria-hidden="true"></i> Clique para ampliar</span>' +
                 '</div>' +
                 (imagens.length > 1 ? '<div class="miniaturas-secundarias">' + miniaturas + '</div>' : '') +
+                montaOrigemImagem(card) +
             '</div>';
 
         return { html: html, urls: urls };
+    }
+
+    function montaOrigemImagem(card) {
+        // imagem achada pelo contêiner e pela data, sem ciclo de vida (imagem_fallback.py): o card diz de onde veio
+        var origem = card.imagemFallback;
+        if (!origem) { return ''; }
+        var ajuda = 'Sem ciclo de vida com imagem: a imagem foi achada pelo número do contêiner e pela data, na ' +
+            'janela da operação deste CE (confiança ' + origem.confianca + '). Confira se é a mesma operação.';
+        return '<div class="origem-imagem' + (origem.confianca === 'baixa' ? ' baixa' : '') + '" title="' +
+            escapeAttr(ajuda) + '"><i class="fas fa-info-circle" aria-hidden="true"></i> Imagem pelo contêiner e ' +
+            'data (sem ciclo de vida): ' + escapeHtml(origem.detalhe) + '</div>';
     }
 
     function montaEtapaTimeline(etapa, dados) {

@@ -46,7 +46,7 @@ from werkzeug.routing import BuildError
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import (
     acompanhamento_fichas, coleta_uso, dta_navii, estatisticas_uso, extrato_navii, ficha_navii, filtros_salvos,
-    referencias, risco_navii, texto_navii, uso_navii,
+    imagem_fallback, referencias, risco_navii, texto_navii, uso_navii,
 )
 from virasana.navii.busca_navii import (
     CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, CAMPOS_PESO, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
@@ -277,7 +277,7 @@ def api_ces():
                            erro=str(err))
         return jsonify({'erro': str(err)}), 400
 
-    montados, t_cards = _cronometrado(monta_cards_navii, session, resultados)
+    montados, t_cards = _cronometrado(_monta_cards_com_imagens, session, resultados)
     cards = [_serializa_card(card) for card in montados]
     avisos = []   # códigos de OCULTAR ignorados (curtos ou que esconderiam um filtro positivo): a tela mostra
     normaliza_filtros(filtros, avisos)
@@ -298,6 +298,17 @@ def api_ces():
         'avisos': avisos,
         'pesquisa': pesquisa,
     })
+
+
+def _monta_cards_com_imagens(session, resultados) -> list:
+    """Os cards (`monta_cards_navii`) e, nos que ficaram sem imagem do ciclo, a imagem pelo contêiner e data
+    (`imagem_fallback`, com a origem no card). O fallback é acessório: uma falha só vai ao log."""
+    cards = monta_cards_navii(session, resultados)
+    try:
+        imagem_fallback.completa_cards(session, current_app.config.get('mongodb'), cards)
+    except Exception:  # noqa: o card sai sem a imagem do fallback
+        current_app.logger.warning('NAVI-I: falha na imagem pelo contêiner e data', exc_info=True)
+    return cards
 
 
 def _coleta(registro, padrao=None):
@@ -374,7 +385,7 @@ def cards_do_texto(session, achados: List[texto_navii.Achado]):
                            achado.trechos] for achado in achados}
     resultados, t_consulta = _cronometrado(busca_ces_navii, session, tipo_janela='prevista',
                                            filtros={'ce': list(ordem)}, limit=MAX_CARDS_TEXTO)
-    montados, t_cards = _cronometrado(monta_cards_navii, session, resultados)
+    montados, t_cards = _cronometrado(_monta_cards_com_imagens, session, resultados)
     cards = sorted((_serializa_card(card) for card in montados),
                    key=lambda card: ordem.get(_numero_ce(card), len(ordem)))      # estável: mantém a ordem no CE
     for card in cards:

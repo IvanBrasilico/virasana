@@ -53,6 +53,9 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/acompanha_ciclo_de_vida.py',
     'virasana/analytic_scripts/ciclo_de_vida/estagios_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_imagens_ciclo.py',
+    'virasana/analytic_scripts/ciclo_de_vida/pesagens_ciclo.py',
+    'virasana/analytic_scripts/ciclo_de_vida/diagnostico_pesagens.py',
+    'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ciclo_outros_portos.py',
 ]
 
 TESTES = [
@@ -73,6 +76,10 @@ TESTES = [
     'virasana/tests/test_navii_indexador_texto.py',
     'virasana/tests/test_navii_texto_tela.py',
     'virasana/tests/test_navii_filtro_peso.py',
+    'virasana/tests/test_navii_imagem_fallback.py',
+    'virasana/tests/test_pesagens_ciclo.py',
+    'virasana/tests/test_diagnostico_pesagens.py',
+    'virasana/tests/test_diagnostico_ciclo_outros_portos.py',
     'virasana/tests/test_navii_fichas_ovr.py',
     'virasana/tests/test_navii_uso.py',
     'virasana/tests/test_entregas_cnpj.py',
