@@ -1,13 +1,15 @@
 """Diagnóstico das pesagens (analytic_scripts/ciclo_de_vida/diagnostico_pesagens.py) — P0 e P0b, em SQLite.
 
-Agora = 18/10/2026 12h, 14 dias. Recinto R1 (balança de 20 kg, captura automática), R2 (outro recinto). Cada
-contêiner (menos o EXPU) tem um DESEMBARQUE antes da pesagem — a mesma operação (P0b):
-  P1 MSCU1111111 D R1; bruto 40.120, par 15.000 (30 min antes, mesmo semirreboque), contêiner 2.200 -> 22.920 x
-     22.900: coerente. O CE mais recente é de EXPORTAÇÃO e outro é posterior à pesagem: fora.
-  P2 TGHU2222222 D R1; 40.700 − 15.000 − 2.200 = 23.500 x 2.350 (×10): digitação provável
+Agora = 18/10/2026 12h, 14 dias. Operadores portuários R1 (balança de 20 kg, captura automática) e R2; recinto seco R3.
+Cada contêiner (menos o EXPU) tem um DESEMBARQUE antes da pesagem; a operação vem da direção do acesso da placa:
+  P1 MSCU1111111 D R1; acesso de SAÍDA 1 min depois (retirada); bruto 40.120, par 15.000 (30 min antes, mesmo
+     semirreboque), contêiner 2.200 -> 22.920 x 22.900: coerente. O CE mais recente é de EXPORTAÇÃO e outro é
+     posterior à pesagem: fora.
+  P2 TGHU2222222 D R1; saída 5 min depois; 40.700 − 15.000 − 2.200 = 23.500 x 2.350 (×10): digitação provável
+  (os demais em R1 sem acesso da placa: "no operador do desembarque, sem acesso")
   P3 CAIU3333333 D R1; sem par nem vazia, taraConjunto 15.000 -> 21.800 x 24.000 (−9%): diferença moderada
-  P4 TCLU4444444 D em R2, pesagem em R1 (outro recinto); vazia 3 dias depois em R2, 45' típica 3.800 -> 11.200 x
-     20.000: divergência
+  P4 TCLU4444444 D em R2, pesagem em R1 (OUTRO OPERADOR: exportação/baldeação); vazia 3 dias depois em R2, 45'
+     típica 3.800 -> 11.200 x 20.000: divergência
   P5 MSKU5555555 D R1; 41.235 (FORA da divisão de 20 kg) − 15.000 − 2.200 = 24.035 x 24.000: coerente
   P6 EXPU6666666 sem desembarque antes: outra operação, não comparada
   P7 CONS7777777 D R1; consolidado: master M7 (24.000) e filhotes F71 (8.000) e F72 (16.000) -> o do master;
@@ -17,6 +19,9 @@ contêiner (menos o EXPU) tem um DESEMBARQUE antes da pesagem — a mesma opera�
   P10 PICK1010101 D R1; chegada 15.000 COM o número do contêiner e saída 39.000: a chegada é "sem o contêiner" e é o
      par da saída -> 21.800 x 21.800: coerente
   P11 NOTA1111111 D R1; sem par, vazia nem taraConjunto: sem dado (sem tara)
+  P12 SECO1212121 D R1, pesagem em R3 (CHEGADA AO SECO); 39.000 − 15.000 − 2.200 = 21.800: coerente
+  P13 VOLT1313131 D R1 em 01/10; acesso de ENTRADA em R1 em 14/10 (VOLTA ao operador: exportação) -> 27.800 x o
+      declarado da importação 10.000: divergência — mas não é a operação da importação
   RTG ZZZU9999999 sem placa, 25.000. Mais 60 pesagens vazias de outros caminhões (múltiplos de 20) em R1.
 """
 import io
@@ -30,7 +35,7 @@ from virasana.analytic_scripts.ciclo_de_vida.diagnostico_pesagens import Diagnos
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.navii.busca_navii import tabela_recintos
 
-R1, R2 = '8931356', '8931359'
+R1, R2, R3 = '8931356', '8931359', '8932000'
 AGORA = datetime(2026, 10, 18, 12)
 
 
@@ -46,7 +51,8 @@ def pesagem(id_, data, placa, conteiner, peso, semi='', recinto=R1, tara_conjunt
 
 def monta(session):
     session.execute(tabela_recintos.insert(), [{'id': 1, 'nome': 'SANTOS BRASIL', 'cod_siscomex': R1},
-                                               {'id': 2, 'nome': 'BTP', 'cod_siscomex': R2}])
+                                               {'id': 2, 'nome': 'BTP', 'cod_siscomex': R2},
+                                               {'id': 3, 'nome': 'EADI', 'cod_siscomex': R3}])
     pesagens = [
         pesagem(1, d(10, 10), 'AAA1A11', 'MSCU1111111', 40120, 'SSS1S11'),
         pesagem(2, d(10, 9, 30), 'AAA1A11', '', 15000, 'SSS1S11'),
@@ -68,6 +74,10 @@ def monta(session):
         pesagem(18, d(17, 8), 'JJJ0J00', 'PICK1010101', 15000),
         pesagem(19, d(17, 8, 40), 'JJJ0J00', 'PICK1010101', 39000),
         pesagem(20, d(17, 9), 'KKK1K11', 'NOTA1111111', 38000),
+        pesagem(21, d(13, 10), 'LLL2L22', 'SECO1212121', 39000, recinto=R3),
+        pesagem(22, d(13, 9), 'LLL2L22', '', 15000, recinto=R3),
+        pesagem(23, d(14, 15), 'MMM3M33', 'VOLT1313131', 45000),
+        pesagem(24, d(14, 16), 'MMM3M33', '', 15000),
     ] + [pesagem(100 + n, datetime(2026, 10, 9, 8, n), f'FIL{n:04d}', '', 15000 + 20 * n) for n in range(60)]
     session.execute(PesagemVeiculo.__table__.insert(), pesagens)
     session.execute(AcessoVeiculo.__table__.insert(), [
@@ -76,14 +86,17 @@ def monta(session):
         {'id': 2, 'codigoRecinto': R1, 'dataHoraOcorrencia': d(11, 14, 5), 'operacao': 'C',
          'direcao': 'S', 'placa': 'BBB2B22', 'tipoOperacao': 'I'},
         {'id': 3, 'codigoRecinto': R1, 'dataHoraOcorrencia': d(12, 8, 1), 'operacao': 'G',
-         'direcao': 'S', 'placa': 'CCC3C33', 'tipoOperacao': 'I'}])          # agendamento: não conta
+         'direcao': 'S', 'placa': 'CCC3C33', 'tipoOperacao': 'I'},          # agendamento: não conta
+        {'id': 4, 'codigoRecinto': R1, 'dataHoraOcorrencia': d(14, 14, 58), 'operacao': 'C',
+         'direcao': 'E', 'placa': 'MMM3M33', 'tipoOperacao': 'I'}])
     session.execute(EmbarqueDesembarque.__table__.insert(), [
         {'id': n, 'codigoRecinto': recinto, 'dataHoraOcorrencia': d(dia, 6), 'numeroConteiner': conteiner,
          'embarqueDesembarque': 'D', 'tipoOperacao': 'I'}
         for n, (conteiner, dia, recinto) in enumerate((
             ('MSCU1111111', 5, R1), ('TGHU2222222', 6, R1), ('CAIU3333333', 7, R1), ('TCLU4444444', 8, R2),
             ('MSKU5555555', 9, R1), ('CONS7777777', 9, R1), ('SUMU8888888', 10, R1), ('VAZU9999999', 10, R1),
-            ('PICK1010101', 11, R1), ('NOTA1111111', 11, R1)), start=1)])
+            ('PICK1010101', 11, R1), ('NOTA1111111', 11, R1), ('SECO1212121', 12, R1), ('VOLT1313131', 1, R1)),
+            start=1)])
     ces = [('C1', None, 'MSCU1111111', '22900', '2200', '22G1', '2026-09-20', '5'),
            ('C1X', None, 'MSCU1111111', '9999', '2200', '22G1', '2026-10-05', '7'),     # exportação: fora
            ('C1D', None, 'MSCU1111111', '8888', '2200', '22G1', '2026-10-15', '5'),     # depois da pesagem: fora
@@ -98,7 +111,9 @@ def monta(session):
            ('F82', 'M8', 'SUMU8888888', '12000', '2200', '22G1', '2026-09-11', '5'),
            ('C9', None, 'VAZU9999999', '4904', '2200', '22G1', '2026-09-20', '5'),
            ('C10', None, 'PICK1010101', '21800', '2200', '22G1', '2026-09-20', '5'),
-           ('C11', None, 'NOTA1111111', '24000', '2200', '22G1', '2026-09-20', '5')]
+           ('C11', None, 'NOTA1111111', '24000', '2200', '22G1', '2026-09-20', '5'),
+           ('C12', None, 'SECO1212121', '21800', '2200', '22G1', '2026-09-20', '5'),
+           ('C13', None, 'VOLT1313131', '10000', '2200', '22G1', '2026-09-15', '5')]
     for n, (ce, master, conteiner, peso, tara, iso, emissao, trafego) in enumerate(ces):
         session.add(Conhecimento(ID=n + 1, numeroCEmercante=ce, numeroCEMaster=master, dataEmissao=emissao,
                                  tipoTrafego=trafego))
@@ -128,8 +143,8 @@ class TestDiagnosticoPesagens(unittest.TestCase):
         self.assertNotIn('!! ERRO', self.log)
 
     def test_preenchimento(self):
-        celulas = self.linha('8931356 SANTOS BRASIL', '| 79 ')
-        self.assertEqual(celulas[1:4], ['79', '13 (16%)', '78 (99%)'])     # 13 com contêiner (inclusive o RTG)
+        celulas = self.linha('8931356 SANTOS BRASIL', '| 81 ')
+        self.assertEqual(celulas[1:4], ['81', '14 (17%)', '80 (99%)'])     # 14 com contêiner (inclusive o RTG)
 
     def test_divisao_e_fora_dela(self):
         celulas = self.linha('8931356 SANTOS BRASIL', 'rodoviária', '| sim')
@@ -140,13 +155,19 @@ class TestDiagnosticoPesagens(unittest.TestCase):
     def test_gate(self):
         self.assertEqual(self.linha('8931356', 'até 2 min (saída)')[2], '1 (8%)')
         self.assertEqual(self.linha('8931356', '2 a 10 min (saída)')[2], '1 (8%)')
-        self.assertEqual(self.linha('8931356', 'sem acesso em 6 h')[2], '10 (83%)')   # o agendamento não conta
+        self.assertEqual(self.linha('8931356', 'até 2 min (entrada)')[2], '1 (8%)')
+        self.assertEqual(self.linha('8931356', 'sem acesso em 6 h')[2], '10 (77%)')   # o agendamento não conta
+        self.assertEqual(self.diag.direcoes, {1: 'S', 3: 'S', 23: 'E'})
 
     def test_tara(self):
-        self.assertEqual(self.linha('8931356', '| par na visita')[2], '7 (58%)')       # inclusive o da retirada
+        self.assertEqual(self.linha('8931356', '| par na visita')[2], '8 (62%)')       # inclusive o da retirada
         self.assertEqual(self.linha('8931356', '| vazia em 7 dias')[2], '1 (8%)')
         self.assertEqual(self.linha('8931356', '| só taraConjunto')[2], '1 (8%)')
-        self.assertEqual(self.linha('8931356', '| nenhuma')[2], '3 (25%)')
+        self.assertEqual(self.linha('8931356', '| nenhuma')[2], '3 (23%)')
+        self.assertIn('vazia em 7 dias − par (kg), 8 casos: p10 0 | mediana 0 | p90 0; acima de 500 kg de diferença: '
+                      '0 (0%)', self.log)
+        self.assertEqual(self.linha('8931356 SANTOS BRASIL', 'p10 15.000')[1:],
+                         ['1', 'p10 15.000 / mediana 15.000 / p90 15.000', '0 (0%)'])
 
     def test_rtg(self):
         self.assertEqual(self.linha('8931356 SANTOS BRASIL', '25000')[1:3], ['1', '25000'])
@@ -156,17 +177,21 @@ class TestDiagnosticoPesagens(unittest.TestCase):
         self.assertEqual(self.diag.recintos_da_amostra(volumes), [R1, '9999999', '7921303'])
 
     def test_geral_por_operacao(self):
-        geral = {(c[0], c[1]): c[2] for c in (self.linha(op, cat) for op, cat in (
-            (pc.NO_OPERADOR, f'| {pc.COERENTE}  '), (pc.NO_OPERADOR, pc.DIGITACAO), (pc.NO_OPERADOR, pc.MODERADA),
-            (pc.NO_OPERADOR, pc.VAZIO_NA_PESAGEM), (pc.NO_OPERADOR, 'sem dado (sem tara)'),
-            (pc.OUTRO_RECINTO, pc.DIVERGENCIA), (pc.SEM_DESEMBARQUE, 'não comparada')))}
+        sem_acesso = pc.OPERADOR_SEM_ACESSO
+        geral = {(c[0], c[1]): c[2] for c in (self.linha(op + ' ', cat) for op, cat in (
+            (pc.RETIRADA, f'| {pc.COERENTE}  '), (pc.RETIRADA, pc.DIGITACAO),
+            (sem_acesso, f'| {pc.COERENTE}  '), (sem_acesso, pc.MODERADA), (sem_acesso, pc.VAZIO_NA_PESAGEM),
+            (sem_acesso, 'sem dado (sem tara)'), (pc.CHEGADA_AO_SECO, f'| {pc.COERENTE}  '),
+            (pc.OUTRO_OPERADOR, pc.DIVERGENCIA), (pc.VOLTA_AO_OPERADOR, pc.DIVERGENCIA),
+            (pc.SEM_DESEMBARQUE, 'não comparada')))}
         self.assertEqual(geral, {
-            (pc.NO_OPERADOR, pc.COERENTE): '4 (33%)', (pc.NO_OPERADOR, pc.DIGITACAO): '1 (8%)',
-            (pc.NO_OPERADOR, pc.MODERADA): '1 (8%)', (pc.NO_OPERADOR, pc.VAZIO_NA_PESAGEM): '1 (8%)',
-            (pc.NO_OPERADOR, 'sem dado (sem tara)'): '1 (8%)', (pc.OUTRO_RECINTO, pc.DIVERGENCIA): '1 (8%)',
-            (pc.SEM_DESEMBARQUE, 'não comparada'): '1 (8%)'})
-        self.assertEqual(self.linha(pc.NO_OPERADOR, 'a carregada é a outra pesagem da visita')[2], '1 (8%)')
-        self.assertEqual(self.linha(pc.NO_OPERADOR, f'{pc.COERENTE} — pesagem fora da divisão')[2], '1 (8%)')
+            (pc.RETIRADA, pc.COERENTE): '1 (7%)', (pc.RETIRADA, pc.DIGITACAO): '1 (7%)',
+            (sem_acesso, pc.COERENTE): '3 (21%)', (sem_acesso, pc.MODERADA): '1 (7%)',
+            (sem_acesso, pc.VAZIO_NA_PESAGEM): '1 (7%)', (sem_acesso, 'sem dado (sem tara)'): '1 (7%)',
+            (pc.CHEGADA_AO_SECO, pc.COERENTE): '1 (7%)', (pc.OUTRO_OPERADOR, pc.DIVERGENCIA): '1 (7%)',
+            (pc.VOLTA_AO_OPERADOR, pc.DIVERGENCIA): '1 (7%)', (pc.SEM_DESEMBARQUE, 'não comparada'): '1 (7%)'})
+        self.assertEqual(self.linha(sem_acesso, 'a carregada é a outra pesagem da visita')[2], '1 (7%)')
+        self.assertEqual(self.linha(sem_acesso, f'{pc.COERENTE} — pesagem fora da divisão')[2], '1 (7%)')
 
     def comeca(self, prefixo):
         achadas = [linha for linha in self.log.splitlines() if linha.startswith(prefixo) and ' | ' in linha]
@@ -174,16 +199,22 @@ class TestDiagnosticoPesagens(unittest.TestCase):
         return [c.strip() for c in achadas[0].split('|')]
 
     def test_por_origem_da_tara_e_do_declarado(self):
+        # só as operações da importação (sem o P4, de outro operador, nem o P13, de volta ao operador);
         # colunas: origem, pesagens, coerente, moderada, digitação, dois, divergência
-        self.assertEqual(self.comeca(pc.PAR), [pc.PAR, '6', '5 (83%)', '0 (0%)', '1 (17%)', '0 (0%)', '0 (0%)'])
+        self.assertEqual(self.comeca(pc.PAR), [pc.PAR, '7', '6 (86%)', '0 (0%)', '1 (14%)', '0 (0%)', '0 (0%)'])
         self.assertEqual(self.comeca(pc.API), [pc.API, '1', '0 (0%)', '1 (100%)', '0 (0%)', '0 (0%)', '0 (0%)'])
-        self.assertEqual(self.comeca(pc.VAZIA), [pc.VAZIA, '1', '0 (0%)', '0 (0%)', '0 (0%)', '0 (0%)', '1 (100%)'])
+        self.assertNotIn(f'\n{pc.VAZIA} ', self.log[self.log.index('origem da tara (operações'):])
         self.assertEqual(self.comeca('item do CE')[1], '6')
         self.assertEqual(self.comeca('item do master')[1], '1')
         self.assertEqual(self.comeca('soma de 2 filhotes')[1], '1')
 
     def test_diferencas(self):
-        self.assertIn(f'{pc.OUTRO_RECINTO}: p10 -44 | mediana -44 | p90 -44', self.log)
+        for operacao, faixa in ((pc.RETIRADA, 'p10 0 | mediana 450 | p90 900'),
+                                (pc.OPERADOR_SEM_ACESSO, 'p10 -9 | mediana 0 | p90 0'),
+                                (pc.CHEGADA_AO_SECO, 'p10 0 | mediana 0 | p90 0'),
+                                (pc.VOLTA_AO_OPERADOR, 'p10 178 | mediana 178 | p90 178'),
+                                (pc.OUTRO_OPERADOR, 'p10 -44 | mediana -44 | p90 -44')):
+            self.assertIn(f'{operacao}: {faixa}', self.log)
 
     def test_exemplos(self):
         for trecho in (

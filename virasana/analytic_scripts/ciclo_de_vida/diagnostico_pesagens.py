@@ -12,12 +12,13 @@ DIAGNÓSTICO DAS PESAGENS (PesagemVeiculo, API Recintos) — fases P0 e P0b do p
      o mesmo contêiner informado e mais leve —, mesmo recinto, até 12 h), pesagem sem contêiner do mesmo cavalo em até
      7 dias, `taraConjunto` da API — e quanto a `taraConjunto` diverge do par;
   5. RTG: pesagens com contêiner e sem placa (o peso já é o do contêiner);
-  6. MEDIDO x DECLARADO (P0b): só a MESMA operação — a pesagem depois de um desembarque do contêiner (no operador do
-     desembarque ou noutro recinto); a carregada da visita é a mais pesada; tara do conjunto par > vazia >
-     `taraConjunto` (usuário aprovou, 20/10/2026); declarado = peso do contêiner na família de CEs (item do master ou
-     soma dos filhotes); medido = bruto − tara do conjunto − tara do contêiner. Quadros: geral por operação e
-     classificação, por recinto, por ORIGEM DA TARA (confere a `taraConjunto`), origem do declarado, diferenças e
-     exemplos.
+  6. MEDIDO x DECLARADO (P0b): a OPERAÇÃO de cada pesagem — depois de um desembarque do contêiner, pela direção do
+     acesso da mesma placa (seção 3): retirada no operador do desembarque, volta a ele, chegada a recinto seco, outro
+     operador portuário; sem desembarque antes, não comparada. A carregada da visita é a mais pesada; tara do conjunto
+     par > vazia > `taraConjunto` (usuário aprovou, 20/10/2026), só entre 8 e 30 t; declarado = peso do contêiner na
+     família de CEs (item do master ou soma dos filhotes); medido = bruto − tara do conjunto − tara do contêiner.
+     Quadros: geral por operação e classificação, por recinto, por ORIGEM DA TARA (só as operações da importação),
+     origem do declarado, diferenças por operação e exemplos.
 
 A amostra (seções 3 a 6) são os 15 recintos com mais pesagens com contêiner MAIS os operadores fora de Santos do escopo
 e o Rio ICTSI. `--d-e-trocados 7921302` destroca o embarque/desembarque do ICTSI (D3) para achar a operação.
@@ -56,6 +57,7 @@ DIAS_CE = 120                  # CE emitido até N dias antes da pesagem
 RECINTOS_MAXIMO = 15           # recintos da amostra (os de mais pesagens com contêiner) ...
 RECINTOS_SEMPRE = OPERADORES_FORA_DE_SANTOS | {'7921302'}     # ... mais estes (P0b)
 LOTE_PLACAS = 100              # P0: a consulta por placa em lotes de 500 estourou o max_statement_time
+DIRECAO_ATE_MINUTOS = 30       # acesso da mesma placa até isto da pesagem: dá a direção (P0: ~95% a até 2 min)
 EXEMPLOS = 5
 LIMITE_CONSULTA = 300
 NAO_COMPARADA = 'não comparada'
@@ -118,6 +120,8 @@ class DiagnosticoPesagens(Diagnostico):
         self.carregadas: List[dict] = []
         self.candidatas: List[dict] = []
         self.por_placa: Dict[str, List[dict]] = {}
+        self.direcoes: Dict[int, str] = {}          # id da pesagem -> 'E'/'S' do acesso da mesma placa (seção 3)
+        self.portuarios: set = set()                # recintos com embarque/desembarque (operadores portuários)
 
     def _nome(self, recinto: str) -> str:
         return f'{recinto} {self.nomes.get(recinto, "")}'.strip()
@@ -233,6 +237,8 @@ class DiagnosticoPesagens(Diagnostico):
             distancias = [(abs((data - pesagem['data']).total_seconds()) / 60, direcao)
                           for data, direcao in acessos[(pesagem['placa'], pesagem['recinto'])]]
             proximo = min(distancias) if distancias else None
+            if proximo and proximo[0] <= DIRECAO_ATE_MINUTOS:
+                self.direcoes[pesagem['id']] = proximo[1]
             faixa = 'sem acesso em 6 h' if proximo is None or proximo[0] > HORAS_GATE * 60 else \
                 next(nome for limite, nome in FAIXAS_GATE if proximo[0] <= limite)
             direcao = '' if proximo is None or faixa.startswith('sem') else \
@@ -262,7 +268,7 @@ class DiagnosticoPesagens(Diagnostico):
         if not self.carregadas:
             self.escreve('Sem amostra.')
             return
-        contagem, divergencia_api, valores_par = Counter(), [], []
+        contagem, divergencia_api, divergencia_vazia, valores_par = Counter(), [], [], []
         for pesagem in self.carregadas:
             tara = taras[pesagem['id']]
             fonte = ('par na visita' if tara['par'] else 'vazia em 7 dias' if tara['vazia'] else
@@ -272,14 +278,31 @@ class DiagnosticoPesagens(Diagnostico):
                 valores_par.append(tara['par']['peso'])
                 if tara['api']:
                     divergencia_api.append(tara['api'] - tara['par']['peso'])
+                if tara['vazia']:
+                    divergencia_vazia.append(tara['vazia']['peso'] - tara['par']['peso'])
         por_recinto = Counter(p['recinto'] for p in self.carregadas)
         self.tabela(['recinto', 'melhor tara disponível', 'pesagens'],
                     [(self._nome(r), fonte, _pct(n, por_recinto[r])) for (r, fonte), n in sorted(contagem.items())])
         self.escreve()
         self.escreve(f'Tara do conjunto pelo par (kg): {percentis(valores_par)}')
-        acima = sum(1 for d in divergencia_api if abs(d) > 500)
-        self.escreve(f'taraConjunto da API − par (kg), {len(divergencia_api)} casos: {percentis(divergencia_api)}; '
-                     f'acima de 500 kg de diferença: {_pct(acima, len(divergencia_api))}')
+        for nome, divergencia in (('taraConjunto da API', divergencia_api), ('vazia em 7 dias', divergencia_vazia)):
+            acima = sum(1 for d in divergencia if abs(d) > 500)
+            self.escreve(f'{nome} − par (kg), {len(divergencia)} casos: {percentis(divergencia)}; '
+                         f'acima de 500 kg de diferença: {_pct(acima, len(divergencia))}')
+        self._tara_da_api_por_recinto()
+
+    def _tara_da_api_por_recinto(self):
+        """A `taraConjunto` por recinto: P0b achou a tara do CONTÊINER nela (Suape, ~4,6 t)."""
+        valores = defaultdict(list)
+        for pesagem in self.carregadas:
+            if pesagem['tara_conjunto']:
+                valores[pesagem['recinto']].append(pesagem['tara_conjunto'])
+        faixa = pc.TARA_CONJUNTO_PLAUSIVEL
+        self.escreve()
+        self.tabela(['recinto', 'com taraConjunto', 'taraConjunto (kg)', f'fora de {faixa[0]:.0f} a {faixa[1]:.0f} kg'],
+                    [(self._nome(r), len(v), percentis(v).replace(' | ', ' / '),
+                      _pct(sum(1 for x in v if not faixa[0] <= x <= faixa[1]), len(v)))
+                     for r, v in sorted(valores.items())])
 
     # ---------------------------------------------------------------- 5
     def secao_rtg(self):
@@ -305,6 +328,7 @@ class DiagnosticoPesagens(Diagnostico):
                 'AND dataHoraOcorrencia >= :de',
                 'conteineres', {p['conteiner'] for p in self.carregadas}, {'de': de}):
             recinto = _texto(recinto)
+            self.portuarios.add(recinto)
             movimentos[_texto(conteiner)].append(
                 (_dt(data), recinto, tipo_movimento(tipo, recinto, self.trocados) == ldt.DESEMBARQUE))
         return movimentos
@@ -342,7 +366,8 @@ class DiagnosticoPesagens(Diagnostico):
 
     def mede(self, pesagem: dict, taras: Dict[int, dict], declarados, movimentos) -> dict:
         """{contexto, categoria, diferença %, origem da tara, origem do declarado, exemplo} de uma pesagem."""
-        contexto = pc.contexto_da_pesagem(pesagem['data'], pesagem['recinto'], movimentos.get(pesagem['conteiner'], []))
+        contexto = pc.contexto_da_pesagem(pesagem['data'], pesagem['recinto'], movimentos.get(pesagem['conteiner'], []),
+                                          self.portuarios, self.direcoes.get(pesagem['id']))
         medida = {'contexto': contexto, 'categoria': NAO_COMPARADA, 'diferenca': None, 'tara': '-', 'declarado': '-',
                   'exemplo': ''}
         if contexto == pc.SEM_DESEMBARQUE:
@@ -372,7 +397,7 @@ class DiagnosticoPesagens(Diagnostico):
                 'diferenca': 100 * (medido - declarado) / declarado if declarado else None}
 
     def secao_medido(self, taras: Dict[int, dict]):
-        self.titulo('6. MEDIDO x DECLARADO (P0b) — só a mesma operação; bruto − tara do conjunto − tara do contêiner x '
+        self.titulo('6. MEDIDO x DECLARADO (P0b) — por operação; bruto − tara do conjunto − tara do contêiner x '
                     'peso do contêiner na família de CEs')
         if not self.carregadas:
             self.escreve('Sem amostra.')
@@ -388,22 +413,24 @@ class DiagnosticoPesagens(Diagnostico):
         self.tabela(['recinto', 'operação', 'classificação', 'pesagens'],
                     [(self._nome(r), c, cat, _pct(n, por_recinto[r])) for (r, c, cat), n in sorted(contagem.items())])
         comparaveis = [(p, m) for p, m in medidas if _base(m['categoria']) in pc.COMPARAVEIS]
-        self._por_origem_da_tara(comparaveis)
+        da_importacao = [(p, m) for p, m in comparaveis if m['contexto'] in pc.OPERACOES_DA_IMPORTACAO]
+        self._por_origem_da_tara(da_importacao)
         self._diferencas_e_exemplos(medidas, comparaveis)
 
     def _por_origem_da_tara(self, comparaveis):
         self.escreve()
         por_tara = Counter(m['tara'] for _, m in comparaveis)
         contagem = Counter((m['tara'], _base(m['categoria'])) for _, m in comparaveis)
-        self.tabela(['origem da tara (comparáveis)', 'pesagens'] + list(pc.COMPARAVEIS),
+        self.tabela(['origem da tara (operações da importação)', 'pesagens'] + list(pc.COMPARAVEIS),
                     [(t, n, *(_pct(contagem[(t, c)], n) for c in pc.COMPARAVEIS)) for t, n in sorted(por_tara.items())])
         self.escreve()
-        self.tabela(['origem do peso declarado (comparáveis)', 'pesagens'],
+        self.tabela(['origem do peso declarado (operações da importação)', 'pesagens'],
                     sorted(Counter(m['declarado'] for _, m in comparaveis).items()))
 
     def _diferencas_e_exemplos(self, medidas, comparaveis):
         self.escreve()
-        for contexto in (pc.NO_OPERADOR, pc.OUTRO_RECINTO):
+        for contexto in (pc.RETIRADA, pc.OPERADOR_SEM_ACESSO, pc.CHEGADA_AO_SECO, pc.VOLTA_AO_OPERADOR,
+                         pc.OUTRO_OPERADOR):
             diferencas = [m['diferenca'] for _, m in comparaveis if m['contexto'] == contexto]
             self.escreve(f'Diferença (medido − declarado) / declarado, %, {contexto}: {percentis(diferencas)}')
         exemplos = defaultdict(list)

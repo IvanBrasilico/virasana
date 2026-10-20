@@ -113,9 +113,13 @@ class TestTaraDoConjunto(unittest.TestCase):
         self.assertEqual(pc.tara_do_conjunto(15000, 14000, 13000), (15000, pc.PAR))
         self.assertEqual(pc.tara_do_conjunto(None, 14000, 13000), (14000, pc.VAZIA))
         self.assertEqual(pc.tara_do_conjunto(None, None, 13000), (13000, pc.API))
-        self.assertEqual(pc.tara_do_conjunto(None, None, 3999), (None, 'sem tara'))       # implausível
+        self.assertEqual(pc.tara_do_conjunto(None, None, 4630), (None, 'sem tara'))       # Suape: a do contêiner
+        self.assertEqual(pc.tara_do_conjunto(None, None, 7999), (None, 'sem tara'))
+        self.assertEqual(pc.tara_do_conjunto(None, None, 8000), (8000, pc.API))
         self.assertEqual(pc.tara_do_conjunto(None, None, 30001), (None, 'sem tara'))
         self.assertEqual(pc.tara_do_conjunto(None, None, 30000), (30000, pc.API))
+        self.assertEqual(pc.tara_do_conjunto(52040, 14000, None), (14000, pc.VAZIA))      # Pecém: "par" de 52 t
+        self.assertEqual(pc.tara_do_conjunto(None, 4370, 15000), (15000, pc.API))         # "vazia" de 4,4 t
         self.assertEqual(pc.tara_do_conjunto(None, None, None), (None, 'sem tara'))
 
 
@@ -134,15 +138,22 @@ class TestPesoDaFamilia(unittest.TestCase):
 class TestContexto(unittest.TestCase):
 
     def test_mesma_operacao(self):
-        r1, r2 = '8931356', '8932000'
-        self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 - timedelta(days=3), r1, True)]), pc.NO_OPERADOR)
-        self.assertEqual(pc.contexto_da_pesagem(T0, r2, [(T0 - timedelta(days=3), r1, True)]), pc.OUTRO_RECINTO)
+        r1, r2, seco = '8931356', '8931359', '8932000'
+        d3 = [(T0 - timedelta(days=3), r1, True)]
+        portuarios = {r1, r2}
+        self.assertEqual(pc.contexto_da_pesagem(T0, r1, d3, portuarios, 'S'), pc.RETIRADA)
+        self.assertEqual(pc.contexto_da_pesagem(T0, r1, d3, portuarios, 'E'), pc.VOLTA_AO_OPERADOR)
+        self.assertEqual(pc.contexto_da_pesagem(T0, r1, d3, portuarios), pc.OPERADOR_SEM_ACESSO)
+        self.assertEqual(pc.contexto_da_pesagem(T0, seco, d3, portuarios, 'E'), pc.CHEGADA_AO_SECO)
+        self.assertEqual(pc.contexto_da_pesagem(T0, r2, d3, portuarios, 'E'), pc.OUTRO_OPERADOR)
         self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 - timedelta(days=3), r1, True),
                                                          (T0 - timedelta(days=1), r1, False)]), pc.SEM_DESEMBARQUE)
         self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 - timedelta(days=61), r1, True)]), pc.SEM_DESEMBARQUE)
-        self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 - timedelta(days=60), r1, True)]), pc.NO_OPERADOR)
+        self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 - timedelta(days=60), r1, True)], direcao='S'),
+                         pc.RETIRADA)
         self.assertEqual(pc.contexto_da_pesagem(T0, r1, [(T0 + timedelta(hours=1), r1, True)]), pc.SEM_DESEMBARQUE)
         self.assertEqual(pc.contexto_da_pesagem(T0, r1, []), pc.SEM_DESEMBARQUE)
+        self.assertEqual(pc.OPERACOES_DA_IMPORTACAO, (pc.RETIRADA, pc.OPERADOR_SEM_ACESSO, pc.CHEGADA_AO_SECO))
 
 
 class TestParTara(unittest.TestCase):

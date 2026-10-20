@@ -10,11 +10,16 @@ captura (P1) e pelo diagnóstico da divergência (P2).
   - peso do contêiner: conjunto carregado − conjunto sem o contêiner (mesmas placas); no RTG, o peso já é o do
     contêiner. Base de comparação (usuário, 20/10/2026): medido − tara do contêiner = `Item.pesoBruto` (Mercante);
   - tara do conjunto (P0b, usuário aprovou em 20/10/2026): o par na visita; senão a pesagem vazia do conjunto em 7 dias;
-    senão a `taraConjunto` da API (P0: mediana 0 kg do par, 92% a menos de 500 kg) — sempre com a origem;
+    senão a `taraConjunto` da API (P0: mediana 0 kg do par, 92% a menos de 500 kg) — sempre com a origem, e só entre 8
+    e 30 t (P0b, `pesagens2.log`: em Suape a `taraConjunto` é a tara do CONTÊINER, ~4,6 t; em Pecém há "pares" de
+    52 a 61 t e "vazia" de 4,4 t; o par tem p10 de 11,8 t);
   - peso declarado do CONTÊINER (P0b): o item do master (o contêiner inteiro); sem ele, a soma dos filhotes (carga
     consolidada: cada filhote só tem a sua parte); um CE só, o item dele;
-  - mesma operação (P0b): só se compara a pesagem que vem depois de um DESEMBARQUE do contêiner (no operador do
-    desembarque ou noutro recinto); sem desembarque antes é outra operação (exportação, vazio...);
+  - mesma operação (P0b): a pesagem que vem depois de um DESEMBARQUE do contêiner — e, pela direção do acesso da
+    mesma placa (P0b, `pesagens2.log`): no operador do desembarque, a SAÍDA é a retirada da importação e a ENTRADA, o
+    contêiner voltando (exportação, devolução); noutro recinto, o recinto SECO é a chegada da importação (84 a 92%
+    coerente) e outro operador portuário, exportação ou baldeação (24 a 36% coerente). Sem desembarque antes, outra
+    operação;
   - na visita, a pesagem CARREGADA é a mais pesada: a outra do mesmo contêiner (o caminhão chegando para retirar, com o
     número já informado) é a do conjunto sem ele — e serve de tara;
   - classificação: coerente; diferença moderada (até 20%); contêiner vazio na pesagem (medido ≈ 0); pesagem sem o
@@ -34,7 +39,7 @@ LIMITE_MODERADA = 0.20                         # até 20%: diferença moderada; 
 VAZIO_ATE = 800.0                              # |medido| até isto: o contêiner estava vazio na pesagem
 DECLARADO_MINIMO = 100.0                       # kg: declarado abaixo disto não é peso de carga (ex.: 1 kg)
 DIFERENCA_MINIMA_PAR = 1000.0                  # kg: com e sem o contêiner (o mais leve vazio tem ~1,8 t)
-TARA_CONJUNTO_PLAUSIVEL = (4000.0, 30000.0)    # kg: taraConjunto da API fora disto é descartada
+TARA_CONJUNTO_PLAUSIVEL = (8000.0, 30000.0)    # kg: tara do conjunto (par, vazia ou API) fora disto é descartada
 DOIS_CONTEINERES = (1.6, 2.4)                  # medido / declarado, contêiner de 20'
 DIAS_OPERACAO = 60                             # desembarque até N dias antes da pesagem: a mesma operação
 
@@ -50,9 +55,13 @@ DECLARADO_INVALIDO = 'declarado inválido (< 100 kg)'
 SEM_DADO = 'sem dado'
 COMPARAVEIS = (COERENTE, MODERADA, DIGITACAO, DOIS, DIVERGENCIA)
 
-NO_OPERADOR = 'no operador do desembarque'
-OUTRO_RECINTO = 'em outro recinto depois do desembarque'
+RETIRADA = 'saída do operador do desembarque (retirada)'
+OPERADOR_SEM_ACESSO = 'no operador do desembarque, sem acesso da placa'
+VOLTA_AO_OPERADOR = 'entrada no operador do desembarque (exportação, devolução)'
+CHEGADA_AO_SECO = 'chegada a recinto seco depois do desembarque'
+OUTRO_OPERADOR = 'em outro operador portuário (exportação, baldeação)'
 SEM_DESEMBARQUE = 'sem desembarque antes (outra operação)'
+OPERACOES_DA_IMPORTACAO = (RETIRADA, OPERADOR_SEM_ACESSO, CHEGADA_AO_SECO)   # as que se comparam com o declarado
 
 PAR, VAZIA, API = 'par na visita', 'vazia em 7 dias', 'taraConjunto da API'
 
@@ -105,14 +114,11 @@ def tara_do_conteiner(tara_informada, tipo_iso: Optional[str]) -> Tuple[Optional
 
 
 def tara_do_conjunto(par: Optional[float], vazia: Optional[float], api: Optional[float]) -> Tuple[Optional[float], str]:
-    """(tara do conjunto, origem): o par na visita; a pesagem vazia do conjunto em 7 dias; a `taraConjunto` da API se
-    plausível; senão (None, 'sem tara')."""
-    if par:
-        return par, PAR
-    if vazia:
-        return vazia, VAZIA
-    if api and TARA_CONJUNTO_PLAUSIVEL[0] <= api <= TARA_CONJUNTO_PLAUSIVEL[1]:
-        return api, API
+    """(tara do conjunto, origem): o par na visita; a pesagem vazia do conjunto em 7 dias; a `taraConjunto` da API — a
+    primeira plausível (TARA_CONJUNTO_PLAUSIVEL); senão (None, 'sem tara')."""
+    for tara, origem in ((par, PAR), (vazia, VAZIA), (api, API)):
+        if tara and TARA_CONJUNTO_PLAUSIVEL[0] <= tara <= TARA_CONJUNTO_PLAUSIVEL[1]:
+            return tara, origem
     return None, 'sem tara'
 
 
@@ -133,17 +139,21 @@ def peso_da_familia(itens: Sequence[Tuple[str, Optional[str], object]]) -> Tuple
 
 
 def contexto_da_pesagem(data: datetime, recinto: str, movimentos: Iterable[Tuple[datetime, str, bool]],
+                        operadores: Iterable[str] = (), direcao: Optional[str] = None,
                         dias: int = DIAS_OPERACAO) -> str:
-    """A operação da pesagem pelo último movimento do contêiner [(data, recinto, é desembarque)] até `dias` antes:
-    um desembarque no mesmo recinto (saída do operador), noutro recinto (chegada ao seco...) ou nenhum (o último foi
-    embarque, ou nada: exportação, outra operação)."""
+    """A operação da pesagem pelo último movimento do contêiner [(data, recinto, é desembarque)] até `dias` antes e pela
+    `direcao` ('E'/'S') do acesso da mesma placa: no operador do desembarque, a saída (retirada), a entrada (o
+    contêiner voltando) ou sem acesso; noutro recinto, recinto seco (chegada) ou outro dos `operadores` portuários;
+    sem desembarque antes (o último foi embarque, ou nada), outra operação."""
     antes = [m for m in movimentos if data - timedelta(days=dias) <= m[0] <= data]
     if not antes:
         return SEM_DESEMBARQUE
     _, recinto_movimento, desembarque = max(antes, key=lambda m: m[0])
     if not desembarque:
         return SEM_DESEMBARQUE
-    return NO_OPERADOR if recinto_movimento == recinto else OUTRO_RECINTO
+    if recinto_movimento != recinto:
+        return OUTRO_OPERADOR if recinto in set(operadores) else CHEGADA_AO_SECO
+    return {'S': RETIRADA, 'E': VOLTA_AO_OPERADOR}.get(direcao, OPERADOR_SEM_ACESSO)
 
 
 def _variantes(valor: int) -> Iterator[Tuple[int, str]]:

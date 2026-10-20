@@ -1077,6 +1077,35 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_pes
 Com os números: fixar as tolerâncias e desenhar o P1 (tabela das pesagens do ciclo, ligadas à saída do operador ou à
 entrada no seco, mesma placa do acesso).
 
+**Resultado do P0b (produção, 20/10/2026; `virasana/pesagens2.log`; ~3,6 mil pesagens em 19 recintos, sem estouro de
+tempo)**:
+- **Tara pelo par: 93 a 100%** nos terminais e secos de Santos (P0: 34 a 64%) — o par com o MESMO contêiner (o
+  caminhão chegando para retirar) resolveu. `taraConjunto` − par: mediana 0, p90 +180 kg, > 500 kg em 9% (2.422
+  casos). **Suape: a `taraConjunto` é a tara do CONTÊINER** (~4,6 t, igual à informada) e a captura é 100% manual — as
+  pesagens de Suape não servem para comparar. Pecém: "pares" de 52 a 61 t (bitrem ou carga) e "vazia" de 4,4 t.
+- **Recintos secos** (Transbrasa, Movecta, Marimex, CLIAs da Santos Brasil e Deicmar) — a chegada da importação:
+  **84 a 92% coerente, 1 a 5% de divergência**; diferença p10 −4%, mediana 0, p90 +9%. **A comparação funciona.**
+- **Terminais "no operador do desembarque"**: só 52 a 63% coerente e 16 a 26% de divergência (Santos Brasil, BTP,
+  Embraport), quase sempre medido MUITO acima do declarado (+99%, +208%) — mistura a retirada da importação com o
+  contêiner VOLTANDO carregado para exportação (sem D/E entre os dois). Terminais "em outro recinto": 24 a 36%
+  coerente (exportação/baldeação).
+- Declarado (comparáveis): item do CE 1.062, **item do master 949**, item do filhote 160, soma de filhotes 2.
+
+**P0c — calibração com esses números: FEITA no código (20/10/2026), falta rodar** (mutantes 35/35; gate OK):
+- **operação pela DIREÇÃO do acesso da mesma placa** (até 30 min): no operador do desembarque, SAÍDA = retirada
+  (compara), ENTRADA = o contêiner voltando (exportação, devolução: não é a importação), sem acesso = à parte; noutro
+  recinto, **recinto seco** = chegada (compara) e outro **operador portuário** (recinto com embarque/desembarque) =
+  exportação/baldeação. O quadro por origem da tara só usa as operações da importação;
+- **tara do conjunto plausível entre 8 e 30 t para as três fontes** (afasta Suape, os 52–61 t e a "vazia" de 4,4 t);
+- seção 4: `vazia em 7 dias − par` e a `taraConjunto` por recinto (fora da faixa).
+```
+cd /home/ajna/apps/ajna/virasana
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_pesagens.py --d-e-trocados 7921302 \
+    --saida pesagens3.log
+```
+Esperado: a retirada no operador perto dos 85–90% coerentes dos secos. Se vier, P1 compara só a RETIRADA (saída do
+operador) e a CHEGADA AO SECO do ciclo, com tolerância de 5%/300 kg e faixa moderada até 20%.
+
 **Sombra de Pecém (produção, 20/10/2026; `virasana/sombra_pecem.log` + CSV)** — 3.007 ciclos: passagem 35%, entregue
 pelo operador 31%, aberto 31%, incompletos 2,4%. CE de importação local (prefixo 04): 1.055 ciclos, confiança alta
 só 19% (média 75%; os eventos declaram 0,31 CE por contêiner, contra 0,50 no Rio/Suape e 0,80 em Santos), escala
