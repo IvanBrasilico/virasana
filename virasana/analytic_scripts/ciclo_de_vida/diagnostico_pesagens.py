@@ -1,25 +1,30 @@
 # coding: utf-8
 """
-DIAGNÓSTICO DAS PESAGENS (PesagemVeiculo, API Recintos) — fase P0 do plano aprovado em 20/10/2026 (CICLO_DE_VIDA.md,
-"Fora de Santos e pesagens"). Somente leitura. Regras em `pesagens_ciclo.py`.
+DIAGNÓSTICO DAS PESAGENS (PesagemVeiculo, API Recintos) — fases P0 e P0b do plano aprovado em 20/10/2026
+(CICLO_DE_VIDA.md, "Fora de Santos e pesagens"). Somente leitura. Regras em `pesagens_ciclo.py`.
 
   1. PREENCHIMENTO por recinto: pesagens, com contêiner, com placa, com semirreboque, captura automática,
      `taraConjunto`, tara do semirreboque, peso do manifesto, peso zero, retificação, contingência;
   2. DIVISÃO de cada balança (rodoviária = com placa; RTG = sem placa), por captura automática: quanto dos pesos é
      múltiplo de 100/70/50/20/10/5/2/1 kg, a divisão inferida e quantos ficam FORA dela (valor digitado);
   3. PESAGEM x GATE (amostra): distância ao acesso (efetivado) mais próximo da mesma placa no mesmo recinto;
-  4. TARA (amostra de pesagens com contêiner e placa): par na mesma visita (o mesmo conjunto sem contêiner, mesmo
-     recinto, até 12 h), pesagem sem contêiner do mesmo cavalo em até 7 dias, `taraConjunto` da API — e quanto a
-     `taraConjunto` diverge do par;
+  4. TARA (amostra de pesagens com contêiner e placa): par na mesma visita (o mesmo conjunto sem o contêiner — ou com
+     o mesmo contêiner informado e mais leve —, mesmo recinto, até 12 h), pesagem sem contêiner do mesmo cavalo em até
+     7 dias, `taraConjunto` da API — e quanto a `taraConjunto` diverge do par;
   5. RTG: pesagens com contêiner e sem placa (o peso já é o do contêiner);
-  6. MEDIDO x DECLARADO (amostra com tara do conjunto ou RTG): CE de importação do contêiner (item no Mercante, CE
-     emitido até 120 dias antes), tara do contêiner (Mercante ou típica do tamanho), medido = bruto − tara do conjunto
-     − tara do contêiner x `Item.pesoBruto` (base do usuário); classificação PRÉVIA (tolerâncias provisórias) por
-     recinto e exemplos.
+  6. MEDIDO x DECLARADO (P0b): só a MESMA operação — a pesagem depois de um desembarque do contêiner (no operador do
+     desembarque ou noutro recinto); a carregada da visita é a mais pesada; tara do conjunto par > vazia >
+     `taraConjunto` (usuário aprovou, 20/10/2026); declarado = peso do contêiner na família de CEs (item do master ou
+     soma dos filhotes); medido = bruto − tara do conjunto − tara do contêiner. Quadros: geral por operação e
+     classificação, por recinto, por ORIGEM DA TARA (confere a `taraConjunto`), origem do declarado, diferenças e
+     exemplos.
+
+A amostra (seções 3 a 6) são os 15 recintos com mais pesagens com contêiner MAIS os operadores fora de Santos do escopo
+e o Rio ICTSI. `--d-e-trocados 7921302` destroca o embarque/desembarque do ICTSI (D3) para achar a operação.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     DIAG=virasana/analytic_scripts/ciclo_de_vida/diagnostico_pesagens.py
-    virasana-venv/bin/python $DIAG --saida pesagens.log
+    virasana-venv/bin/python $DIAG --d-e-trocados 7921302 --saida pesagens2.log
     virasana-venv/bin/python $DIAG --dias 14 --amostra 300 --recintos 8931356 7921302 --saida pesagens.log
 """
 import argparse
@@ -35,7 +40,11 @@ from sqlalchemy import create_engine
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
+from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc  # noqa: E402
+from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
+    OPERADORES_D_E_TROCADOS, OPERADORES_FORA_DE_SANTOS, tipo_movimento,
+)
 from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import Diagnostico, _dt  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.servico_ciclo_de_vida import uri_do_banco  # noqa: E402
 from virasana.navii.mercante_por_id import limita_tempo  # noqa: E402
@@ -44,9 +53,12 @@ HORAS_PAR = 12                 # par na mesma visita
 DIAS_VAZIA = 7                 # pesagem sem contêiner do mesmo cavalo
 HORAS_GATE = 6
 DIAS_CE = 120                  # CE emitido até N dias antes da pesagem
-RECINTOS_MAXIMO = 15           # recintos da amostra (os de mais pesagens com contêiner)
+RECINTOS_MAXIMO = 15           # recintos da amostra (os de mais pesagens com contêiner) ...
+RECINTOS_SEMPRE = OPERADORES_FORA_DE_SANTOS | {'7921302'}     # ... mais estes (P0b)
+LOTE_PLACAS = 100              # P0: a consulta por placa em lotes de 500 estourou o max_statement_time
 EXEMPLOS = 5
 LIMITE_CONSULTA = 300
+NAO_COMPARADA = 'não comparada'
 FAIXAS_GATE = ((2, 'até 2 min'), (10, '2 a 10 min'), (60, '10 a 60 min'), (HORAS_GATE * 60, f'1 a {HORAS_GATE} h'))
 PESAGENS = 'FROM apirecintos_pesagensveiculo WHERE dataHoraOcorrencia >= :inicio AND dataHoraOcorrencia < :fim'
 COM_CONTEINER = "numeroConteiner IS NOT NULL AND numeroConteiner <> ''"
@@ -70,6 +82,11 @@ def _pct(parte: int, total: int) -> str:
     return f'{parte} ({100 * parte / total:.0f}%)' if total else str(parte)
 
 
+def _base(categoria: str) -> str:
+    """A categoria sem a marca ' — pesagem fora da divisão'."""
+    return categoria.split(' — ')[0]
+
+
 def percentis(valores: List[float]) -> str:
     if not valores:
         return '-'
@@ -90,17 +107,27 @@ def pesagem_de(linha) -> dict:
 class DiagnosticoPesagens(Diagnostico):
 
     def __init__(self, conexao, saida, inicio: datetime, fim: datetime, amostra: int = 200,
-                 recintos: Optional[Sequence[str]] = None, agora: Optional[datetime] = None, semente: int = 42):
+                 recintos: Optional[Sequence[str]] = None, agora: Optional[datetime] = None, semente: int = 42,
+                 trocados=OPERADORES_D_E_TROCADOS):
         super().__init__(conexao, saida, inicio, fim, agora=agora)
         self.amostra, self.recintos_pedidos = amostra, list(recintos or [])
+        self.trocados = frozenset(trocados or ())
         self.sorteio = random.Random(semente)
         self.nomes: Dict[str, str] = {}
         self.divisoes: Dict[str, Optional[int]] = {}
         self.carregadas: List[dict] = []
         self.candidatas: List[dict] = []
+        self.por_placa: Dict[str, List[dict]] = {}
 
     def _nome(self, recinto: str) -> str:
         return f'{recinto} {self.nomes.get(recinto, "")}'.strip()
+
+    def _em_partes(self, sql, nome, valores, params=None, tamanho=LOTE_PLACAS) -> list:
+        """Como `_por_lotes`, em partes menores."""
+        valores, linhas = sorted(v for v in set(valores) if v), []
+        for i in range(0, len(valores), tamanho):
+            linhas += self.consulta(sql, {**(params or {}), nome: valores[i:i + tamanho]}, listas=(nome,))
+        return linhas
 
     def carrega_nomes(self):
         self.nomes = {_texto(c): _texto(n) for c, n in self.consulta(
@@ -158,7 +185,8 @@ class DiagnosticoPesagens(Diagnostico):
         if self.recintos_pedidos:
             return self.recintos_pedidos
         com_conteiner = sorted(((com, r) for r, (_, com) in volumes.items() if com), reverse=True)
-        return [r for _, r in com_conteiner[:RECINTOS_MAXIMO]]
+        maiores = [r for _, r in com_conteiner[:RECINTOS_MAXIMO]]
+        return maiores + sorted(r for r in RECINTOS_SEMPRE if r not in maiores and volumes.get(r, (0, 0))[1])
 
     def carrega_amostra(self, recintos: List[str]):
         """Até `amostra` pesagens com contêiner e placa por recinto (sorteio, semente fixa) e as pesagens das mesmas
@@ -176,10 +204,13 @@ class DiagnosticoPesagens(Diagnostico):
         folga = timedelta(days=DIAS_VAZIA)
         params = {'de': min(p['data'] for p in self.carregadas) - folga,
                   'ate': max(p['data'] for p in self.carregadas) + folga}
-        self.candidatas = [pesagem_de(linha) for linha in self._por_lotes(
+        self.candidatas = [pesagem_de(linha) for linha in self._em_partes(
             f'SELECT {COLUNAS_PESAGEM} FROM apirecintos_pesagensveiculo WHERE placa IN :placas '  # nosec
             'AND dataHoraOcorrencia >= :de AND dataHoraOcorrencia <= :ate', 'placas',
             {p['placa'] for p in self.carregadas}, params)]
+        self.por_placa = defaultdict(list)
+        for candidata in self.candidatas:
+            self.por_placa[candidata['placa']].append(candidata)
 
     # ---------------------------------------------------------------- 3
     def secao_gate(self):
@@ -189,7 +220,7 @@ class DiagnosticoPesagens(Diagnostico):
             return
         folga = timedelta(hours=HORAS_GATE)
         acessos = defaultdict(list)
-        for placa, recinto, data, direcao in self._por_lotes(
+        for placa, recinto, data, direcao in self._em_partes(
                 'SELECT placa, codigoRecinto, dataHoraOcorrencia, direcao FROM apirecintos_acessosveiculo '
                 "WHERE placa IN :placas AND operacao = 'C' AND dataHoraOcorrencia >= :de "
                 'AND dataHoraOcorrencia <= :ate',
@@ -214,12 +245,9 @@ class DiagnosticoPesagens(Diagnostico):
     # ---------------------------------------------------------------- 4
     def taras(self) -> Dict[int, dict]:
         """{id da pesagem carregada: {par, vazia, api}} — o par na visita, a pesagem vazia em 7 dias, a da API."""
-        por_placa = defaultdict(list)
-        for candidata in self.candidatas:
-            por_placa[candidata['placa']].append(candidata)
         resultado = {}
         for pesagem in self.carregadas:
-            candidatas = por_placa[pesagem['placa']]
+            candidatas = self.por_placa.get(pesagem['placa'], [])
             par = pc.pareia_tara(pesagem, candidatas, HORAS_PAR)
             vazias = [c for c in candidatas if not c['conteiner'] and c['peso']]
             vazia = min(vazias, key=lambda c: abs((c['data'] - pesagem['data']).total_seconds())) if vazias else None
@@ -265,68 +293,124 @@ class DiagnosticoPesagens(Diagnostico):
                 "AND (placa IS NULL OR placa = '') GROUP BY codigoRecinto ORDER BY COUNT(*) DESC")])
 
     # ---------------------------------------------------------------- 6
+    def movimentos(self) -> Dict[str, List[Tuple[datetime, str, bool]]]:
+        """{contêiner: [(data, recinto, é desembarque)]} desde DIAS_OPERACAO antes da 1ª pesagem da amostra."""
+        movimentos = defaultdict(list)
+        if not self.carregadas:
+            return movimentos
+        de = min(p['data'] for p in self.carregadas) - timedelta(days=pc.DIAS_OPERACAO)
+        for conteiner, data, recinto, tipo in self._por_lotes(
+                'SELECT numeroConteiner, dataHoraOcorrencia, codigoRecinto, embarqueDesembarque '
+                'FROM apirecintos_embarquedesembarque WHERE numeroConteiner IN :conteineres '
+                'AND dataHoraOcorrencia >= :de',
+                'conteineres', {p['conteiner'] for p in self.carregadas}, {'de': de}):
+            recinto = _texto(recinto)
+            movimentos[_texto(conteiner)].append(
+                (_dt(data), recinto, tipo_movimento(tipo, recinto, self.trocados) == ldt.DESEMBARQUE))
+        return movimentos
+
     def declarados(self) -> Dict[str, List[tuple]]:
-        """{contêiner: [(dataEmissao, CE, pesoBruto, tara, iso)]} dos CEs de importação (não exportação)."""
+        """{contêiner: [(dataEmissao, CE, master, pesoBruto, tara, iso)]} dos CEs de importação (não exportação)."""
         por_conteiner = defaultdict(list)
-        for conteiner, ce, peso, tara, iso, emissao in self._por_lotes(
-                'SELECT i.codigoConteiner, c.numeroCEmercante, i.pesoBruto, i.tara, i.isoCode, c.dataEmissao '
-                'FROM itensresumo i JOIN conhecimentosresumo c ON c.numeroCEmercante = i.numeroCEmercante '
+        for conteiner, ce, master, peso, tara, iso, emissao in self._por_lotes(
+                'SELECT i.codigoConteiner, c.numeroCEmercante, c.numeroCEMaster, i.pesoBruto, i.tara, i.isoCode, '
+                'c.dataEmissao FROM itensresumo i '
+                'JOIN conhecimentosresumo c ON c.numeroCEmercante = i.numeroCEmercante '
                 "WHERE i.codigoConteiner IN :conteineres AND (c.tipoTrafego IS NULL OR c.tipoTrafego <> '7')",
                 'conteineres', {p['conteiner'] for p in self.carregadas}):
             data = _data(emissao)
             if data:
-                por_conteiner[_texto(conteiner)].append((data, _texto(ce), peso, tara, _texto(iso)))
+                por_conteiner[_texto(conteiner)].append((data, _texto(ce), _texto(master) or None, peso, tara,
+                                                         _texto(iso)))
         return por_conteiner
 
     @staticmethod
-    def declarado_da_pesagem(pesagem: dict, declarados: Dict[str, List[tuple]]) -> Optional[tuple]:
-        """O item do CE emitido mais recentemente antes da pesagem (até DIAS_CE dias)."""
+    def declarado_da_pesagem(pesagem: dict, declarados: Dict[str, List[tuple]]) -> Optional[dict]:
+        """A família (master + filhotes) do CE emitido mais recentemente antes da pesagem (até DIAS_CE dias): CE, peso
+        declarado do contêiner e a origem dele, tara e tipo ISO."""
         candidatos = [d for d in declarados.get(pesagem['conteiner'], [])
                       if pesagem['data'] - timedelta(days=DIAS_CE) <= d[0] <= pesagem['data']]
-        return max(candidatos, key=lambda d: d[0]) if candidatos else None
+        if not candidatos:
+            return None
+        recente = max(candidatos, key=lambda d: d[0])
+        chave = recente[2] or recente[1]
+        familia = [d for d in candidatos if (d[2] or d[1]) == chave]
+        peso, origem = pc.peso_da_familia([(ce, master, peso) for _, ce, master, peso, _, _ in familia])
+        tara = next((d[4] for d in familia if pc.tara_do_conteiner(d[4], d[5])[1] == 'informada'), recente[4])
+        iso = recente[5] or next((d[5] for d in familia if d[5]), '')
+        return {'ce': recente[1], 'peso': peso, 'origem': origem, 'tara': tara, 'iso': iso}
 
-    def mede(self, pesagem: dict, taras: Dict[int, dict], declarados) -> Tuple[str, Optional[float], str]:
-        """(classificação, diferença % ou None, linha de exemplo) de uma pesagem carregada."""
-        opcoes = taras[pesagem['id']]
-        tara = opcoes['par'] or opcoes['vazia']
-        item = self.declarado_da_pesagem(pesagem, declarados)
-        if not tara or not item or not pesagem['peso']:
-            return pc.SEM_DADO + (' (sem tara)' if not tara else ' (sem CE)'), None, ''
-        _, ce, peso_declarado, tara_item, iso = item
-        tara_conteiner, origem_tara = pc.tara_do_conteiner(tara_item, iso)
-        medido = pesagem['peso'] - tara['peso'] - (tara_conteiner or 0)
-        declarado = _float(str(peso_declarado).replace(',', '.')) if peso_declarado is not None else None
-        divisao = self.divisoes.get(pesagem['recinto'])
-        categoria, detalhe = pc.classifica(declarado, medido, divisao, iso)
+    def mede(self, pesagem: dict, taras: Dict[int, dict], declarados, movimentos) -> dict:
+        """{contexto, categoria, diferença %, origem da tara, origem do declarado, exemplo} de uma pesagem."""
+        contexto = pc.contexto_da_pesagem(pesagem['data'], pesagem['recinto'], movimentos.get(pesagem['conteiner'], []))
+        medida = {'contexto': contexto, 'categoria': NAO_COMPARADA, 'diferenca': None, 'tara': '-', 'declarado': '-',
+                  'exemplo': ''}
+        if contexto == pc.SEM_DESEMBARQUE:
+            return medida
+        if not pc.e_a_carregada(pesagem, self.por_placa.get(pesagem['placa'], []), HORAS_PAR):
+            return {**medida, 'categoria': f'{pc.SEM_CONTEINER} (a carregada é a outra pesagem da visita)'}
+        return {**medida, **self._compara(pesagem, taras[pesagem['id']], declarados)}
+
+    def _compara(self, pesagem: dict, opcoes: dict, declarados) -> dict:
+        conjunto, origem_tara = pc.tara_do_conjunto(opcoes['par'] and opcoes['par']['peso'],
+                                                    opcoes['vazia'] and opcoes['vazia']['peso'], opcoes['api'])
+        familia = self.declarado_da_pesagem(pesagem, declarados)
+        if conjunto is None or familia is None or not pesagem['peso']:
+            return {'categoria': pc.SEM_DADO + (' (sem tara)' if conjunto is None else ' (sem CE)'),
+                    'tara': origem_tara}
+        tara_conteiner, origem_conteiner = pc.tara_do_conteiner(familia['tara'], familia['iso'])
+        medido = pesagem['peso'] - conjunto - (tara_conteiner or 0)
+        declarado, divisao = familia['peso'], self.divisoes.get(pesagem['recinto'])
+        categoria, detalhe = pc.classifica(declarado, medido, divisao, familia['iso'])
         if pc.fora_da_divisao(pesagem['peso'], divisao):
             categoria += ' — pesagem fora da divisão'
-        exemplo = (f'{pesagem["conteiner"]} CE {ce} em {pesagem["data"]:%d/%m %H:%M}: bruto {pesagem["peso"]:.0f} − '
-                   f'conjunto {tara["peso"]:.0f} ({"par" if tara is opcoes["par"] else "vazia"}) − contêiner '
-                   f'{tara_conteiner or 0:.0f} ({origem_tara}) = {medido:.0f} x declarado {declarado or 0:.0f} — '
-                   f'{detalhe}; captura automática {"sim" if pesagem["captura"] else "não"}')
-        return categoria, (100 * (medido - declarado) / declarado if declarado else None), exemplo
+        exemplo = (f'{pesagem["conteiner"]} CE {familia["ce"]} em {pesagem["data"]:%d/%m %H:%M}: bruto '
+                   f'{pesagem["peso"]:.0f} − conjunto {conjunto:.0f} ({origem_tara}) − contêiner '
+                   f'{tara_conteiner or 0:.0f} ({origem_conteiner}) = {medido:.0f} x declarado {declarado or 0:.0f} '
+                   f'({familia["origem"]}) — {detalhe}; captura automática {"sim" if pesagem["captura"] else "não"}')
+        return {'categoria': categoria, 'tara': origem_tara, 'declarado': familia['origem'], 'exemplo': exemplo,
+                'diferenca': 100 * (medido - declarado) / declarado if declarado else None}
 
     def secao_medido(self, taras: Dict[int, dict]):
-        self.titulo('6. MEDIDO x DECLARADO — bruto − tara do conjunto − tara do contêiner x Item.pesoBruto '
-                    '(classificação PRÉVIA, tolerâncias provisórias)')
+        self.titulo('6. MEDIDO x DECLARADO (P0b) — só a mesma operação; bruto − tara do conjunto − tara do contêiner x '
+                    'peso do contêiner na família de CEs')
         if not self.carregadas:
             self.escreve('Sem amostra.')
             return
-        declarados = self.declarados()
-        contagem, exemplos, diferencas = Counter(), defaultdict(list), []
-        for pesagem in self.carregadas:
-            categoria, diferenca, exemplo = self.mede(pesagem, taras, declarados)
-            chave = (pesagem['recinto'], categoria)
-            contagem[chave] += 1
-            if diferenca is not None:
-                diferencas.append(diferenca)
-            if exemplo and len(exemplos[chave]) < EXEMPLOS:
-                exemplos[chave].append(exemplo)
-        por_recinto = Counter(p['recinto'] for p in self.carregadas)
-        self.tabela(['recinto', 'classificação prévia', 'pesagens'],
-                    [(self._nome(r), c, _pct(n, por_recinto[r])) for (r, c), n in sorted(contagem.items())])
+        declarados, movimentos = self.declarados(), self.movimentos()
+        medidas = [(p, self.mede(p, taras, declarados, movimentos)) for p in self.carregadas]
+        geral = Counter((m['contexto'], m['categoria']) for _, m in medidas)
+        self.tabela(['operação', 'classificação', 'pesagens'],
+                    [(c, cat, _pct(n, len(medidas))) for (c, cat), n in sorted(geral.items())])
         self.escreve()
-        self.escreve(f'Diferença (medido − declarado) / declarado, %: {percentis(diferencas)}')
+        por_recinto = Counter(p['recinto'] for p, _ in medidas)
+        contagem = Counter((p['recinto'], m['contexto'], m['categoria']) for p, m in medidas)
+        self.tabela(['recinto', 'operação', 'classificação', 'pesagens'],
+                    [(self._nome(r), c, cat, _pct(n, por_recinto[r])) for (r, c, cat), n in sorted(contagem.items())])
+        comparaveis = [(p, m) for p, m in medidas if _base(m['categoria']) in pc.COMPARAVEIS]
+        self._por_origem_da_tara(comparaveis)
+        self._diferencas_e_exemplos(medidas, comparaveis)
+
+    def _por_origem_da_tara(self, comparaveis):
+        self.escreve()
+        por_tara = Counter(m['tara'] for _, m in comparaveis)
+        contagem = Counter((m['tara'], _base(m['categoria'])) for _, m in comparaveis)
+        self.tabela(['origem da tara (comparáveis)', 'pesagens'] + list(pc.COMPARAVEIS),
+                    [(t, n, *(_pct(contagem[(t, c)], n) for c in pc.COMPARAVEIS)) for t, n in sorted(por_tara.items())])
+        self.escreve()
+        self.tabela(['origem do peso declarado (comparáveis)', 'pesagens'],
+                    sorted(Counter(m['declarado'] for _, m in comparaveis).items()))
+
+    def _diferencas_e_exemplos(self, medidas, comparaveis):
+        self.escreve()
+        for contexto in (pc.NO_OPERADOR, pc.OUTRO_RECINTO):
+            diferencas = [m['diferenca'] for _, m in comparaveis if m['contexto'] == contexto]
+            self.escreve(f'Diferença (medido − declarado) / declarado, %, {contexto}: {percentis(diferencas)}')
+        exemplos = defaultdict(list)
+        for pesagem, medida in medidas:
+            chave = (pesagem['recinto'], medida['categoria'])
+            if medida['exemplo'] and len(exemplos[chave]) < EXEMPLOS:
+                exemplos[chave].append(medida['exemplo'])
         for (recinto, categoria), linhas in sorted(exemplos.items()):
             self.escreve()
             self.escreve(f'--- {self._nome(recinto)} — {categoria}')
@@ -361,7 +445,10 @@ def main():  # pragma: no cover - depende do banco real
     parser.add_argument('--dias', type=int, default=14, help='pesagens dos últimos N dias (padrão 14)')
     parser.add_argument('--amostra', type=int, default=200, help='pesagens com contêiner por recinto (padrão 200)')
     parser.add_argument('--recintos', nargs='+',
-                        help=f'recintos da amostra (padrão: os {RECINTOS_MAXIMO} com mais pesagens com contêiner)')
+                        help=f'recintos da amostra (padrão: os {RECINTOS_MAXIMO} com mais pesagens com contêiner '
+                             'e os operadores fora de Santos)')
+    parser.add_argument('--d-e-trocados', nargs='+', metavar='CODIGO', default=sorted(OPERADORES_D_E_TROCADOS),
+                        help='destroca embarque/desembarque nesses operadores (D3: o ICTSI 7921302 informa trocados)')
     parser.add_argument('--limite', type=float, default=LIMITE_CONSULTA,
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
@@ -373,9 +460,11 @@ def main():  # pragma: no cover - depende do banco real
     saida = open(args.saida, 'w', encoding='utf-8') if args.saida else sys.stdout
     try:
         with engine.connect() as conexao:
-            diag = DiagnosticoPesagens(conexao, saida, inicio, agora, args.amostra, args.recintos, agora)
-            diag.escreve(f'Diagnóstico das pesagens — {agora:%Y-%m-%d %H:%M}; pesagens de {inicio:%Y-%m-%d} a '
-                         f'{agora:%Y-%m-%d}; amostra de {args.amostra} por recinto')
+            diag = DiagnosticoPesagens(conexao, saida, inicio, agora, args.amostra, args.recintos, agora,
+                                       trocados=args.d_e_trocados)
+            diag.escreve(f'Diagnóstico das pesagens (P0b) — {agora:%Y-%m-%d %H:%M}; pesagens de {inicio:%Y-%m-%d} a '
+                         f'{agora:%Y-%m-%d}; amostra de {args.amostra} por recinto; D/E destrocados: '
+                         f'{", ".join(args.d_e_trocados) or "nenhum"}')
             roda(diag)
     finally:
         if args.saida:

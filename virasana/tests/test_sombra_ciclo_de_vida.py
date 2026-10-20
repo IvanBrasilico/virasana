@@ -522,6 +522,49 @@ class TestOutroEscopo(unittest.TestCase):
         session.close()
 
 
+class TestDETrocados(unittest.TestCase):
+    """--d-e-trocados (D3, 20/10/2026): o Rio ICTSI informa embarque e desembarque trocados. No Rio, o "D" do CTRR
+    vira embarque (sem ciclo) e o "E" do CTRI vira o desembarque, com a inspeção no Rio depois."""
+
+    def test_tipo_movimento(self):
+        self.assertEqual(carga.tipo_movimento('E', RIO, {RIO}), ldt.DESEMBARQUE)
+        self.assertEqual(carga.tipo_movimento('D', RIO, {RIO}), ldt.EMBARQUE)
+        self.assertEqual(carga.tipo_movimento(' E ', BTP, {RIO}), ldt.EMBARQUE)
+        self.assertEqual(carga.tipo_movimento('D', BTP, {RIO}), ldt.DESEMBARQUE)
+        self.assertEqual(carga.OPERADORES_D_E_TROCADOS, frozenset())     # a ativação é decisão à parte
+
+    def test_filtro_desembarques(self):
+        self.assertEqual(carga.filtro_desembarques({BTP}),
+                         ("embarqueDesembarque = 'D' AND codigoRecinto IN :escopo", {'escopo': [BTP]}, ('escopo',)))
+        sql, params, listas = carga.filtro_desembarques({BTP, RIO}, {RIO}, 'd.')
+        self.assertEqual(sql, "((d.embarqueDesembarque = 'D' AND d.codigoRecinto IN :escopo) OR "
+                              "(d.embarqueDesembarque = 'E' AND d.codigoRecinto IN :trocados))")
+        self.assertEqual((params, listas), ({'escopo': [BTP], 'trocados': [RIO]}, ('escopo', 'trocados')))
+
+    def test_sombra_destroca_no_rio(self):
+        session = cria_sessao()
+        monta(session)
+        session.execute(EmbarqueDesembarque.__table__.insert(), [dict(
+            id=901, numeroConteiner='CTRI', dataHoraOcorrencia=d(10), codigoRecinto=RIO, tipoOperacao='I',
+            embarqueDesembarque='E')])
+        session.execute(InspecaoNaoInvasiva.__table__.insert(), [dict(
+            id=901, numeroConteiner='CTRI', dataHoraOcorrencia=d(10, 12), codigoRecinto=RIO, tipoOperacao='I',
+            vazio=False)])
+        session.commit()
+        saida = io.StringIO()
+        no_rio = sombra.Sombra(session.connection(), saida, INICIO, FIM, conteineres=100, agora=AGORA,
+                               escopo={RIO}, trocados={RIO})
+        self.assertEqual(sombra.roda(no_rio), [])
+        self.assertEqual([(linha['conteiner'], linha['escaneamentos_ganhos']) for linha in no_rio.linhas],
+                         [('CTRI', 1)])
+        self.assertIn(f'Embarque/desembarque DESTROCADOS (D3) em: {RIO}', saida.getvalue())
+        carregador = sombra.Carregador(no_rio, INICIO, FIM)
+        carregador.trocados = frozenset({RIO})
+        self.assertEqual([(str(dia)[:10], n) for dia, n, _ in carregador.desembarques_por_dia({RIO})],
+                         [('2026-03-10', 1)])
+        session.close()
+
+
 class TestSemEscopo(unittest.TestCase):
 
     def test_sem_operadores_no_escopo_nao_consulta(self):

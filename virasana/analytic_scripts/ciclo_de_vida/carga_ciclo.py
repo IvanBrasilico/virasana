@@ -11,7 +11,7 @@ que grava). O SQL é fixo neste módulo; os valores vão sempre como parâmetro 
 import time
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import bindparam, text
 
@@ -29,6 +29,11 @@ OPERADORES_FORA_DE_SANTOS = frozenset({
     '4931303',      # Tecon Suape
     '3111401',      # Porto de Pecém
 })
+# Operadores que informam embarque e desembarque TROCADOS (D3, 20/10/2026: no Rio ICTSI 7921302 nenhum dos 4.465 "D"
+# em 14 dias tem evento depois no recinto e os "E" têm inspeção/pesagem depois; a escala do "D" confere com o manifesto
+# do CE em 17% — MultiRio, 96%). A carga destroca. VAZIO até a ativação: a sombra mede com `--d-e-trocados`. Quando o
+# operador corrigir a origem, o histórico continua trocado — aí será preciso uma data de corte.
+OPERADORES_D_E_TROCADOS = frozenset()
 MARGEM_EVENTOS_DIAS = 2
 TAMANHO_LOTE = 500
 
@@ -48,6 +53,22 @@ def _bool(valor) -> Optional[bool]:
 
 def _texto(valor) -> Optional[str]:
     return str(valor).strip() or None if valor is not None else None
+
+
+def tipo_movimento(tipo, recinto, trocados=OPERADORES_D_E_TROCADOS) -> str:
+    """ldt.EMBARQUE ou ldt.DESEMBARQUE do `embarqueDesembarque` informado — destrocado nos operadores `trocados`."""
+    return ldt.EMBARQUE if (_texto(tipo) == 'E') != (recinto in trocados) else ldt.DESEMBARQUE
+
+
+def filtro_desembarques(escopo, trocados=OPERADORES_D_E_TROCADOS, prefixo: str = '') -> Tuple[str, dict, tuple]:
+    """(SQL, parâmetros, listas) dos DESEMBARQUES nos operadores do `escopo`: 'D' — e 'E' nos de D/E trocados. Sem
+    operador trocado no escopo, o filtro de sempre. `prefixo`: o da tabela na consulta (ex.: 'd.')."""
+    normais, invertidos = sorted(set(escopo) - set(trocados)), sorted(set(escopo) & set(trocados))
+    tipo, recinto = f'{prefixo}embarqueDesembarque', f'{prefixo}codigoRecinto'
+    if not invertidos:
+        return f"{tipo} = 'D' AND {recinto} IN :escopo", {'escopo': normais}, ('escopo',)
+    return (f"(({tipo} = 'D' AND {recinto} IN :escopo) OR ({tipo} = 'E' AND {recinto} IN :trocados))",
+            {'escopo': normais, 'trocados': invertidos}, ('escopo', 'trocados'))
 
 
 def _unidade(valor) -> str:
@@ -110,7 +131,9 @@ class CargaCiclo:
     `diag`: objeto com `consulta` e `_por_lotes` (`ConsultaSQL` ou o `Diagnostico` da sombra);
     `inicio`/`fim`: período dos desembarques — os eventos vêm desde `inicio` − 2 dias e os CEs, dos
     anos do período (dígitos 3–4 do número do CE).
+    `trocados`: operadores com embarque/desembarque trocados (a sombra troca por instância).
     """
+    trocados = OPERADORES_D_E_TROCADOS
 
     def __init__(self, diag, inicio: datetime, fim: datetime):
         self.diag, self.inicio, self.fim = diag, inicio, fim
@@ -139,7 +162,7 @@ class CargaCiclo:
                 'numeroConhecimento, pesoBrutoBalanca, taraConteiner, pesoBrutoManifesto, tipoConteiner, escala '
                 'FROM apirecintos_embarquedesembarque WHERE numeroConteiner IN :conteineres '
                 'AND dataHoraOcorrencia >= :desde', 'conteineres', conteineres, params):
-            tipo_evento = ldt.EMBARQUE if tipo == 'E' else ldt.DESEMBARQUE
+            tipo_evento = tipo_movimento(tipo, recinto, self.trocados)
             eventos[cont].append(ldt.Evento(tipo_evento, id_, _dt(data), recinto, None, normaliza_ce(ce)))
             self.desembarques[id_] = {'peso': peso, 'tara': tara, 'manifesto': manifesto,
                                       'tipo': _texto(tipo_cont), 'escala': _texto(escala)}

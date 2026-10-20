@@ -1056,6 +1056,27 @@ inspeções, sem D/E). Entrar no ciclo exige cadastrá-los (decisão do usuário
 - Proposta de calibração (P0b) e desenho do P1: na resposta de 20/10/2026. O usuário aprovou usar a `taraConjunto`
   da API como 3ª fonte da tara (depois do par na visita e da pesagem vazia em 7 dias), com a origem marcada.
 
+**P0b — calibração das pesagens: FEITA no código (20/10/2026), falta rodar** (`pesagens_ciclo.py` +
+`diagnostico_pesagens.py`; testes `test_pesagens_ciclo.py` e `test_diagnostico_pesagens.py`; mutantes 26/26; gate OK):
+- categorias novas: **contêiner vazio na pesagem** (|medido| ≤ 800 kg), **pesagem sem o contêiner no conjunto**
+  (medido < −800 kg, ou a outra pesagem do mesmo contêiner na visita é mais pesada em 1 t), **diferença moderada**
+  (5 a 20%), **declarado inválido** (< 100 kg); digitação só acima de 20% (P0: os padrões "explicavam" +8%, −7%);
+- tara do conjunto: par na visita (agora também a pesagem do MESMO contêiner 1 t mais leve — o caminhão chegando para
+  retirar já com o número) > vazia em 7 dias > `taraConjunto` da API (4 a 30 t), com a origem no exemplo;
+- peso declarado do contêiner pela família de CEs: item do master; sem ele, soma dos filhotes;
+- **mesma operação**: só compara pesagem com desembarque do contêiner até 60 dias antes (no operador do desembarque ou
+  noutro recinto); sem desembarque antes = outra operação, não comparada (`--d-e-trocados 7921302` para o ICTSI);
+- amostra: os 15 maiores + MultiRio, Suape, Pecém e ICTSI; consulta por placa em lotes de 100 (P0 estourou o tempo);
+- quadros novos na seção 6: geral por operação e classificação, **por origem da tara** (confere a `taraConjunto`
+  contra o par), origem do declarado e diferenças por operação.
+```
+cd /home/ajna/apps/ajna/virasana
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_pesagens.py --d-e-trocados 7921302 \
+    --saida pesagens2.log
+```
+Com os números: fixar as tolerâncias e desenhar o P1 (tabela das pesagens do ciclo, ligadas à saída do operador ou à
+entrada no seco, mesma placa do acesso).
+
 **Sombra de Pecém (produção, 20/10/2026; `virasana/sombra_pecem.log` + CSV)** — 3.007 ciclos: passagem 35%, entregue
 pelo operador 31%, aberto 31%, incompletos 2,4%. CE de importação local (prefixo 04): 1.055 ciclos, confiança alta
 só 19% (média 75%; os eventos declaram 0,31 CE por contêiner, contra 0,50 no Rio/Suape e 0,80 em Santos), escala
@@ -1111,8 +1132,21 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de
   96,7% (3.463 iguais, 118 diferentes). Cobertura no ICTSI: entradas 35%, **saídas só 4%** (a pesagem com contêiner é
   quase só na entrada); com 30 min sobe a 26% nas saídas, mas casaria a pesagem de entrada da mesma visita — não usar.
   Serve para limitar o ciclo (reentrada), não para achar a entrega.
-- **Próximo passo (iniciado, nada editado ainda)**: `carga_ciclo.OPERADORES_D_E_TROCADOS` (vazio por padrão) e
-  `tipo_movimento(tipo, recinto, trocados)` na carga; `filtro_desembarques(escopo, trocados)` nas consultas de "D"
-  (sombra: `conteineres`, `desembarques_por_dia`; serviço: `conteineres_do_periodo`); opção `--d-e-trocados 7921302` na
-  sombra; testes; depois o usuário roda a sombra do ICTSI destrocada (e a de Santos com a opção, para ver a seção 2b).
-  Prever data de corte quando o ICTSI corrigir a origem (o histórico continua trocado).
+- **Destroca — FEITA no código (20/10/2026), desligada**: `carga_ciclo.OPERADORES_D_E_TROCADOS` (VAZIO: produção
+  igual), `tipo_movimento(tipo, recinto, trocados)` na carga e `filtro_desembarques(escopo, trocados)` nas consultas
+  de desembarque (sombra: `conteineres`, `desembarques_por_dia`; serviço: `conteineres_do_periodo`). A sombra mede com
+  `--d-e-trocados 7921302` e escreve na seção 0 os operadores destrocados. Testes `TestDETrocados` (sombra) e
+  `test_refaz_com_d_e_trocados` (serviço); mutantes 10/10; gate OK. Quando o ICTSI corrigir a origem, o histórico
+  continua trocado: a destroca vai precisar de uma data de corte.
+  ```
+  cd /home/ajna/apps/ajna/virasana
+  S=virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py
+  # ICTSI destrocado: esperado escala conferindo, CE resolvido, inspeção DEPOIS do desembarque, passagens reais
+  virasana-venv/bin/python $S --operadores 7921302 --d-e-trocados 7921302 --dias 30 --ignorar-ultimos-dias 2 \
+      --conteineres 3000 --mongo --csv sombra_ictsi2.csv --saida sombra_ictsi2.log
+  # Santos com a destroca: a seção 2b (fluxo gravado x novo) mostra o efeito nos ciclos que passam pelo ICTSI
+  virasana-venv/bin/python $S --d-e-trocados 7921302 --conteineres 10000 --saida sombra_santos_trocados.log
+  ```
+  Ativar o ICTSI = pôr 7921302 em `OPERADORES_D_E_TROCADOS` E em `OPERADORES_FORA_DE_SANTOS`, depois desses números.
+  Sem a saída informada, o ciclo de importação do ICTSI fica "aberto no operador" (até 93 dias, revisitado a cada 6 h)
+  — a regra da placa (35% das entradas) pode limitá-lo na reentrada; decidir com a sombra.

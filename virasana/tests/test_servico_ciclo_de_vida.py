@@ -333,6 +333,22 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual(sv._argumentos(['--refaz-desde', '2026-07-19', '--refaz-operadores', '7921303', '4931303'])
                          .refaz_operadores, ['7921303', '4931303'])
 
+    def test_refaz_com_d_e_trocados(self):
+        """D3 (20/10/2026): com o Rio no escopo e D/E trocados lá, o "D" do CTRX vira embarque (sem ciclo) e o "E" do
+        CTRY, o desembarque do ciclo."""
+        from unittest import mock
+        from virasana.analytic_scripts.ciclo_de_vida import carga_ciclo
+        with self.engine.begin() as c:
+            _insere(c, EmbarqueDesembarque, [_evento(106, 'CTRY', d(7), RIO, embarqueDesembarque='E')])
+        with mock.patch.object(carga_ciclo, 'OPERADORES_FORA_DE_SANTOS', frozenset({RIO})), \
+                mock.patch.object(carga_ciclo.CargaCiclo, 'trocados', frozenset({RIO})):
+            with self.engine.connect() as c:
+                self.assertEqual(self.servico.conteineres_do_periodo(c, d(1), d(10), [RIO]), ['CTRY'])
+            estatisticas = self.servico.refaz(d(1), d(10), operadores=[RIO])
+        self.assertEqual(estatisticas['ciclos inseridos'], 1)
+        self.assertEqual(self.ciclo('CTRY')['desembarque_id'], 106)
+        self.assertEqual(self.tabela(gc.CICLOS, gc.CICLOS.c.numeroConteiner == 'CTRX'), [])
+
     def test_refaz_segue_quando_uma_parte_falha(self):
         from unittest import mock
         with mock.patch.object(self.servico, 'processa', side_effect=[RuntimeError('chave duplicada'), Counter()]) \

@@ -60,7 +60,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
-    CargaCiclo, ConsultaSQL, manifesto_vazio,
+    CargaCiclo, ConsultaSQL, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.gravacao_ciclo import (  # noqa: E402
     CICLOS, MARCAS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
@@ -291,14 +291,16 @@ class Servico:
                            CICLOS.c.numeroConteiner.isnot(None))
                     .group_by(CICLOS.c.numeroConteiner))
         consulta_sql = ConsultaSQL(conexao)
-        escopo, _, _ = CargaCiclo(consulta_sql, desde, ate).operadores()
+        carga = CargaCiclo(consulta_sql, desde, ate)
+        escopo, _, _ = carga.operadores()
         if operadores:
             escopo = escopo & set(operadores)
+        filtro, params, listas = filtro_desembarques(escopo, carga.trocados)
         desembarques = consulta_sql.consulta(
-            'SELECT numeroConteiner, MAX(dataHoraOcorrencia) FROM apirecintos_embarquedesembarque '
-            "WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo AND dataHoraOcorrencia >= :desde "
+            'SELECT numeroConteiner, MAX(dataHoraOcorrencia) FROM apirecintos_embarquedesembarque '  # nosec B608
+            f'WHERE {filtro} AND dataHoraOcorrencia >= :desde '
             'AND dataHoraOcorrencia < :ate GROUP BY numeroConteiner',
-            {'escopo': sorted(escopo), 'desde': desde, 'ate': ate}, listas=('escopo',)) if escopo else []
+            {**params, 'desde': desde, 'ate': ate}, listas=listas) if escopo else []
         com_ciclo = [] if operadores else list(conexao.execute(consulta))
         for conteiner, data in com_ciclo + desembarques:
             conteiner, data = (conteiner or '').strip(), _data(data)

@@ -71,7 +71,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
-    CargaCiclo, _ano_do_ce, _texto, manifesto_vazio,
+    CargaCiclo, _ano_do_ce, _texto, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (  # noqa: E402
     JANELA_ESCALA_DIAS, TRAFEGO_EXPORTACAO, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
@@ -187,24 +187,25 @@ class Carregador(CargaCiclo):
     def conteineres(self, escopo: Set[str], limite: int) -> List[str]:
         if not escopo:
             return []
+        filtro, params, listas = filtro_desembarques(escopo, self.trocados)
         return [linha[0] for linha in self.diag.consulta(
             # ordem pseudoaleatória reprodutível (hash multiplicativo do id): espalha a amostra pelo período
-            'SELECT numeroConteiner, (MAX(id) * 2654435761) % 4294967291 AS ordem '
-            "FROM apirecintos_embarquedesembarque WHERE embarqueDesembarque = 'D' AND codigoRecinto IN :escopo "
+            'SELECT numeroConteiner, (MAX(id) * 2654435761) % 4294967291 AS ordem '  # nosec B608 - filtro fixo
+            f'FROM apirecintos_embarquedesembarque WHERE {filtro} '
             'AND dataHoraOcorrencia >= :inicio AND dataHoraOcorrencia < :fim AND numeroConteiner IS NOT NULL '
             "AND numeroConteiner <> '' GROUP BY numeroConteiner ORDER BY ordem LIMIT :limite",
-            {'escopo': sorted(escopo), 'limite': limite}, listas=('escopo',))]
+            {**params, 'limite': limite}, listas=listas)]
 
     def desembarques_por_dia(self, escopo: Set[str]) -> List[tuple]:
         """(dia, desembarques no escopo, com ciclo atual) — todo o período, não só a amostra."""
         if not escopo:
             return []
+        filtro, params, listas = filtro_desembarques(escopo, self.trocados, 'd.')
         return self.diag.consulta(
             'SELECT DATE(d.dataHoraOcorrencia) AS dia, COUNT(*), COUNT(c.ID) FROM apirecintos_embarquedesembarque d '
-            'LEFT JOIN ciclodevida_ciclo_de_vida_importacao c ON c.desembarque_id = d.id '
-            "WHERE d.embarqueDesembarque = 'D' AND d.codigoRecinto IN :escopo AND d.dataHoraOcorrencia >= :inicio "
-            'AND d.dataHoraOcorrencia < :fim GROUP BY DATE(d.dataHoraOcorrencia) ORDER BY dia',
-            {'escopo': sorted(escopo)}, listas=('escopo',))
+            'LEFT JOIN ciclodevida_ciclo_de_vida_importacao c ON c.desembarque_id = d.id '  # nosec B608 - filtro fixo
+            f'WHERE {filtro} AND d.dataHoraOcorrencia >= :inicio '
+            'AND d.dataHoraOcorrencia < :fim GROUP BY DATE(d.dataHoraOcorrencia) ORDER BY dia', params, listas=listas)
 
     def ultimo_desembarque_com_ciclo(self) -> Optional[datetime]:
         linhas = self.diag.consulta(
@@ -244,10 +245,11 @@ class Sombra(Diagnostico):
     """Executa a sombra e escreve o relatório (reaproveita a saída do diagnóstico do ciclo de vida)."""
 
     def __init__(self, conexao, saida, inicio, fim, conteineres=3000, amostras=5, agora=None,
-                 escopo: Optional[Set[str]] = None):
+                 escopo: Optional[Set[str]] = None, trocados: Optional[Set[str]] = None):
         super().__init__(conexao, saida, inicio, fim, agora=agora, amostras=amostras)
         self.limite_conteineres = conteineres
         self.escopo_pedido = set(escopo) if escopo else None   # --operadores: mede outro escopo (ex.: fora de Santos)
+        self.trocados = frozenset(trocados) if trocados else None   # --d-e-trocados: destroca D/E nesses operadores
         self.linhas: List[dict] = []
         self.ciclos: Dict[int, ldt.CicloCalculado] = {}
         self.nomes: Dict[str, str] = {}
@@ -264,6 +266,8 @@ class Sombra(Diagnostico):
 
     def executa(self):
         carregador = Carregador(self, self.periodo['inicio'], self.periodo['fim'])
+        if self.trocados is not None:
+            carregador.trocados = self.trocados
         escopo, operadores, self.nomes = carregador.operadores()
         if self.escopo_pedido:
             escopo = self.escopo_pedido
@@ -273,6 +277,8 @@ class Sombra(Diagnostico):
                      f'parâmetros: {ldt.Parametros()}')
         origem = '--operadores' if self.escopo_pedido else 'unidade 0817800 e lista fora de Santos'
         self.tabela([f'operador do escopo ({origem})', 'nome'], [(c, self.nomes.get(c)) for c in sorted(escopo)])
+        if carregador.trocados:
+            self.escreve(f'Embarque/desembarque DESTROCADOS (D3) em: {", ".join(sorted(carregador.trocados))}')
         self.por_dia = carregador.desembarques_por_dia(escopo)
         self.ultimo_com_ciclo = carregador.ultimo_desembarque_com_ciclo()
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
@@ -718,6 +724,8 @@ def main():
     parser.add_argument('--amostras', type=int, default=5, help='amostras por tipo de divergência')
     parser.add_argument('--mongo', action='store_true', help='inclui a seção das imagens (MONGODB_URI do ajna_commons)')
     parser.add_argument('--csv', help='grava uma linha por ciclo com a comparação (separador ;)')
+    parser.add_argument('--d-e-trocados', nargs='+', metavar='CODIGO',
+                        help='destroca embarque/desembarque nesses operadores (D3: o ICTSI 7921302 informa trocados)')
     parser.add_argument('--operadores', nargs='+',
                         help='escopo = estes operadores (códigos Siscomex) no lugar dos de Santos — mede a heurística '
                              'em outro porto antes de ampliar o escopo (ex.: 7921303 4931303)')
@@ -735,7 +743,8 @@ def main():
     inicio = fim - timedelta(days=args.dias)
     engine = create_engine(uri)
     with engine.connect() as conexao, open(args.saida, 'w', encoding='utf-8') as saida:
-        sombra = Sombra(conexao, saida, inicio, fim, args.conteineres, args.amostras, escopo=args.operadores)
+        sombra = Sombra(conexao, saida, inicio, fim, args.conteineres, args.amostras, escopo=args.operadores,
+                        trocados=args.d_e_trocados)
         sombra.escreve(f'Modo sombra da heurística v2 do Ciclo de Vida — {datetime.now():%Y-%m-%d %H:%M:%S} '
                        f'(somente leitura)')
         sombra.escreve(f'Banco: {engine.url.render_as_string(hide_password=True)}')
