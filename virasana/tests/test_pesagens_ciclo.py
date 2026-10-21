@@ -2,6 +2,7 @@
 import unittest
 from datetime import datetime, timedelta
 
+from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc
 
 T0 = datetime(2026, 10, 18, 10)
@@ -193,6 +194,107 @@ class TestParTara(unittest.TestCase):
     def test_semirreboque_ausente_nao_impede(self):
         carregada = pesagem(conteiner='GSLU2053602', peso=40000)
         self.assertEqual(pc.pareia_tara(carregada, [pesagem(horas=1, semirreboque='XYZ9A87')], 12)['peso'], 15000)
+
+
+OPERADOR, SECO = '8931356', '8932000'
+D0 = datetime(2026, 10, 10, 8)           # desembarque
+SAIDA, ENTRADA = datetime(2026, 10, 14, 8), datetime(2026, 10, 14, 11)
+DECLARADO = pc.Declarado('CE1', 22000.0, 'item do master', 3800.0, 'informada', '45G1')
+
+
+def p(id_, data, peso, recinto=OPERADOR, conteiner='CTRA', placa='AAA1A11', tara_conjunto=None):
+    return {'id': id_, 'data': data, 'recinto': recinto, 'placa': placa, 'semirreboque': '', 'conteiner': conteiner,
+            'peso': peso, 'tara_conjunto': tara_conjunto, 'captura': True}
+
+
+def lig(data, recinto, confianca=ldt.ALTA, tipo=ldt.SAIDA):
+    return ldt.Ligacao(ldt.Evento(tipo, 1, data, recinto), confianca) if data else None
+
+
+def ciclo(saida=None, seco=None, saida_seco=None, embarque=None):
+    return ldt.CicloCalculado(ldt.Evento(ldt.DESEMBARQUE, 1, D0, OPERADOR), saida=saida, entrada_seco=seco,
+                              saida_seco=lig(saida_seco, SECO), embarque=lig(embarque, OPERADOR, tipo=ldt.EMBARQUE))
+
+
+class TestEtapas(unittest.TestCase):
+
+    def test_etapas_do_ciclo(self):
+        tra = ciclo(lig(SAIDA, OPERADOR), lig(ENTRADA, SECO, ldt.MEDIA, ldt.ENTRADA))
+        self.assertEqual(pc.etapas_do_ciclo(tra), pc.Etapas(OPERADOR, D0, SAIDA, SECO, ENTRADA, None))   # aberto
+        self.assertEqual(pc.etapas_do_ciclo(ciclo(lig(SAIDA, OPERADOR))).fim, SAIDA)                   # operador
+        concluido = ciclo(lig(SAIDA, OPERADOR), lig(ENTRADA, SECO, tipo=ldt.ENTRADA), datetime(2026, 10, 20))
+        self.assertEqual(pc.etapas_do_ciclo(concluido).fim, datetime(2026, 10, 20))
+        self.assertEqual(pc.etapas_do_ciclo(ciclo(embarque=datetime(2026, 10, 12))).fim, datetime(2026, 10, 12))
+        baixa = ciclo(lig(SAIDA, OPERADOR, ldt.BAIXA), lig(ENTRADA, SECO, ldt.BAIXA, ldt.ENTRADA))
+        self.assertEqual(pc.etapas_do_ciclo(baixa), pc.Etapas(OPERADOR, D0))     # ligações baixas não contam
+
+    def test_operacao_da_pesagem(self):
+        etapas = pc.Etapas(OPERADOR, D0, SAIDA, SECO, ENTRADA, datetime(2026, 10, 20))
+        minuto = timedelta(minutes=1)
+        self.assertIsNone(pc.operacao_da_pesagem(p(1, D0 - minuto, 1), etapas))                 # antes do D
+        self.assertEqual(pc.operacao_da_pesagem(p(1, SAIDA - 30 * minuto, 1), etapas), pc.RETIRADA)
+        self.assertEqual(pc.operacao_da_pesagem(p(1, SAIDA + 31 * minuto, 1), etapas), pc.OUTRA)
+        self.assertEqual(pc.operacao_da_pesagem(p(1, SAIDA, 1, recinto=SECO), etapas), pc.OUTRA)
+        self.assertEqual(pc.operacao_da_pesagem(p(1, ENTRADA + 30 * minuto, 1, recinto=SECO), etapas),
+                         pc.CHEGADA_AO_SECO)
+        self.assertEqual(pc.operacao_da_pesagem(p(1, ENTRADA, 1), etapas), pc.OUTRA)     # no operador
+        self.assertEqual(pc.operacao_da_pesagem(p(1, datetime(2026, 10, 20, 0, 30), 1), etapas), pc.OUTRA)
+        self.assertIsNone(pc.operacao_da_pesagem(p(1, datetime(2026, 10, 20, 0, 31), 1), etapas))   # depois do fim
+        self.assertEqual(pc.operacao_da_pesagem(p(1, datetime(2027, 1, 1), 1), pc.Etapas(OPERADOR, D0)), pc.OUTRA)
+
+
+class TestComparaECiclo(unittest.TestCase):
+
+    def test_compara_pelo_par_ou_pela_api(self):
+        carregada, par = p(2, SAIDA, 40000), p(1, SAIDA - timedelta(minutes=20), 15000)
+        campos = pc.compara(carregada, [par, carregada], DECLARADO, 20)
+        self.assertEqual((campos['tara_pesagem_id'], campos['origem_tara_conjunto'], campos['peso_medido']),
+                         (1, pc.PAR, 21200))
+        self.assertEqual((campos['classificacao'], campos['diferenca_kg'], campos['divisao']), (pc.COERENTE, -800, 20))
+        self.assertAlmostEqual(campos['razao'], 21200 / 22000)
+        self.assertAlmostEqual(campos['diferenca_pct'], -800 / 220)
+        api = pc.compara(p(2, SAIDA, 40000, tara_conjunto=16000), [], DECLARADO)
+        self.assertEqual((api['tara_pesagem_id'], api['origem_tara_conjunto'], api['peso_medido']),
+                         (None, pc.API, 20200))
+        self.assertEqual(pc.compara(p(2, SAIDA, 40000), [], DECLARADO)['detalhe'], 'sem tara do conjunto')
+        sem_peso = pc.compara(carregada, [par], pc.Declarado(None, None, 'sem peso', 3800.0, 'informada'))
+        self.assertEqual((sem_peso['classificacao'], sem_peso['detalhe']),
+                         (pc.SEM_DADO, 'sem peso declarado ou pesado'))
+        self.assertTrue(pc.compara(p(2, SAIDA, 40005), [par], DECLARADO, 10)['fora_da_divisao'])
+        leve = p(1, SAIDA - timedelta(minutes=20), 4000)                     # "par" implausível: vale a API
+        api_e_par = pc.compara(p(2, SAIDA, 40000, tara_conjunto=15000), [leve], DECLARADO)
+        self.assertEqual((api_e_par['tara_pesagem_id'], api_e_par['origem_tara_conjunto']), (None, pc.API))
+        self.assertFalse(pc.compara(p(2, SAIDA, 40010), [par], DECLARADO, 10)['fora_da_divisao'])
+
+    def test_linhas_do_ciclo_principal_e_confirmacao(self):
+        etapas = pc.Etapas(OPERADOR, D0, SAIDA, SECO, ENTRADA)
+        pesagens = [p(1, SAIDA - timedelta(minutes=20), 15000),                    # chegando para retirar
+                    p(2, SAIDA + timedelta(minutes=1), 40000),                     # a carregada
+                    p(3, ENTRADA + timedelta(minutes=1), 40100, SECO, tara_conjunto=15000),
+                    p(4, D0 + timedelta(days=1), 30000, placa='BBB2B22'),          # no pátio
+                    p(5, D0 - timedelta(days=1), 30000)]                           # antes do desembarque
+        linhas = {linha['pesagem_id']: linha for linha in pc.linhas_do_ciclo(etapas, pesagens, pesagens, DECLARADO)}
+        self.assertEqual(sorted(linhas), [1, 2, 3, 4])
+        self.assertEqual((linhas[1]['operacao'], linhas[1]['diagnostico']), (pc.RETIRADA, 'sem_conteiner'))
+        self.assertEqual((linhas[2]['classificacao'], linhas[2]['principal'], linhas[2]['tara_pesagem_id']),
+                         (pc.COERENTE, True, 1))
+        self.assertEqual(linhas[2]['confirmacao'], pc.CONFIRMADA)
+        self.assertEqual((linhas[3]['operacao'], linhas[3]['principal'], linhas[3]['origem_tara_conjunto']),
+                         (pc.CHEGADA_AO_SECO, False, pc.API))
+        self.assertEqual((linhas[4]['operacao'], linhas[4].get('classificacao')), (pc.OUTRA, None))
+        self.assertEqual(linhas[4]['peso_bruto'], 30000)
+
+    def test_principal_pula_sem_dado_e_outra_que_diverge(self):
+        etapas = pc.Etapas(OPERADOR, D0, SAIDA, SECO, ENTRADA)
+        sem_tara = p(2, SAIDA, 40000)
+        chegada = p(3, ENTRADA, 33000, SECO, tara_conjunto=15000)
+        linhas = pc.linhas_do_ciclo(etapas, [sem_tara, chegada], [sem_tara, chegada], DECLARADO)
+        self.assertEqual([(linha['pesagem_id'], linha['principal']) for linha in linhas], [(2, False), (3, True)])
+        self.assertNotIn('confirmacao', linhas[1])                   # a outra não mediu
+        diverge = pc.linhas_do_ciclo(etapas, [p(2, SAIDA, 40000, tara_conjunto=15000), chegada], [], DECLARADO)
+        self.assertEqual(diverge[0]['confirmacao'], 'a outra pesagem do ciclo mediu 14200 kg (+7000)')
+        so_outra = pc.linhas_do_ciclo(etapas, [p(4, D0 + timedelta(days=1), 1)], [], DECLARADO)
+        self.assertEqual([linha['principal'] for linha in so_outra], [False])
 
 
 if __name__ == '__main__':

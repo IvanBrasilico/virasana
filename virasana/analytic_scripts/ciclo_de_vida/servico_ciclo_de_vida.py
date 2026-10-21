@@ -19,6 +19,9 @@ A cada volta:
      eventos e de "agora", então refazer é seguro;
   4. avança as marcas d'água. Se uma tabela tinha mais eventos que o lote, a próxima volta começa logo;
      senão, espera o intervalo;
+  4b. PESAGENS do ciclo (P1, 20/10/2026; `pesagens_ciclo`, `ddl_pesagens_ciclo.sql`): a da retirada no operador
+     e a da chegada ao seco comparadas com o peso declarado do contêiner, as outras como dado bruto — só se a tabela
+     `ciclodevida_pesagem` existe quando o serviço inicia (depois de criá-la, reiniciar);
   5. etapa do RISCO HISTÓRICO POR CE (`virasana/risco_historico/etapa.py`, 14/10/2026): sinais dos CEs novos,
      parâmetros (no máximo 1x/h) e pontos — em transações próprias, com limite de tempo; qualquer erro dela só
      vai ao log, o ciclo segue. Desligada com `--sem-risco` e em `--simula`.
@@ -54,7 +57,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from sqlalchemy import and_, create_engine, func, or_, select, text
+from sqlalchemy import and_, create_engine, func, inspect, or_, select, text
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -63,12 +66,15 @@ from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
     CargaCiclo, ConsultaSQL, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.gravacao_ciclo import (  # noqa: E402
-    CICLOS, MARCAS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
+    CICLOS, MARCAS, PESAGENS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
 )
+from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_conteiner  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noqa: E402
 
 logger = logging.getLogger('ciclo_de_vida_v2')
+DIAS_DIVISOES = 7          # divisão das balanças: pesagens dos últimos N dias ...
+HORAS_DIVISOES = 24        # ... recalculada a cada N horas
 
 # Eventos novos de cada tabela (o SQL é fixo; marca e lote vão como parâmetro)
 EVENTOS_NOVOS = {
@@ -114,6 +120,11 @@ class Servico:
         self.revisita_limite, self.dias_sem_ce = revisita_limite, dias_sem_ce
         self.relogio = relogio
         self.etapa_risco = self._carrega_etapa_risco(engine, relogio) if risco and not simula else None
+        self.com_pesagens = inspect(engine).has_table(PESAGENS.name)
+        self._divisoes: Tuple[Optional[datetime], Dict[str, int]] = (None, {})
+        if not self.com_pesagens:
+            logger.warning(f'pesagens: tabela {PESAGENS.name} ausente — o ciclo segue sem gravar pesagens '
+                           '(ddl_pesagens_ciclo.sql; depois de criá-la, reiniciar o serviço)')
 
     @staticmethod
     def _carrega_etapa_risco(engine, relogio):
@@ -246,9 +257,39 @@ class Servico:
                                     carga.info, manifesto_vazio(vazios.get(conteiner, {}), ciclo.desembarque.data),
                                     carga.tipo_do(conteiner, ciclo.desembarque.id), agora)
                 itens[ciclo.desembarque.id] = ItemGravacao(conteiner, ciclo, ces, linha)
-        estatisticas = Gravador(conexao, self.mongo_db).grava(list(itens.values()))
+        if self.com_pesagens:
+            self._pesagens(conexao, carga, itens)
+        estatisticas = Gravador(conexao, self.mongo_db, pesagens=self.com_pesagens).grava(list(itens.values()))
         estatisticas.update(Counter(f'situação {i.ciclo.situacao}' for i in itens.values()))
         return estatisticas
+
+    def divisoes(self, conexao) -> Dict[str, int]:
+        """Divisão da balança por recinto, recalculada a cada HORAS_DIVISOES; um erro só deixa sem a marca."""
+        agora = self.relogio()
+        quando, divisoes = self._divisoes
+        if quando is None or agora - quando > timedelta(hours=HORAS_DIVISOES):
+            try:
+                divisoes = CargaCiclo(ConsultaSQL(conexao), agora, agora).divisoes_das_balancas(
+                    agora - timedelta(days=DIAS_DIVISOES))
+            except Exception:  # noqa: a marca "fora da divisão" não pode parar o ciclo
+                logger.exception('pesagens: divisão das balanças indisponível (segue sem a marca)')
+            self._divisoes = (agora, divisoes)
+        return divisoes
+
+    def _pesagens(self, conexao, carga: CargaCiclo, itens: Dict[int, ItemGravacao]):
+        """As pesagens de cada ciclo do lote (`pesagens_ciclo.linhas_do_ciclo`), com o par da tara buscado pela placa
+        só para as pesagens das etapas comparadas."""
+        etapas = {id_: pc.etapas_do_ciclo(item.ciclo) for id_, item in itens.items()}
+        alvos = [p for id_, item in itens.items() for p in carga.pesagens.get(item.conteiner, [])
+                 if pc.operacao_da_pesagem(p, etapas[id_]) not in (None, pc.OUTRA)]
+        por_placa = carga.candidatas_das_pesagens(alvos)
+        divisoes = self.divisoes(conexao)
+        for id_, item in itens.items():
+            pesagens = carga.pesagens.get(item.conteiner, [])
+            candidatas = {c['id']: c for p in pesagens for c in por_placa.get(p['placa'], [])}
+            candidatas.update({p['id']: p for p in pesagens})
+            item.pesagens = pc.linhas_do_ciclo(etapas[id_], pesagens, list(candidatas.values()),
+                                               carga.declarado(item.conteiner, item.ces, id_), divisoes)
 
     # ---------------------------------------------------------------- voltas
     def uma_volta(self, desde: Optional[datetime] = None) -> Tuple[Counter, bool]:

@@ -71,7 +71,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.riscocorad import MatrizCorad
-from virasana.navii import dta_navii, fichas_ovr, referencias, risco_navii, tabelas_opcionais
+from virasana.navii import dta_navii, fichas_ovr, pesagem_navii, referencias, risco_navii, tabelas_opcionais
 from virasana.analytic_scripts.ciclo_de_vida.dados_conteiner import expressao_oog
 
 # Tabela `ovr_recintos` do repo irmão bhadrasana2 (`bhadrasana.models.ovr.Recinto`)
@@ -137,6 +137,9 @@ CAMPOS_ESCOLHA = ('risco', 'corad', 'tem_dta')
 # Faixa do peso bruto declarado do CONTÊINER (Item.pesoBruto, kg), inclusiva; 20/10/2026 (decisão do usuário: o
 # peso do contêiner do card, não o total do CE)
 CAMPOS_PESO = ('peso_min', 'peso_max')
+# Pesagem do ciclo (P3, 20/10/2026; pesagem_navii): diagnóstico da pesagem principal, diferença mínima em % e ordem
+# de grandeza
+CAMPOS_PESAGEM = pesagem_navii.CAMPOS_PESAGEM
 # Matriz de risco CORAD (`matriz_risco_corad`, classe `MatrizCorad` do Fichas): classificacao_aniita_imp de 1 (alto)
 # a 4 por raiz de CNPJ. Rótulos do slider (pedido do usuário, 15/10/2026); 0 = não consta (risco não apurado).
 CORAD_MAX = 4
@@ -374,7 +377,7 @@ def normaliza_filtros(filtros: Optional[dict], avisos: Optional[List[str]] = Non
     Filtros OCULTAR: ver `_normaliza_oculto` e `_resolve_conflitos_ocultar`; o que for ignorado vai para `avisos`
     (a tela mostra)."""
     avisos = [] if avisos is None else avisos
-    filtros = _normaliza_peso(_normaliza_escolhas(dict(filtros or {})))
+    filtros = pesagem_navii.normaliza(_normaliza_peso(_normaliza_escolhas(dict(filtros or {}))))
     if filtros.pop('concluido', None):
         filtros['estagio'] = _lista_de_codigos(filtros.get('estagio')) + [estagios_ciclo.ENTREGUE]
     for campo in CAMPOS_LISTA:
@@ -603,6 +606,9 @@ def monta_query_navii(
             - estagio (str | lista): estágio do contêiner no ciclo de vida (no_operador, em_transito,
               no_seco, entregue, embarcado, incompleto — ver `estagios_ciclo`) — exige ciclo de vida.
               `concluido` (bool, filtro antigo) = estágio "entregue".
+            - pesagem (str), dif_pct_min (número), ordem_grandeza (bool): sobre a pesagem PRINCIPAL do ciclo
+              (`pesagem_navii`) — diagnóstico, diferença mínima em % (para mais ou para menos) e medido >= 10x ou
+              <= 1/10 do declarado; exigem a pesagem comparada
             - peso_min / peso_max (número, kg): faixa INCLUSIVA do peso bruto declarado do contêiner (Item.pesoBruto);
               com faixa, o contêiner sem peso declarado fica de fora (`_criterios_peso`)
             - ncms_max (int): quantidade máxima de NCMs distintos declarados no CE
@@ -651,6 +657,11 @@ def monta_query_navii(
         q = q.filter(_tem_desembarque_localizado())
     if filtros.get('risco'):   # risco histórico por CE: faixa verificada por candidato
         q = q.filter(risco_navii.criterio(session, filtros['risco'], _existe))
+    criterios_pesagem = pesagem_navii.criterios(session, filtros)
+    if criterios_pesagem:   # pesagem principal do ciclo: verificada por candidato, pela ligação do ciclo
+        q = q.filter(_existe_ciclo(_existe(pesagem_navii.PESAGENS,
+                                           pesagem_navii.PESAGENS.c.ciclo_de_vida_id == CicloDeVidaImportacao.ID,
+                                           *criterios_pesagem)))
     if filtros.get('tem_dta'):
         q = q.filter(dta_navii.criterio_tem_dta(session, filtros['tem_dta'], _existe))
     return _filtra_por_candidato(q, filtros, exigir_escaneamento)
@@ -1386,6 +1397,7 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii], hoje: Optional[
         for r in resultados
     ]
     _acrescenta_risco_dta_corad(session, cards)
+    pesagem_navii.acrescenta_aos_cards(session, cards, nomes_recintos)
     return cards
 
 

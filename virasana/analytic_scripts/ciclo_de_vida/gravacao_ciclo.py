@@ -14,15 +14,19 @@ Escaneamento só com IMAGEM (15/10/2026, decisão do usuário): numa passagem po
 sem inspeção transmitida, a imagem do contêiner no Mongo nesse horário é gravada como escaneamento com
 `escaneamento_id` NEGATIVO (derivado do id da imagem — `imagens_ciclo.id_da_imagem`), confiança média e motivo
 "imagem do escâner sem inspeção transmitida". Sem DDL: `escaneamento_id < 0` = não veio da API (conformidade).
+
+Pesagens (P1, 20/10/2026; `ddl_pesagens_ciclo.sql`): as linhas de `pesagens_ciclo.linhas_do_ciclo` vão para
+`ciclodevida_pesagem`, substituindo as do ciclo (dado derivado). Só com `pesagens=True` — o serviço liga quando a
+tabela existe no banco.
 """
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import (
-    BigInteger, Boolean, CHAR, Column, DateTime, Integer, MetaData, Numeric, Table, VARCHAR, bindparam, func,
-    select,
+    BigInteger, Boolean, CHAR, Column, DateTime, Integer, MetaData, Numeric, Table, UniqueConstraint, VARCHAR,
+    bindparam, func, select,
 )
 
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
@@ -78,6 +82,26 @@ MARCAS = Table(
     Column('tabela', VARCHAR(60), primary_key=True), Column('ultimo_id', BigInteger, nullable=False),
     Column('atualizado_em', DateTime, nullable=False),
 )
+PESAGENS = Table(
+    'ciclodevida_pesagem', metadata,
+    Column('ID', _ID, primary_key=True, autoincrement=True),
+    Column('ciclo_de_vida_id', BigInteger, nullable=False), Column('pesagem_id', BigInteger, nullable=False),
+    Column('data', DateTime, nullable=False), Column('codigoRecinto', CHAR(7)), Column('placa', VARCHAR(10)),
+    Column('semirreboque', VARCHAR(10)), Column('operacao', VARCHAR(60), nullable=False),
+    Column('principal', Boolean, nullable=False), Column('peso_bruto', Numeric(11, 2)),
+    Column('captura_automatica', Boolean), Column('tara_pesagem_id', BigInteger),
+    Column('tara_conjunto', Numeric(11, 2)), Column('origem_tara_conjunto', VARCHAR(25)),
+    Column('tara_conteiner', Numeric(9, 2)), Column('origem_tara_conteiner', VARCHAR(20)),
+    Column('peso_medido', Numeric(11, 2)), Column('peso_declarado', Numeric(11, 2)),
+    Column('origem_declarado', VARCHAR(30)), Column('numeroCEmercante', CHAR(15)),
+    Column('diferenca_kg', Numeric(11, 2)), Column('diferenca_pct', Numeric(12, 2)), Column('razao', Numeric(12, 4)),
+    Column('classificacao', VARCHAR(60)), Column('diagnostico', VARCHAR(20)), Column('detalhe', VARCHAR(120)),
+    Column('confirmacao', VARCHAR(80)), Column('divisao', Integer), Column('fora_da_divisao', Boolean),
+    Column('create_date', DateTime, server_default=func.current_timestamp()),
+    UniqueConstraint('ciclo_de_vida_id', 'pesagem_id', name='uq_pesagem_ciclo'),
+)
+_COLUNAS_PESAGEM = [c.name for c in PESAGENS.c if c.name not in ('ID', 'ciclo_de_vida_id', 'create_date')]
+_TEXTOS_PESAGEM = {c.name: c.type.length for c in PESAGENS.c if isinstance(c.type, (CHAR, VARCHAR))}
 
 
 @dataclass
@@ -87,6 +111,7 @@ class ItemGravacao:
     ciclo: ldt.CicloCalculado
     ces: CEsResolvidos
     linha: dict
+    pesagens: List[dict] = field(default_factory=list)    # pesagens_ciclo.linhas_do_ciclo
 
 
 # ---------------------------------------------------------------------- montagem das linhas (pura)
@@ -189,6 +214,15 @@ def _inclui(valores: dict, id_: Optional[int], ciclo_id: int, inserir: list, atu
         atualizar.append({**valores, 'b_id': id_})
 
 
+def linha_pesagem(valores: dict, ciclo_id: int) -> dict:
+    """Uma linha de `ciclodevida_pesagem` (as colunas que faltam ficam nulas; textos cortados no tamanho)."""
+    linha = {coluna: valores.get(coluna) for coluna in _COLUNAS_PESAGEM}
+    for coluna, tamanho in _TEXTOS_PESAGEM.items():
+        if linha[coluna] is not None:
+            linha[coluna] = str(linha[coluna])[:tamanho]
+    return {**linha, 'principal': bool(linha['principal']), 'ciclo_de_vida_id': ciclo_id}
+
+
 def linhas_ces(ces: CEsResolvidos) -> List[dict]:
     """Os CEs da família com o contêiner (papel master/filhote/simples), marcando o principal."""
     return [{'numeroCEmercante': ce, 'papel': papel, 'principal': ce == ces.principal, 'confianca': ces.confianca}
@@ -200,8 +234,8 @@ def linhas_ces(ces: CEsResolvidos) -> List[dict]:
 class Gravador:
     """Grava, numa conexão (dentro da transação de quem chama), um lote de ciclos calculados."""
 
-    def __init__(self, conexao, mongo_db=None):
-        self.conexao, self.mongo_db = conexao, mongo_db
+    def __init__(self, conexao, mongo_db=None, pesagens: bool = False):
+        self.conexao, self.mongo_db, self.pesagens = conexao, mongo_db, pesagens
         self.estatisticas = Counter()
 
     def grava(self, itens: List[ItemGravacao]) -> Counter:
@@ -211,6 +245,8 @@ class Gravador:
         ids = self._grava_ciclos(itens)
         self._grava_escaneamentos(itens, ids)
         self._grava_ces(itens, ids)
+        if self.pesagens:
+            self._grava_pesagens(itens, ids)
         return self.estatisticas
 
     def _apaga_remocoes(self, desembarques: List[int]):
@@ -223,6 +259,8 @@ class Gravador:
         if ids:
             self.conexao.execute(ESCANEAMENTOS.delete().where(ESCANEAMENTOS.c.ciclo_de_vida_id.in_(ids)))
             self.conexao.execute(CICLO_CE.delete().where(CICLO_CE.c.ciclo_de_vida_id.in_(ids)))
+            if self.pesagens:
+                self.conexao.execute(PESAGENS.delete().where(PESAGENS.c.ciclo_de_vida_id.in_(ids)))
             self.conexao.execute(CICLOS.delete().where(CICLOS.c.ID.in_(ids)))
         self.estatisticas['ciclos de remoção a bordo apagados'] += len(ids)
 
@@ -298,3 +336,13 @@ class Gravador:
         if linhas:
             self.conexao.execute(CICLO_CE.insert(), linhas)
         self.estatisticas['CEs da família gravados'] += len(linhas)
+
+    def _grava_pesagens(self, itens: List[ItemGravacao], ids: Dict[int, int]):
+        """Substitui as pesagens dos ciclos do lote (dado derivado: refazer o ciclo refaz as pesagens)."""
+        self.conexao.execute(PESAGENS.delete().where(PESAGENS.c.ciclo_de_vida_id.in_(list(ids.values()))))
+        linhas = [linha_pesagem(valores, ids[item.linha['desembarque_id']])
+                  for item in itens for valores in item.pesagens]
+        if linhas:
+            self.conexao.execute(PESAGENS.insert(), linhas)
+        self.estatisticas['pesagens gravadas'] += len(linhas)
+        self.estatisticas.update(f'pesagem principal: {linha["diagnostico"]}' for linha in linhas if linha['principal'])

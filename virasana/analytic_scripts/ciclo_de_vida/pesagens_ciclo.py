@@ -26,9 +26,20 @@ captura (P1) e pelo diagnóstico da divergência (P2).
     contêiner no conjunto (medido ≈ − tara do contêiner); declarado inválido (< 100 kg); digitação provável (acima de
     20%: ordem de grandeza, dígito a mais ou a menos, vizinhos trocados — um dígito SUBSTITUÍDO não entra, não se
     distingue de diferença real); dois contêineres no conjunto (20'); divergência relevante; sem dado.
+
+P1/P2 (fim do arquivo; usuário, 20/10/2026: "implementação total das pesagens", sem código por recinto — o recinto
+transmite como manda a especificação, e o erro é dele): as pesagens de um CICLO. A etapa sai do próprio ciclo, não da
+placa: a pesagem até 30 min da SAÍDA do operador do desembarque é a retirada; até 30 min da ENTRADA no seco, a
+chegada (P0c: 71% e 88% coerentes; a volta ao operador, 23%). As outras do contêiner dentro do ciclo ficam como dado
+bruto. Tara do conjunto: o par na visita ou a `taraConjunto` (8–30 t) — a "vazia em 7 dias" ficou de fora (P0c: 43
+casos, 53% coerente, e a consulta por placa de 7 dias é cara). A PRINCIPAL é a primeira comparada com classificação;
+a outra comparada CONFIRMA ou não o medido (P2).
 """
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+
+from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 
 DIVISOES = (100, 70, 50, 20, 10, 5, 2, 1)     # kg, da maior para a menor
 PROPORCAO_DIVISAO = 0.98                       # dos pesos múltiplos da divisão
@@ -260,3 +271,137 @@ def e_a_carregada(pesagem: dict, candidatas: List[dict], horas: float) -> bool:
     return not any(c['conteiner'] == pesagem['conteiner'] and c['peso'] and
                    c['peso'] >= (pesagem['peso'] or 0) + DIFERENCA_MINIMA_PAR and _mesma_visita(c, pesagem, horas)
                    for c in candidatas)
+
+
+# ---------------------------------------------------------------------- P1/P2: as pesagens de um ciclo
+
+JANELA_ETAPA_MINUTOS = 30          # pesagem até isto da saída do operador / da entrada no seco: a da etapa
+HORAS_PAR = 12                     # par na mesma visita
+OUTRA = 'outra pesagem no ciclo'
+DIAGNOSTICOS = {                   # classificação -> código estável (filtro do NAVI-I, tabela)
+    COERENTE: 'coerente', MODERADA: 'moderada', DIGITACAO: 'digitacao', DOIS: 'dois',
+    DIVERGENCIA: 'divergencia', VAZIO_NA_PESAGEM: 'vazio', SEM_CONTEINER: 'sem_conteiner',
+    DECLARADO_INVALIDO: 'declarado_invalido', SEM_DADO: 'sem_dado',
+}
+CONFIRMADA = 'confirmada pela outra pesagem do ciclo'
+
+
+@dataclass(frozen=True)
+class Etapas:
+    """O que as pesagens precisam do ciclo: operador e data do desembarque, saída do operador, entrada no seco e
+    o fim do ciclo (None: em aberto)."""
+    recinto_desembarque: str
+    desembarque: datetime
+    saida: Optional[datetime] = None
+    recinto_seco: Optional[str] = None
+    entrada_seco: Optional[datetime] = None
+    fim: Optional[datetime] = None
+
+
+def etapas_do_ciclo(ciclo: ldt.CicloCalculado) -> Etapas:
+    """As etapas de um ciclo calculado — só as ligações gravadas (confiança alta ou média). Fim: a saída do seco, o
+    embarque ou, sem seco, a saída do operador; sem nenhum, o ciclo está em aberto."""
+    def data(ligacao: Optional[ldt.Ligacao]) -> Optional[datetime]:
+        return ligacao.evento.data if ligacao is not None and ligacao.confianca != ldt.BAIXA else None
+    seco = ciclo.entrada_seco if data(ciclo.entrada_seco) else None
+    saida = data(ciclo.saida)
+    fim = data(ciclo.saida_seco) or data(ciclo.embarque) or (saida if seco is None else None)
+    return Etapas(ciclo.desembarque.recinto, ciclo.desembarque.data, saida, seco.evento.recinto if seco else None,
+                  seco.evento.data if seco else None, fim)
+
+
+def operacao_da_pesagem(pesagem: dict, etapas: Etapas, janela_minutos: float = JANELA_ETAPA_MINUTOS) -> Optional[str]:
+    """RETIRADA (perto da saída, no operador do desembarque), CHEGADA_AO_SECO (perto da entrada, no seco), OUTRA
+    (dentro do ciclo) ou None (fora do ciclo: antes do desembarque ou depois do fim)."""
+    janela = timedelta(minutes=janela_minutos)
+    if pesagem['data'] < etapas.desembarque or (etapas.fim is not None and pesagem['data'] > etapas.fim + janela):
+        return None
+
+    def perto(data: Optional[datetime]) -> bool:
+        return data is not None and abs(pesagem['data'] - data) <= janela
+    if pesagem['recinto'] == etapas.recinto_desembarque and perto(etapas.saida):
+        return RETIRADA
+    if etapas.recinto_seco and pesagem['recinto'] == etapas.recinto_seco and perto(etapas.entrada_seco):
+        return CHEGADA_AO_SECO
+    return OUTRA
+
+
+@dataclass(frozen=True)
+class Declarado:
+    """O peso declarado do contêiner na família de CEs, a tara do contêiner e o tipo ISO."""
+    ce: Optional[str]
+    peso: Optional[float]
+    origem: str
+    tara_conteiner: Optional[float]
+    origem_tara_conteiner: str
+    tipo_iso: Optional[str] = None
+
+
+def compara(pesagem: dict, candidatas: List[dict], declarado: Declarado, divisao: Optional[int] = None) -> dict:
+    """Os campos da comparação de uma pesagem CARREGADA: tara do conjunto (par na visita ou `taraConjunto`), medido,
+    diferença e classificação."""
+    par = pareia_tara(pesagem, candidatas, HORAS_PAR)
+    conjunto, origem_tara = tara_do_conjunto(par['peso'] if par else None, None, pesagem.get('tara_conjunto'))
+    campos = {'tara_pesagem_id': par['id'] if par and conjunto == par['peso'] else None,
+              'tara_conjunto': conjunto, 'origem_tara_conjunto': origem_tara,
+              'tara_conteiner': declarado.tara_conteiner, 'origem_tara_conteiner': declarado.origem_tara_conteiner,
+              'peso_declarado': declarado.peso, 'origem_declarado': declarado.origem,
+              'numeroCEmercante': declarado.ce, 'divisao': divisao,
+              'fora_da_divisao': fora_da_divisao(pesagem['peso'], divisao)}
+    if conjunto is None or not pesagem['peso'] or declarado.peso is None:
+        motivo = 'sem tara do conjunto' if conjunto is None else 'sem peso declarado ou pesado'
+        return {**campos, 'classificacao': SEM_DADO, 'detalhe': motivo}
+    medido = pesagem['peso'] - conjunto - (declarado.tara_conteiner or 0)
+    categoria, detalhe = classifica(declarado.peso, medido, divisao, declarado.tipo_iso)
+    diferenca = medido - declarado.peso
+    return {**campos, 'peso_medido': medido, 'diferenca_kg': diferenca, 'classificacao': categoria,
+            'detalhe': detalhe, 'diferenca_pct': 100 * diferenca / declarado.peso if declarado.peso else None,
+            'razao': medido / declarado.peso if declarado.peso else None}
+
+
+def _linha_base(pesagem: dict, operacao: str) -> dict:
+    return {'pesagem_id': pesagem['id'], 'data': pesagem['data'], 'codigoRecinto': pesagem['recinto'],
+            'placa': pesagem['placa'], 'semirreboque': pesagem['semirreboque'], 'peso_bruto': pesagem['peso'],
+            'captura_automatica': pesagem.get('captura'), 'operacao': operacao, 'principal': False}
+
+
+def linhas_do_ciclo(etapas: Etapas, pesagens: List[dict], candidatas: List[dict], declarado: Declarado,
+                    divisoes: Optional[Dict[str, int]] = None) -> List[dict]:
+    """As pesagens do contêiner dentro do ciclo (ordem de data), comparadas as carregadas da retirada e da chegada ao
+    seco; marca a PRINCIPAL e a confirmação (P2). `candidatas`: as pesagens das mesmas placas (para o par)."""
+    divisoes = divisoes or {}
+    linhas = []
+    for pesagem in sorted(pesagens, key=lambda p: (p['data'], p['id'])):
+        operacao = operacao_da_pesagem(pesagem, etapas)
+        if operacao is None:
+            continue
+        linha = _linha_base(pesagem, operacao)
+        if operacao != OUTRA:
+            if e_a_carregada(pesagem, candidatas, HORAS_PAR):
+                linha.update(compara(pesagem, candidatas, declarado, divisoes.get(pesagem['recinto'])))
+            else:
+                linha.update(classificacao=SEM_CONTEINER, detalhe='a carregada é a outra pesagem da visita')
+        if linha.get('classificacao'):
+            linha['diagnostico'] = DIAGNOSTICOS[linha['classificacao']]
+        linhas.append(linha)
+    _marca_principal(linhas)
+    return linhas
+
+
+def _marca_principal(linhas: List[dict]):
+    """Principal: a primeira COMPARADA (a carregada da retirada ou da chegada — `compara` preencheu a origem do
+    declarado) com classificação que não seja "sem dado" (senão, a primeira comparada). Com outra comparada que também
+    mediu, a confirmação: os dois medidos dentro da tolerância."""
+    comparadas = [linha for linha in linhas if 'origem_declarado' in linha]
+    if not comparadas:
+        return
+    principal = next((linha for linha in comparadas if linha['classificacao'] != SEM_DADO), comparadas[0])
+    principal['principal'] = True
+    outra = next((linha for linha in comparadas if linha is not principal and linha.get('peso_medido') is not None),
+                 None)
+    if outra is None or principal.get('peso_medido') is None:
+        return
+    delta = principal['peso_medido'] - outra['peso_medido']
+    referencia = max(abs(principal['peso_medido']), abs(outra['peso_medido']))
+    principal['confirmacao'] = (CONFIRMADA if abs(delta) <= tolerancia(referencia)
+                                else f'a outra pesagem do ciclo mediu {outra["peso_medido"]:.0f} kg ({delta:+.0f})')

@@ -46,10 +46,11 @@ from werkzeug.routing import BuildError
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
 from virasana.navii import (
     acompanhamento_fichas, coleta_uso, dta_navii, estatisticas_uso, extrato_navii, ficha_navii, filtros_salvos,
-    imagem_fallback, referencias, risco_navii, texto_navii, uso_navii,
+    imagem_fallback, pesagem_navii, referencias, risco_navii, texto_navii, uso_navii,
 )
 from virasana.navii.busca_navii import (
-    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, CAMPOS_PESO, MINIMO_OCULTAR, ROTULOS_CORAD, TIPOS_JANELA_VALIDOS,
+    CAMPOS_ESCOLHA, CAMPOS_LISTA, CAMPOS_MARCAVEIS, CAMPOS_PESAGEM, CAMPOS_PESO, MINIMO_OCULTAR, ROTULOS_CORAD,
+    TIPOS_JANELA_VALIDOS,
     busca_ces_navii,
     conta_conteineres_navii, monta_cards_navii, normaliza_filtros, PORTO_ESCALA_PADRAO, _janela_efetiva,
     _janela_previsao, _periodo_navii, sugere_recintos,
@@ -130,6 +131,7 @@ def _contexto_da_tela(modo_texto: bool = False) -> dict:
         filtros_iniciais=None if modo_texto else _filtros_iniciais(),
         extrato_url=url_for('navii.extrato'),
         filtros_risco=risco_navii.ROTULOS_FILTRO,
+        filtros_pesagem=pesagem_navii.ROTULOS_FILTRO,
         rotulos_corad=ROTULOS_CORAD,
         opcoes_tem_dta=dta_navii.OPCOES_TEM_DTA,
         risco_parametros_url=_url_parametros_risco(),
@@ -230,8 +232,8 @@ def _filtros_da_requisicao() -> dict:
         valores = [v for v in request.args.getlist(campo) if v.strip()]
         if valores:
             filtros[campo] = valores
-    # peso: a normalização (busca_navii) converte e descarta o inválido
-    for campo in ('produto', 'empresa') + CAMPOS_ESCOLHA + CAMPOS_PESO:
+    # peso e pesagem: a normalização (busca_navii) converte e descarta o inválido
+    for campo in ('produto', 'empresa') + CAMPOS_ESCOLHA + CAMPOS_PESO + CAMPOS_PESAGEM:
         valor = (request.args.get(campo) or '').strip()
         if valor:
             filtros[campo] = valor

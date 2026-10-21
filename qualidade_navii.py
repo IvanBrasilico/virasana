@@ -58,6 +58,7 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ciclo_outros_portos.py',
     'virasana/analytic_scripts/ciclo_de_vida/acesso_pela_placa.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_acesso_pela_placa.py',
+    'virasana/navii/pesagem_navii.py',
 ]
 
 TESTES = [
@@ -112,6 +113,7 @@ TESTES = [
     'virasana/tests/test_prefixo_proxy.py',
     'virasana/tests/test_acesso_pela_placa.py',
     'virasana/tests/test_diagnostico_acesso_pela_placa.py',
+    'virasana/tests/test_navii_pesagem.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',

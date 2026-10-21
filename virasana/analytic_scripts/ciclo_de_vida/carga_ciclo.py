@@ -16,7 +16,10 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from sqlalchemy import bindparam, text
 
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
-from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import JANELA_ESCALA_DIAS, CandidatoCE, normaliza_ce
+from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc
+from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (
+    JANELA_ESCALA_DIAS, CandidatoCE, CEsResolvidos, normaliza_ce,
+)
 
 UNIDADE_SANTOS = '0817800'
 PORTO_SANTOS = 'BRSSZ'
@@ -36,6 +39,8 @@ OPERADORES_FORA_DE_SANTOS = frozenset({
 OPERADORES_D_E_TROCADOS = frozenset()
 MARGEM_EVENTOS_DIAS = 2
 TAMANHO_LOTE = 500
+COLUNAS_PESAGEM = ('id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, placa, placaSemirreboque, '
+                   'pesoBrutoBalanca, taraConjunto, capturaAutoPeso')
 
 
 # ---------------------------------------------------------------------- funções puras
@@ -69,6 +74,22 @@ def filtro_desembarques(escopo, trocados=OPERADORES_D_E_TROCADOS, prefixo: str =
         return f"{tipo} = 'D' AND {recinto} IN :escopo", {'escopo': normais}, ('escopo',)
     return (f"(({tipo} = 'D' AND {recinto} IN :escopo) OR ({tipo} = 'E' AND {recinto} IN :trocados))",
             {'escopo': normais, 'trocados': invertidos}, ('escopo', 'trocados'))
+
+
+def _numero(valor) -> Optional[float]:
+    try:
+        return float(valor) if valor is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def pesagem_de(linha) -> dict:
+    """Uma linha de COLUNAS_PESAGEM como o dict das regras de `pesagens_ciclo`."""
+    id_, conteiner, data, recinto, placa, semirreboque, peso, tara_conjunto, captura = linha
+    return {'id': id_, 'conteiner': _texto(conteiner) or '', 'data': _dt(data), 'recinto': _texto(recinto),
+            'placa': (_texto(placa) or '').upper(), 'semirreboque': (_texto(semirreboque) or '').upper(),
+            'peso': _numero(peso), 'tara_conjunto': _numero(tara_conjunto),
+            'captura': None if captura is None else bool(captura)}
 
 
 def _unidade(valor) -> str:
@@ -142,6 +163,8 @@ class CargaCiclo:
         self.info: Dict[str, dict] = {}   # CE -> master, tráfego, manifesto, porto de destino (Mercante)
         self.desembarques: Dict[int, dict] = {}   # id -> peso, tara, peso de manifesto, tipo, escala
         self.tipos: Dict[str, Counter] = defaultdict(Counter)   # contêiner -> tipos informados nos eventos
+        self.pesagens: Dict[str, List[dict]] = defaultdict(list)   # contêiner -> pesagens (pesagem_de)
+        self.itens: Dict[tuple, tuple] = {}   # (CE, contêiner) -> (pesoBruto, tara, isoCode) do Mercante
 
     def operadores(self):
         """(escopo — operadores de Santos e os de OPERADORES_FORA_DE_SANTOS —, todos os operadores, {código: nome})."""
@@ -182,11 +205,13 @@ class CargaCiclo:
                 'AND dataHoraOcorrencia >= :desde', 'conteineres', conteineres, params):
             eventos[cont].append(ldt.Evento(ldt.INSPECAO, id_, _dt(data), recinto, _bool(vazio), normaliza_ce(ce)))
             self._tipo(cont, tipo_cont)
-        for id_, cont, data, recinto in self.diag._por_lotes(
-                'SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto FROM apirecintos_pesagensveiculo '
+        for linha in self.diag._por_lotes(
+                f'SELECT {COLUNAS_PESAGEM} FROM apirecintos_pesagensveiculo '  # nosec B608 - colunas fixas
                 'WHERE numeroConteiner IN :conteineres AND dataHoraOcorrencia >= :desde', 'conteineres',
                 conteineres, params):
-            eventos[cont].append(ldt.Evento(ldt.PESAGEM, id_, _dt(data), recinto))
+            pesagem = pesagem_de(linha)
+            eventos[linha[1]].append(ldt.Evento(ldt.PESAGEM, pesagem['id'], pesagem['data'], linha[3]))
+            self.pesagens[pesagem['conteiner']].append(pesagem)
             self.estatisticas['pesagens'] += 1
         return eventos, portuarios
 
@@ -256,10 +281,11 @@ class CargaCiclo:
     def _ces_dos_itens(self, conteineres: Iterable[str]) -> Dict[str, Set[str]]:
         anos = set(range(self.inicio.year - 1, self.fim.year + 1))
         por_conteiner = defaultdict(set)
-        for ce, cont in self.diag._por_lotes(
-                'SELECT numeroCEmercante, codigoConteiner FROM itensresumo WHERE codigoConteiner IN :conteineres',
-                'conteineres', conteineres):
+        for ce, cont, peso, tara, iso in self.diag._por_lotes(
+                'SELECT numeroCEmercante, codigoConteiner, pesoBruto, tara, isoCode FROM itensresumo '
+                'WHERE codigoConteiner IN :conteineres', 'conteineres', conteineres):
             ce = normaliza_ce(ce)
+            self.itens[(ce, _texto(cont))] = (peso, tara, _texto(iso))
             self.estatisticas['itens com o contêiner (todos os anos)'] += 1
             if _ano_do_ce(ce) in anos:
                 por_conteiner[_texto(cont)].add(ce)
@@ -291,3 +317,48 @@ class CargaCiclo:
             if porto == PORTO_SANTOS:
                 santos[manifesto].append(dia)
         return {m: santos.get(m) or todas[m] for m in todas}
+
+    # ------------------------------------------------------------------ pesagens do ciclo (P1)
+    def candidatas_das_pesagens(self, alvos: Iterable[dict], horas: float = pc.HORAS_PAR) -> Dict[str, List[dict]]:
+        """{placa: pesagens da placa até `horas` das pesagens `alvos`} — para o par na visita (a tara do conjunto não
+        traz o contêiner). Uma consulta por dia das pesagens: janela curta pelo índice da placa."""
+        por_dia = defaultdict(list)
+        for alvo in alvos:
+            if alvo['placa']:
+                por_dia[alvo['data'].date()].append(alvo)
+        por_placa: Dict[str, Dict[int, dict]] = defaultdict(dict)
+        for lista in por_dia.values():
+            params = {'de': min(a['data'] for a in lista) - timedelta(hours=horas),
+                      'ate': max(a['data'] for a in lista) + timedelta(hours=horas)}
+            for linha in self.diag._por_lotes(
+                    f'SELECT {COLUNAS_PESAGEM} FROM apirecintos_pesagensveiculo '  # nosec B608 - colunas fixas
+                    'WHERE placa IN :placas AND dataHoraOcorrencia >= :de AND dataHoraOcorrencia <= :ate',
+                    'placas', {a['placa'] for a in lista}, params):
+                pesagem = pesagem_de(linha)
+                por_placa[pesagem['placa']][pesagem['id']] = pesagem
+        return {placa: list(pesagens.values()) for placa, pesagens in por_placa.items()}
+
+    def declarado(self, conteiner: str, ces: CEsResolvidos, desembarque_id: int) -> pc.Declarado:
+        """Peso declarado do contêiner na família de CEs do ciclo (item do master ou soma dos filhotes), tara do
+        contêiner (item do Mercante; senão a do desembarque; senão a típica do tamanho) e tipo ISO."""
+        itens = [(ce, (self.info.get(ce) or {}).get('master'), *self.itens.get((ce, conteiner), (None, None, None)))
+                 for ce in sorted(ces.ces)]
+        peso, origem = pc.peso_da_familia([(ce, master, peso) for ce, master, peso, _, _ in itens])
+        tipo = next((iso for *_, iso in itens if iso), None) or self.tipo_do(conteiner, desembarque_id)
+        tara = next((tara for *_, tara, iso in itens if pc.tara_do_conteiner(tara, iso)[1] == 'informada'), None)
+        tara_conteiner, origem_tara = pc.tara_do_conteiner(
+            tara or (self.desembarques.get(desembarque_id) or {}).get('tara'), tipo)
+        return pc.Declarado(ces.principal, peso, origem, tara_conteiner, origem_tara, tipo)
+
+    def divisoes_das_balancas(self, desde: datetime) -> Dict[str, int]:
+        """{recinto: divisão da balança rodoviária (kg)} pelas pesagens desde `desde` (`pc.divisao_pelas_contagens`)."""
+        somas = ', '.join(f'SUM(CASE WHEN pesoBrutoBalanca % {d} = 0 THEN 1 ELSE 0 END)' for d in pc.DIVISOES)
+        divisoes = {}
+        for recinto, total, *multiplos in self.diag.consulta(
+                f'SELECT codigoRecinto, COUNT(*), {somas} FROM apirecintos_pesagensveiculo '  # nosec B608 - fixo
+                "WHERE dataHoraOcorrencia >= :desde AND pesoBrutoBalanca > 0 AND placa IS NOT NULL AND placa <> '' "
+                'GROUP BY codigoRecinto', {'desde': desde}):
+            divisao = pc.divisao_pelas_contagens({d: int(n or 0) for d, n in zip(pc.DIVISOES, multiplos)}, int(total))
+            if divisao:
+                divisoes[_texto(recinto)] = divisao
+        return divisoes

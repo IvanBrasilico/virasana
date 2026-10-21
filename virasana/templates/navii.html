@@ -297,6 +297,32 @@
         .tabela-risco td .texto-mono { word-break: normal; overflow-wrap: break-word; }
         .tabela-risco .nome-ref { display: block; font-size: .6875rem; color: #777; }
         .nota-risco { font-size: .6875rem; color: #777; margin-top: .375rem; line-height: 1.35; }
+        /* Pesagem do contêiner no ciclo (P3, 20/10/2026): selo, medido x declarado e os dados brutos */
+        .selo-pesagem {
+            font-size: .625rem; font-weight: 700; padding: .125rem .5rem; border-radius: 999px;
+            text-transform: uppercase; cursor: help; background: #F3F3F3; color: #555;
+        }
+        .selo-pesagem.divergencia { background: #FDE0DC; color: #B00020; }
+        .selo-pesagem.digitacao { background: #FFF1D6; color: #8A5300; }
+        .selo-pesagem.moderada, .selo-pesagem.dois { background: #FFF8D6; color: #6B5400; }
+        .selo-pesagem.coerente { background: #E3F5E1; color: #146C12; }
+        .secao-pesagem { margin-top: 1rem; border-top: 1px solid #F0F0F0; padding-top: .75rem; }
+        .secao-pesagem summary { cursor: pointer; font-size: .8125rem; font-weight: 700; color: #1c1c1c; margin-top: .375rem; }
+        .comparacao-peso {
+            display: grid; grid-template-columns: max-content minmax(4rem, 1fr) max-content; gap: .25rem .5rem;
+            align-items: center; margin: .375rem 0; font-size: .8125rem;
+        }
+        .comparacao-peso .barra { background: #F0F0F0; height: .625rem; border-radius: .25rem; overflow: hidden; }
+        .comparacao-peso .barra span { display: block; height: 100%; background: #1351B4; }
+        .comparacao-peso .barra span.medido { background: #168821; }
+        .comparacao-peso .barra span.medido.divergencia { background: #E52207; }
+        .comparacao-peso .barra span.medido.digitacao { background: #C2850C; }
+        .comparacao-peso .barra span.medido.moderada, .comparacao-peso .barra span.medido.dois { background: #D9A400; }
+        .comparacao-peso .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .diagnostico-pesagem { font-size: .8125rem; color: #333; }
+        .tabela-risco tr.principal td { background: #F7FAFF; font-weight: 600; }
+        .marca-pesagem { display: block; font-size: .625rem; color: #8A5300; font-weight: 700; }
+        .tabela-risco td.placa { white-space: nowrap; word-break: normal; }
         .campo select.escolha {
             width: 100%; padding: .375rem .5rem; border: 1px solid #888; border-radius: 4px;
             font-size: .875rem; background: #fff;
@@ -751,6 +777,25 @@
                     rel="noopener">Parâmetros em uso</a>.{% endif %}</div>
             </div>
 
+            <div class="campo">
+                <label class="rotulo-campo" for="f-pesagem">Pesagem (medido x declarado)</label>
+                <select id="f-pesagem" class="escolha">
+                    <option value="">Qualquer</option>
+                    {% for codigo, rotulo in filtros_pesagem.items() %}<option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+                </select>
+                <div class="br-input mt-2">
+                    <label for="f-dif_pct_min">Diferença mínima (%)</label>
+                    <input id="f-dif_pct_min" type="number" min="0" step="any" inputmode="decimal" placeholder="ex.: 20" />
+                </div>
+                <div class="campo-checkbox mt-1">
+                    <input id="f-ordem_grandeza" type="checkbox" />
+                    <label for="f-ordem_grandeza">Ordem de grandeza (medido ≥ 10× ou ≤ 1/10 do declarado)</label>
+                </div>
+                <div class="dica-lista">Pesagem da retirada no operador ou da chegada ao recinto seco, descontadas as
+                    taras do caminhão e do contêiner, contra o peso declarado do contêiner no Mercante. A diferença
+                    vale para mais ou para menos. Estes filtros exigem pesagem comparada.</div>
+            </div>
+
             <button class="br-button primary block mb-2 mt-3" id="btn-aplicar" type="button">
                 <i class="fas fa-filter mr-1" aria-hidden="true"></i> Aplicar filtros
             </button>
@@ -868,6 +913,12 @@
     var IMPLICITA = { inspecao: 'inspeção', pesagem: 'pesagem' };
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
     var FILTROS_RISCO = {{ filtros_risco | tojson }};
+    var FILTROS_PESAGEM = {{ filtros_pesagem | tojson }};
+    var ROTULOS_DIAGNOSTICO = {
+        coerente: 'Coerente', moderada: 'Diferença moderada', digitacao: 'Digitação provável',
+        divergencia: 'Possível fraude', dois: 'Dois contêineres?', vazio: 'Contêiner vazio na pesagem',
+        sem_conteiner: 'Pesagem sem o contêiner', declarado_invalido: 'Declarado inválido', sem_dado: 'Sem dado'
+    };
     var OPCOES_TEM_DTA = {{ opcoes_tem_dta | tojson }};
     var EXTRATO_URL = {{ extrato_url | tojson }};
     var ROTULOS_CORAD = {{ rotulos_corad | tojson }};
@@ -900,9 +951,15 @@
         peso_min: 'Peso do contêiner ≥', peso_max: 'Peso do contêiner ≤',
         com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
         risco: 'Risco histórico', ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem',
-        so_com_desembarque: 'Só com desembarque'
+        so_com_desembarque: 'Só com desembarque', pesagem: 'Pesagem', dif_pct_min: 'Diferença de peso ≥',
+        ordem_grandeza: 'Peso: ordem de grandeza'
     };
-    var CHECKBOXES = ['com_imagem', 'sem_oog'];
+    var CHECKBOXES = ['com_imagem', 'sem_oog', 'ordem_grandeza'];
+    function textoDoChip(chave, valor) {   // pesagem (P3) e os demais
+        if (chave === 'pesagem') { return FILTROS_PESAGEM[valor] || valor; }
+        if (chave === 'dif_pct_min') { return String(valor).replace('.', ',') + '%'; }
+        return Array.isArray(valor) ? valor.join(', ') : valor;
+    }
 
     var DICAS_PERIODO = {
         prevista: 'Data prevista de atracação do navio (escala do manifesto do CE).',
@@ -1094,7 +1151,7 @@
                     : (chave === 'tem_dta' ? (OPCOES_TEM_DTA[valor] || valor)
                         : (chave === 'corad' ? textoCorad(valor)
                             : (chave === 'peso_min' || chave === 'peso_max' ? formatarPeso(valor)
-                                : (Array.isArray(valor) ? valor.join(', ') : valor)))))));
+                                : textoDoChip(chave, valor)))))));
             var chip = document.createElement('span');
             chip.className = 'br-tag ' + (BASE_DO_OCULTO[chave] ? 'tag-ocultar' : 'tag-neutra');
             chip.innerHTML = (BASE_DO_OCULTO[chave] ? '<i class="fas fa-eye-slash" aria-hidden="true"></i> ' : '') +
@@ -1380,6 +1437,88 @@
             '</details>';
     }
 
+    function formataPct(valor) {
+        return (valor > 0 ? '+' : '') + formataNumero(valor, Math.abs(valor) >= 10 ? 0 : 1) + '%';
+    }
+
+    function montaSeloPesagem(card) {
+        var p = card.pesagem && card.pesagem.principal;
+        if (!p || !p.diagnostico) { return ''; }
+        var dif = (p.diferencaPct === null || p.diferencaPct === undefined) ? '' : ' ' + formataPct(p.diferencaPct);
+        return ' <span class="selo-pesagem ' + escapeAttr(p.diagnostico) + '" title="' +
+            escapeAttr('Pesagem (' + (p.operacao || '') + '): ' + (p.classificacao || '') +
+                       (p.detalhe ? ' — ' + p.detalhe : '') + ' (detalhes no card)') + '">Pesagem: ' +
+            escapeHtml(ROTULOS_DIAGNOSTICO[p.diagnostico] || p.diagnostico) + escapeHtml(dif) + '</span>';
+    }
+
+    function montaComparacaoPeso(p) {
+        if (!p || p.pesoMedido === null || p.pesoMedido === undefined || !p.pesoDeclarado) { return ''; }
+        var maior = Math.max(Math.abs(p.pesoMedido), Math.abs(p.pesoDeclarado), 1);
+        function largura(valor) { return Math.min(100, 100 * Math.abs(valor) / maior).toFixed(1) + '%'; }
+        return '<div class="comparacao-peso">' +
+            '<span>Declarado</span><div class="barra"><span style="width:' + largura(p.pesoDeclarado) + '"></span></div>' +
+                '<span class="num">' + formatarPeso(p.pesoDeclarado) + '</span>' +
+            '<span>Medido</span><div class="barra"><span class="medido ' + escapeAttr(p.diagnostico || '') +
+                '" style="width:' + largura(p.pesoMedido) + '"></span></div>' +
+                '<span class="num">' + formatarPeso(p.pesoMedido) + '</span>' +
+            '</div>';
+    }
+
+    function montaCelulaPeso(valor, origem) {
+        if (valor === null || valor === undefined) { return '<td class="num">--</td>'; }
+        return '<td class="num">' + formatarPeso(valor) +
+            (origem ? '<span class="nome-ref">' + escapeHtml(origem) + '</span>' : '') + '</td>';
+    }
+
+    function montaLinhaPesagem(p) {
+        var marcas = (p.capturaAutomatica === false ? '<span class="marca-pesagem">peso digitado</span>' : '') +
+            (p.foraDaDivisao ? '<span class="marca-pesagem">fora da divisão da balança (' + escapeHtml(p.divisao) +
+                ' kg)</span>' : '');
+        var dif = (p.diferencaKg === null || p.diferencaKg === undefined) ? '--'
+            : formatarPeso(p.diferencaKg) + (p.diferencaPct === null || p.diferencaPct === undefined ? ''
+                : '<span class="nome-ref">' + formataPct(p.diferencaPct) + '</span>');
+        return '<tr' + (p.principal ? ' class="principal"' : '') + '>' +
+            '<td>' + escapeHtml(formatarDataHora(p.data) || '--') + '</td>' +
+            '<td>' + montaRecinto(p) + '</td>' +
+            '<td>' + escapeHtml(p.operacao || '') + '</td>' +
+            '<td class="texto-mono placa">' + escapeHtml(p.placa || '--') +
+                (p.semirreboque ? '<span class="nome-ref">' + escapeHtml(p.semirreboque) + '</span>' : '') + '</td>' +
+            '<td class="num">' + formatarPeso(p.pesoBruto) + marcas + '</td>' +
+            montaCelulaPeso(p.taraConjunto, p.origemTaraConjunto) +
+            montaCelulaPeso(p.taraConteiner, p.origemTaraConteiner) +
+            montaCelulaPeso(p.pesoMedido, null) +
+            montaCelulaPeso(p.pesoDeclarado, p.origemDeclarado) +
+            '<td class="num">' + dif + '</td>' +
+            '<td>' + escapeHtml(p.classificacao || '') +
+                (p.detalhe ? '<span class="nome-ref">' + escapeHtml(p.detalhe) + '</span>' : '') + '</td></tr>';
+    }
+
+    function montaPesagem(card) {
+        var dados = card.pesagem;
+        if (!dados || !(dados.pesagens || []).length) { return ''; }
+        var p = dados.principal;
+        var titulo = p ? 'Pesagem do contêiner — ' + p.operacao + ' (' + (formatarDataHora(p.data) || '') + ')'
+            : 'Pesagens do contêiner no ciclo';
+        var diagnostico = p
+            ? escapeHtml(ROTULOS_DIAGNOSTICO[p.diagnostico] || p.classificacao || '') +
+                (p.detalhe ? ' — ' + escapeHtml(p.detalhe) : '') + (p.confirmacao ? ' · ' + escapeHtml(p.confirmacao) : '')
+            : 'Nenhuma pesagem da retirada no operador ou da chegada ao seco para comparar com o declarado.';
+        return '<div class="secao-pesagem"><span class="rotulo-mini"><i class="fas fa-balance-scale" ' +
+                'aria-hidden="true"></i>' + escapeHtml(titulo) + '</span>' +
+            montaComparacaoPeso(p) + '<div class="diagnostico-pesagem">' + diagnostico + '</div>' +
+            '<details><summary>Dados brutos: ' + dados.pesagens.length + ' pesagem(ns) do contêiner no ciclo</summary>' +
+            '<div class="tabela-rolavel"><table class="tabela-risco"><thead><tr><th>Data</th><th>Recinto</th>' +
+                '<th>Operação</th><th>Placa</th><th class="num">Bruto</th><th class="num">Tara do conjunto</th>' +
+                '<th class="num">Tara do contêiner</th><th class="num">Medido</th><th class="num">Declarado</th>' +
+                '<th class="num">Diferença</th><th>Diagnóstico</th></tr></thead><tbody>' +
+                dados.pesagens.map(montaLinhaPesagem).join('') + '</tbody></table></div>' +
+            '<div class="nota-risco">Medido = bruto − tara do conjunto (o mesmo caminhão sem o contêiner na visita; ' +
+                'senão a taraConjunto informada) − tara do contêiner. Declarado: peso do contêiner no Mercante (item ' +
+                'do master ou soma dos filhotes). Diagnóstico prévio, automático; os dados são os que o recinto ' +
+                'transmitiu à API Recintos. Em destaque, a pesagem do selo.</div>' +
+            '</details></div>';
+    }
+
     function montaFilhotes(card) {
         var filhotes = card.filhotes || [];
         if (!filhotes.length) { return ''; }
@@ -1587,6 +1726,7 @@
                                 montaTipoConteiner(card.tipoConteiner, card.isoCode) +
                                 montaSelosFichas(card) +
                                 montaSeloRisco(card) +
+                                montaSeloPesagem(card) +
                                 montaSeloDta(card) +
                                 botaoAbrirFicha(card) +
                             '</div>' +
@@ -1616,6 +1756,7 @@
                     '</div>' +
 
                     montaTimeline(card) +
+                    montaPesagem(card) +
                     montaRisco(card) +
                     montaDtas(card) +
                     montaConteineres(card) +
@@ -2728,6 +2869,10 @@
         if (!document.getElementById('f-incluir_sem_desembarque').checked) { filtros.so_com_desembarque = 1; }
         var risco = document.getElementById('f-risco').value;
         if (risco) { filtros.risco = risco; }
+        var pesagem = document.getElementById('f-pesagem').value;
+        if (pesagem) { filtros.pesagem = pesagem; }
+        var difPct = parseFloat(document.getElementById('f-dif_pct_min').value);
+        if (!isNaN(difPct) && difPct >= 0) { filtros.dif_pct_min = difPct; }
         var temDta = document.getElementById('f-tem_dta').value;
         if (temDta) { filtros.tem_dta = temDta; }
         if (document.getElementById('f-corad-ligado').checked) {
@@ -2762,6 +2907,9 @@
         // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
         marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));
         document.getElementById('f-risco').value = filtros.risco || '';
+        document.getElementById('f-pesagem').value = filtros.pesagem || '';
+        document.getElementById('f-dif_pct_min').value =
+            (filtros.dif_pct_min === undefined || filtros.dif_pct_min === null) ? '' : filtros.dif_pct_min;
         document.getElementById('f-tem_dta').value = filtros.tem_dta || '';
         marcaCorad(filtros.corad);
     }

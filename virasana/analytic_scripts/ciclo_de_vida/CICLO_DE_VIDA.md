@@ -1106,6 +1106,57 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_pes
 Esperado: a retirada no operador perto dos 85–90% coerentes dos secos. Se vier, P1 compara só a RETIRADA (saída do
 operador) e a CHEGADA AO SECO do ciclo, com tolerância de 5%/300 kg e faixa moderada até 20%.
 
+**Resultado do P0c (produção, 20/10/2026; `virasana/pesagens3.log`)** — comparáveis por operação: **chegada ao seco
+88% coerente** (moderada 9%, divergência 2,6%; diferença p10 −3%, p90 +4%); **retirada no operador 71%** (moderada
+11%, digitação 4%, divergência 13%; p90 +71%); volta ao operador do desembarque 23% (divergência 41% — confirma: é
+exportação/devolução); outro operador portuário (exportação, baldeação) fora. Tara pelo par: 84% coerente nas
+operações da importação. Suape: `taraConjunto` 100% fora de 8–30 t (é a tara do contêiner) — sai pela regra genérica.
+
+**Diretriz do usuário (20/10/2026)**: publicar em homologação e testar na prática com os usuários, melhorando as
+heurísticas depois com novos diagnósticos; **sem código por recinto** — o recinto deve transmitir como manda a
+especificação; se não transmite, o sistema terá erros e a Receita cobra a correção do recinto. (Por isso a destroca
+do ICTSI fica DESLIGADA: o certo é o ICTSI corrigir o envio.)
+
+**P1–P3 — implementação das pesagens: FEITA no código (20/10/2026), falta a DDL e a ativação** (testes
+`test_pesagens_ciclo.py`, `test_servico_ciclo_de_vida.py` (`TestPesagensDoCiclo`), `test_navii_pesagem.py`; mutantes
+30/30; gate OK; E2E da tela no navegador):
+- **P1 — captura no ciclo** (`pesagens_ciclo.linhas_do_ciclo`, chamada pelo serviço a cada lote): para cada ciclo, as
+  pesagens do contêiner entre o desembarque e o fim do ciclo. A até 30 min da SAÍDA do operador do desembarque é a
+  **retirada**; a até 30 min da ENTRADA no seco, a **chegada ao seco**; as outras ficam como dado bruto. Das da etapa,
+  a CARREGADA (a mais pesada da visita) é comparada: tara do conjunto pelo par na visita (mesma placa e recinto, até
+  12 h; sem contêiner ou com o mesmo contêiner 1 t mais leve — buscado pela placa, uma consulta por dia) ou pela
+  `taraConjunto` (8 a 30 t); tara do contêiner do item do Mercante (senão a do desembarque, senão a típica); declarado
+  = item do master ou soma dos filhotes da família de CEs do ciclo. Divisão da balança por recinto: pesagens de 7
+  dias, recalculada a cada 24 h. Tabela nova `ciclodevida_pesagem` (`ddl_pesagens_ciclo.sql`), substituída a cada
+  reprocessamento do ciclo; sem a tabela, o serviço avisa no log e segue sem pesagens.
+- **P2 — diagnóstico**: classificação (coerente, moderada, digitação provável, divergência relevante = "possível
+  fraude", dois contêineres, contêiner vazio, sem o contêiner, declarado inválido, sem dado) e o código
+  `diagnostico`; a PRINCIPAL do ciclo (a primeira comparada com classificação) e a **confirmação** pela outra pesagem
+  comparada do ciclo (os dois medidos dentro da tolerância).
+- **P3 — tela** (`virasana/navii/pesagem_navii.py`): no card, selo "Pesagem: …" com a diferença, barras declarado x
+  medido, diagnóstico e confirmação, e a expansão "Dados brutos" com todas as pesagens do contêiner no ciclo (bruto,
+  taras e origens, medido, declarado e origem, diferença, marcas "peso digitado" e "fora da divisão"). Filtros:
+  **Pesagem** (possível fraude, digitação provável, qualquer diferença, coerente, com pesagem comparada), **Diferença
+  mínima (%)** (para mais ou para menos) e **Ordem de grandeza** (medido ≥ 10× ou ≤ 1/10) — sobre a principal; nos
+  filtros salvos e nas estatísticas. Sem a tabela, o card fica sem o bloco e o filtro responde com erro claro.
+
+Ativação em **homologação** (depois do deploy do virasana):
+```
+-- 1. no banco de HOMOLOGAÇÃO (DBA):
+SOURCE virasana/analytic_scripts/ciclo_de_vida/ddl_pesagens_ciclo.sql;
+```
+```
+cd /home/ajna/apps/ajna/virasana
+S=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py
+# 2. reiniciar o serviço de homologação (ele confere a tabela ao iniciar): supervisorctl restart ciclo_de_vida_v2_hom
+# 3. preencher: refazer os ciclos de um período (as pesagens vêm junto), primeiro medindo
+virasana-venv/bin/python $S --homologacao --refaz-desde 2026-10-13 --simula
+nohup virasana-venv/bin/python $S --homologacao --refaz-desde 2026-09-20 > refaz_pesagens_hom.log 2>&1 &
+```
+Conferir: `SELECT operacao, diagnostico, principal, COUNT(*) FROM ciclodevida_pesagem GROUP BY 1, 2, 3`; abrir o
+NAVI-I de homologação e filtrar por "Possível fraude". Em produção, a mesma sequência (DDL, restart do
+`ciclo_de_vida_v2`, `--refaz-desde`). Rollback: `DROP TABLE ciclodevida_pesagem` (o serviço e a tela seguem sem).
+
 **Sombra de Pecém (produção, 20/10/2026; `virasana/sombra_pecem.log` + CSV)** — 3.007 ciclos: passagem 35%, entregue
 pelo operador 31%, aberto 31%, incompletos 2,4%. CE de importação local (prefixo 04): 1.055 ciclos, confiança alta
 só 19% (média 75%; os eventos declaram 0,31 CE por contêiner, contra 0,50 no Rio/Suape e 0,80 em Santos), escala

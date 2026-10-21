@@ -244,6 +244,17 @@ Regras e limitações (importantes):
    a imagem do Mongo (`numeroinformado` + `dataescaneamento`), fora as perto de inspeção vazia (confiança baixa).
    O card leva `imagemFallback` e o painel de imagens, o selo com a origem. Acessório: falha só vai ao log. O filtro
    "Somente com imagem" continua só pelo ciclo. Testes em `test_navii_imagem_fallback.py`.
+18. **Pesagem do contêiner: medido x declarado** (20/10/2026; P1–P3 de `CICLO_DE_VIDA.md`, "Fora de Santos e
+   pesagens"). O serviço do ciclo de vida grava em `ciclodevida_pesagem` as pesagens do contêiner no ciclo; a da
+   retirada no operador e a da chegada ao seco são comparadas com o peso declarado do contêiner (item do master ou
+   soma dos filhotes), com o diagnóstico prévio e a PRINCIPAL do ciclo. `pesagem_navii.py`: o card leva `pesagem`
+   {principal, pesagens} (selo "Pesagem: …", barras declarado x medido, diagnóstico e confirmação, expansão com os
+   dados brutos); filtros `pesagem` (fraude, digitacao, divergente, coerente, comparada), `dif_pct_min` (módulo da
+   diferença %) e `ordem_grandeza` (medido ≥ 10× ou ≤ 1/10) — sobre a principal, pela ligação do ciclo
+   (`_existe_ciclo(_existe(PESAGENS, ...))`, um acesso indexado por candidato). Termos do usuário: "digitação
+   errada" e "possível fraude" (= divergência relevante). Sem a tabela (DDL não aplicada), o card fica sem o bloco
+   e o filtro dá erro claro (`tabelas_opcionais`). Premissa do usuário: sem código por recinto — o dado é o que o
+   recinto transmitiu, e o erro dele é cobrado dele. Testes: `test_navii_pesagem.py`; E2E no navegador.
 
 ## Como a busca funciona (desenho atual)
 

@@ -428,11 +428,102 @@ class TestFuncoes(unittest.TestCase):
             colunas = set(re.findall(r'^\s+(\w+) [A-Z]', blocos[tabela.name], re.M)) - {'PRIMARY', 'UNIQUE', 'KEY',
                                                                                         'CONSTRAINT', 'REFERENCES'}
             self.assertEqual(colunas, set(tabela.c.keys()), tabela.name)
+        pesagens = (Path(gc.__file__).parent / 'ddl_pesagens_ciclo.sql').read_text(encoding='utf-8')
+        corpo = re.search(r'CREATE TABLE IF NOT EXISTS ciclodevida_pesagem \((.*?)\);', pesagens, re.S).group(1)
+        colunas = set(re.findall(r'^\s+(\w+) [A-Z]', corpo, re.M)) - {'PRIMARY', 'UNIQUE', 'KEY', 'CONSTRAINT',
+                                                                         'REFERENCES'}
+        self.assertEqual(colunas, set(gc.PESAGENS.c.keys()))
 
     def test_banco_de_homologacao(self):
         self.assertEqual(sv.uri_do_banco(sv._argumentos(['--homologacao']), {'SQL_URI_HOM': 'mysql://hom'}),
                          'mysql://hom')
         self.assertEqual(sv.uri_do_banco(sv._argumentos(['--uri', 'sqlite://'])), 'sqlite://')
+
+
+
+class TestPesagensDoCiclo(ServicoTestCase):
+    """P1/P2 (20/10/2026): o CTRA (TRA aberto: saída da BTP em 04/03 08:00, entrada no EADI 11:00) com o peso
+    declarado de 22.000 kg no master M e no filhote H1 (tara 3.800, 45G1). Pesagens: no pátio da BTP (03/03), a
+    chegada para retirar com o número do contêiner (15.000, 07:40), a carregada (40.000, 08:01) e a chegada ao EADI
+    (40.100, taraConjunto 15.000) — e uma antes do desembarque, fora do ciclo. O CTRV (aberto no operador) tem uma
+    pesagem sem saída: só dado bruto."""
+
+    def setUp(self):
+        super().setUp()
+        with self.engine.begin() as c:
+            c.execute(text("UPDATE itensresumo SET pesoBruto = '22000', tara = '3800', isoCode = '45G1' "
+                           "WHERE codigoConteiner = 'CTRA'"))
+            pesagem = dict(placaSemirreboque='', capturaAutoPeso=True)
+            _insere(c, PesagemVeiculo, [
+                _evento(501, 'CTRA', d(4, 7, 40), BTP, placa='AAA1A11', pesoBrutoBalanca=15000, **pesagem),
+                _evento(502, 'CTRA', d(4, 8, 1), BTP, placa='AAA1A11', pesoBrutoBalanca=40000, **pesagem),
+                _evento(503, 'CTRA', d(4, 11, 1), EADI, placa='AAA1A11', pesoBrutoBalanca=40100, **pesagem),
+                # saindo do EADI sem o contêiner (sem o número): o par da 503 só se acha pela placa
+                _evento(506, '', d(4, 11, 40), EADI, placa='AAA1A11', pesoBrutoBalanca=14900, **pesagem),
+                _evento(504, 'CTRA', d(3, 10), BTP, placa='BBB2B22', pesoBrutoBalanca=30000, **pesagem),
+                _evento(505, 'CTRA', d(1, 10), BTP, placa='AAA1A11', pesoBrutoBalanca=30000, **pesagem)])
+        self.estatisticas = self.servico.processa(['CTRA', 'CTRV'])
+
+    def pesagens(self, conteiner) -> dict:
+        ciclo_id = self.ciclo(conteiner)['ID']
+        return {linha['pesagem_id']: linha
+                for linha in self.tabela(gc.PESAGENS, gc.PESAGENS.c.ciclo_de_vida_id == ciclo_id)}
+
+    def test_pesagens_do_ciclo(self):
+        from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc
+        linhas = self.pesagens('CTRA')
+        self.assertEqual(sorted(linhas), [501, 502, 503, 504])
+        carregada = linhas[502]
+        self.assertEqual((carregada['operacao'], carregada['principal'], carregada['tara_pesagem_id']),
+                         (pc.RETIRADA, True, 501))
+        self.assertEqual((float(carregada['peso_medido']), float(carregada['peso_declarado']),
+                          carregada['origem_declarado'], carregada['numeroCEmercante']),
+                         (21200.0, 22000.0, 'item do master', H1))
+        self.assertEqual((carregada['diagnostico'], carregada['confirmacao']), ('coerente', pc.CONFIRMADA))
+        self.assertEqual((linhas[501]['diagnostico'], linhas[501]['principal']), ('sem_conteiner', False))
+        self.assertEqual((linhas[503]['operacao'], linhas[503]['origem_tara_conjunto'], linhas[503]['tara_pesagem_id']),
+                         (pc.CHEGADA_AO_SECO, pc.PAR, 506))
+        self.assertEqual((linhas[504]['operacao'], linhas[504]['diagnostico']), (pc.OUTRA, None))
+        self.assertEqual(self.estatisticas['pesagem principal: coerente'], 1)
+
+    def test_aberto_no_operador_so_dado_bruto(self):
+        from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc
+        linhas = self.pesagens('CTRV')
+        self.assertEqual([(linha['operacao'], linha['principal']) for linha in linhas.values()], [(pc.OUTRA, False)])
+
+    def test_refazer_substitui(self):
+        self.servico.processa(['CTRA'])
+        ciclo_id = self.ciclo('CTRA')['ID']
+        self.assertEqual(len(self.tabela(gc.PESAGENS, gc.PESAGENS.c.ciclo_de_vida_id == ciclo_id)), 4)
+
+    def test_linha_pesagem_corta_os_textos(self):
+        linha = gc.linha_pesagem({'detalhe': 'x' * 200, 'placa': 'ABC1D23XYZ99', 'principal': 1}, 7)
+        self.assertEqual((len(linha['detalhe']), linha['placa'], linha['principal'], linha['ciclo_de_vida_id']),
+                         (120, 'ABC1D23XYZ', True, 7))
+        self.assertIsNone(linha['peso_medido'])
+
+    def test_divisao_da_balanca_em_cache(self):
+        with self.engine.begin() as c:
+            _insere(c, PesagemVeiculo, [_evento(600 + n, '', d(18, 8, n), BTP, placa=f'F{n:06d}',
+                                               pesoBrutoBalanca=15000 + 20 * n) for n in range(50)])
+        self.servico._divisoes = (None, {})
+        with self.engine.connect() as c:
+            self.assertEqual(self.servico.divisoes(c), {BTP: 20})
+            _insere(c, PesagemVeiculo, [_evento(700 + n, '', d(18, 9, n), BTP, placa=f'G{n}', pesoBrutoBalanca=15001)
+                                        for n in range(5)])
+            self.assertEqual(self.servico.divisoes(c), {BTP: 20})            # cache de 24 h
+        self.relogio.agora = AGORA + timedelta(hours=25)
+        with self.engine.connect() as c:
+            self.assertEqual(self.servico.divisoes(c), {BTP: 1})             # recalculada: 5 de 55 fora dos 20 kg
+
+    def test_sem_a_tabela_o_ciclo_segue(self):
+        with self.engine.begin() as c:
+            c.execute(text('DROP TABLE ciclodevida_pesagem'))
+        with self.assertLogs('ciclo_de_vida_v2', 'WARNING'):
+            servico = sv.Servico(self.engine, self.mongo, relogio=self.relogio)
+        self.assertFalse(servico.com_pesagens)
+        estatisticas = servico.processa(['CTRA'])
+        self.assertEqual((estatisticas['ciclos atualizados'], estatisticas['pesagens gravadas']), (1, 0))
 
 
 if __name__ == '__main__':
