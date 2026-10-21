@@ -1154,8 +1154,8 @@ virasana-venv/bin/python $S --homologacao --refaz-desde 2026-10-13 --simula
 nohup virasana-venv/bin/python $S --homologacao --refaz-desde 2026-09-20 > refaz_pesagens_hom.log 2>&1 &
 ```
 Conferir: `SELECT operacao, diagnostico, principal, COUNT(*) FROM ciclodevida_pesagem GROUP BY 1, 2, 3`; abrir o
-NAVI-I de homologação e filtrar por "Possível fraude". Em produção, a mesma sequência (DDL, restart do
-`ciclo_de_vida_v2`, `--refaz-desde`). Rollback: `DROP TABLE ciclodevida_pesagem` (o serviço e a tela seguem sem).
+NAVI-I de homologação e filtrar por "Possível fraude". Produção: ver a seção **"Roteiro de produção — pesagens e
+escopo fora de Santos"** no fim deste arquivo (passos, checagens e rollback).
 
 **Sombra de Pecém (produção, 20/10/2026; `virasana/sombra_pecem.log` + CSV)** — 3.007 ciclos: passagem 35%, entregue
 pelo operador 31%, aberto 31%, incompletos 2,4%. CE de importação local (prefixo 04): 1.055 ciclos, confiança alta
@@ -1230,3 +1230,104 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de
   Ativar o ICTSI = pôr 7921302 em `OPERADORES_D_E_TROCADOS` E em `OPERADORES_FORA_DE_SANTOS`, depois desses números.
   Sem a saída informada, o ciclo de importação do ICTSI fica "aberto no operador" (até 93 dias, revisitado a cada 6 h)
   — a regra da placa (35% das entradas) pode limitá-lo na reentrada; decidir com a sombra.
+
+## Roteiro de produção — pesagens e escopo fora de Santos (21/10/2026)
+
+O que entra com o deploy do virasana (commits até "Pesagens no ciclo de vida (P1–P3)"):
+- **pesagens** (P1–P3): o serviço grava `ciclodevida_pesagem` SE a tabela existir quando ele inicia; o NAVI-I mostra
+  o bloco e os filtros SE a tabela existir (sem ela, segue como hoje);
+- **escopo fora de Santos**: `OPERADORES_FORA_DE_SANTOS` (MultiRio 7921303, Suape 4931303, Pecém 3111401) vale
+  assim que o serviço reiniciar com o código novo — ciclos novos desses operadores a partir dos eventos novos;
+- a destroca do ICTSI fica DESLIGADA (`OPERADORES_D_E_TROCADOS` vazio; premissa: o recinto corrige o envio).
+
+### Passos (nesta ordem)
+
+```
+-- 0. antes (DBA, banco de PRODUÇÃO): a tabela ainda não existe
+SHOW TABLES LIKE 'ciclodevida_pesagem';
+-- 1. criar a tabela (aditiva; rollback no fim do arquivo)
+SOURCE /home/ajna/apps/ajna/virasana/virasana/analytic_scripts/ciclo_de_vida/ddl_pesagens_ciclo.sql;
+SHOW CREATE TABLE ciclodevida_pesagem;
+```
+```
+# 2. deploy do virasana (git pull) e restart da aplicação web (gunicorn) — a tela do NAVI-I com o bloco e os filtros
+# 3. restart do serviço do ciclo de vida: ele confere a tabela AO INICIAR
+supervisorctl restart ciclo_de_vida_v2
+tail -f /var/log/virasana/ciclo_de_vida/access.log
+#    esperado: SEM o aviso "pesagens: tabela ciclodevida_pesagem ausente"; nas voltas, "pesagens gravadas" e
+#    "pesagem principal: ..." nas estatísticas
+cd /home/ajna/apps/ajna/virasana
+S=virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py
+# 4. preencher as pesagens dos ciclos já gravados (fora do pico; o serviço contínuo segue rodando — uma parte que
+#    colidir com ele só vai ao log e as outras seguem). Primeiro 30 dias; se a tela agradar, recuar mais.
+nohup virasana-venv/bin/python $S --refaz-desde 2026-09-21 > refaz_pesagens.log 2>&1 &
+#    progresso: grep "refazer:" refaz_pesagens.log  (partes de 5.000 contêineres)
+# 5. criar os ciclos mais antigos dos operadores novos (até 93 dias; os últimos 30 já vieram no passo 4, que inclui o
+#    escopo novo; só eles — Santos não é refeito)
+nohup virasana-venv/bin/python $S --refaz-desde 2026-07-20 --refaz-ate 2026-09-21 \
+    --refaz-operadores 7921303 4931303 3111401 > refaz_operadores.log 2>&1 &
+```
+
+### Checagens
+
+**A. Serviço** — log sem erro novo; `virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/acompanha_ciclo_de_vida.py
+--saida acompanha_pos_pesagens.log` com marcas gravadas há poucos minutos, fila ~0 e nenhum sinal de outro gravador.
+
+**B. Banco** (só leitura; a tabela é nova e pequena):
+```sql
+-- 1. distribuição geral: operação x diagnóstico x principal
+SELECT operacao, diagnostico, principal, COUNT(*) FROM ciclodevida_pesagem GROUP BY 1, 2, 3 ORDER BY 1, 4 DESC;
+
+-- 2. no máximo UMA principal por ciclo (esperado: nenhuma linha)
+SELECT ciclo_de_vida_id, COUNT(*) FROM ciclodevida_pesagem WHERE principal = 1 GROUP BY 1 HAVING COUNT(*) > 1;
+
+-- 3. a principal por recinto e operação (comparar com o P0c: chegada ao seco ~88% coerente, retirada ~71%)
+SELECT codigoRecinto, operacao, diagnostico, COUNT(*) FROM ciclodevida_pesagem WHERE principal = 1
+GROUP BY 1, 2, 3 ORDER BY 1, 2, 4 DESC;
+
+-- 4. cobertura: ciclos com saída nos últimos 7 dias x com pesagem principal, por operador do desembarque
+SELECT c.codigoRecintoDesembarque, COUNT(*) AS ciclos, SUM(p.ID IS NOT NULL) AS com_pesagem
+FROM ciclodevida_ciclo_de_vida_importacao c
+LEFT JOIN ciclodevida_pesagem p ON p.ciclo_de_vida_id = c.ID AND p.principal = 1
+WHERE c.versao_heuristica = 'v2' AND c.data_saida >= NOW() - INTERVAL 7 DAY GROUP BY 1 ORDER BY 2 DESC;
+
+-- 5. origem da tara x diagnóstico (o par na visita deve dominar; a taraConjunto, só onde não há par)
+SELECT origem_tara_conjunto, diagnostico, COUNT(*) FROM ciclodevida_pesagem WHERE principal = 1 GROUP BY 1, 2;
+
+-- 6. confirmação pela outra pesagem do ciclo (divergência CONFIRMADA por duas pesagens = a mais forte)
+SELECT diagnostico, confirmacao LIKE 'confirmada%' AS confirmada, COUNT(*) FROM ciclodevida_pesagem
+WHERE principal = 1 AND confirmacao IS NOT NULL GROUP BY 1, 2;
+
+-- 7. amostra de "possível fraude" para conferir no Fichas (Consulta Contêiner: as pesagens brutas)
+SELECT c.numeroConteiner, p.numeroCEmercante, p.data, p.codigoRecinto, p.operacao, p.peso_bruto, p.tara_conjunto,
+       p.origem_tara_conjunto, p.tara_conteiner, p.peso_medido, p.peso_declarado, p.origem_declarado,
+       p.diferenca_pct, p.confirmacao
+FROM ciclodevida_pesagem p JOIN ciclodevida_ciclo_de_vida_importacao c ON c.ID = p.ciclo_de_vida_id
+WHERE p.principal = 1 AND p.diagnostico = 'divergencia' ORDER BY p.data DESC LIMIT 30;
+
+-- 8. balanças: divisão e pesos fora dela (P0: <= 1%)
+SELECT codigoRecinto, divisao, SUM(fora_da_divisao) AS fora, COUNT(*) FROM ciclodevida_pesagem GROUP BY 1, 2;
+
+-- 9. escopo novo: ciclos dos operadores fora de Santos e a situação (depois do passo 5)
+SELECT codigoRecintoDesembarque, situacao, fluxo, COUNT(*) FROM ciclodevida_ciclo_de_vida_importacao
+WHERE codigoRecintoDesembarque IN ('7921303', '4931303', '3111401') GROUP BY 1, 2, 3 ORDER BY 1, 4 DESC;
+```
+
+**C. Tela do NAVI-I** (produção):
+1. janela "Desembarque efetivo" padrão: cards com o selo "Pesagem: …" e o bloco medido x declarado; abrir "Dados
+   brutos" e conferir um card contra a Consulta Contêiner do Fichas;
+2. filtro **Pesagem = Possível fraude**: a contagem bate com a consulta 7 no mesmo período/porto (pelo card);
+3. **Diferença mínima** 50% e **Ordem de grandeza**; os chips e o × de cada chip;
+4. salvar um filtro com os campos de pesagem e reabri-lo; a aba Estatísticas mostra os rótulos novos;
+5. tempo de resposta com o filtro de pesagem (rodapé da tela) — é um acesso indexado por candidato
+   (`ix_pesagem_principal`), deve ficar perto da busca sem ele;
+6. depois do passo 5: cards com destino BRRIO/BRSUA/BRPEC passam a trazer a imagem pelo ciclo (sem a faixa âmbar/
+   laranja do fallback) e a linha do tempo.
+
+### Rollback
+
+- **Pesagens**: `supervisorctl stop ciclo_de_vida_v2` → `DROP TABLE ciclodevida_pesagem;` → `supervisorctl start
+  ciclo_de_vida_v2` (com o serviço RODANDO, sem a tabela, cada lote falharia ao gravar as pesagens). O NAVI-I percebe
+  a falta da tabela em até 10 min e segue sem o bloco.
+- **Escopo fora de Santos**: esvaziar `OPERADORES_FORA_DE_SANTOS` em `carga_ciclo.py`, deploy e restart; os ciclos
+  já criados desses operadores ficam (inofensivos) ou podem ser apagados pelo `codigoRecintoDesembarque`.
