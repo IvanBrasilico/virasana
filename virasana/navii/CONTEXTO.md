@@ -16,6 +16,7 @@ NAVI-I é a tela de **análise de risco na importação** para analistas da Vigi
 | `virasana/navii/views_navii.py` | Blueprint `bp_navii` (`/navii/` e `/navii/api/ces`) |
 | `virasana/templates/navii.html` | Tela (design system gov.br, JS puro, rolagem infinita) |
 | `virasana/navii/diagnostico_sql.py` | Script: SHOW CREATE TABLE + EXPLAIN/ANALYZE das buscas da tela |
+| `virasana/navii/diagnostico_card.py` | Script: "por que o card de um contêiner não aparece" — itens, CE, ciclos, eventos da API, as buscas da tela em vários períodos com o motivo de cada exclusão e o card em JSON (21/10/2026). Lembrete: o extrato do CE busca sem data; o filtro de contêiner continua preso ao período |
 | `virasana/navii/referencias/` | Tabelas locais código→nome (NCM, portos, países, navios) + script que as gera |
 | `virasana/tests/test_navii.py` | Testes unitários (sessão fake) |
 | `virasana/tests/test_navii_referencias.py` | Testes das tabelas de referência e dos geradores |
@@ -255,6 +256,13 @@ Regras e limitações (importantes):
    errada" e "possível fraude" (= divergência relevante). Sem a tabela (DDL não aplicada), o card fica sem o bloco
    e o filtro dá erro claro (`tabelas_opcionais`). Premissa do usuário: sem código por recinto — o dado é o que o
    recinto transmitiu, e o erro dele é cobrado dele. Testes: `test_navii_pesagem.py`; E2E no navegador.
+19. **Atracação prevista sempre à vista** (21/10/2026, pedido do usuário: "fundamental nos bastidores"). O card
+   mostra a data prevista E o porto da escala (`portoAtracacaoPrevista`, de `busca_manifestos_navii`, a mesma
+   escala de antes: a do porto filtrado, a do período se houver), também com desembarque — antes só aparecia sem
+   desembarque/sem ciclo. O extrato do CE lista as escalas do manifesto (`escalas`: escala, porto, prevista,
+   efetiva, navio) e o cabeçalho prefere a escala em `PORTO_ESCALA_PADRAO` (o porto que o ciclo de vida usa para
+   escolher o CE; sem ela, a mais tarde — `extrato_navii.atracacao_do_cabecalho`). Testes:
+   `test_navii_atracacao_prevista.py`; E2E no navegador (demo).
 
 ## Como a busca funciona (desenho atual)
 

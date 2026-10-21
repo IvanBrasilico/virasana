@@ -1307,6 +1307,16 @@
             '<span>' + texto + '</span></div>';
     }
 
+    // Atracação prevista da escala do manifesto (21/10/2026): sempre à vista, com o porto da escala — o ciclo de
+    // vida escolhe o CE do desembarque pela escala em Santos.
+    function montaAtracacaoPrevista(card) {
+        var porto = card.portoAtracacaoPrevista
+            ? '<span class="descricao-bl">escala em ' + escapeHtml(card.portoAtracacaoPrevista) + '</span>' : '';
+        return '<div><span class="rotulo-mini"><i class="fas fa-ship" aria-hidden="true"></i>Atracação prevista</span>' +
+            '<span class="valor-mini">' + (card.dataPrevistaAtracacao ? formatarDataBR(card.dataPrevistaAtracacao) : '--') +
+            porto + '</span></div>';
+    }
+
     function montaEtapaPrevista(card) {
         var p = card.previsaoAtracacao;
         return '<div class="etapa-timeline pendente prevista' + (p && p.situacao === 'vencida' ? ' vencida' : '') + '">' +
@@ -1753,6 +1763,7 @@
                         '<div><span class="rotulo-mini"><i class="fas fa-file-alt" aria-hidden="true"></i>Tipo BL</span><span class="valor-mini">' + escapeHtml(card.tipoBL || '--') +
                             (card.tipoBLDescricao ? '<span class="descricao-bl">' + escapeHtml(card.tipoBLDescricao) + '</span>' : '') + '</span></div>' +
                         (card.manifesto ? '<div><span class="rotulo-mini"><i class="fas fa-clipboard-list" aria-hidden="true"></i>Manifesto</span><span class="valor-mini texto-mono">' + escapeHtml(card.manifesto.numero || '--') + '</span></div>' : '') +
+                        montaAtracacaoPrevista(card) +
                     '</div>' +
 
                     montaTimeline(card) +

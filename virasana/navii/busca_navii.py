@@ -796,6 +796,7 @@ class ResultadoNavii(NamedTuple):
     data_prevista_atracacao: Optional[str]
     familia: Optional[dict] = None   # ver `busca_familias_navii`
     sem_desembarque: Optional[bool] = None   # `_itens_com_desembarque`; None = deduzir do ciclo (extrato)
+    porto_atracacao_prevista: Optional[str] = None   # porto da escala de `data_prevista_atracacao`
 
 
 def busca_ces_navii(
@@ -848,6 +849,7 @@ def busca_ces_navii(
             data_prevista_atracacao=dados_manifesto.get('dataPrevistaAtracacao'),
             familia=familias.get(ce.numeroCEmercante),
             sem_desembarque=item.ID not in com_desembarque,
+            porto_atracacao_prevista=dados_manifesto.get('portoAtracacaoPrevista'),
         ))
     logger.debug(  # o uso da tela vai para o log com o selo NAVII_USO (uso_navii.py)
         f'busca_ces_navii: janela={tipo_janela} filtros={filtros} '
@@ -967,35 +969,46 @@ def busca_manifestos_navii(
 
     Returns:
         {numero: {'manifesto': Manifesto | None, 'embarcacao': str | None,
-                  'dataPrevistaAtracacao': str | None}}
+                  'dataPrevistaAtracacao': str | None, 'portoAtracacaoPrevista': str | None,
+                  'escalas': [{'escala', 'porto', 'prevista', 'efetiva', 'embarcacao'}]}}
         Com mais de uma escala para o mesmo manifesto, usa a de maior data
         prevista de atracação — com `periodo` ('AAAA-MM-DD', 'AAAA-MM-DD'), a maior DENTRO do período, se houver
         (16/10/2026: a maior de todas podia cair fora do período e confundir o card sem desembarque).
+        `portoAtracacaoPrevista` é o porto dessa escala e `escalas`, todas as do manifesto (com `porto`, só as
+        desse(s) porto(s)) em ordem de data prevista — 21/10/2026, pedido do usuário: a data prevista e o porto
+        dela à vista no card e no extrato (o ciclo de vida escolhe o CE pela escala em Santos).
     """
     numeros = {n for n in numeros_manifesto if n}
     if not numeros:
         return {}
-    resultado = {n: {'manifesto': None, 'embarcacao': None, 'dataPrevistaAtracacao': None}
+    resultado = {n: {'manifesto': None, 'embarcacao': None, 'dataPrevistaAtracacao': None,
+                     'portoAtracacaoPrevista': None, 'escalas': []}
                  for n in numeros}
     for manifesto in session.query(Manifesto).filter(Manifesto.numero.in_(numeros)).all():
         resultado[manifesto.numero]['manifesto'] = manifesto
     q_escalas = (
-        session.query(EscalaManifesto.manifesto, Escala.embarcacao, Escala.dataPrevistaAtracacao)
+        session.query(EscalaManifesto.manifesto, Escala.embarcacao, Escala.dataPrevistaAtracacao,
+                      Escala.portoDaEscala, Escala.numeroDaEscala, Escala.dataEfetivaPrimeiraAtracacao)
         .join(Escala, Escala.numeroDaEscala == EscalaManifesto.escala)
         .filter(EscalaManifesto.manifesto.in_(numeros))
     )
     if porto:
         q_escalas = q_escalas.filter(_algum_porto(Escala.portoDaEscala, porto))
     escalas = q_escalas.all()
-    for numero, embarcacao, data_prevista in escalas:
+    for numero, embarcacao, data_prevista, porto_escala, numero_escala, data_efetiva in escalas:
         dados = resultado.get(numero)
         if dados is None:
             continue
+        dados['escalas'].append({'escala': numero_escala, 'porto': porto_escala, 'prevista': data_prevista,
+                                 'efetiva': data_efetiva, 'embarcacao': embarcacao})
         if data_prevista and _prefere_escala(data_prevista, dados['dataPrevistaAtracacao'], periodo):
             dados['dataPrevistaAtracacao'] = data_prevista
+            dados['portoAtracacaoPrevista'] = porto_escala
             dados['embarcacao'] = embarcacao or dados['embarcacao']
         elif not dados['embarcacao']:
             dados['embarcacao'] = embarcacao
+    for dados in resultado.values():
+        dados['escalas'].sort(key=lambda e: (e['prevista'] or '', e['escala'] or ''))
     return resultado
 
 
@@ -1256,6 +1269,7 @@ def monta_card_navii(
     fichas: Optional[List[dict]] = None,
     sem_desembarque: Optional[bool] = None,
     hoje: Optional[date] = None,
+    porto_atracacao_prevista: Optional[str] = None,
 ) -> dict:
     """Monta o dicionário de dados de um card: dados do mercante (inclusive
     vínculo Master/House, manifesto e contêineres/NCMs declarados), a linha do
@@ -1282,6 +1296,9 @@ def monta_card_navii(
     entrou pela atracação prevista. Vem de `_itens_com_desembarque` (o mesmo critério da janela); None = deduzir do
     ciclo. Com `previsaoAtracacao` (`_previsao_atracacao`, relativa a `hoje`), a tela diz se o navio ainda vai
     chegar ou se a previsão já passou sem desembarque informado.
+
+    `porto_atracacao_prevista` (21/10/2026): o porto da escala de `data_prevista_atracacao` — o card mostra a data e
+    o porto sempre, também com desembarque.
     """
     if sem_desembarque is None:
         sem_desembarque = ciclo is None or ciclo.data_desembarque is None
@@ -1332,6 +1349,7 @@ def monta_card_navii(
         'nomeEmbarcacao': referencias.nome_navio(embarcacao),
         'manifesto': dados_manifesto,
         'dataPrevistaAtracacao': data_prevista_atracacao,
+        'portoAtracacaoPrevista': porto_atracacao_prevista,
         'semDesembarque': sem_desembarque,
         'previsaoAtracacao': _previsao_atracacao(data_prevista_atracacao, hoje),
         'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,
@@ -1393,6 +1411,7 @@ def monta_cards_navii(session, resultados: List[ResultadoNavii], hoje: Optional[
                                         familias.get(r.conhecimento.numeroCEmercante, ())),
             sem_desembarque=r.sem_desembarque,
             hoje=hoje,
+            porto_atracacao_prevista=r.porto_atracacao_prevista,
         )
         for r in resultados
     ]

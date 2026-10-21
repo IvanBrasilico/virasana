@@ -157,7 +157,8 @@
             {% endif %}
             <div><span class="rotulo">Navio</span><span class="valor">{{ ce.nomeEmbarcacao or '—' }}
                 {% if ce.embarcacao %}<span class="secundario">IMO {{ ce.embarcacao }}</span>{% endif %}</span></div>
-            <div><span class="rotulo">Atracação prevista</span><span class="valor">{{ data(ce.dataPrevistaAtracacao) }}</span></div>
+            <div><span class="rotulo">Atracação prevista</span><span class="valor">{{ data(ce.dataPrevistaAtracacao) }}
+                {% if ce.portoAtracacaoPrevista %}<span class="secundario">escala em {{ ce.portoAtracacaoPrevista }}</span>{% endif %}</span></div>
             {% if ce.terminalDescarregamento %}
             <div><span class="rotulo">Terminal de descarregamento</span><span class="valor">{{ ce.terminalDescarregamento.nome or ce.terminalDescarregamento.codigo }}</span></div>
             {% endif %}
@@ -166,6 +167,23 @@
         </div>
         {% if ce.descricaoMercadoria %}<p class="descricao-merc">{{ ce.descricaoMercadoria }}</p>{% endif %}
         {% if dados.exportacao %}<p class="aviso mt-2 mb-0">CE de exportação: o NAVI-I não lista os contêineres dele.</p>{% endif %}
+    </section>
+
+    <section class="painel" aria-labelledby="t-escalas">
+        <h2 id="t-escalas">Escalas do manifesto <span class="contagem">{{ ce.escalas | length }}</span></h2>
+        {% if ce.escalas %}
+        <div class="rolavel"><table class="dados">
+            <thead><tr><th>Escala</th><th>Porto</th><th>Atracação prevista</th><th>Atracação efetiva</th><th>Navio</th></tr></thead>
+            <tbody>
+            {% for e in ce.escalas %}
+            <tr><td class="mono">{{ e.escala }}</td><td>{{ e.porto or '—' }}</td><td>{{ data(e.prevista) }}</td>
+                <td>{{ data(e.efetiva) }}</td><td class="mono">{{ e.embarcacao or '—' }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        <p class="nota">O ciclo de vida usa a atracação prevista das escalas em Santos (BRSSZ) para escolher o CE de
+            cada desembarque.</p>
+        {% else %}<p class="vazio mb-0">Nenhuma escala no Mercante para o manifesto deste CE.</p>{% endif %}
     </section>
 
     {% set resumo = dados.resumo %}

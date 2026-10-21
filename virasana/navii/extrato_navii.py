@@ -24,8 +24,8 @@ from sqlalchemy import bindparam, text
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
 from virasana.navii import tabelas_opcionais
 from virasana.navii.busca_navii import (
-    TIPO_TRAFEGO_EXPORTACAO, ResultadoNavii, busca_ces_navii, busca_familias_navii, busca_manifestos_navii,
-    busca_nomes_recintos, monta_cards_navii,
+    PORTO_ESCALA_PADRAO, TIPO_TRAFEGO_EXPORTACAO, ResultadoNavii, busca_ces_navii, busca_familias_navii,
+    busca_manifestos_navii, busca_nomes_recintos, monta_cards_navii,
 )
 
 LIMITE_CONTEINERES = 300
@@ -147,14 +147,28 @@ def eventos_api_recintos(session, cards: List[dict]) -> Dict[str, List[dict]]:
     return dict(eventos)
 
 
+def atracacao_do_cabecalho(manifesto: dict) -> Tuple[Optional[str], Optional[str]]:
+    """(data prevista, porto) do cabeçalho do extrato: a escala no porto padrão da tela (PORTO_ESCALA_PADRAO, o mesmo
+    porto que o ciclo de vida usa) — a de maior data, se houver mais de uma; sem ela, a maior de todas."""
+    no_porto = [e for e in manifesto.get('escalas', []) if e['porto'] == PORTO_ESCALA_PADRAO and e['prevista']]
+    if no_porto:
+        return max(e['prevista'] for e in no_porto), PORTO_ESCALA_PADRAO
+    return manifesto.get('dataPrevistaAtracacao'), manifesto.get('portoAtracacaoPrevista')
+
+
 def _cabecalho(session, conhecimento: Conhecimento) -> dict:
-    """O card do CE sem contêiner: Mercante, família, navio, risco, CORAD, DTA e Fichas."""
+    """O card do CE sem contêiner: Mercante, família, navio, risco, CORAD, DTA e Fichas; e as escalas do manifesto
+    (porto, atracação prevista e efetiva — 21/10/2026)."""
     manifesto = busca_manifestos_navii(session, [conhecimento.manifestoCE]).get(conhecimento.manifestoCE, {})
     familia = busca_familias_navii(session, [conhecimento]).get(conhecimento.numeroCEmercante)
+    data_prevista, porto = atracacao_do_cabecalho(manifesto)
     resultado = ResultadoNavii(item=None, conhecimento=conhecimento, ciclo=None,
                                manifesto=manifesto.get('manifesto'), embarcacao=manifesto.get('embarcacao'),
-                               data_prevista_atracacao=manifesto.get('dataPrevistaAtracacao'), familia=familia)
-    return monta_cards_navii(session, [resultado])[0]
+                               data_prevista_atracacao=data_prevista, familia=familia,
+                               porto_atracacao_prevista=porto)
+    cabecalho = monta_cards_navii(session, [resultado])[0]
+    cabecalho['escalas'] = manifesto.get('escalas', [])
+    return cabecalho
 
 
 def _resumo(cabecalho: dict, conteineres: List[dict]) -> dict:

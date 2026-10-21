@@ -511,7 +511,8 @@ class TestEnriquecimento(NaviiSqliteTestCase):
 
     def test_manifesto_inexistente(self):
         dados = busca_manifestos_navii(self.session, ['M9'])['M9']
-        self.assertEqual(dados, {'manifesto': None, 'embarcacao': None, 'dataPrevistaAtracacao': None})
+        self.assertEqual(dados, {'manifesto': None, 'embarcacao': None, 'dataPrevistaAtracacao': None,
+                                 'portoAtracacaoPrevista': None, 'escalas': []})
 
     def test_nomes_recintos_por_cod_carga(self):
         self.assertEqual(busca_nomes_recintos(self.session, ['T01', 'XX'], campo='cod_carga'), {'T01': 'BTP'})

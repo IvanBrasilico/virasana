@@ -1331,3 +1331,32 @@ WHERE codigoRecintoDesembarque IN ('7921303', '4931303', '3111401') GROUP BY 1, 
   a falta da tabela em até 10 min e segue sem o bloco.
 - **Escopo fora de Santos**: esvaziar `OPERADORES_FORA_DE_SANTOS` em `carga_ciclo.py`, deploy e restart; os ciclos
   já criados desses operadores ficam (inofensivos) ou podem ser apagados pelo `codigoRecintoDesembarque`.
+
+## Caso CAAU5545018: CE de cabotagem saindo de Santos no ciclo do desembarque (21/10/2026, EM ANÁLISE)
+
+Relato do usuário: o desembarque de 07/10/2026 do CAAU5545018 ficou com o CE 072603341989805, de **cabotagem com
+origem BRSSZ** (um embarque em Santos), quando deveria ser o CE 152605316468892 (importação), que tem dois contêineres
+— o outro, FANU1174955, ficou com o CE certo.
+
+**Ferramenta** — `caso_ciclo.py` (só leitura no banco): extrai tudo o que o ciclo de vida lê para os CEs e contêineres
+(Mercante com masters/filhotes/declarados, manifestos e escalas, contêineres vazios, eventos da API sem CPF/nome e
+com as placas trocadas por apelidos, recintos e o ciclo GRAVADO) para um JSON; reprocessa num SQLite em memória com o
+código atual, explicando por desembarque os eventos ligados, os candidatos (tráfego, origem/destino, manifesto e o
+porto de carregamento dele, datas das escalas e distância, se o manifesto é da escala declarada no desembarque), os
+CEs declarados, a escolha e o motivo; e compara o serviço com o gravado. O JSON vira o teste de regressão
+(`virasana/tests/dados/`).
+
+```
+C=virasana/analytic_scripts/ciclo_de_vida/caso_ciclo.py
+virasana-venv/bin/python $C --ces 072603341989805 152605316468892 --desde 2026-08-01 --saida caso_caau.log     --json caso_caau.json
+```
+
+**Hipótese** (a confirmar com o caso real) — em `resolve_ces` só a exportação (tráfego 7) é descartada; a cabotagem
+que SAI de Santos tem escala em Santos (a de carregamento) perto do desembarque e entra como família plausível. Se o
+EMBARQUE da cabotagem (dias depois, no mesmo operador) fica ligado ao ciclo e declara o CE dela, "o CE declarado
+desempatou" e ela vence com confiança ALTA — o cenário sintético de `test_caso_ciclo.py` reproduz exatamente isso.
+Sem declaração, venceria a escala mais próxima (confiança baixa). Correções genéricas candidatas (sem código por
+recinto): descartar o CE cuja origem da carga (ou o porto de carregamento do manifesto) é o porto do desembarque; e/ou
+preferir o candidato cujo manifesto é da escala declarada no desembarque; e não deixar o CE declarado no EMBARQUE
+desempatar a família do DESEMBARQUE.
+
