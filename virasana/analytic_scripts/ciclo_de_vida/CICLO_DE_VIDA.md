@@ -1431,3 +1431,51 @@ nohup virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/servico_c
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_porto_desembarque.py --dias 7 \
     --saida porto_desembarque2.log --csv porto_desembarque2.csv
 ```
+
+**Sombras da correção (sombra_porto*.log/csv, 22/10/2026, desembarques de 22/09 a 22/10)**:
+- Santos + fora (5.000 contêineres, 5.135 ciclos): CE igual 3.442, nenhum 1.661; MUDOU em 32 (0,6%) — novo 23 (CE de
+  passagem ou de importação de outra unidade, antes não achado: manifesto sem escala/escala do porto), perdido 5 (o
+  gravado era a cabotagem que SAI do porto depois — a classe do CAAU; contêiner vazio no Mercante), diferente 3 (Pecém:
+  duas famílias de importação com escala próxima, confiança baixa), perna seguinte 1;
+- fora de Santos (3.000 contêineres, 3.047 ciclos): mudou em 26 (0,9%) — novo 19, diferente 4 (Pecém), perna seguinte
+  2, perdido 1;
+- fluxo: 9 indefinido -> operador (o prazo do trânsito passou desde a gravação) e 7 passagem -> incompleto (o embarque
+  declara um CE de EXPORTAÇÃO de outra unidade, que entrou no Mercante depois da gravação) — nenhum dos dois vem da
+  correção, mas o segundo é um limite a estudar (baldeação com CE de exportação na perna seguinte);
+- sinal para a próxima regra: vários CEs "novos" de passagem têm a escala declarada no desembarque que NÃO confere com
+  o manifesto do CE (pode ser a perna seguinte) — a escala declarada como evidência (C5) fica para os casos reais.
+
+## Casos reais de regressão (22/10/2026)
+
+Pedido do usuário: o ciclo de vida tem lógica complexa e o dado tem problema de qualidade — testes com dados reais
+(anonimizados: sem CPF, CNPJ ou nome) ou sintéticos com as regras mais sólidas, para não haver regressão. Avaliação e
+desenho, em três camadas:
+
+1. **Corpus de casos reais com gabarito** (`virasana/tests/test_casos_reais_ciclo.py`): cada caso é um JSON extraído
+   por `caso_ciclo.py` (só as colunas que o ciclo lê) em `virasana/tests/dados/casos_ciclo/`, com o gabarito por
+   desembarque (CE principal, fluxo, situação e, quando importa, a confiança) e o PORQUÊ do caso. O gabarito é revisado
+   pelo usuário a partir do `.log` do caso (a explicação de cada escolha). Defeito conhecido entra como `pendente`: o
+   gabarito é o certo e o teste exige que o código ainda erre — ao corrigir, o teste manda tirar o `pendente`. O teste
+   também falha se houver JSON extraído fora do gabarito. Primeiro caso: CAAU5545018. Lista a extrair:
+   `dados/casos_ciclo/casos.txt` (25 casos, 39 contêineres, escolhidos nas sombras: o que a correção mudou e uma regra
+   estável por fluxo e por tratamento de dado ruim). Tamanho: ~50 kB por caso.
+2. **Invariantes** (`invariantes_ciclo.py`): o que vale para QUALQUER ciclo, com dado bom ou ruim — principal nunca de
+   exportação nem saindo do porto do desembarque, sempre com o contêiner nos itens e na família; família/confiança
+   coerentes; etapas em ordem; TRA concluído com a saída do seco, passagem/baldeação com o embarque. Verificadas em
+   todos os ciclos de todos os casos (inclusive os sem gabarito) — são as "regras mais sólidas" e não dependem de
+   revisão. Os cenários sintéticos do serviço não violam nenhuma.
+3. **Auditoria da produção** (`audita_ciclos.py`, só leitura): as mesmas invariantes nos ciclos gravados de um período;
+   cada violação é um candidato natural a caso do corpus (o ciclo de melhoria: auditoria -> caso real -> correção ->
+   gabarito). Os sintéticos continuam onde já estão (`test_linha_do_tempo`, `test_ces_porto_desembarque`...): uma regra
+   por teste, legível; gerar sintéticos aleatórios (fuzz) com as invariantes fica como possibilidade futura.
+
+```
+cd /home/ajna/apps/ajna/virasana
+C=virasana/analytic_scripts/ciclo_de_vida/caso_ciclo.py
+# os casos da lista: um JSON e um .log por caso em casos_ciclo/
+virasana-venv/bin/python $C --casos virasana/tests/dados/casos_ciclo/casos.txt --desde 2026-08-01 --pasta casos_ciclo
+# auditoria das invariantes nos ciclos gravados (depois do refaz)
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py --dias 30 \
+    --saida auditoria_ciclos.log --csv auditoria_ciclos.csv
+```
+

@@ -24,8 +24,14 @@ Reprocesso (logo depois da extração, ou só ele com --reprocessa caso.json): c
   2. roda o serviço (`Servico.processa`, relógio na hora da extração) e compara o CE principal de cada desembarque
      com o gravado.
 
+Lote (--casos, 22/10/2026): um caso por linha do arquivo ("nome contêiner [contêiner ...]  # por quê"), cada um
+gravado em --pasta como <nome>.json e <nome>.log — o corpus de casos reais dos testes de regressão
+(`virasana/tests/dados/casos_ciclo/`, `test_casos_reais_ciclo.py`).
+
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     C=virasana/analytic_scripts/ciclo_de_vida/caso_ciclo.py
+    virasana-venv/bin/python $C --casos virasana/tests/dados/casos_ciclo/casos.txt --desde 2026-08-01 \
+        --pasta casos_ciclo
     virasana-venv/bin/python $C --ces 072603341989805 152605316468892 --desde 2026-08-01 --saida caso_caau.log \\
         --json caso_caau.json
     virasana-venv/bin/python $C --reprocessa caso_caau.json --saida reprocesso_caau.log
@@ -36,7 +42,7 @@ import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -482,27 +488,46 @@ class Reprocesso:
                 f'{", ".join(marcas)}')
 
 
+def _com_familia(ciclos: List[dict], ces: List[dict]) -> Dict[int, dict]:
+    """{desembarque: linha do ciclo + 'familia' (CEs gravados do ciclo, em ordem)}."""
+    return {ciclo['desembarque_id']: {**ciclo, 'familia': sorted(
+        c['numeroCEmercante'] for c in ces if c['ciclo_de_vida_id'] == ciclo['ID'])} for ciclo in ciclos}
+
+
+def _resumo(ciclo: dict) -> dict:
+    return {'conteiner': ciclo['numeroConteiner'], 'principal': ciclo['numeroCEmercante'],
+            'confianca': ciclo['confianca_ce'], 'situacao': ciclo['situacao'], 'fluxo': ciclo['fluxo'],
+            'familia': ciclo['familia']}
+
+
 def _principais_gravados(gravado: dict) -> Dict[int, dict]:
-    ciclos = {c['ID']: c for c in gravado['ciclos']}
-    resultado = {}
-    for ciclo in ciclos.values():
-        familia = sorted(c['numeroCEmercante'] for c in gravado['ces'] if c['ciclo_de_vida_id'] == ciclo['ID'])
-        resultado[ciclo['desembarque_id']] = {'conteiner': ciclo['numeroConteiner'], 'principal':
-                                              ciclo['numeroCEmercante'], 'confianca': ciclo['confianca_ce'],
-                                              'situacao': ciclo['situacao'], 'familia': familia}
-    return resultado
+    return {d: _resumo(c) for d, c in _com_familia(gravado['ciclos'], gravado['ces']).items()}
 
 
-def compara_com_o_servico(engine, caso: dict, saida: Saida) -> Dict[int, dict]:
-    """Roda o serviço no SQLite do caso e compara o CE principal de cada desembarque com o gravado."""
+def ciclos_do_servico(engine, caso: dict) -> Dict[int, dict]:
+    """Roda o serviço (código atual, relógio na hora da extração) no SQLite do caso e devolve os ciclos gravados
+    por ele: {desembarque: linha de `ciclodevida_ciclo_de_vida_importacao` + 'familia'}."""
     from virasana.analytic_scripts.ciclo_de_vida.servico_ciclo_de_vida import Servico
     meta = caso['meta']
     agora = _data(meta['agora'])
     Servico(engine, relogio=lambda: agora).processa(meta['conteineres'], desde=_data(meta['desde']))
     with engine.connect() as conexao:
-        novos = _principais_gravados({
-            'ciclos': [dict(linha._mapping) for linha in conexao.execute(select(gc.CICLOS))],
-            'ces': [dict(linha._mapping) for linha in conexao.execute(select(gc.CICLO_CE))]})
+        return _com_familia([dict(linha._mapping) for linha in conexao.execute(select(gc.CICLOS))],
+                            [dict(linha._mapping) for linha in conexao.execute(select(gc.CICLO_CE))])
+
+
+def portos_do_caso(engine, caso: dict) -> Dict[int, Optional[str]]:
+    """{desembarque: porto} como o serviço calcula (`CargaCiclo.portos_dos_desembarques`)."""
+    meta = caso['meta']
+    with engine.connect() as conexao:
+        carga = CargaCiclo(ConsultaSQL(conexao), _data(meta['desde']), _data(meta['agora']))
+        carga.eventos(meta['conteineres'])
+        return carga.portos_dos_desembarques()
+
+
+def compara_com_o_servico(engine, caso: dict, saida: Saida) -> Dict[int, dict]:
+    """Roda o serviço no SQLite do caso e compara o CE principal de cada desembarque com o gravado."""
+    novos = {d: _resumo(c) for d, c in ciclos_do_servico(engine, caso).items()}
     gravados = _principais_gravados(caso['gravado'])
     saida.titulo('5. Serviço (código atual) x gravado')
     for desembarque in sorted(set(novos) | set(gravados)):
@@ -532,34 +557,80 @@ def _argumentos(argv=None):
     parser.add_argument('--conteineres', nargs='*', default=[], help='contêineres do caso (além dos itens dos CEs)')
     parser.add_argument('--desde', help=f'eventos desde (AAAA-MM-DD; padrão: {DIAS_PADRAO} dias atrás)')
     parser.add_argument('--reprocessa', help='só reprocessa um caso já extraído (JSON)')
+    parser.add_argument('--casos', help='lote: arquivo com um caso por linha ("nome contêiner [contêiner ...]")')
+    parser.add_argument('--pasta', default='casos_ciclo', help='pasta dos casos do lote (padrão: casos_ciclo)')
     parser.add_argument('--json', help='grava o caso extraído neste arquivo (padrão: caso_ciclo.json)')
     parser.add_argument('--apelida-placas', action='store_true', help='troca as placas por apelidos estáveis')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
     parser.add_argument('--homologacao', action='store_true', help='usa o banco de homologação (SQL_URI_HOM)')
     args = parser.parse_args(argv)
-    if not (args.reprocessa or args.ces or args.conteineres):
-        parser.error('informe --ces e/ou --conteineres, ou --reprocessa')
+    if not (args.reprocessa or args.casos or args.ces or args.conteineres):
+        parser.error('informe --ces e/ou --conteineres, --casos ou --reprocessa')
     return args
 
 
-def _extrai(args) -> dict:  # pragma: no cover - depende do banco real
+def le_casos(linhas) -> List[Tuple[str, List[str]]]:
+    """[(nome, contêineres)] das linhas "nome contêiner [contêiner ...]  # comentário" (vazias e só comentário
+    ficam de fora)."""
+    casos = []
+    for linha in linhas:
+        partes = linha.split('#', 1)[0].split()
+        if len(partes) >= 2:
+            casos.append((partes[0], [p.upper() for p in partes[1:]]))
+        elif partes:
+            raise ValueError(f'caso sem contêiner: {linha.strip()!r}')
+    return casos
+
+
+def _desde(args) -> datetime:
+    return datetime.strptime(args.desde, '%Y-%m-%d') if args.desde else datetime.now() - timedelta(days=DIAS_PADRAO)
+
+
+def _engine_de_extracao(args):  # pragma: no cover - depende do banco real
     from virasana.analytic_scripts.ciclo_de_vida.servico_ciclo_de_vida import uri_do_banco
     from virasana.navii.mercante_por_id import limita_tempo
     engine = create_engine(uri_do_banco(args))
     limita_tempo(engine, LIMITE_SEGUNDOS)
-    desde = datetime.strptime(args.desde, '%Y-%m-%d') if args.desde else datetime.now() - timedelta(days=DIAS_PADRAO)
-    with engine.connect() as conexao:
-        caso = extrai_caso(conexao, args.ces, args.conteineres, desde, apelidar_placas=args.apelida_placas)
-    caminho = args.json or 'caso_ciclo.json'
-    with open(caminho, 'w', encoding='utf-8') as arquivo:
+    return engine
+
+
+def _grava(caso: dict, caminho_json: str, caminho_log: Optional[str] = None):
+    with open(caminho_json, 'w', encoding='utf-8') as arquivo:
         json.dump(caso, arquivo, ensure_ascii=False, indent=1)
+    if caminho_log:
+        with open(caminho_log, 'w', encoding='utf-8') as arquivo:
+            reprocessa(caso, Saida(arquivo))
+
+
+def extrai_lote(args):  # pragma: no cover - depende do banco real
+    """Um JSON e um log por caso do arquivo --casos, na --pasta."""
+    import os
+    with open(args.casos, encoding='utf-8') as arquivo:
+        casos = le_casos(arquivo)
+    os.makedirs(args.pasta, exist_ok=True)
+    with _engine_de_extracao(args).connect() as conexao:
+        for nome, conteineres in casos:
+            caso = extrai_caso(conexao, [], conteineres, _desde(args), apelidar_placas=args.apelida_placas)
+            base = os.path.join(args.pasta, nome)
+            _grava(caso, base + '.json', base + '.log')
+            print(f'{nome}: {len(caso["gravado"]["ciclos"])} ciclo(s) gravado(s) -> {base}.json')
+
+
+def _extrai(args) -> dict:  # pragma: no cover - depende do banco real
+    with _engine_de_extracao(args).connect() as conexao:
+        caso = extrai_caso(conexao, args.ces, args.conteineres, _desde(args), apelidar_placas=args.apelida_placas)
+    caminho = args.json or 'caso_ciclo.json'
+    _grava(caso, caminho)
     print(f'Caso gravado em {caminho}')
     return caso
 
 
 def main(argv=None):  # pragma: no cover - depende do banco real
     args = _argumentos(argv)
+    if args.casos:
+        extrai_lote(args)
+        return
     if args.reprocessa:
         with open(args.reprocessa, encoding='utf-8') as arquivo:
             caso = json.load(arquivo)

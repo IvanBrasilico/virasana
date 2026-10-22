@@ -60,6 +60,8 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_acesso_pela_placa.py',
     'virasana/analytic_scripts/ciclo_de_vida/caso_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_porto_desembarque.py',
+    'virasana/analytic_scripts/ciclo_de_vida/invariantes_ciclo.py',
+    'virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py',
     'virasana/navii/pesagem_navii.py',
 ]
 
@@ -122,6 +124,8 @@ TESTES = [
     'virasana/tests/test_diagnostico_porto_desembarque.py',
     'virasana/tests/test_caso_ciclo_caau.py',
     'virasana/tests/test_ces_porto_desembarque.py',
+    'virasana/tests/test_casos_reais_ciclo.py',
+    'virasana/tests/test_audita_ciclos.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',
