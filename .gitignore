@@ -46,6 +46,9 @@ htmlcov/
 .tox/
 .coverage
 .coverage.*
+# qualidade_navii.py: cobertura por teste e mapa dos testes por arquivo (para o --alterados)
+.cobertura_gate
+.mapa_testes_gate.json
 .cache
 nosetests.xml
 coverage.xml

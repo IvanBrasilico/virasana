@@ -80,8 +80,9 @@ python -m pytest --cov=virasana virasana/tests
 A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
 
 ```bash
-python qualidade_navii.py            # testes + flake8 + bandit + radon dos módulos novos
-python qualidade_navii.py --rapido   # só as verificações estáticas
+python qualidade_navii.py              # o gate inteiro: testes + flake8 + bandit + radon dos módulos novos
+python qualidade_navii.py --rapido     # só as verificações estáticas
+python qualidade_navii.py --alterados  # só os testes afetados pelos arquivos alterados (git) e a estática deles
 ```
 
 `qualidade_navii.py` (ou `tox -e navii`) tem a lista dos módulos e testes novos: **módulo ou teste novo entra
@@ -90,6 +91,33 @@ lá**. Regras: flake8 com 120 colunas, aspas (`'` simples; `"""` em texto multil
 na linha de cima — palavras depois do `nosec` viram ruído no bandit); radon sem nota D ou pior. Mongo nos
 testes: `mongomock` (extras `dev`). Cada arquivo de teste tem de passar também rodando sozinho.
 
+**Durante o desenvolvimento, só os testes necessários** (pedido do usuário, 22/10/2026): numa mudança
+localizada, rodar `python qualidade_navii.py --alterados` (ou só os arquivos de teste da área) em vez do gate
+inteiro. Afetados por um `.py`: os testes que executaram o arquivo na última rodada inteira (mapa gravado pelo
+pytest-cov em `.mapa_testes_gate.json`) mais os que o importam direto; sem o mapa, todos que o importam direta
+ou indiretamente (bem mais largo: `busca_navii` importa o núcleo do ciclo de vida). Template, dado ou estático
+vale pelos `.py` que citam o nome dele. Ao terminar, **dizer o que rodou e oferecer** o gate inteiro
+(`python qualidade_navii.py`) — não rodar sem o usuário aceitar, salvo mudança ampla ou em código compartilhado.
+Antes do deploy, o gate inteiro.
+
+**No servidor (Linux, homologação), à mão** — ambiente isolado do tox, sem tocar no `virasana-venv` da produção;
+precisa de acesso ao PyPI (o tox repassa `HTTP(S)_PROXY`/`PIP_*`) e dos irmãos `../ajna_docs/commons` e
+`../bhadrasana2`, onde a produção já os procura:
+
+```bash
+virasana-venv/bin/python -m venv ../tox-venv
+../tox-venv/bin/pip install tox
+../tox-venv/bin/tox -e navii
+../tox-venv/bin/tox -e navii -- --alterados --desde ORIG_HEAD
+```
+
+(as duas primeiras, uma vez só — o `tox-venv` sai do Python do `virasana-venv`, então o ambiente do gate usa a
+mesma versão da produção; a última roda só o afetado pelo último `git pull`). O `tox -e navii` instala só
+`requirements-gate.txt` — o que o gate importa, nas versões em que ele passa (Python 3.9, as centrais iguais às
+do `setup.py`), dependências indiretas incluídas; pacote novo importado pelo gate entra lá. Não repassa
+`SQL_URI`/`MONGODB_URI`: os testes ficam no SQLite em memória e no mongomock. Os ambientes `py39`/`check` do
+tox são do código legado (a suíte inteira falha por motivos antigos).
+
 ## Restrição principal: não arriscar produção
 
 Mesma política do [bhadrasana2](../bhadrasana2/CLAUDE.md):
@@ -97,9 +125,10 @@ Mesma política do [bhadrasana2](../bhadrasana2/CLAUDE.md):
 - Mudanças aditivas e isoladas (nova rota/blueprint próprio) em vez de refatorações do que já está em produção.
 - Cuidado redobrado com `virasana/workers/` (Celery) e `virasana/scripts/` usados em cron/periodic — quebrar um desses pode parar processamento assíncrono sem erro visível na hora.
 - Não fazer upgrade de dependências centrais (Flask, SQLAlchemy, OpenCV) como efeito colateral de outra tarefa.
-- Rodar a suíte de testes relevante antes de considerar uma mudança pronta.
+- Rodar os testes relevantes antes de considerar uma mudança pronta e oferecer o gate inteiro (ver "Como rodar os
+  testes").
 - Mudanças em modelos compartilhados com bhadrasana2 (ex.: `mercantealchemy`) são de maior risco — confirmar com o usuário antes.
 
 ## Como trabalhar neste repo (workflow)
 
-Mesmo workflow do bhadrasana2: plano antes de mudanças não-triviais ou que toquem código compartilhado; novas funcionalidades isoladas em blueprint próprio; testes antes de dar por concluído.
+Mesmo workflow do bhadrasana2: plano antes de mudanças não-triviais ou que toquem código compartilhado; novas funcionalidades isoladas em blueprint próprio; testes antes de dar por concluído — só os necessários (`--alterados`), dizendo o que rodou e oferecendo o gate inteiro.
