@@ -118,6 +118,11 @@ do `setup.py`), dependências indiretas incluídas; pacote novo importado pelo g
 `SQL_URI`/`MONGODB_URI`: os testes ficam no SQLite em memória e no mongomock. Os ambientes `py39`/`check` do
 tox são do código legado (a suíte inteira falha por motivos antigos).
 
+## Backlog
+
+[BACKLOG.md](BACKLOG.md) junta as pendências do NAVI-I, do ciclo de vida, do risco histórico e da busca por texto,
+priorizadas (P0–P3), com a decisão que falta em cada uma. Ao fechar um item, mover para "Feito" com a data.
+
 ## Restrição principal: não arriscar produção
 
 Mesma política do [bhadrasana2](../bhadrasana2/CLAUDE.md):

@@ -1184,4 +1184,8 @@ Limitações conhecidas e aceitas por enquanto:
    (`PORTO_ESCALA_PADRAO`); `ovr_recintos` já tem `cod_unidade`/`sigla_unidade`/`id_equipe`, e os
    usuários ficam em `ovr_usuarios`/`ovr_setores` (bhadrasana2).
 3. Medir com `--analyze` e decidir índices. (Não limitar o ciclo aos recintos da unidade: decisão 9.)
-4. Backlog antigo: filtros em linguagem natural; filtros subjetivos por empresa/sócios.
+4. Backlog antigo: ~~filtros em linguagem natural~~ — feito como Busca por texto (Meilisearch, 19/10/2026);
+   filtros subjetivos por empresa/sócios (sem fonte de dados).
+
+**Backlog priorizado** (22/10/2026): `BACKLOG.md`, na raiz do repositório virasana — junta estas pendências, as do
+ciclo de vida e as do risco histórico, com a decisão que falta em cada uma.

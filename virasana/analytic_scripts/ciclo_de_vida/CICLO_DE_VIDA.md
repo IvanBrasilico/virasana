@@ -1539,3 +1539,11 @@ Suape tem a família com os 75 CEs. Mutantes: 10/10.
 **Ativação**: sombra (Santos e fora) -> deploy (virasana) e restart do `ciclo_de_vida_v2` e do gunicorn (NAVI-I) ->
 refaz desde 2026-09-22 -> auditoria de novo (esperado: as 154 somem; os 17 viram aberto ou acham a saída do seco).
 
+**Refaz e 2ª auditoria (22/10/2026)**: o `--refaz-desde 2026-09-22` rodou da estação de trabalho e perdeu a rede —
+24 de 41 partes com erro (parte 3: conexão reiniciada às 16:22; partes 19 a 41: rede inacessível às 17:27); só 85 mil
+dos 202.692 contêineres refeitos. Como o refaz vai do desembarque mais recente para o mais antigo, as partes 19–41 são
+os desembarques de 22/09 a ~09/10. A 2ª auditoria (`auditoria_ciclos2.log`, 204.180 ciclos v2) achou 118 ciclos com violação
+(113 "carga saindo do porto" e 9 "TRA sem a saída do seco"; 4 com as duas), **todos** entre 22/09 18:10 e 09/10 03:58 — as partes
+que falharam; nenhuma depois. Refazer essa janela no servidor e auditar de novo (esperado: 0). Robustez do refaz
+(repetir a parte, listar as que falharam com o comando para refazer) e health check: `BACKLOG.md` (raiz do virasana).
+
