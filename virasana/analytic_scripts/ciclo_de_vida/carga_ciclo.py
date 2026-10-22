@@ -18,7 +18,7 @@ from sqlalchemy import bindparam, text
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (
-    JANELA_ESCALA_DIAS, CandidatoCE, CEsResolvidos, normaliza_ce,
+    JANELA_ESCALA_DIAS, CandidatoCE, CEsResolvidos, datas_no_porto, normaliza_ce,
 )
 
 UNIDADE_SANTOS = '0817800'
@@ -90,6 +90,14 @@ def pesagem_de(linha) -> dict:
             'placa': (_texto(placa) or '').upper(), 'semirreboque': (_texto(semirreboque) or '').upper(),
             'peso': _numero(peso), 'tara_conjunto': _numero(tara_conjunto),
             'captura': None if captura is None else bool(captura)}
+
+
+def _dia(valor) -> Optional[date]:
+    """Data 'AAAA-MM-DD' (texto do Mercante) ou None."""
+    try:
+        return datetime.strptime(str(valor)[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 def _unidade(valor) -> str:
@@ -188,7 +196,7 @@ class CargaCiclo:
             tipo_evento = tipo_movimento(tipo, recinto, self.trocados)
             eventos[cont].append(ldt.Evento(tipo_evento, id_, _dt(data), recinto, None, normaliza_ce(ce)))
             self.desembarques[id_] = {'peso': peso, 'tara': tara, 'manifesto': manifesto,
-                                      'tipo': _texto(tipo_cont), 'escala': _texto(escala)}
+                                      'tipo': _texto(tipo_cont), 'escala': _texto(escala), 'recinto': recinto}
             self._tipo(cont, tipo_cont)
             portuarios.add(recinto)
         for id_, cont, data, recinto, direcao, vazio, ce, tipo_cont in self.diag._por_lotes(
@@ -226,6 +234,22 @@ class CargaCiclo:
             return tipo
         return self.tipos[conteiner].most_common(1)[0][0] if self.tipos.get(conteiner) else None
 
+    def portos_dos_desembarques(self) -> Dict[int, Optional[str]]:
+        """{id do desembarque/embarque carregado: porto} — o da escala declarada no evento (escalasresumo); sem ela,
+        o porto mais visto nas escalas dos outros eventos do mesmo recinto no lote. Medição de 22/10/2026
+        (`diagnostico_porto_desembarque.py`, 145 mil eventos, 16 recintos): o porto da escala declarada é 100%
+        constante por recinto; o `ovr_recintos.cod_carga` está vazio em todos."""
+        porto_da_escala = {_texto(escala): _texto(porto) for escala, porto in self.diag._por_lotes(
+            'SELECT numeroDaEscala, portoDaEscala FROM escalasresumo WHERE numeroDaEscala IN :escalas', 'escalas',
+            {d['escala'] for d in self.desembarques.values() if d['escala']})}
+        por_recinto: Dict[str, Counter] = defaultdict(Counter)
+        for dados in self.desembarques.values():
+            if porto_da_escala.get(dados['escala']):
+                por_recinto[dados['recinto']][porto_da_escala[dados['escala']]] += 1
+        do_recinto = {recinto: contagem.most_common(1)[0][0] for recinto, contagem in por_recinto.items()}
+        return {id_: porto_da_escala.get(dados['escala']) or do_recinto.get(dados['recinto'])
+                for id_, dados in self.desembarques.items()}
+
     def manifestos_das_escalas(self, escalas) -> Dict[str, Set[str]]:
         """{escala: manifestos} (escalamanifestoresumo) — para conferir a escala declarada no desembarque."""
         resultado = defaultdict(set)
@@ -240,26 +264,32 @@ class CargaCiclo:
         por_conteiner = self._ces_dos_itens(conteineres)
         ces = {ce for lista in por_conteiner.values() for ce in lista}
         self.info_de(ces)
-        escalas = self._escalas({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
+        escalas = self.escalas_com_porto({self.info[ce]['manifesto'] for ce in ces if ce in self.info} - {None})
         irmaos = self._irmaos({self.info[ce]['master'] for ce in ces if ce in self.info} | ces)
         resultado = {}
         for cont, lista in por_conteiner.items():
-            proprios = [CandidatoCE(ce, self.info[ce]['master'], self.info[ce]['trafego'],
-                                    tuple(escalas.get(self.info[ce]['manifesto'], ())))
+            proprios = [self._candidato(ce, escalas.get(self.info[ce]['manifesto'], []))
                         for ce in sorted(lista) if ce in self.info]
             resultado[cont] = proprios + irmaos_de(proprios, irmaos)
         self.estatisticas['irmãos sem o contêiner (família)'] = sum(
             1 for lista in resultado.values() for c in lista if not c.tem_conteiner)
         return resultado
 
+    def _candidato(self, ce: str, escalas: List[Tuple[date, str]]) -> CandidatoCE:
+        info = self.info[ce]
+        return CandidatoCE(ce, info['master'], info['trafego'], tuple(datas_no_porto(escalas)), escalas=tuple(escalas),
+                           origem=info['origem'], destino=info['porto_destino'])
+
     def info_de(self, ces):
-        """Carrega master, tráfego, manifesto e porto de destino dos CEs que ainda não estão em `self.info`."""
-        for ce, master, trafego, manifesto, destino in self.diag._por_lotes(
-                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego, manifestoCE, portoDestFinal '
+        """Carrega master, tráfego, manifesto e portos de origem e de destino dos CEs que ainda não estão em
+        `self.info`."""
+        for ce, master, trafego, manifesto, destino, origem in self.diag._por_lotes(
+                'SELECT numeroCEmercante, numeroCEMaster, tipoTrafego, manifestoCE, portoDestFinal, portoOrigemCarga '
                 'FROM conhecimentosresumo WHERE numeroCEmercante IN :ces', 'ces',
                 {ce for ce in ces if ce and ce not in self.info}):
             self.info[normaliza_ce(ce)] = {'master': normaliza_ce(master), 'trafego': _texto(trafego),
-                                           'manifesto': _texto(manifesto), 'porto_destino': _texto(destino)}
+                                           'manifesto': _texto(manifesto), 'porto_destino': _texto(destino),
+                                           'origem': _texto(origem)}
 
     def conhecidos(self, eventos: Iterable[ldt.Evento]) -> Set[str]:
         """CEs declarados nos eventos que existem no Mercante (os outros não desconfiam da ligação)."""
@@ -304,19 +334,27 @@ class CargaCiclo:
 
     def _escalas(self, manifestos) -> Dict[str, List[date]]:
         """Datas previstas de atracação por manifesto: as de Santos; sem escala em Santos, todas."""
-        santos, todas = defaultdict(list), defaultdict(list)
+        return {m: datas_no_porto(escalas) for m, escalas in self.escalas_com_porto(manifestos).items()}
+
+    def escalas_com_porto(self, manifestos) -> Dict[str, List[Tuple[date, str]]]:
+        """{manifesto: [(atracação prevista, porto)]} das escalas do manifesto. O manifesto SEM escala ligada no
+        Mercante (caso CAAU5545018, 22/10/2026: medição, 0,2% dos desembarques, e em todos o navio e o início da
+        operação conferiam com a escala declarada) fica com o início da operação no porto de descarregamento."""
+        escalas = defaultdict(list)
         for manifesto, data, porto in self.diag._por_lotes(
                 'SELECT em.manifesto, e.dataPrevistaAtracacao, e.portoDaEscala FROM escalamanifestoresumo em '
                 'JOIN escalasresumo e ON e.numeroDaEscala = em.escala WHERE em.manifesto IN :manifestos',
                 'manifestos', manifestos):
-            try:
-                dia = datetime.strptime(str(data)[:10], '%Y-%m-%d').date()
-            except ValueError:
-                continue
-            todas[manifesto].append(dia)
-            if porto == PORTO_SANTOS:
-                santos[manifesto].append(dia)
-        return {m: santos.get(m) or todas[m] for m in todas}
+            dia = _dia(data)
+            if dia:
+                escalas[_texto(manifesto)].append((dia, _texto(porto)))
+        for manifesto, data, porto in self.diag._por_lotes(
+                'SELECT numero, dataInicioOperacao, portoDescarregamento FROM manifestosresumo '
+                'WHERE numero IN :manifestos', 'manifestos', {m for m in manifestos if m and _texto(m) not in escalas}):
+            dia = _dia(data)
+            if dia:
+                escalas[_texto(manifesto)].append((dia, _texto(porto)))
+        return dict(escalas)
 
     # ------------------------------------------------------------------ pesagens do ciclo (P1)
     def candidatas_das_pesagens(self, alvos: Iterable[dict], horas: float = pc.HORAS_PAR) -> Dict[str, List[dict]]:

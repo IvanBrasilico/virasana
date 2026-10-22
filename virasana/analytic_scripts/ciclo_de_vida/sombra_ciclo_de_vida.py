@@ -25,7 +25,8 @@ Relatório:
      onde estava a entrada no seco do ciclo atual quando a nova a remove/troca;
   4. escaneamentos (só com ciclo atual): ganhos/perdidos; confiança/motivos das ligações novas; os só com imagem
      (sem inspeção na API, id negativo) que o serviço gravou ficam fora da comparação — a sombra não os recalcula;
-  5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente) e confiança; por que
+  5. CEs: atual x principal novo (igual, mesma família, novo, perdido, diferente, perna seguinte — o atual é de um CE
+     com a carga saindo do porto do desembarque, 22/10/2026) e confiança; por que
      o CE atual foi perdido/trocado; eventos com CE declarado de OUTRA família: relação e tráfego;
   6. saídas tardias (> 72 h, além da janela antiga) e ciclos incompletos (fronteiras);
   7. alertas mais frequentes; PASSAGENS RÁPIDAS por recinto (estada curta seguida de outra entrada —
@@ -54,8 +55,8 @@ Uso (na raiz do repositório virasana):
 --operadores (20/10/2026): mede a heurística em OUTRO escopo antes de ampliá-lo (ex.: MultiRio 7921303 e Suape
 4931303, CICLO_DE_VIDA.md "Fora de Santos e pesagens"). Lá não há ciclo atual: as seções que comparam com ele ficam
 vazias e valem a situação, as etapas, os CEs, os escaneamentos novos e as imagens. Use --ignorar-ultimos-dias 2 (o
-atraso do loop antigo não existe fora de Santos). As escalas ainda preferem BRSSZ (`carga_ciclo._escalas`): sem
-efeito na medição, ajustar ao porto do operador se o escopo for ampliado.
+atraso do loop antigo não existe fora de Santos). Desde 22/10/2026 as escalas são as do porto de cada desembarque
+(`CargaCiclo.portos_dos_desembarques`), como no serviço.
 """
 import argparse
 import csv
@@ -136,6 +137,8 @@ def compara_ce(ce_atual: Optional[str], ces: CEsResolvidos, familia_nova: Set[st
         return 'perdido'
     if ce_atual == ces.principal:
         return 'igual'
+    if ce_atual in ces.seguimento:   # o atual saía do porto do desembarque (caso CAAU5545018)
+        return 'perna seguinte'
     return 'mesma família' if ce_atual in familia_nova else 'diferente'
 
 
@@ -263,6 +266,7 @@ class Sombra(Diagnostico):
         self.acessos: Dict[int, ldt.Evento] = {}
         self.inspecoes: Dict[int, ldt.Evento] = {}
         self.conflitos = Counter()
+        self.portos: Dict[int, Optional[str]] = {}
 
     def executa(self):
         carregador = Carregador(self, self.periodo['inicio'], self.periodo['fim'])
@@ -284,6 +288,7 @@ class Sombra(Diagnostico):
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
         self.carregador = carregador
         eventos, portuarios = carregador.eventos(conteineres)
+        self.portos = carregador.portos_dos_desembarques()
         todos = [e for lista in eventos.values() for e in lista]
         self.acessos = {e.id: e for e in todos if e.tipo in (ldt.ENTRADA, ldt.SAIDA)}
         self.inspecoes = {e.id: e for e in todos if e.tipo == ldt.INSPECAO}
@@ -304,7 +309,8 @@ class Sombra(Diagnostico):
         """Roda o núcleo por contêiner (só os ciclos com desembarque no período) e monta as linhas."""
         resultados = [(conteiner, ciclo, ces) for conteiner in conteineres
                       for ciclo, ces in processa_conteiner(eventos[conteiner], candidatos.get(conteiner, []), escopo,
-                                                           self.operadores, self.agora, conhecidos=conhecidos)
+                                                           self.operadores, self.agora, conhecidos=conhecidos,
+                                                           portos=self.portos)
                       if self.periodo['inicio'] <= ciclo.desembarque.data < self.periodo['fim']]
         for conteiner in conteineres:
             self.passagens.update(passagens_rapidas(eventos[conteiner]))

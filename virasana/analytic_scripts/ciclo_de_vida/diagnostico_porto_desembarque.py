@@ -17,8 +17,9 @@ Perguntas:
      = porto do recinto), é de exportação ou cabotagem, o manifesto é da escala declarada; manifesto sem escala no
      Mercante (e se o navio e o início da operação conferem com a escala declarada); e o que o ciclo de vida gravou:
      o principal é o declarado?
-  3. Tamanho do defeito do caso: ciclos gravados cujo CE principal é de SAÍDA do porto do desembarque, com o CE
-     declarado no desembarque ao lado (--csv com todos).
+  3. Ciclos gravados SUSPEITOS: o CE principal é de SAÍDA do porto do desembarque, ou o CE declarado no desembarque
+     está FORA da família gravada (o caso CAAU tinha os dois) — 22/10/2026: "principal ≠ declarado" sozinho não
+     serve, o declarado costuma ser o master e o principal, o filhote (--csv com todos).
 Consultas pelo período dos eventos (índice de dataHoraOcorrencia) e, no Mercante, só por chave (CE, manifesto,
 escala, id do desembarque) em lotes — nada de varrer as tabelas do Mercante.
 
@@ -57,8 +58,10 @@ SQL_EVENTOS = ('SELECT id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, e
                'WHERE dataHoraOcorrencia >= :desde AND dataHoraOcorrencia < :ate')
 SQL_ESCALAS = ('SELECT numeroDaEscala, portoDaEscala, embarcacao, dataPrevistaAtracacao FROM escalasresumo '
                'WHERE numeroDaEscala IN :escalas')
-SQL_CICLOS = ('SELECT desembarque_id, numeroCEmercante, confianca_ce FROM ciclodevida_ciclo_de_vida_importacao '
+SQL_CICLOS = ('SELECT ID, desembarque_id, numeroCEmercante, confianca_ce FROM ciclodevida_ciclo_de_vida_importacao '
               'WHERE desembarque_id IN :ids')
+SQL_FAMILIAS = 'SELECT ciclo_de_vida_id, numeroCEmercante FROM ciclodevida_ciclo_ce WHERE ciclo_de_vida_id IN :ids'
+SAIDA, FORA_DA_FAMILIA = 'principal de SAÍDA do porto', 'declarado FORA da família gravada'
 SQL_CES = ('SELECT numeroCEmercante, tipoTrafego, portoOrigemCarga, portoDestFinal, manifestoCE '
            'FROM conhecimentosresumo WHERE numeroCEmercante IN :ces')
 SQL_ITENS = 'SELECT numeroCEmercante, codigoConteiner FROM itensresumo WHERE numeroCEmercante IN :ces'
@@ -67,7 +70,7 @@ SQL_MANIFESTOS = ('SELECT numero, portoCarregamento, portoDescarregamento, codig
                   'WHERE numero IN :manifestos')
 SQL_LIGACOES = 'SELECT manifesto, escala FROM escalamanifestoresumo WHERE manifesto IN :manifestos'
 
-COLUNAS_CSV = ('desembarque_id', 'data', 'recinto', 'porto', 'conteiner', 'principal', 'confianca',
+COLUNAS_CSV = ('categorias', 'desembarque_id', 'data', 'recinto', 'porto', 'conteiner', 'principal', 'confianca',
                'principal_trafego', 'principal_origem', 'principal_destino', 'declarado', 'declarado_trafego',
                'declarado_origem', 'declarado_destino', 'declarado_tem_o_conteiner', 'manifesto_declarado_sem_escala',
                'escala_declarada')
@@ -117,9 +120,12 @@ class Dados:
                             SQL_EVENTOS, {'desde': self.desde, 'ate': self.ate})]
         self.escalas = {_t(n): {'porto': _t(p), 'navio': _t(e), 'prevista': _t(d)} for n, p, e, d in
                         self.diag._por_lotes(SQL_ESCALAS, 'escalas', {e.escala for e in self.eventos})}
-        self.ciclos = {id_: (normaliza_ce(ce), _t(conf)) for id_, ce, conf in self.diag._por_lotes(
-            SQL_CICLOS, 'ids', [e.id for e in self.eventos if e.tipo == 'D'])}
-        ces = {e.ce for e in self.eventos if e.ce} | {ce for ce, _ in self.ciclos.values() if ce}
+        self.ciclos = {desembarque: (normaliza_ce(ce), _t(conf), ciclo) for ciclo, desembarque, ce, conf in
+                       self.diag._por_lotes(SQL_CICLOS, 'ids', [e.id for e in self.eventos if e.tipo == 'D'])}
+        self.familias: Dict[int, Set[str]] = defaultdict(set)
+        for ciclo, ce in self.diag._por_lotes(SQL_FAMILIAS, 'ids', {c for _, _, c in self.ciclos.values()}):
+            self.familias[ciclo].add(normaliza_ce(ce))
+        ces = {e.ce for e in self.eventos if e.ce} | {ce for ce, _, _ in self.ciclos.values() if ce}
         self.ces = {normaliza_ce(ce): {'trafego': _t(t), 'origem': _t(o).upper(), 'destino': _t(d).upper(),
                                        'manifesto': _t(m)}
                     for ce, t, o, d, m in self.diag._por_lotes(SQL_CES, 'ces', ces)}
@@ -251,12 +257,15 @@ def _de_saida(dados: Dados, ce: Optional[str], porto: Optional[str]) -> bool:
 def _marcas_do_ciclo(evento: Evento, dados: Dados, porto: Optional[str]) -> List[str]:
     if evento.id not in dados.ciclos:
         return []
-    principal, _ = dados.ciclos[evento.id]
+    principal, _, ciclo = dados.ciclos[evento.id]
     marcas = ['ciclo gravado']
-    if evento.ce:
-        marcas.append('principal = declarado' if principal == evento.ce else 'principal ≠ declarado')
+    if evento.ce and principal != evento.ce:
+        marcas += ['principal ≠ declarado', 'declarado na família gravada (master/filhote)'
+                   if evento.ce in dados.familias.get(ciclo, ()) else FORA_DA_FAMILIA]
+    elif evento.ce:
+        marcas.append('principal = declarado')
     if _de_saida(dados, principal, porto):
-        marcas.append('principal de SAÍDA do porto')
+        marcas.append(SAIDA)
         if evento.ce and evento.ce != principal and not _de_saida(dados, evento.ce, porto):
             marcas.append('principal de SAÍDA e o declarado não (o caso CAAU)')
     return marcas
@@ -278,11 +287,12 @@ def marcas_do_embarque(evento: Evento, dados: Dados, porto: Optional[str]) -> Li
     return marcas
 
 
-def linha_do_defeito(evento: Evento, dados: Dados, porto: Optional[str]) -> dict:
-    principal, confianca = dados.ciclos[evento.id]
+def linha_do_defeito(evento: Evento, dados: Dados, porto: Optional[str], categorias: List[str]) -> dict:
+    principal, confianca, _ = dados.ciclos[evento.id]
     p, d = dados.ces.get(principal, {}), dados.ces.get(evento.ce, {}) if evento.ce else {}
     manifesto = d.get('manifesto')
-    return {'desembarque_id': evento.id, 'data': f'{evento.data:%Y-%m-%d %H:%M}', 'recinto': evento.recinto,
+    return {'categorias': ' + '.join(categorias), 'desembarque_id': evento.id,
+            'data': f'{evento.data:%Y-%m-%d %H:%M}', 'recinto': evento.recinto,
             'porto': porto, 'conteiner': evento.conteiner, 'principal': principal, 'confianca': confianca,
             'principal_trafego': p.get('trafego'), 'principal_origem': p.get('origem'),
             'principal_destino': p.get('destino'), 'declarado': evento.ce, 'declarado_trafego': d.get('trafego'),
@@ -293,7 +303,7 @@ def linha_do_defeito(evento: Evento, dados: Dados, porto: Optional[str]) -> dict
 
 
 def secao_declarados(dados: Dados, saida: Saida, portos: Dict[str, Optional[str]]) -> Tuple[dict, List[dict]]:
-    """Contagens por recinto operador (e no total) e as linhas do defeito (principal de saída)."""
+    """Contagens por recinto operador (e no total) e as linhas dos ciclos suspeitos."""
     contagens: Dict[str, Counter] = defaultdict(Counter)
     defeitos = []
     for evento in dados.eventos:
@@ -303,8 +313,9 @@ def secao_declarados(dados: Dados, saida: Saida, portos: Dict[str, Optional[str]
         marcas = (marcas_do_desembarque if evento.tipo == 'D' else marcas_do_embarque)(evento, dados, porto)
         for chave in (evento.recinto, 'TOTAL'):
             contagens[chave].update(f'{evento.tipo} {m}' for m in marcas)
-        if 'principal de SAÍDA do porto' in marcas:
-            defeitos.append(linha_do_defeito(evento, dados, porto))
+        categorias = [marca for marca in (SAIDA, FORA_DA_FAMILIA) if marca in marcas]
+        if categorias:
+            defeitos.append(linha_do_defeito(evento, dados, porto, categorias))
     saida.titulo('2. CE declarado nos embarques/desembarques dos operadores (D = desembarque, E = embarque)')
     for chave in sorted(contagens, key=lambda c: (c != 'TOTAL', c)):
         nome = 'TOTAL' if chave == 'TOTAL' else f'{chave} {dados.recintos[chave]["nome"]} (porto {portos.get(chave)})'
@@ -317,12 +328,15 @@ def secao_declarados(dados: Dados, saida: Saida, portos: Dict[str, Optional[str]
 
 
 def secao_defeitos(defeitos: List[dict], saida: Saida, caminho_csv: Optional[str]):
-    saida.titulo(f'3. Ciclos gravados com o CE principal de SAÍDA do porto do desembarque: {len(defeitos)}')
-    por_confianca = Counter((d['confianca'], d['principal_trafego']) for d in defeitos)
-    for (confianca, trafego), quantidade in sorted(por_confianca.items()):
-        saida(f'    confiança {confianca}, tráfego do principal {trafego}: {quantidade}')
+    saida.titulo(f'3. Ciclos gravados suspeitos: {len(defeitos)}')
+    por_categoria = Counter((d['categorias'], d['confianca'], d['principal_trafego'],
+                             d['declarado_tem_o_conteiner']) for d in defeitos)
+    for (categorias, confianca, trafego, tem), quantidade in sorted(por_categoria.items(), key=str):
+        saida(f'    {categorias}; confiança {confianca}; tráfego do principal {trafego}; declarado com o contêiner '
+              f'nos itens {tem}: {quantidade}')
     for d in defeitos[:AMOSTRA]:
-        saida(f'  {d["data"]} {d["conteiner"]} no {d["recinto"]}: principal {d["principal"]} ({d["confianca"]}; '
+        saida(f'  [{d["categorias"]}] {d["data"]} {d["conteiner"]} no {d["recinto"]}: principal {d["principal"]} '
+              f'({d["confianca"]}; '
               f'{d["principal_trafego"]} {d["principal_origem"]}->{d["principal_destino"]}) x declarado '
               f'{d["declarado"]} ({d["declarado_trafego"]} {d["declarado_origem"]}->{d["declarado_destino"]}; '
               f'contêiner nos itens {d["declarado_tem_o_conteiner"]}; manifesto sem escala '
@@ -354,7 +368,7 @@ def _argumentos(argv=None):
     parser.add_argument('--ate', help='fim do período (AAAA-MM-DD, exclusivo; padrão: agora)')
     parser.add_argument('--minimo', type=int, default=MINIMO_EVENTOS, help='eventos para propor o porto pela moda')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
-    parser.add_argument('--csv', help='grava os ciclos com o principal de saída neste CSV (;)')
+    parser.add_argument('--csv', help='grava os ciclos suspeitos neste CSV (;)')
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
     parser.add_argument('--homologacao', action='store_true', help='usa o banco de homologação (SQL_URI_HOM)')
     return parser.parse_args(argv)

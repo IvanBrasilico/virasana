@@ -9,8 +9,9 @@ Extração (--ces e/ou --conteineres; os contêineres dos itens dos CEs entram s
     declarados nos eventos), itens, manifestos, escalas (escalamanifestoresumo + escalasresumo, inclusive as declaradas
     nos desembarques) e contêineres vazios;
   - API Recintos: embarques/desembarques, acessos (inclusive agendamentos), inspeções e pesagens dos contêineres desde
-    --desde — só as colunas que o ciclo de vida e a análise usam (sem CPF, nome do motorista ou transportador; as
-    placas viram apelidos estáveis, P000001...);
+    --desde — só as colunas que o ciclo de vida e a análise usam: sem CPF, CNPJ ou nome (motorista, transportador,
+    consignatário), que é o que precisa ficar fora de dados publicados no repositório (usuário, 22/10/2026); a placa
+    fica (com --apelida-placas, vira apelido estável, P000001...);
   - recintos (código, nome, operador, unidade);
   - o ciclo de vida GRAVADO dos contêineres: ciclos, CEs (família), escaneamentos e pesagens.
   O JSON (--json) é a entrada do --reprocessa e dos testes de regressão (`virasana/tests/dados/`).
@@ -48,7 +49,9 @@ from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, In
 from virasana.analytic_scripts.ciclo_de_vida import gravacao_ciclo as gc
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
 from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import CargaCiclo, ConsultaSQL
-from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import JANELA_ESCALA_DIAS, normaliza_ce, resolve_ces
+from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (
+    JANELA_ESCALA_DIAS, datas_do_candidato, normaliza_ce, resolve_ces,
+)
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import declarados_do_ciclo, processa_conteiner
 from virasana.integracao.mercante.mercantealchemy import (
     Conhecimento, ConteinerVazio, Escala, EscalaManifesto, Item, Manifesto,
@@ -245,7 +248,7 @@ def apelida_placas(caso: dict) -> int:
 
 
 def extrai_caso(conexao, ces: Iterable[str], conteineres: Iterable[str], desde: datetime,
-                agora: Optional[datetime] = None) -> dict:
+                agora: Optional[datetime] = None, apelidar_placas: bool = False) -> dict:
     """O caso (JSON-serializável com `json_padrao`) lido da conexão."""
     extracao = Extracao(conexao, desde)
     ces = {ce for ce in (normaliza_ce(ce) for ce in ces) if ce}
@@ -254,7 +257,8 @@ def extrai_caso(conexao, ces: Iterable[str], conteineres: Iterable[str], desde: 
             'tabelas': {tabela: extracao.linhas(tabela) for tabela in TABELAS if extracao.linhas(tabela)},
             'recintos': extracao.recintos(),
             'gravado': extracao.gravado(todos)}
-    caso['meta']['placas'] = apelida_placas(caso)
+    if apelidar_placas:
+        caso['meta']['placas'] = apelida_placas(caso)
     return json.loads(json.dumps(caso, default=json_padrao))
 
 
@@ -419,6 +423,7 @@ class Reprocesso:
             carga = CargaCiclo(ConsultaSQL(conexao), self.desde, self.agora)
             self.escopo, operadores, _ = carga.operadores()
             eventos, portuarios = carga.eventos(self.conteineres)
+            self.portos = carga.portos_dos_desembarques()
             candidatos = carga.candidatos(self.conteineres)
             conhecidos = carga.conhecidos([e for lista in eventos.values() for e in lista])
         self.operadores = operadores | portuarios
@@ -433,7 +438,7 @@ class Reprocesso:
         for ciclo in ciclos:
             self._ciclo(ciclo, candidatos)
         for ciclo, ces in processa_conteiner(eventos, candidatos, self.escopo, self.operadores, self.agora,
-                                             conhecidos=conhecidos):
+                                             conhecidos=conhecidos, portos=self.portos):
             self.escreve(f'  FINAL desembarque {ciclo.desembarque.id}: CE principal {ces.principal} '
                          f'({ces.confianca}); {ciclo.situacao}/{ciclo.fluxo}: {ciclo.motivo}')
 
@@ -447,29 +452,34 @@ class Reprocesso:
             self.escreve(f'    ligado: {evento.tipo} {_fmt(evento.data)} {evento.recinto} '
                          f'{self.nomes.get(evento.recinto, "")} CE {evento.ce_declarado} ({ligacao.confianca})')
         self.escreve(f'    CEs declarados no ciclo: {dict(Counter(declarados)) or "nenhum"}')
-        escala = self.escala_do_evento.get(desembarque.id)
+        escala, porto = self.escala_do_evento.get(desembarque.id), self.portos.get(desembarque.id)
         self.escreve(f'    escala declarada no desembarque: {escala or "nenhuma"} (manifestos dela: '
-                     f'{sorted(self.manifestos_da_escala.get(escala, ())) or "-"})')
+                     f'{sorted(self.manifestos_da_escala.get(escala, ())) or "-"}); porto do desembarque: '
+                     f'{porto or "desconhecido"}')
         for candidato in candidatos:
             self.escreve('    ' + self._candidato(candidato, desembarque.data, set(declarados),
-                                                  self.manifestos_da_escala.get(escala, set())))
-        ces = resolve_ces(desembarque.data, candidatos, declarados)
+                                                  self.manifestos_da_escala.get(escala, set()), porto))
+        ces = resolve_ces(desembarque.data, candidatos, declarados, porto=porto)
         self.escreve(f'    ESCOLHA: principal {ces.principal}, família {ces.ces or "-"}, confiança {ces.confianca} — '
                      f'{"; ".join(ces.motivos)}')
 
-    def _candidato(self, candidato, data: datetime, declarados: Set[str], da_escala: Set[str]) -> str:
+    def _candidato(self, candidato, data: datetime, declarados: Set[str], da_escala: Set[str],
+                   porto: Optional[str] = None) -> str:
         info = self.info.get(candidato.ce, {})
         manifesto = _texto(info.get('manifestoCE'))
-        distancias = [abs((dia - data.date()).days) for dia in candidato.datas_escala]
+        distancias = [abs((dia - data.date()).days) for dia in datas_do_candidato(candidato, porto)]
         distancia = min(distancias) if distancias else None
         marcas = [m for m, vale in (('na janela', distancia is not None and distancia <= JANELA_ESCALA_DIAS),
                                     ('DECLARADO', candidato.ce in declarados),
                                     ('manifesto na escala do desembarque', manifesto in da_escala),
+                                    (f'carga SAINDO de {porto}', bool(porto) and candidato.origem == porto),
                                     ('sem o contêiner nos itens', not candidato.tem_conteiner)) if vale]
+        escalas = [f'{dia.isoformat()} {local}' for dia, local in candidato.escalas] or \
+            [d.isoformat() for d in candidato.datas_escala]
         return (f'candidato {candidato.ce}: master {candidato.master} tráfego {candidato.trafego} origem '
                 f'{info.get("portoOrigemCarga")} -> destino {info.get("portoDestFinal")}; manifesto {manifesto} '
-                f'carregado em {self.carregamento.get(manifesto)}; escalas '
-                f'{[d.isoformat() for d in candidato.datas_escala]} -> {distancia} dia(s) {", ".join(marcas)}')
+                f'carregado em {self.carregamento.get(manifesto)}; escalas {escalas} -> {distancia} dia(s) '
+                f'{", ".join(marcas)}')
 
 
 def _principais_gravados(gravado: dict) -> Dict[int, dict]:
@@ -523,6 +533,7 @@ def _argumentos(argv=None):
     parser.add_argument('--desde', help=f'eventos desde (AAAA-MM-DD; padrão: {DIAS_PADRAO} dias atrás)')
     parser.add_argument('--reprocessa', help='só reprocessa um caso já extraído (JSON)')
     parser.add_argument('--json', help='grava o caso extraído neste arquivo (padrão: caso_ciclo.json)')
+    parser.add_argument('--apelida-placas', action='store_true', help='troca as placas por apelidos estáveis')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
     parser.add_argument('--homologacao', action='store_true', help='usa o banco de homologação (SQL_URI_HOM)')
@@ -539,7 +550,7 @@ def _extrai(args) -> dict:  # pragma: no cover - depende do banco real
     limita_tempo(engine, LIMITE_SEGUNDOS)
     desde = datetime.strptime(args.desde, '%Y-%m-%d') if args.desde else datetime.now() - timedelta(days=DIAS_PADRAO)
     with engine.connect() as conexao:
-        caso = extrai_caso(conexao, args.ces, args.conteineres, desde)
+        caso = extrai_caso(conexao, args.ces, args.conteineres, desde, apelidar_placas=args.apelida_placas)
     caminho = args.json or 'caso_ciclo.json'
     with open(caminho, 'w', encoding='utf-8') as arquivo:
         json.dump(caso, arquivo, ensure_ascii=False, indent=1)

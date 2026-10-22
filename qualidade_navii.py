@@ -121,6 +121,7 @@ TESTES = [
     'virasana/tests/test_navii_atracacao_prevista.py',
     'virasana/tests/test_diagnostico_porto_desembarque.py',
     'virasana/tests/test_caso_ciclo_caau.py',
+    'virasana/tests/test_ces_porto_desembarque.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',

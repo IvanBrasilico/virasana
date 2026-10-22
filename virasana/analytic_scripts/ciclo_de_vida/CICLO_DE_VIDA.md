@@ -1332,7 +1332,7 @@ WHERE codigoRecintoDesembarque IN ('7921303', '4931303', '3111401') GROUP BY 1, 
 - **Escopo fora de Santos**: esvaziar `OPERADORES_FORA_DE_SANTOS` em `carga_ciclo.py`, deploy e restart; os ciclos
   já criados desses operadores ficam (inofensivos) ou podem ser apagados pelo `codigoRecintoDesembarque`.
 
-## Caso CAAU5545018: CE de cabotagem saindo de Santos no ciclo do desembarque (21/10/2026, EM ANÁLISE)
+## Caso CAAU5545018: CE de cabotagem saindo de Santos no ciclo do desembarque (21–22/10/2026, CORRIGIDO)
 
 Relato do usuário: o desembarque de 07/10/2026 do CAAU5545018 ficou com o CE 072603341989805, de **cabotagem com
 origem BRSSZ** (um embarque em Santos), quando deveria ser o CE 152605316468892 (importação), que tem dois contêineres
@@ -1343,20 +1343,91 @@ origem BRSSZ** (um embarque em Santos), quando deveria ser o CE 152605316468892 
 com as placas trocadas por apelidos, recintos e o ciclo GRAVADO) para um JSON; reprocessa num SQLite em memória com o
 código atual, explicando por desembarque os eventos ligados, os candidatos (tráfego, origem/destino, manifesto e o
 porto de carregamento dele, datas das escalas e distância, se o manifesto é da escala declarada no desembarque), os
-CEs declarados, a escolha e o motivo; e compara o serviço com o gravado. O JSON vira o teste de regressão
-(`virasana/tests/dados/`).
+CEs declarados, a escolha e o motivo; e compara o serviço com o gravado.
 
 ```
 C=virasana/analytic_scripts/ciclo_de_vida/caso_ciclo.py
-virasana-venv/bin/python $C --ces 072603341989805 152605316468892 --desde 2026-08-01 --saida caso_caau.log     --json caso_caau.json
+virasana-venv/bin/python $C --ces 072603341989805 152605316468892 --desde 2026-08-01 --saida caso_caau.log \
+    --json caso_caau.json
 ```
 
-**Hipótese** (a confirmar com o caso real) — em `resolve_ces` só a exportação (tráfego 7) é descartada; a cabotagem
-que SAI de Santos tem escala em Santos (a de carregamento) perto do desembarque e entra como família plausível. Se o
-EMBARQUE da cabotagem (dias depois, no mesmo operador) fica ligado ao ciclo e declara o CE dela, "o CE declarado
-desempatou" e ela vence com confiança ALTA — o cenário sintético de `test_caso_ciclo.py` reproduz exatamente isso.
-Sem declaração, venceria a escala mais próxima (confiança baixa). Correções genéricas candidatas (sem código por
-recinto): descartar o CE cuja origem da carga (ou o porto de carregamento do manifesto) é o porto do desembarque; e/ou
-preferir o candidato cujo manifesto é da escala declarada no desembarque; e não deixar o CE declarado no EMBARQUE
-desempatar a família do DESEMBARQUE.
+**Causa (caso_caau.log, reprocesso igual ao gravado)** — NÃO foi o embarque (a hipótese do cenário sintético):
+1. o desembarque (Santos Brasil, escala 26000454544, navio 9605279, viagem MM637A) DECLARA o CE de importação, e a
+   entrada, a inspeção e a saída do CLIA também (4 declarações);
+2. o manifesto desse CE (1526501771094, ESBCN -> BRSSZ, navio 9605279, viagem MM637A, início 07/10) NÃO tem escala
+   ligada no Mercante (`escalamanifestoresumo`) — os outros manifestos do mesmo navio estão na escala 26000454544. Para
+   `resolve_ces` o CE fica "sem escala";
+3. a cabotagem (BRSSZ -> BRSUA, manifesto carregado em BRSSZ) tem a escala de CARREGAMENTO em Santos em 15/10, a 8 dias
+   do desembarque: é a ÚNICA família plausível;
+4. `_escolhe_familia` com uma só família plausível a escolhe mesmo sem declaração nenhuma (confiança média) — o CE
+   declarado só desempata entre plausíveis ou decide quando não há nenhuma plausível (é o que salvou o FANU1174955).
 
+Teste de regressão com os dados reais: `test_caso_ciclo_caau.py` (`dados/caso_ciclo_CAAU5545018.json`); o do
+CAAU5545018 está como `expectedFailure` até a correção.
+
+**Porto do recinto** — o ciclo de vida não sabe o porto do desembarque (`carga_ciclo._escalas` usa as escalas de
+Santos, também para MultiRio/Suape/Pecém). Fontes que já existem: `ovr_recintos.cod_carga` (código do terminal no
+Mercante, ex.: BRSSZ016; os 5 primeiros caracteres são o porto — editável no admin do Fichas e já usado pelo
+`conformidade_manager` contra `Manifesto.codigoTerminalDescarregamento`), o porto da escala declarada nos
+embarques/desembarques e o porto/terminal do manifesto do CE declarado. Medição: `diagnostico_porto_desembarque.py`
+(proposta de porto por recinto e divergências; quanto vale o CE declarado no desembarque; quantos ciclos gravados têm
+o principal de SAÍDA do porto — CSV com todos).
+
+```
+D=virasana/analytic_scripts/ciclo_de_vida/diagnostico_porto_desembarque.py
+virasana-venv/bin/python $D --dias 7 --saida porto_desembarque.log --csv porto_desembarque.csv
+```
+
+**Medição (porto_desembarque.log, 14 a 21/10/2026: 145 mil embarques/desembarques, 47.500 ciclos gravados)**:
+- `ovr_recintos.cod_carga` está VAZIO em todos os recintos — não serve hoje;
+- o porto da escala declarada no evento é 100% constante por recinto, nos 16 com eventos (Santos: Santos Brasil,
+  BTP, Ecoporto e Embraport BRSSZ; MultiRio e ICTSI BRRIO; Itaguaí BRIGI; Suape BRSUA; Pecém BRPEC; e os de fora do
+  ovr_recintos: Navegantes BRNVT, Paranaguá BRPNG, Itapoá BRIOA); o terminal do manifesto confirma (BRSSZ016 Santos
+  Brasil, BRSSZ058 BTP, BRSSZ057 Ecoporto, BRSUA002 Suape, BRRIO003 MultiRio, BRIGI001 Itaguaí);
+- CE declarado no desembarque: Santos Brasil 93%, Ecoporto 89%, Suape 92%, BTP 48%; Embraport, Pecém, ICTSI e
+  MultiRio NÃO declaram. Quando declarado, quase sempre está no Mercante e com o contêiner nos itens;
+- manifesto do declarado SEM escala ligada: 0,2% (114, todos em Suape) — em todos, o navio e o início da operação
+  conferem com a escala declarada;
+- ciclos gravados com o principal saindo do porto: 0 na semana (o caso CAAU é raro). "Principal ≠ declarado" (42% na
+  Santos Brasil) mistura o master declarado com o filhote principal (decisão do usuário) — o diagnóstico passou a
+  separar "declarado na família gravada" de "declarado FORA da família gravada" (para medir de novo).
+
+**Decisões (usuário, 22/10/2026)**: o ciclo de importação acontece no porto de descarregamento do manifesto / destino
+final; pode haver desembarque em porto intermediário (motivo extemporâneo ou pedido da fiscalização), com armazenagem
+no operador ou baldeação (desembarca e logo embarca prosseguindo viagem). Testes com casos-limite REAIS no repositório,
+anonimizando só CPF, CNPJ e nomes (`caso_ciclo.py` não extrai essas colunas; a placa fica — `--apelida-placas` opcional).
+Porto do recinto: NÃO precisa de coluna nova em `ovr_recintos` — sai da escala declarada em cada evento.
+
+**Correção implementada (22/10/2026)** — genérica, sem código por recinto:
+- C1 porto do desembarque (`CargaCiclo.portos_dos_desembarques`): o da escala declarada no evento; sem ela, o mais
+  visto no recinto no lote; desconhecido = as regras de antes (escalas de Santos). As datas de cada candidato são as
+  das escalas NESSE porto (sem escala nele, todas) — corrige também MultiRio/Suape/Pecém, que usavam as de Santos;
+- C2 o CE cuja carga SAI do porto do desembarque (origem = porto) não é candidato (`ces_do_ciclo._sem_saida`); ele é a
+  PERNA SEGUINTE da visita (`CEsResolvidos.seguimento`): não entra no ciclo, mas o CE dele declarado no embarque não é
+  "outra família" — a baldeação fecha como passagem (antes da correção do porto, o embarque com o CE da cabotagem
+  deixava o ciclo do CE de importação "incompleto");
+- C2b entre famílias plausíveis sem declaração que desempate, a de destino no porto vence a escala mais próxima (MÉDIA);
+- C3 manifesto sem escala ligada: o início da operação no porto de descarregamento vale como escala
+  (`CargaCiclo.escalas_com_porto`);
+- C4 (o CE declarado vencer uma única família plausível não declarada) NÃO foi feito: com C1–C3 o caso real fica com o
+  CE certo e confiança ALTA, e a medição de "declarado FORA da família" ainda vai dizer se precisa.
+Caso real: `test_caso_ciclo_caau.py` (sem `expectedFailure`); regras: `test_ces_porto_desembarque.py` (inclui a
+baldeação); sombra: rótulo "perna seguinte" na comparação dos CEs. Mutantes: 23/23 mortos.
+
+**Validação e ativação (produção)** — a sombra é só leitura e já usa o código novo:
+```
+cd /home/ajna/apps/ajna/virasana
+SO=virasana/analytic_scripts/ciclo_de_vida/sombra_ciclo_de_vida.py
+# 1. Santos: seção 5 (CEs atual x novo: "perna seguinte", "diferente", "mesma família") e situação/fluxo
+virasana-venv/bin/python $SO --dias 30 --conteineres 5000 --ignorar-ultimos-dias 0 --saida sombra_porto.log \
+    --csv sombra_porto.csv
+# 2. fora de Santos (as escalas passam a ser as do porto do operador)
+virasana-venv/bin/python $SO --dias 30 --conteineres 3000 --ignorar-ultimos-dias 0 \
+    --operadores 7921303 4931303 3111401 --saida sombra_porto_fora.log --csv sombra_porto_fora.csv
+# 3. depois do deploy e do restart do ciclo_de_vida_v2, refazer os ciclos recentes (o do CAAU5545018 é de 07/10)
+nohup virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/servico_ciclo_de_vida.py \
+    --refaz-desde 2026-09-22 > refaz_porto.log 2>&1 &
+# 4. medir de novo (agora com "declarado FORA da família gravada")
+virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_porto_desembarque.py --dias 7 \
+    --saida porto_desembarque2.log --csv porto_desembarque2.csv
+```

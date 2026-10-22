@@ -247,12 +247,13 @@ class Servico:
         carga = CargaCiclo(ConsultaSQL(conexao), self._desde_do_lote(conexao, conteineres, desde), agora)
         escopo, operadores, _ = carga.operadores()
         eventos, portuarios = carga.eventos(conteineres)
+        portos = carga.portos_dos_desembarques()
         candidatos, vazios = carga.candidatos(conteineres), carga.vazios(conteineres)
         conhecidos = carga.conhecidos([e for lista in eventos.values() for e in lista])
         itens: Dict[int, ItemGravacao] = {}
         for conteiner in conteineres:
             for ciclo, ces in processa_conteiner(eventos.get(conteiner, []), candidatos.get(conteiner, []), escopo,
-                                                 operadores | portuarios, agora, conhecidos=conhecidos):
+                                                 operadores | portuarios, agora, conhecidos=conhecidos, portos=portos):
                 linha = linha_ciclo(conteiner, ciclo, ces, carga.desembarques.get(ciclo.desembarque.id, {}),
                                     carga.info, manifesto_vazio(vazios.get(conteiner, {}), ciclo.desembarque.data),
                                     carga.tipo_do(conteiner, ciclo.desembarque.id), agora)

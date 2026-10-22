@@ -118,15 +118,22 @@ class TestExtracao(unittest.TestCase):
         self.assertEqual({e['numeroDaEscala'] for e in self.linhas('escalasresumo')}, {'ESCIMP', 'ESCCAB1', 'ESCCAB2'})
         self.assertNotIn('consignatario', self.linhas('conhecimentosresumo')[0])
 
-    def test_eventos_do_periodo_sem_dados_pessoais(self):
+    def test_eventos_do_periodo_sem_cpf_cnpj_nem_nome(self):
         self.assertEqual(sorted(e['id'] for e in self.linhas('apirecintos_embarquedesembarque')), [11, 12, 13])
         texto = json.dumps(self.caso)
-        self.assertNotIn('12345678901', texto)
-        self.assertNotIn('FULANO', texto)
-        self.assertNotIn('ABC1D23', texto)
-        self.assertEqual(self.linhas('apirecintos_acessosveiculo')[0]['placa'], 'P000001')
-        self.assertEqual(self.linhas('apirecintos_pesagensveiculo')[0]['placa'], 'P000001')   # a mesma placa
-        self.assertEqual(self.caso['meta']['placas'], 1)
+        for pessoal in ('12345678901', 'FULANO', '11222333000181'):   # CPF e nome do motorista, CNPJ do consignatário
+            self.assertNotIn(pessoal, texto)
+        self.assertEqual(self.linhas('apirecintos_acessosveiculo')[0]['placa'], 'ABC1D23')   # a placa fica
+        self.assertNotIn('placas', self.caso['meta'])
+
+    def test_placas_apelidadas_se_pedido(self):
+        with banco_de_origem().connect() as conexao:
+            caso = extrai_caso(conexao, [IMP], [], DESDE, AGORA, apelidar_placas=True)
+        self.assertNotIn('ABC1D23', json.dumps(caso))
+        tabelas = caso['tabelas']
+        acesso, pesagem = tabelas['apirecintos_acessosveiculo'][0], tabelas['apirecintos_pesagensveiculo'][0]
+        self.assertEqual((acesso['placa'], pesagem['placa']), ('P000001', 'P000001'))   # a mesma placa, o mesmo apelido
+        self.assertEqual(caso['meta']['placas'], 1)
 
     def test_gravado_e_recintos(self):
         self.assertEqual([c['numeroCEmercante'] for c in self.caso['gravado']['ciclos']], [CAB])
@@ -163,19 +170,39 @@ class TestReprocesso(unittest.TestCase):
 
     def test_candidatos_com_origem_carregamento_e_distancia(self):
         self.assertIn(f'candidato {CAB}: master None tráfego 3 origem BRSSZ -> destino BRMAO; manifesto MANCAB '
-                      "carregado em BRSSZ; escalas ['2026-10-08'] -> 1 dia(s) na janela", self.texto)
+                      "carregado em BRSSZ; escalas ['2026-10-08 BRSSZ', '2026-10-20 BRMAO'] -> 1 dia(s) na janela, "
+                      'DECLARADO, carga SAINDO de BRSSZ', self.texto)
         self.assertIn(f'candidato {IMP}: master None tráfego 5 origem CNSHA -> destino BRSSZ; manifesto MANIMP '
-                      "carregado em CNSHA; escalas ['2026-10-02'] -> 5 dia(s) na janela, manifesto na escala do "
+                      "carregado em CNSHA; escalas ['2026-10-02 BRSSZ'] -> 5 dia(s) na janela, manifesto na escala do "
                       'desembarque', self.texto)
         self.assertIn("escala declarada no desembarque: ESCIMP (manifestos dela: ['MANIMP'])", self.texto)
         self.assertIn('ESCOLHA: principal', self.texto)
 
     def test_servico_e_comparacao(self):
         self.assertEqual(self.ciclos[11]['principal'], IMP)   # o FANU só tem o CE de importação
-        self.assertIn(12, self.ciclos)
+        # o CAAU: a cabotagem declarada no embarque SAI de Santos (porto do desembarque) — é a perna seguinte da
+        # baldeação, e o ciclo do desembarque fica com o CE de importação, concluído pelo embarque
+        self.assertEqual((self.ciclos[12]['principal'], self.ciclos[12]['situacao']), (IMP, 'concluido'))
         self.assertIn('5. Serviço (código atual) x gravado', self.texto)
         self.assertRegex(self.texto, r'desembarque 12 CAAU2222222: (igual|DIFERENTE) — atual')
         self.assertIn('desembarque 11 FANU1111111: só no reprocesso — atual', self.texto)
+
+
+class TestSombraComOPorto(unittest.TestCase):
+    """A sombra (`sombra_ciclo_de_vida.py`) usa o porto do desembarque como o serviço e rotula a troca do CE gravado
+    pela cabotagem que sai do porto como "perna seguinte"."""
+
+    def test_sombra(self):
+        import io
+        from virasana.analytic_scripts.ciclo_de_vida import sombra_ciclo_de_vida as sombra
+        with banco_de_origem().connect() as conexao:
+            execucao = sombra.Sombra(conexao, io.StringIO(), datetime(2026, 10, 1), datetime(2026, 10, 15),
+                                     conteineres=100, agora=AGORA)
+            self.assertEqual(sombra.roda(execucao), [])
+        linhas = {linha['conteiner']: linha for linha in execucao.linhas}
+        self.assertEqual((linhas[CAAU]['ce_atual'], linhas[CAAU]['ce_novo'], linhas[CAAU]['ce_comparacao']),
+                         (CAB, IMP, 'perna seguinte'))
+        self.assertEqual(execucao.portos[12], 'BRSSZ')
 
 
 class TestArgumentos(unittest.TestCase):
@@ -185,6 +212,7 @@ class TestArgumentos(unittest.TestCase):
             caso_ciclo._argumentos([])
         self.assertEqual(caso_ciclo._argumentos(['--ces', IMP]).ces, [IMP])
         self.assertEqual(caso_ciclo._argumentos(['--reprocessa', 'x.json']).reprocessa, 'x.json')
+        self.assertTrue(caso_ciclo._argumentos(['--ces', IMP, '--apelida-placas']).apelida_placas)
 
 
 if __name__ == '__main__':
