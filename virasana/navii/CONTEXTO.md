@@ -263,6 +263,13 @@ Regras e limitações (importantes):
    efetiva, navio) e o cabeçalho prefere a escala em `PORTO_ESCALA_PADRAO` (o porto que o ciclo de vida usa para
    escolher o CE; sem ela, a mais tarde — `extrato_navii.atracacao_do_cabecalho`). Testes:
    `test_navii_atracacao_prevista.py`; E2E no navegador (demo).
+20. **Filtro por tipo de tráfego** (23/10/2026, pedido do usuário). `trafego` em `CAMPOS_LISTA` (códigos de
+   `Conhecimento.tipoTrafego`, vale qualquer um): caixas de marcar na tela como o tipo de BL, opções de
+   `referencias/tipos_trafego.json` (Importação 5, Cabotagem 3, Passagem 9; a exportação nunca aparece no NAVI-I).
+   Nenhuma marcada = todos; com o filtro, o CE sem tráfego informado fica de fora. É um critério do CE
+   (`_criterios_ce`, tabela `_CODIGOS_DO_CE` junto com o tipo de BL): vale também dentro do ramo da atracação
+   prevista, e a coluna tem índice. Filtros salvos, chips e estatísticas de uso já o tratam. Testes:
+   `test_navii_filtro_trafego.py`; cenário no `diagnostico_sql.py`.
 
 ## Como a busca funciona (desenho atual)
 

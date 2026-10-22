@@ -70,6 +70,7 @@ CENARIOS = [
     ('sem filtros (todos os portos)', {}),
     ('porto de atracação (padrão da tela)', {'porto_escala': 'BRSSZ'}),
     ('porto de atracação + NCM', {'porto_escala': 'BRSSZ', 'ncm': '8471'}),
+    ('porto de atracação + tráfego cabotagem', {'porto_escala': 'BRSSZ', 'trafego': '3'}),
     ('porto de atracação + recinto + com imagem', {'porto_escala': 'BRSSZ', 'recinto': '8931356', 'com_imagem': True}),
     ('somente com imagem de escaneamento', {'com_imagem': True}),
     ('somente entregues ao importador', {'estagio': ['entregue']}),

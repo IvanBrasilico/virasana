@@ -127,6 +127,7 @@ def _contexto_da_tela(modo_texto: bool = False) -> dict:
         defaults_periodo=_defaults_periodo(),
         porto_escala_padrao=PORTO_ESCALA_PADRAO,
         tipos_bl=referencias.tipos_bl(),
+        tipos_trafego=referencias.tipos_trafego(),
         estagios=estagios_ciclo.lista(),
         filtros_iniciais=None if modo_texto else _filtros_iniciais(),
         extrato_url=url_for('navii.extrato'),

@@ -119,7 +119,7 @@ TIPO_BL_UNICO = '10'
 # Filtros que aceitam uma LISTA de códigos (vale qualquer um deles: "OU").
 # Chegam como lista ou como texto separado por vírgula/ponto e vírgula/espaço.
 CAMPOS_LISTA = ('porto_escala', 'porto_origem', 'porto_destino', 'porto_baldeacao', 'ncm', 'recinto', 'tipo_bl',
-                'estagio', 'conteiner', 'ce', 'dta', 'ncm_ocultar', 'porto_origem_ocultar')
+                'trafego', 'estagio', 'conteiner', 'ce', 'dta', 'ncm_ocultar', 'porto_origem_ocultar')
 # Filtros "OCULTAR" (pedido do usuário, 16/10/2026): campo -> campo base (os códigos são normalizados como os do
 # base). Escondem o card só quando ele SABE que bate — sem a informação, o card aparece (sistema de risco: nunca
 # sonegar informação). NCM: oculta só se TODOS os NCMs do contêiner batem. Ver `_criterio_ncm_ocultar`,
@@ -290,7 +290,7 @@ def _normaliza_codigo(campo: str, codigo: str) -> str:
     """Um código de um campo de CAMPOS_LISTA ('' = descartar)."""
     if campo in _CAMPOS_PORTO:
         return codigo.upper()
-    if campo in ('ncm', 'tipo_bl', 'ce'):
+    if campo in ('ncm', 'tipo_bl', 'trafego', 'ce'):
         return re.sub(r'\D', '', codigo)
     if campo in ('conteiner', 'dta'):
         return re.sub(r'[^A-Z0-9]', '', codigo.upper())
@@ -601,6 +601,9 @@ def monta_query_navii(
             - empresa (str): busca textual em embarcador ou consignatário
             - tipo_bl (str | lista): tipo de BL do CE (Conhecimento.tipoBLConhecimento:
               10 BL único, 11 MBL master, 12 HBL house, 15 MHBL — ver referencias)
+            - trafego (str | lista): tipo de tráfego do CE (Conhecimento.tipoTrafego: 5 importação, 3 cabotagem,
+              9 passagem — ver referencias.tipos_trafego; 23/10/2026). Com o filtro, o CE sem tráfego informado fica
+              de fora; a exportação nunca entra
             - sem_oog (bool): exclui os contêineres de potencial OOG (open top e
               plataforma/flat rack, pelo Item.isoCode — podem não passar no escâner)
             - estagio (str | lista): estágio do contêiner no ciclo de vida (no_operador, em_transito,
@@ -677,6 +680,10 @@ def _ces_alvo(session, filtros: dict) -> Optional[List[str]]:
     return sorted(ces) if ces is not None else None
 
 
+# Filtros de lista que são um código do próprio CE: campo -> coluna (vale qualquer um dos códigos)
+_CODIGOS_DO_CE = {'tipo_bl': Conhecimento.tipoBLConhecimento, 'trafego': Conhecimento.tipoTrafego}
+
+
 def _criterios_ce(filtros: dict) -> list:
     """Critérios que só dependem do Conhecimento (tráfego, portos, produto, empresa)."""
     criterios_ce = [or_(
@@ -693,8 +700,7 @@ def _criterios_ce(filtros: dict) -> list:
         criterios_ce.append(Conhecimento.manifestoCE.in_(
             select(Manifesto.numero).where(_algum_porto(Manifesto.portoCarregamento, filtros['porto_baldeacao']))
         ))
-    if filtros.get('tipo_bl'):
-        criterios_ce.append(Conhecimento.tipoBLConhecimento.in_(filtros['tipo_bl']))
+    criterios_ce += [coluna.in_(filtros[campo]) for campo, coluna in _CODIGOS_DO_CE.items() if filtros.get(campo)]
     if filtros.get('produto'):
         criterios_ce.append(Conhecimento.descricao.ilike(f"%{filtros['produto'].strip()}%"))
     if filtros.get('empresa'):

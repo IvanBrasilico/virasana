@@ -7,7 +7,8 @@ São arquivos JSON nesta pasta, gerados de fontes públicas por
 `atualiza_referencias.py` (ver lá as fontes e as limitações de cada uma) e
 carregados sob demanda, uma vez por processo. Exceções, mantidas à mão (a fonte
 está na chave "_fonte" de cada uma): `tipos_conteiner.json` (ISO 6346 — tamanho,
-grupo e potencial OOG) e `tipos_bl.json` (tipos de BL do Mercante). É um "BD" provisório: serve só
+grupo e potencial OOG), `tipos_bl.json` (tipos de BL do Mercante) e `tipos_trafego.json` (tipos de tráfego do
+filtro da tela, 23/10/2026). É um "BD" provisório: serve só
 para EXIBIR nomes. Código sem nome conhecido devolve None — quem chama mostra
 apenas o código; nunca se inventa um nome.
 """
@@ -178,6 +179,15 @@ def descreve_tipo_bl(codigo: Optional[str]) -> Optional[dict]:
 def tipos_bl() -> List[dict]:
     """Todos os tipos de BL conhecidos (para o filtro da tela), na ordem do código."""
     return [descreve_tipo_bl(codigo) for codigo in sorted(_tabela('tipos_bl.json')) if not codigo.startswith('_')]
+
+
+def tipos_trafego() -> List[dict]:
+    """Os tipos de tráfego do filtro da tela (Conhecimento.tipoTrafego; `tipos_trafego.json`), na ordem da tabela:
+    [{'codigo': '5', 'nome': 'Importação', 'descricao': 'longo curso'}, ...]. A exportação não entra (o NAVI-I não a
+    mostra)."""
+    tabela = _tabela('tipos_trafego.json')
+    return [{'codigo': codigo, 'nome': tabela[codigo]['nome'], 'descricao': tabela[codigo].get('descricao')}
+            for codigo in tabela.get('_ordem', []) if codigo in tabela]
 
 
 def descricao_posicao_ncm(ncm: Optional[str]) -> Optional[str]:

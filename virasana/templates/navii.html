@@ -735,6 +735,19 @@
                 <div class="dica-lista">Nenhum marcado = todos.</div>
             </div>
 
+            <div class="campo">
+                <span class="rotulo-campo">Tipo de tráfego</span>
+                <div class="grupo-marcaveis" id="f-trafego">
+                    {% for tipo in tipos_trafego %}
+                    <div class="campo-checkbox">
+                        <input id="f-trafego-{{ tipo.codigo }}" type="checkbox" value="{{ tipo.codigo }}" />
+                        <label for="f-trafego-{{ tipo.codigo }}">{{ tipo.nome }}{% if tipo.descricao %} — {{ tipo.descricao }}{% endif %}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="dica-lista">Nenhum marcado = todos. A exportação nunca aparece no NAVI-I.</div>
+            </div>
+
             <div class="campo campo-checkbox">
                 <input id="f-sem_oog" type="checkbox" />
                 <label for="f-sem_oog" title="Open top e plataforma/flat rack podem levar carga fora de gabarito (OOG), que não passa nos gates padrão nem no escâner">Excluir potenciais OOG (open top, plataforma)</label>
@@ -906,6 +919,8 @@
     var TIPOS_BL = {{ tipos_bl | tojson }};
     var SIGLAS_BL = {};
     TIPOS_BL.forEach(function (t) { SIGLAS_BL[t.codigo] = t.sigla; });
+    var NOMES_TRAFEGO = {};
+    ({{ tipos_trafego | tojson }}).forEach(function (t) { NOMES_TRAFEGO[t.codigo] = t.nome; });
     var ESTAGIOS = {{ estagios | tojson }};
     var ROTULOS_ESTAGIO = {};
     ESTAGIOS.forEach(function (e) { ROTULOS_ESTAGIO[e.codigo] = e.rotulo; });
@@ -949,7 +964,7 @@
         porto_destino: 'Destino', porto_baldeacao: 'Baldeação', recinto: 'Recinto', empresa: 'Empresa',
         ncms_max: 'NCMs distintos ≤', estagio: 'Estágio', corad: 'Risco CORAD',
         peso_min: 'Peso do contêiner ≥', peso_max: 'Peso do contêiner ≤',
-        com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', sem_oog: 'Sem potenciais OOG',
+        com_imagem: 'Com imagem de escaneamento', tipo_bl: 'Tipo de BL', trafego: 'Tráfego', sem_oog: 'Sem potenciais OOG',
         risco: 'Risco histórico', ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem',
         so_com_desembarque: 'Só com desembarque', pesagem: 'Pesagem', dif_pct_min: 'Diferença de peso ≥',
         ordem_grandeza: 'Peso: ordem de grandeza'
@@ -1021,6 +1036,17 @@
 
     function marcaTiposBl(codigos) {
         document.querySelectorAll('#f-tipo_bl input').forEach(function (input) {
+            input.checked = codigos.indexOf(input.value) >= 0;
+        });
+    }
+
+    function trafegosMarcados() {
+        return Array.prototype.map.call(
+            document.querySelectorAll('#f-trafego input:checked'), function (input) { return input.value; });
+    }
+
+    function marcaTrafegos(codigos) {
+        document.querySelectorAll('#f-trafego input').forEach(function (input) {
             input.checked = codigos.indexOf(input.value) >= 0;
         });
     }
@@ -1145,6 +1171,7 @@
             var valor = estadoBusca.filtros[chave];
             var texto = (CHECKBOXES.indexOf(chave) >= 0 || chave === 'so_com_desembarque') ? 'sim' : (chave === 'tipo_bl'
                 ? valor.map(function (c) { return SIGLAS_BL[c] || c; }).join(', ')
+                : chave === 'trafego' ? valor.map(function (c) { return NOMES_TRAFEGO[c] || c; }).join(', ')
                 : (chave === 'estagio'
                     ? valor.map(function (c) { return ROTULOS_ESTAGIO[c] || c; }).join(', ')
                     : (chave === 'risco' ? (FILTROS_RISCO[valor] || valor)
@@ -1163,6 +1190,8 @@
                     document.getElementById('f-' + chave).checked = false;
                 } else if (chave === 'tipo_bl') {
                     marcaTiposBl([]);
+                } else if (chave === 'trafego') {
+                    marcaTrafegos([]);
                 } else if (chave === 'estagio') {
                     marcaEstagios([]);
                 } else if (chave === 'corad') {
@@ -2872,6 +2901,8 @@
         }
         var tiposBl = tiposBlMarcados();
         if (tiposBl.length) { filtros.tipo_bl = tiposBl; }
+        var trafegos = trafegosMarcados();
+        if (trafegos.length) { filtros.trafego = trafegos; }
         var estagios = estagiosMarcados();
         if (estagios.length) { filtros.estagio = estagios; }
         CHECKBOXES.forEach(function (campo) {
@@ -2915,6 +2946,7 @@
         CHECKBOXES.forEach(function (campo) { document.getElementById('f-' + campo).checked = !!filtros[campo]; });
         document.getElementById('f-incluir_sem_desembarque').checked = !filtros.so_com_desembarque;
         marcaTiposBl(filtros.tipo_bl || []);
+        marcaTrafegos(filtros.trafego || []);
         // filtros salvos antes de 02/10/2026: "somente entregues" (concluido) = estágio "entregue"
         marcaEstagios(filtros.estagio || (filtros.concluido ? ['entregue'] : []));
         document.getElementById('f-risco').value = filtros.risco || '';

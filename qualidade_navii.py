@@ -83,6 +83,7 @@ TESTES = [
     'virasana/tests/test_navii_indexador_texto.py',
     'virasana/tests/test_navii_texto_tela.py',
     'virasana/tests/test_navii_filtro_peso.py',
+    'virasana/tests/test_navii_filtro_trafego.py',
     'virasana/tests/test_navii_imagem_fallback.py',
     'virasana/tests/test_pesagens_ciclo.py',
     'virasana/tests/test_diagnostico_pesagens.py',
