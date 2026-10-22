@@ -1393,7 +1393,7 @@
         var familia = card.cicloPorCE
             ? '<div class="aviso-familia"><i class="fas fa-sitemap" aria-hidden="true"></i> Ciclo de vida localizado ' +
               'pelo CE <span class="texto-mono">' + escapeHtml(card.cicloPorCE) + '</span>, da mesma família ' +
-              '(master/filhote) — o contêiner consta nos dois.</div>'
+              '(master/filhote ou outro BL do mesmo manifesto) — o contêiner consta nos dois.</div>'
             : '';
         return '<div class="timeline-navii">' + etapas + '</div>' + montaSituacao(card) + montaEscaneamentos(card) +
             familia;

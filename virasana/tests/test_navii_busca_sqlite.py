@@ -1066,7 +1066,7 @@ class TestDiagnosticoSql(NaviiSqliteTestCase):
         from virasana.navii import diagnostico_sql as ds
         capturadora = ds.SessaoCapturadora(self.session)
         busca_ciclos_navii(capturadora, [Item(numeroCEmercante='CE1', codigoConteiner='C1')])
-        self.assertEqual(len(capturadora.capturadas), 1)
+        self.assertEqual(len(capturadora.capturadas), 2)   # pelo CE/família do Mercante e pela família gravada (C7)
         capturadora.capturadas.clear()
         busca_navii._itens_com_desembarque(capturadora, [1, 2, 3])
         self.assertEqual(len(capturadora.capturadas), 1)

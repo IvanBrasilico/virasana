@@ -270,6 +270,13 @@ Regras e limitações (importantes):
    (`_criterios_ce`, tabela `_CODIGOS_DO_CE` junto com o tipo de BL): vale também dentro do ramo da atracação
    prevista, e a coluna tem índice. Filtros salvos, chips e estatísticas de uso já o tratam. Testes:
    `test_navii_filtro_trafego.py`; cenário no `diagnostico_sql.py`.
+21. **Ciclo pela família GRAVADA pelo ciclo de vida** (23/10/2026, C7 de `CICLO_DE_VIDA.md`: contêiner consolidado
+   com vários BLs únicos do mesmo manifesto — todos na `ciclodevida_ciclo_ce`). `busca_ciclos_navii`: sem ciclo pelo
+   CE nem pela família do Mercante, procura pela família gravada (uma consulta por página; respeita
+   `LIGACAO_FAMILIA`); o card mostra "localizado pelo CE X, da mesma família (master/filhote ou outro BL do mesmo
+   manifesto)". `_itens_com_desembarque` (selo da página) usa `_existe_ciclo(atalho_bl_unico=False)`. Os filtros por
+   candidato mantêm o atalho do BL único (desempenho medido em 02/10) — limitação: contêiner + "só com desembarque"
+   deixa de fora o BL que não é o principal. Testes: `test_navii_sem_desembarque.TestConteinerConsolidado`.
 
 ## Como a busca funciona (desenho atual)
 

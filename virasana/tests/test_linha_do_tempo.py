@@ -435,6 +435,24 @@ class TestSegmentacaoEConfianca(unittest.TestCase):
         self.assertEqual(ciclo.situacao, ldt.ABERTO)
         self.assertIn('saída duvidosa', ciclo.motivo)
 
+    def test_saida_do_seco_com_ce_de_outra_familia_nao_conclui_o_tra(self):
+        """C8 (23/10/2026): a auditoria achou TRA concluído sem a saída do seco gravada — a ligação de confiança baixa
+        não é gravada; como a saída do operador, a saída duvidosa do seco deixa o ciclo aberto para revisão."""
+        caminhos = {
+            'seco': [D(t(9, 1)), S(t(9, 2)), ENT(t(9, 2, 10), SECO), S(t(9, 10), SECO, ce=X)],
+            'estada curta e outra entrada depois': [D(t(9, 1)), S(t(9, 2)), ENT(t(9, 2, 10), SECO),
+                                                    S(t(9, 2, 11), SECO, ce=X), ENT(t(9, 6), SECO2)],
+            'operador em papel de TRA': [D(t(9, 1)), S(t(9, 2)), ENT(t(9, 2, 10), BTP), S(t(9, 5), BTP, ce=X)],
+        }
+        for nome, eventos in caminhos.items():
+            with self.subTest(caminho=nome):
+                ciclo = um_ciclo(eventos, familia={M, H1})
+                self.assertEqual(ciclo.saida_seco.confianca, ldt.BAIXA)
+                self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.TRA, ldt.ABERTO))
+                self.assertEqual(ciclo.motivo, 'saída do seco duvidosa (CE de outra família) — revisar')
+        ok = um_ciclo([D(t(9, 1)), S(t(9, 2)), ENT(t(9, 2, 10), SECO), S(t(9, 10), SECO, ce=H1)], familia={M, H1})
+        self.assertEqual((ok.situacao, ok.motivo), (ldt.CONCLUIDO, 'saída do recinto seco'))
+
     def test_embarque_com_ce_de_outra_familia_e_incompleto(self):
         ciclo = um_ciclo([D(t(9, 1)), E(t(9, 20), ce=X)], familia={M, H1})
         self.assertEqual((ciclo.fluxo, ciclo.situacao), (ldt.INDEFINIDO, ldt.INCOMPLETO))

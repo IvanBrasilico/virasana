@@ -10,7 +10,10 @@
   ],
   "desde": "2026-08-01T00:00:00",
   "agora": "2026-10-21T17:49:44.194998",
-  "placas": 10
+  "placas": 10,
+  "portos_dos_recintos": {
+   "8931356": "BRSSZ"
+  }
  },
  "tabelas": {
   "conhecimentosresumo": [

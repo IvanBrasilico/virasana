@@ -135,6 +135,12 @@ class TestExtracao(unittest.TestCase):
         self.assertEqual((acesso['placa'], pesagem['placa']), ('P000001', 'P000001'))   # a mesma placa, o mesmo apelido
         self.assertEqual(caso['meta']['placas'], 1)
 
+    def test_porto_dos_recintos_guardado(self):
+        self.assertEqual(self.caso['meta']['portos_dos_recintos'], {})   # eventos de mais de 7 dias antes de agora
+        with banco_de_origem().connect() as conexao:
+            perto = extrai_caso(conexao, [IMP], [], DESDE, datetime(2026, 10, 10))
+        self.assertEqual(perto['meta']['portos_dos_recintos'], {BTP: 'BRSSZ'})
+
     def test_gravado_e_recintos(self):
         self.assertEqual([c['numeroCEmercante'] for c in self.caso['gravado']['ciclos']], [CAB])
         self.assertEqual([c['numeroCEmercante'] for c in self.caso['gravado']['ces']], [CAB])

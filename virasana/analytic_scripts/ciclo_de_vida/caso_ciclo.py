@@ -54,7 +54,7 @@ from sqlalchemy.pool import StaticPool
 from bhadrasana.models.apirecintos import AcessoVeiculo, EmbarqueDesembarque, InspecaoNaoInvasiva, PesagemVeiculo
 from virasana.analytic_scripts.ciclo_de_vida import gravacao_ciclo as gc
 from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt
-from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import CargaCiclo, ConsultaSQL
+from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import DIAS_PORTOS, CargaCiclo, ConsultaSQL
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (
     JANELA_ESCALA_DIAS, datas_do_candidato, normaliza_ce, resolve_ces,
 )
@@ -259,7 +259,12 @@ def extrai_caso(conexao, ces: Iterable[str], conteineres: Iterable[str], desde: 
     extracao = Extracao(conexao, desde)
     ces = {ce for ce in (normaliza_ce(ce) for ce in ces) if ce}
     todos = extracao.extrai(ces, {_texto(c).upper() for c in conteineres if _texto(c)})
-    caso = {'meta': {'ces': sorted(ces), 'conteineres': todos, 'desde': desde, 'agora': agora or datetime.now()},
+    agora = agora or datetime.now()
+    recintos = {_texto(linha['codigoRecinto']) for linha in extracao.linhas('apirecintos_embarquedesembarque')}
+    portos = CargaCiclo(ConsultaSQL(conexao), agora, agora).portos_dos_recintos(
+        agora - timedelta(days=DIAS_PORTOS), recintos - {''})
+    caso = {'meta': {'ces': sorted(ces), 'conteineres': todos, 'desde': desde, 'agora': agora,
+                     'portos_dos_recintos': portos},
             'tabelas': {tabela: extracao.linhas(tabela) for tabela in TABELAS if extracao.linhas(tabela)},
             'recintos': extracao.recintos(),
             'gravado': extracao.gravado(todos)}
@@ -429,7 +434,7 @@ class Reprocesso:
             carga = CargaCiclo(ConsultaSQL(conexao), self.desde, self.agora)
             self.escopo, operadores, _ = carga.operadores()
             eventos, portuarios = carga.eventos(self.conteineres)
-            self.portos = carga.portos_dos_desembarques()
+            self.portos = carga.portos_dos_desembarques(portos_dos_recintos(self.caso))
             candidatos = carga.candidatos(self.conteineres)
             conhecidos = carga.conhecidos([e for lista in eventos.values() for e in lista])
         self.operadores = operadores | portuarios
@@ -489,9 +494,12 @@ class Reprocesso:
 
 
 def _com_familia(ciclos: List[dict], ces: List[dict]) -> Dict[int, dict]:
-    """{desembarque: linha do ciclo + 'familia' (CEs gravados do ciclo, em ordem)}."""
-    return {ciclo['desembarque_id']: {**ciclo, 'familia': sorted(
-        c['numeroCEmercante'] for c in ces if c['ciclo_de_vida_id'] == ciclo['ID'])} for ciclo in ciclos}
+    """{desembarque: linha do ciclo + 'familia' (CEs gravados do ciclo, em ordem)} — agrupa os CEs uma vez (a versão
+    que procurava os CEs de cada ciclo na lista inteira levou mais de 1 h com os 200 mil ciclos de 30 dias)."""
+    por_ciclo: Dict[int, List[str]] = defaultdict(list)
+    for linha in ces:
+        por_ciclo[linha['ciclo_de_vida_id']].append(linha['numeroCEmercante'])
+    return {ciclo['desembarque_id']: {**ciclo, 'familia': sorted(por_ciclo.get(ciclo['ID'], []))} for ciclo in ciclos}
 
 
 def _resumo(ciclo: dict) -> dict:
@@ -504,13 +512,20 @@ def _principais_gravados(gravado: dict) -> Dict[int, dict]:
     return {d: _resumo(c) for d, c in _com_familia(gravado['ciclos'], gravado['ces']).items()}
 
 
+def portos_dos_recintos(caso: dict) -> Dict[str, str]:
+    """O porto de cada recinto guardado na extração (o serviço o recalcula por dia; ver
+    `CargaCiclo.portos_dos_recintos`) — {} nos casos extraídos antes de 23/10/2026."""
+    return caso['meta'].get('portos_dos_recintos') or {}
+
+
 def ciclos_do_servico(engine, caso: dict) -> Dict[int, dict]:
     """Roda o serviço (código atual, relógio na hora da extração) no SQLite do caso e devolve os ciclos gravados
     por ele: {desembarque: linha de `ciclodevida_ciclo_de_vida_importacao` + 'familia'}."""
     from virasana.analytic_scripts.ciclo_de_vida.servico_ciclo_de_vida import Servico
     meta = caso['meta']
     agora = _data(meta['agora'])
-    Servico(engine, relogio=lambda: agora).processa(meta['conteineres'], desde=_data(meta['desde']))
+    Servico(engine, relogio=lambda: agora, portos_dos_recintos=portos_dos_recintos(caso)).processa(
+        meta['conteineres'], desde=_data(meta['desde']))
     with engine.connect() as conexao:
         return _com_familia([dict(linha._mapping) for linha in conexao.execute(select(gc.CICLOS))],
                             [dict(linha._mapping) for linha in conexao.execute(select(gc.CICLO_CE))])
@@ -522,7 +537,7 @@ def portos_do_caso(engine, caso: dict) -> Dict[int, Optional[str]]:
     with engine.connect() as conexao:
         carga = CargaCiclo(ConsultaSQL(conexao), _data(meta['desde']), _data(meta['agora']))
         carga.eventos(meta['conteineres'])
-        return carga.portos_dos_desembarques()
+        return carga.portos_dos_desembarques(portos_dos_recintos(caso))
 
 
 def compara_com_o_servico(engine, caso: dict, saida: Saida) -> Dict[int, dict]:

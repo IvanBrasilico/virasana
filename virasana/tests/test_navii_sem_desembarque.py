@@ -104,14 +104,16 @@ class TestSeloIgualAJanela(SemDesembarqueTestCase):
         self.assertFalse(self.cards('prevista')[('CE2', 'C3')]['semDesembarque'])   # ... e não é "sem desembarque"
 
     def test_familia_gravada_pelo_ciclo_e_a_da_janela(self):
-        """O card não acha o ciclo (a família do Mercante não liga DM a DF2), mas a janela achou o desembarque pela
-        família gravada pelo ciclo: o card NÃO diz "sem desembarque" — o critério é o da janela."""
+        """A família do Mercante não liga DM a DF2, mas a gravada pelo ciclo liga: a janela acha o desembarque e o
+        card acha o ciclo por ela (desde 23/10/2026, C7 — antes o card ficava sem o ciclo) e NÃO diz "sem
+        desembarque" — o critério é o da janela."""
         card = self.cards()[('DM', 'K20')]
-        self.assertFalse(card['cicloDeVidaLocalizado'])
+        self.assertEqual((card['cicloDeVidaLocalizado'], card['cicloPorCE']), (True, 'DF2'))
         self.assertFalse(card['semDesembarque'])
         self.assertIn(('DM', 'K20'), self.cards(so_com_desembarque=True))
         with mock.patch.object(busca_navii, 'LIGACAO_FAMILIA', False):    # sem a ligação, entra pela previsão
-            self.assertTrue(self.cards()[('DM', 'K20')]['semDesembarque'])
+            sem_ligacao = self.cards()[('DM', 'K20')]
+            self.assertEqual((sem_ligacao['semDesembarque'], sem_ligacao['cicloDeVidaLocalizado']), (True, False))
             self.assertNotIn(('DM', 'K20'), self.cards(so_com_desembarque=True))
 
     def test_pelo_conteiner(self):
@@ -172,6 +174,39 @@ class TestTelaEApi(SemDesembarqueTestCase):
         col = filtros_salvos.colecao(tela_filtros.banco_mongo())
         salvo = filtros_salvos.salva(col, 'ana', 'só desembarcados', 'efetiva', {'so_com_desembarque': '1'})
         self.assertEqual(salvo['filtros'], {'so_com_desembarque': True})
+
+
+class TestConteinerConsolidado(SemDesembarqueTestCase):
+    """C7 (23/10/2026): dois BLs únicos do mesmo manifesto (BU1, BU2) com o mesmo contêiner K40; o ciclo foi gravado
+    com o BU1 e a família gravada tem os dois. O card do BU2 acha o ciclo pela família gravada e não diz "sem
+    desembarque" (o selo da página não usa o atalho do BL único). Limitação conhecida: nos filtros verificados por
+    candidato (ex.: contêiner + "só com desembarque"), o atalho do BL único ainda deixa o BU2 de fora."""
+
+    def setUp(self):
+        super().setUp()
+        self.session.add_all([
+            Conhecimento(numeroCEmercante='BU1', manifestoCE='M1', tipoBLConhecimento='10', tipoTrafego='5'),
+            Conhecimento(numeroCEmercante='BU2', manifestoCE='M1', tipoBLConhecimento='10', tipoTrafego='5'),
+            Item(numeroCEmercante='BU1', codigoConteiner='K40'), Item(numeroCEmercante='BU2', codigoConteiner='K40')])
+        ciclo = CicloDeVidaImportacao(numeroCEmercante='BU1', numeroConteiner='K40',
+                                      data_desembarque=datetime(2026, 1, 11, 8), codigoRecintoDesembarque='8931356',
+                                      concluido=False, situacao='aberto', fluxo='indefinido', versao_heuristica='v2')
+        self.session.add(ciclo)
+        self.session.flush()
+        self.session.add_all([
+            CicloDeVidaCE(ciclo_de_vida_id=ciclo.ID, numeroCEmercante='BU1', papel='simples', principal=True),
+            CicloDeVidaCE(ciclo_de_vida_id=ciclo.ID, numeroCEmercante='BU2', papel='simples', principal=False)])
+        self.session.commit()
+        self.ciclo_id = ciclo.ID
+
+    def test_card_do_outro_bl_acha_o_ciclo(self):
+        cards = self.cards()
+        for ce, por_ce in (('BU1', None), ('BU2', 'BU1')):
+            with self.subTest(ce=ce):
+                card = cards[(ce, 'K40')]
+                self.assertEqual((card['ciclo_de_vida_id'], card['cicloPorCE'], card['semDesembarque']),
+                                 (self.ciclo_id, por_ce, False))
+        self.assertIn(('BU2', 'K40'), self.cards(so_com_desembarque=True))
 
 
 class TestPagina(unittest.TestCase):

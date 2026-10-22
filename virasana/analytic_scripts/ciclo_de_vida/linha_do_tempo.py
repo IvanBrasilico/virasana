@@ -398,7 +398,7 @@ class _Percurso:
         if evento.tipo == SAIDA:
             motivos = ['saída do seco vazia (desunitização?)'] if evento.vazio else []
             self.ciclo.saida_seco = self._liga(evento, ALTA, *motivos)
-            self._fim(TRA, CONCLUIDO, f'saída do recinto seco (operador {recinto} em papel de TRA)')
+            self._fecha_tra(f'saída do recinto seco (operador {recinto} em papel de TRA)')
         else:
             onde = 'reentrada' if evento.recinto == recinto else 'entrada'
             self._fim(TRA, INCOMPLETO, f'saída do recinto seco não informada ({onde} em {evento.recinto}; '
@@ -412,7 +412,7 @@ class _Percurso:
                 # estada curta: pode ser só passagem (escaneamento fora) — decide o próximo evento
                 self.estado, self.desde = 'pos_seco', evento.data
             else:
-                self._fim(TRA, CONCLUIDO, 'saída do recinto seco')
+                self._fecha_tra('saída do recinto seco')
         elif evento.tipo in (ENTRADA, EMBARQUE):
             onde = 'reentrada' if evento.recinto == self.recinto and evento.tipo == ENTRADA else evento.tipo
             self._fim(TRA, INCOMPLETO, f'saída do recinto seco não informada ({onde} em {evento.recinto})')
@@ -438,7 +438,16 @@ class _Percurso:
 
     def _conclui_tra(self):
         self.em_espera = []  # inspeções depois da saída do seco são de outra etapa
-        self._fim(TRA, CONCLUIDO, 'saída do recinto seco')
+        self._fecha_tra('saída do recinto seco')
+
+    def _fecha_tra(self, motivo: str):
+        """Fecha o TRA na saída do seco — menos quando ela é duvidosa (CE de outra família: confiança baixa, que não é
+        gravada), como a saída do operador em `_entrega`. C8, 23/10/2026: a auditoria das invariantes achou TRA
+        concluído sem a saída do seco gravada."""
+        if self.ciclo.saida_seco and self.ciclo.saida_seco.confianca == BAIXA:
+            self._fim(TRA, ABERTO, 'saída do seco duvidosa (CE de outra família) — revisar')
+        else:
+            self._fim(TRA, CONCLUIDO, motivo)
 
     # ------------------------------------------------------------------ fechamento
     def _entrega(self, motivo: str):

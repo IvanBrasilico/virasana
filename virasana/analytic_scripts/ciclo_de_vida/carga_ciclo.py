@@ -38,6 +38,7 @@ OPERADORES_FORA_DE_SANTOS = frozenset({
 # operador corrigir a origem, o histórico continua trocado — aí será preciso uma data de corte.
 OPERADORES_D_E_TROCADOS = frozenset()
 MARGEM_EVENTOS_DIAS = 2
+DIAS_PORTOS = 7           # porto de cada recinto: escalas declaradas nos embarques/desembarques dos últimos N dias
 TAMANHO_LOTE = 500
 COLUNAS_PESAGEM = ('id, numeroConteiner, dataHoraOcorrencia, codigoRecinto, placa, placaSemirreboque, '
                    'pesoBrutoBalanca, taraConjunto, capturaAutoPeso')
@@ -234,11 +235,32 @@ class CargaCiclo:
             return tipo
         return self.tipos[conteiner].most_common(1)[0][0] if self.tipos.get(conteiner) else None
 
-    def portos_dos_desembarques(self) -> Dict[int, Optional[str]]:
-        """{id do desembarque/embarque carregado: porto} — o da escala declarada no evento (escalasresumo); sem ela,
-        o porto mais visto nas escalas dos outros eventos do mesmo recinto no lote. Medição de 22/10/2026
-        (`diagnostico_porto_desembarque.py`, 145 mil eventos, 16 recintos): o porto da escala declarada é 100%
-        constante por recinto; o `ovr_recintos.cod_carga` está vazio em todos."""
+    def portos_dos_recintos(self, desde: datetime, recintos: Optional[Iterable[str]] = None) -> Dict[str, str]:
+        """{recinto: porto mais visto nas escalas declaradas nos embarques/desembarques desde `desde`} (todos os
+        recintos, ou só `recintos`) — o porto do recinto quando a escala do evento não está no Mercante. Não depende
+        do lote: o serviço calcula uma vez por dia e o caso extraído (`caso_ciclo.py`) guarda o mesmo mapa."""
+        params, listas, filtro = {'desde': desde}, (), ''
+        if recintos is not None:
+            params['recintos'], listas = sorted(set(recintos)), ('recintos',)
+            filtro = ' AND d.codigoRecinto IN :recintos'
+            if not params['recintos']:
+                return {}
+        contagem: Dict[str, Counter] = defaultdict(Counter)
+        for recinto, porto, quantidade in self.diag.consulta(
+                'SELECT d.codigoRecinto, e.portoDaEscala, COUNT(*) FROM apirecintos_embarquedesembarque d '
+                'JOIN escalasresumo e ON e.numeroDaEscala = d.escala '
+                f'WHERE d.dataHoraOcorrencia >= :desde{filtro} '  # nosec B608 - filtro fixo
+                'GROUP BY d.codigoRecinto, e.portoDaEscala', params, listas=listas):
+            if _texto(porto):
+                contagem[_texto(recinto)][_texto(porto)] += quantidade
+        return {recinto: porto.most_common(1)[0][0] for recinto, porto in contagem.items()}
+
+    def portos_dos_desembarques(self, portos_dos_recintos: Optional[Dict[str, str]] = None) -> Dict[int, Optional[str]]:
+        """{id do desembarque/embarque carregado: porto} — o da escala declarada no evento (escalasresumo); sem ela, o
+        do recinto (`portos_dos_recintos`, quando dado); senão o porto mais visto nas escalas dos outros eventos do
+        mesmo recinto no lote. Medição de 22/10/2026 (`diagnostico_porto_desembarque.py`, 145 mil eventos, 16
+        recintos): o porto da escala declarada é 100% constante por recinto; o `ovr_recintos.cod_carga` está vazio."""
+        portos_dos_recintos = portos_dos_recintos or {}
         porto_da_escala = {_texto(escala): _texto(porto) for escala, porto in self.diag._por_lotes(
             'SELECT numeroDaEscala, portoDaEscala FROM escalasresumo WHERE numeroDaEscala IN :escalas', 'escalas',
             {d['escala'] for d in self.desembarques.values() if d['escala']})}
@@ -247,8 +269,8 @@ class CargaCiclo:
             if porto_da_escala.get(dados['escala']):
                 por_recinto[dados['recinto']][porto_da_escala[dados['escala']]] += 1
         do_recinto = {recinto: contagem.most_common(1)[0][0] for recinto, contagem in por_recinto.items()}
-        return {id_: porto_da_escala.get(dados['escala']) or do_recinto.get(dados['recinto'])
-                for id_, dados in self.desembarques.items()}
+        return {id_: porto_da_escala.get(dados['escala']) or portos_dos_recintos.get(dados['recinto'])
+                or do_recinto.get(dados['recinto']) for id_, dados in self.desembarques.items()}
 
     def manifestos_das_escalas(self, escalas) -> Dict[str, Set[str]]:
         """{escala: manifestos} (escalamanifestoresumo) — para conferir a escala declarada no desembarque."""
@@ -278,7 +300,7 @@ class CargaCiclo:
     def _candidato(self, ce: str, escalas: List[Tuple[date, str]]) -> CandidatoCE:
         info = self.info[ce]
         return CandidatoCE(ce, info['master'], info['trafego'], tuple(datas_no_porto(escalas)), escalas=tuple(escalas),
-                           origem=info['origem'], destino=info['porto_destino'])
+                           origem=info['origem'], destino=info['porto_destino'], manifesto=info['manifesto'])
 
     def info_de(self, ces):
         """Carrega master, tráfego, manifesto e portos de origem e de destino dos CEs que ainda não estão em

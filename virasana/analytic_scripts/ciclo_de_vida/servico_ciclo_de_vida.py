@@ -63,7 +63,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
-    CargaCiclo, ConsultaSQL, filtro_desembarques, manifesto_vazio,
+    DIAS_PORTOS, CargaCiclo, ConsultaSQL, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.gravacao_ciclo import (  # noqa: E402
     CICLOS, MARCAS, PESAGENS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
@@ -75,6 +75,7 @@ from virasana.analytic_scripts.ciclo_de_vida import linha_do_tempo as ldt  # noq
 logger = logging.getLogger('ciclo_de_vida_v2')
 DIAS_DIVISOES = 7          # divisão das balanças: pesagens dos últimos N dias ...
 HORAS_DIVISOES = 24        # ... recalculada a cada N horas
+HORAS_PORTOS = 24          # porto de cada recinto (`CargaCiclo.portos_dos_recintos`): recalculado a cada N horas
 
 # Eventos novos de cada tabela (o SQL é fixo; marca e lote vão como parâmetro)
 EVENTOS_NOVOS = {
@@ -112,7 +113,7 @@ class Servico:
                  lote_eventos: int = 20000, lote_conteineres: int = 500, revisita_horas: float = 6,
                  revisita_sem_ce_horas: float = 24, revisita_limite: int = 2000, dias_sem_ce: int = 30,
                  dias_maximos_aberto: int = 400, relogio: Callable[[], datetime] = datetime.now,
-                 risco: bool = False):
+                 risco: bool = False, portos_dos_recintos: Optional[Dict[str, str]] = None):
         self.engine, self.mongo_db, self.simula = engine, mongo_db, simula
         self.dias_eventos, self.lote_eventos, self.lote_conteineres = dias_eventos, lote_eventos, lote_conteineres
         self.dias_maximos_aberto = dias_maximos_aberto
@@ -122,6 +123,8 @@ class Servico:
         self.etapa_risco = self._carrega_etapa_risco(engine, relogio) if risco and not simula else None
         self.com_pesagens = inspect(engine).has_table(PESAGENS.name)
         self._divisoes: Tuple[Optional[datetime], Dict[str, int]] = (None, {})
+        self._portos: Tuple[Optional[datetime], Dict[str, str]] = (None, {})
+        self._portos_fixos = portos_dos_recintos   # o reprocesso de um caso extraído usa o mapa guardado nele
         if not self.com_pesagens:
             logger.warning(f'pesagens: tabela {PESAGENS.name} ausente — o ciclo segue sem gravar pesagens '
                            '(ddl_pesagens_ciclo.sql; depois de criá-la, reiniciar o serviço)')
@@ -247,7 +250,7 @@ class Servico:
         carga = CargaCiclo(ConsultaSQL(conexao), self._desde_do_lote(conexao, conteineres, desde), agora)
         escopo, operadores, _ = carga.operadores()
         eventos, portuarios = carga.eventos(conteineres)
-        portos = carga.portos_dos_desembarques()
+        portos = carga.portos_dos_desembarques(self.portos_dos_recintos(conexao))
         candidatos, vazios = carga.candidatos(conteineres), carga.vazios(conteineres)
         conhecidos = carga.conhecidos([e for lista in eventos.values() for e in lista])
         itens: Dict[int, ItemGravacao] = {}
@@ -276,6 +279,22 @@ class Servico:
                 logger.exception('pesagens: divisão das balanças indisponível (segue sem a marca)')
             self._divisoes = (agora, divisoes)
         return divisoes
+
+    def portos_dos_recintos(self, conexao) -> Dict[str, str]:
+        """Porto de cada recinto, recalculado a cada HORAS_PORTOS; um erro só deixa sem ele (vale a escala de cada
+        evento e o lote)."""
+        if self._portos_fixos is not None:
+            return self._portos_fixos
+        agora = self.relogio()
+        quando, portos = self._portos
+        if quando is None or agora - quando > timedelta(hours=HORAS_PORTOS):
+            try:
+                portos = CargaCiclo(ConsultaSQL(conexao), agora, agora).portos_dos_recintos(
+                    agora - timedelta(days=DIAS_PORTOS))
+            except Exception:  # noqa: sem o mapa, o porto vem da escala do evento e do lote
+                logger.exception('porto dos recintos indisponível (segue com a escala de cada evento e o lote)')
+            self._portos = (agora, portos)
+        return portos
 
     def _pesagens(self, conexao, carga: CargaCiclo, itens: Dict[int, ItemGravacao]):
         """As pesagens de cada ciclo do lote (`pesagens_ciclo.linhas_do_ciclo`), com o par da tara buscado pela placa

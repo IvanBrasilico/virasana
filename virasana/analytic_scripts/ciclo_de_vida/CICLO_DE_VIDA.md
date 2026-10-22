@@ -1440,8 +1440,9 @@ virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/diagnostico_por
 - fora de Santos (3.000 contêineres, 3.047 ciclos): mudou em 26 (0,9%) — novo 19, diferente 4 (Pecém), perna seguinte
   2, perdido 1;
 - fluxo: 9 indefinido -> operador (o prazo do trânsito passou desde a gravação) e 7 passagem -> incompleto (o embarque
-  declara um CE de EXPORTAÇÃO de outra unidade, que entrou no Mercante depois da gravação) — nenhum dos dois vem da
-  correção, mas o segundo é um limite a estudar (baldeação com CE de exportação na perna seguinte);
+  declara um CE de EXPORTAÇÃO de outro porto em baldeação). CORREÇÃO (23/10): os 7 vieram da própria correção — a perna
+  seguinte incluía uma cabotagem ANTIGA do contêiner saindo de Santos; com a família não vazia, o CE de exportação do
+  embarque virou "outra família". Resolvido pela C6 e pela janela da perna seguinte (abaixo);
 - sinal para a próxima regra: vários CEs "novos" de passagem têm a escala declarada no desembarque que NÃO confere com
   o manifesto do CE (pode ser a perna seguinte) — a escala declarada como evidência (C5) fica para os casos reais.
 
@@ -1478,4 +1479,63 @@ virasana-venv/bin/python $C --casos virasana/tests/dados/casos_ciclo/casos.txt -
 virasana-venv/bin/python virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py --dias 30 \
     --saida auditoria_ciclos.log --csv auditoria_ciclos.csv
 ```
+
+**Corpus carregado (23/10/2026)**: os 25 casos de `casos.txt` (39 contêineres, 2,1 MB) em `virasana/tests/dados/casos_ciclo/`,
+com o gabarito em `test_casos_reais_ciclo.py` (+ o CAAU5545018): 26 casos, 51 desembarques (2 pendentes), nenhuma
+violação das invariantes.
+O gabarito aceita um CONJUNTO de CEs no empate legítimo, e a marca `pendente` é por desembarque. Mutantes contra o corpus:
+7/10 mortos (os vivos — mapa de porto do recinto, desempate pelo destino, passagem rápida em não operador — não aparecem
+nos casos; os testes unitários os matam). O que os casos mostraram:
+- **perna seguinte** (Suape, Pecém) e **cabotagem que sai depois** (BTP, Embraport): a correção acerta — no
+  HAMU4699375 a cabotagem que sai de Santos é o CE certo na CHEGADA a Suape;
+- **CE de passagem achado agora** (escala "não confere"): baldeação Buenos Aires -> Buenaventura com manifesto de
+  baldeação emitido em Santos — o CE é o certo; a escala declarada como evidência (C5) NÃO serve e foi descartada;
+- **porto intermediário** (Vitória via Santos e Rio; Navegantes via Suape e Santos): o CE de importação vale nas
+  passagens intermediárias, como o usuário descreveu;
+- **PENDENTE — exportação de outro porto em baldeação** (C6, `embarque_exportacao_outro`): exportação Vitória -> Benin/EUA
+  desce em Santos e reembarca declarando o CE de exportação; sem importação o ciclo fica sem CE (certo), mas o CE de
+  exportação declarado no embarque conta como "outra família" e o ciclo fica INCOMPLETO — o certo é passagem concluída.
+  Proposta genérica: o CE de exportação com o contêiner nos itens e origem em OUTRO porto (carga em trânsito) corrobora
+  os eventos do ciclo, como a perna seguinte (sem entrar no ciclo);
+- **PROPOSTA — contêiner consolidado com vários BLs únicos** (C7, `confianca_baixa`, `perna_seguinte_suape`): o mesmo
+  contêiner nos itens de vários CEs do MESMO manifesto (sem master): hoje cada CE é uma família, o empate dá confiança
+  baixa e só um CE entra no ciclo — o card do NAVI-I dos OUTROS CEs fica sem o ciclo e sem as imagens. Proposta: CEs do
+  mesmo manifesto com o mesmo contêiner são uma família (todos no ciclo; principal o declarado, senão o primeiro);
+- **Pecém, duas importações Jedá -> Manaus** em manifestos diferentes, mesma distância de escala: empate legítimo,
+  confiança baixa (o gabarito aceita qualquer um).
+
+**Fidelidade do porto (23/10/2026)**: quando a escala declarada não está no Mercante, o porto vinha do lote (o mais
+visto no recinto) — o caso isolado ficava sem porto. Agora o serviço calcula o porto de cada recinto pelas escalas dos
+últimos 7 dias, uma vez por dia (`CargaCiclo.portos_dos_recintos`, como a divisão das balanças), a sombra também, e a
+extração guarda o mapa no caso (`meta.portos_dos_recintos`; os 25 casos e o CAAU receberam o mapa medido em 22/10).
+Ordem: escala do evento -> porto do recinto -> lote.
+
+**Auditoria** (`audita_ciclos.py`): a 1ª execução em 30 dias passou de 1 h e caiu com "MySQL server has gone away" — a
+junção da família dos ~200 mil ciclos era quadrática (0,4 s agora) e a conexão ficou parada. Agora roda um dia por vez,
+numa conexão nova, com o progresso na tela.
+
+**Auditoria em produção (auditoria_ciclos.log, 23/10/2026: 204.777 ciclos v2 de 30 dias, 167 violações)**:
+- 154 "CE principal com a carga saindo do porto" (Embraport 91, Santos Brasil 22, BTP 19, Suape 12, Pecém 10) — a
+  classe do CAAU, gravada ANTES da correção do porto e ainda não refeita (quase todas até 10/10; o próprio CAAU5545018
+  está lá) — some com o refaz;
+- 17 "TRA concluído sem a saída do seco" — defeito NOVO: a linha do tempo concluía o TRA com a saída do seco de
+  confiança baixa (CE de outra família), e a gravação não grava ligação baixa. Correção C8 abaixo.
+
+**C6, C7 e C8 (aprovados pelo usuário em 23/10/2026; implementados no mesmo dia)**:
+- **C6** exportação de OUTRO porto em trânsito (origem noutro porto e escala no porto do desembarque, na janela) entra
+  no `seguimento`: corrobora os eventos, fora do ciclo — a baldeação de exportação de Vitória fecha como passagem;
+- **janela da perna seguinte**: o CE com a carga saindo do porto continua fora dos candidatos, mas só é perna seguinte
+  com escala nesse porto na janela (a cabotagem antiga do contêiner é outra operação);
+- **C7** contêiner consolidado: os BLs únicos do MESMO manifesto com o mesmo contêiner são UMA família (todos gravados
+  em `ciclodevida_ciclo_ce`; principal: o declarado, senão o primeiro). No caso real de Suape, 75 BLs no mesmo
+  contêiner. No NAVI-I, o card acha o ciclo pela família GRAVADA (`busca_ciclos_navii`, uma consulta por página) e o
+  selo "sem desembarque" da página não usa o atalho do BL único; os filtros verificados por candidato mantêm o atalho
+  (desempenho) — limitação conhecida: contêiner + "só com desembarque" deixa de fora o BL que não é o principal;
+- **C8** a saída do seco duvidosa (confiança baixa) deixa o TRA ABERTO, "saída do seco duvidosa (CE de outra família) —
+  revisar" — como a saída do operador.
+Corpus: os 2 pendentes acertam, o caso de confiança baixa virou `conteiner_consolidado` (alta, família com os 2 CEs) e
+Suape tem a família com os 75 CEs. Mutantes: 10/10.
+
+**Ativação**: sombra (Santos e fora) -> deploy (virasana) e restart do `ciclo_de_vida_v2` e do gunicorn (NAVI-I) ->
+refaz desde 2026-09-22 -> auditoria de novo (esperado: as 154 somem; os 17 viram aberto ou acham a saída do seco).
 

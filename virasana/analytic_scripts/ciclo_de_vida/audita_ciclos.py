@@ -8,7 +8,9 @@ sem o evento que conclui). O porto do desembarque é o da escala gravada no cicl
 visto no recinto. Relatório por regra e por operador, com amostras; o CSV traz todos — as violações são os candidatos
 naturais a casos reais do corpus de regressão (`virasana/tests/dados/casos_ciclo/casos.txt`).
 
-Consultas: os ciclos pelo índice de data_desembarque; família, CEs e itens por chave, em lotes.
+Consultas: um DIA de desembarques por vez, numa conexão nova (o progresso vai para a tela): os ciclos pelo índice de
+data_desembarque, só as colunas usadas; família, CEs e itens por chave, em lotes. (23/10/2026: a 1ª versão juntava a
+família de 30 dias de uma vez, em tempo quadrático — mais de 1 h parada, e o servidor derrubou a conexão.)
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     A=virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py
@@ -20,7 +22,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -48,17 +50,23 @@ def regra(mensagem: str) -> str:
     return re.sub(r'saindo de \w+', 'saindo do porto', mensagem)
 
 
+COLUNAS_CICLO = ('ID', 'desembarque_id', 'numeroConteiner', 'numeroCEmercante', 'confianca_ce', 'situacao', 'fluxo',
+                 'escala', 'codigoRecintoDesembarque', 'data_desembarque', 'data_saida', 'data_entrada_seco',
+                 'data_saida_seco', 'data_embarque')
+
+
 class Auditoria:
+    """As invariantes nos ciclos v2 de [desde, ate), um dia por vez, cada dia numa conexão nova do `engine`."""
 
-    def __init__(self, conexao, desde: datetime, ate: datetime):
-        self.conexao, self.diag = conexao, ConsultaSQL(conexao)
-        self.desde, self.ate = desde, ate
+    def __init__(self, engine, desde: datetime, ate: datetime, progresso: Callable[[str], None] = print):
+        self.engine, self.desde, self.ate, self.progresso = engine, desde, ate, progresso
+        self.total = 0
 
-    def ciclos(self) -> Dict[int, dict]:
+    def ciclos(self, inicio: datetime, fim: datetime) -> Dict[int, dict]:
         linhas = [dict(linha._mapping) for linha in self.conexao.execute(
-            select(gc.CICLOS).where(gc.CICLOS.c.versao_heuristica == gc.VERSAO,
-                                    gc.CICLOS.c.data_desembarque >= self.desde,
-                                    gc.CICLOS.c.data_desembarque < self.ate))]
+            select(*[gc.CICLOS.c[coluna] for coluna in COLUNAS_CICLO])
+            .where(gc.CICLOS.c.versao_heuristica == gc.VERSAO, gc.CICLOS.c.data_desembarque >= inicio,
+                   gc.CICLOS.c.data_desembarque < fim))]
         familias = [{'ciclo_de_vida_id': ciclo, 'numeroCEmercante': ce} for ciclo, ce in self.diag._por_lotes(
             'SELECT ciclo_de_vida_id, numeroCEmercante FROM ciclodevida_ciclo_ce WHERE ciclo_de_vida_id IN :ids',
             'ids', [linha['ID'] for linha in linhas])]
@@ -89,10 +97,22 @@ class Auditoria:
                 for d, c in ciclos.items()}
 
     def executa(self) -> List[dict]:
-        ciclos = self.ciclos()
+        achados, inicio = [], self.desde
+        while inicio < self.ate:
+            fim = min(inicio + timedelta(days=1), self.ate)
+            with self.engine.connect() as self.conexao:
+                self.diag = ConsultaSQL(self.conexao)
+                do_dia = self._audita(inicio, fim)
+            achados += do_dia
+            self.progresso(f'{inicio:%Y-%m-%d}: {self.total} ciclos auditados, {len(achados)} com violação')
+            inicio = fim
+        return achados
+
+    def _audita(self, inicio: datetime, fim: datetime) -> List[dict]:
+        ciclos = self.ciclos(inicio, fim)
         info, itens = self.mercante(ciclos)
         portos = self.portos(ciclos)
-        self.total = len(ciclos)
+        self.total += len(ciclos)
         achados = []
         for desembarque, ciclo in sorted(ciclos.items()):
             erros = violacoes(ciclo, info, itens, portos.get(desembarque))
@@ -150,10 +170,9 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     limita_tempo(engine, 300)
     arquivo = open(args.saida, 'w', encoding='utf-8') if args.saida else None
     try:
-        with engine.connect() as conexao:
-            auditoria = Auditoria(conexao, ate - timedelta(days=args.dias), ate)
-            achados = auditoria.executa()
-            relatorio(achados, auditoria.total, Saida(arquivo), args.csv)
+        auditoria = Auditoria(engine, ate - timedelta(days=args.dias), ate)
+        achados = auditoria.executa()
+        relatorio(achados, auditoria.total, Saida(arquivo), args.csv)
     finally:
         if arquivo:
             arquivo.close()

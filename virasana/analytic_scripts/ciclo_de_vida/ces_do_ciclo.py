@@ -23,6 +23,13 @@ operador ou baldeação). Com o porto (`resolve_ces(..., porto=)`):
   - os CEs descartados por SAIR do porto são a perna SEGUINTE da mesma visita (baldeação: desembarca e logo embarca
     prosseguindo viagem): não entram no ciclo, mas o CE deles declarado no embarque (ou noutro evento) não é de
     "outra família" (`seguimento`, usado por `familia`).
+
+Casos reais (23/10/2026, aprovado pelo usuário; `test_casos_reais_ciclo.py`):
+  - C6 EXPORTAÇÃO DE OUTRO PORTO em trânsito (origem noutro porto e escala no porto do desembarque, na janela; ex.:
+    Vitória -> Benin, baldeação em Santos): não é importação (fica fora do ciclo), mas é a mesma carga seguindo
+    viagem — entra no `seguimento`;
+  - C7 CONTÊINER CONSOLIDADO: os BLs únicos do MESMO manifesto com o mesmo contêiner são UMA família (todos no
+    ciclo — o NAVI-I acha o ciclo pelo card de qualquer um; principal: o declarado, senão o primeiro).
 """
 import re
 from dataclasses import dataclass, field
@@ -49,6 +56,7 @@ class CandidatoCE:
     escalas: Sequence[Tuple[date, str]] = ()   # (atracação prevista, porto) de todas as escalas do manifesto
     origem: Optional[str] = None           # porto de origem da carga (Conhecimento.portoOrigemCarga)
     destino: Optional[str] = None          # porto de destino final (Conhecimento.portoDestFinal)
+    manifesto: Optional[str] = None        # Conhecimento.manifestoCE (C7: BLs únicos do mesmo manifesto)
 
 
 @dataclass
@@ -57,7 +65,8 @@ class CEsResolvidos:
     ces: Dict[str, str] = field(default_factory=dict)     # CE -> papel (filhote, master, simples)
     confianca: Optional[str] = None
     motivos: List[str] = field(default_factory=list)
-    seguimento: List[str] = field(default_factory=list)   # CEs com a carga saindo do porto (a perna seguinte)
+    seguimento: List[str] = field(default_factory=list)   # a carga seguindo viagem: saindo do porto e exportação de
+    #                                                       outro porto em trânsito (C6) — corroboram, fora do ciclo
 
 
 def normaliza_ce(valor) -> Optional[str]:
@@ -70,10 +79,21 @@ def _papeis(candidatos: List[CandidatoCE]) -> Dict[str, str]:
     return {c.ce: FILHOTE if c.master else MASTER if c.ce in masters else SIMPLES for c in candidatos}
 
 
+def _chave_da_familia(candidato: CandidatoCE, masters: set) -> str:
+    """O master; o próprio CE se é master; o manifesto para os BLs únicos (C7: carga consolidada — vários BLs do mesmo
+    manifesto no mesmo contêiner são uma família); o próprio CE se não há manifesto."""
+    if candidato.master:
+        return candidato.master
+    if candidato.ce in masters or not candidato.manifesto:
+        return candidato.ce
+    return f'manifesto {candidato.manifesto}'
+
+
 def _familias(candidatos: List[CandidatoCE]) -> Dict[str, List[CandidatoCE]]:
+    masters = {c.master for c in candidatos if c.master}
     familias: Dict[str, List[CandidatoCE]] = {}
     for candidato in candidatos:
-        familias.setdefault(candidato.master or candidato.ce, []).append(candidato)
+        familias.setdefault(_chave_da_familia(candidato, masters), []).append(candidato)
     return familias
 
 
@@ -136,14 +156,39 @@ def _principal(membros: List[CandidatoCE], papeis: Dict[str, str], declarados: s
     return ordem[0].ce
 
 
-def _sem_saida(validos: List[CandidatoCE], porto: Optional[str], resultado: CEsResolvidos) -> List[CandidatoCE]:
-    """Tira os CEs cuja carga SAI do porto do desembarque (origem = porto): são de um embarque ali — a perna
-    seguinte (`resultado.seguimento`)."""
+def _na_janela(candidato: CandidatoCE, desembarque: datetime, porto: Optional[str], janela: int) -> bool:
+    dias = _dias_da_escala([candidato], desembarque, porto)
+    return dias is not None and dias <= janela
+
+
+def _sem_saida(validos: List[CandidatoCE], desembarque: datetime, porto: Optional[str], janela: int,
+               resultado: CEsResolvidos) -> List[CandidatoCE]:
+    """Tira os CEs cuja carga SAI do porto do desembarque (origem = porto): são de um embarque ali. Os com escala
+    nesse porto na janela são a perna seguinte desta visita (`resultado.seguimento`); os outros, de outra operação
+    (23/10/2026: uma cabotagem antiga do mesmo contêiner no seguimento fazia o CE da baldeação parecer de "outra
+    família")."""
     saindo = [c for c in validos if porto and c.origem == porto]
     if saindo:
         resultado.motivos.append(f'{len(saindo)} CE(s) com a carga saindo de {porto} descartado(s)')
-        resultado.seguimento = sorted(c.ce for c in saindo)
+        resultado.seguimento = sorted(c.ce for c in saindo if _na_janela(c, desembarque, porto, janela))
     return [c for c in validos if c not in saindo]
+
+
+def _em_transito(candidato: CandidatoCE, desembarque: datetime, porto: str, janela: int) -> bool:
+    """Exportação de OUTRO porto com escala no porto do desembarque, na janela."""
+    if candidato.trafego != TRAFEGO_EXPORTACAO or not candidato.origem or candidato.origem == porto:
+        return False
+    return _na_janela(candidato, desembarque, porto, janela)
+
+
+def _exportacoes_em_transito(todos: List[CandidatoCE], desembarque: datetime, porto: Optional[str], janela: int,
+                             resultado: CEsResolvidos):
+    """C6: a exportação de outro porto em trânsito (baldeação) é a mesma carga seguindo viagem — entra no
+    `seguimento`."""
+    transito = [c.ce for c in todos if porto and _em_transito(c, desembarque, porto, janela)]
+    if transito:
+        resultado.motivos.append(f'{len(transito)} exportação(ões) de outro porto em trânsito (seguimento)')
+        resultado.seguimento = sorted(set(resultado.seguimento) | set(transito))
 
 
 def resolve_ces(desembarque: datetime, candidatos: Iterable[CandidatoCE], declarados: Iterable[str] = (),
@@ -159,7 +204,8 @@ def resolve_ces(desembarque: datetime, candidatos: Iterable[CandidatoCE], declar
     validos = [c for c in todos if c.trafego != TRAFEGO_EXPORTACAO]
     if len(validos) < len(todos):
         resultado.motivos.append(f'{len(todos) - len(validos)} CE(s) de exportação descartado(s)')
-    validos = _sem_saida(validos, porto, resultado)
+    validos = _sem_saida(validos, desembarque, porto, janela_dias, resultado)
+    _exportacoes_em_transito(todos, desembarque, porto, janela_dias, resultado)
     declarados = {ce for ce in (normaliza_ce(d) for d in declarados) if ce}
     familias = _familias(validos)
     chave, confianca, motivos = _escolhe_familia(familias, desembarque, declarados, janela_dias, porto)

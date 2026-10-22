@@ -72,7 +72,7 @@ sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
 
 from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
-    CargaCiclo, _ano_do_ce, _texto, filtro_desembarques, manifesto_vazio,
+    DIAS_PORTOS, CargaCiclo, _ano_do_ce, _texto, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import (  # noqa: E402
     JANELA_ESCALA_DIAS, TRAFEGO_EXPORTACAO, CandidatoCE, CEsResolvidos, familia, normaliza_ce,
@@ -288,7 +288,8 @@ class Sombra(Diagnostico):
         conteineres = carregador.conteineres(escopo, self.limite_conteineres)
         self.carregador = carregador
         eventos, portuarios = carregador.eventos(conteineres)
-        self.portos = carregador.portos_dos_desembarques()
+        self.portos = carregador.portos_dos_desembarques(
+            carregador.portos_dos_recintos(self.agora - timedelta(days=DIAS_PORTOS)))
         todos = [e for lista in eventos.values() for e in lista]
         self.acessos = {e.id: e for e in todos if e.tipo in (ldt.ENTRADA, ldt.SAIDA)}
         self.inspecoes = {e.id: e for e in todos if e.tipo == ldt.INSPECAO}

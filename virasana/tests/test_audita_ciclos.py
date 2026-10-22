@@ -56,10 +56,10 @@ class TestAuditoria(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with banco().connect() as conexao:
-            auditoria = ac.Auditoria(conexao, datetime(2026, 10, 1), datetime(2026, 10, 15))
-            cls.achados = auditoria.executa()
-            cls.total = auditoria.total
+        cls.progresso = []
+        auditoria = ac.Auditoria(banco(), datetime(2026, 10, 1), datetime(2026, 10, 15), cls.progresso.append)
+        cls.achados = auditoria.executa()
+        cls.total = auditoria.total
 
     def test_violacoes(self):
         self.assertEqual(self.total, 4)
@@ -81,6 +81,11 @@ class TestAuditoria(unittest.TestCase):
         self.assertIn(f'{SBP} CE principal de exportação: 1', texto)
         self.assertIn('[concluído (tra) sem data_saida_seco] C4 desembarque 4', texto)
         self.assertEqual([linha['conteiner'] for linha in linhas], ['C2', 'C3', 'C4'])
+
+    def test_um_dia_por_vez(self):
+        self.assertEqual(len(self.progresso), 14)
+        self.assertEqual(self.progresso[5], '2026-10-06: 0 ciclos auditados, 0 com violação')
+        self.assertEqual(self.progresso[6], '2026-10-07: 4 ciclos auditados, 3 com violação')
 
     def test_regra_sem_o_porto(self):
         self.assertEqual(ac.regra('CE principal com a carga saindo de BRRIO'),

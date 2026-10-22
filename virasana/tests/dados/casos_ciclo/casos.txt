@@ -29,5 +29,5 @@ seco_sem_saida                BMOU1450600   # saída do seco não informada (ent
 embraport_sem_ce              BEAU5056191   # Embraport não declara CE: passagem sem CE
 multirio_sem_ce               AXIU2199156   # MultiRio sem CE declarado: passagem
 aguardando_seco               BAFU8896871   # saiu do operador; aguardando a entrada no seco (aberto)
-confianca_baixa               EMCU8243827   # CE com confiança baixa (mais de uma família com escala próxima)
+conteiner_consolidado         EMCU8243827   # dois BLs únicos do mesmo manifesto no contêiner (C7: uma família)
 pecem_entregue                BEAU2951238   # Pecém: entregue pelo operador

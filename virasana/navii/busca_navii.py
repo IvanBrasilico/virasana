@@ -235,7 +235,7 @@ def _existe(origem, *criterios):
     return select(literal(1)).select_from(origem).where(*criterios).limit(1).scalar_subquery().isnot(None)
 
 
-def _existe_ciclo(*criterios, escaneamentos: bool = False):
+def _existe_ciclo(*criterios, escaneamentos: bool = False, atalho_bl_unico: bool = True):
     """`_existe` para o ciclo de vida do contêiner: pelo CE gravado no ciclo (ciclos antigos e v2) OU, com
     `LIGACAO_FAMILIA`, por qualquer CE da família (v2). São dois acessos indexados por candidato — o segundo só
     quando o primeiro não acha e o CE não é BL único (`TIPO_BL_UNICO`; quem chama tem o `Conhecimento` do item
@@ -252,17 +252,19 @@ def _existe_ciclo(*criterios, escaneamentos: bool = False):
         return direto
     pela_familia = _existe(_FAMILIA_E_ESCANEAMENTOS if escaneamentos else _CICLO_E_FAMILIA,
                            _mesmo_conteiner_pela_familia(), *criterios)
+    if not atalho_bl_unico:
+        return or_(direto, pela_familia)
     pode_ter_familia = or_(Conhecimento.tipoBLConhecimento.is_(None), Conhecimento.tipoBLConhecimento != TIPO_BL_UNICO)
     return or_(direto, and_(pode_ter_familia, pela_familia))
 
 
-def _tem_desembarque_localizado():
+def _tem_desembarque_localizado(atalho_bl_unico: bool = True):
     """O contêiner tem desembarque localizado pelo ciclo de vida (pelo CE ou pela família gravada pelo ciclo).
     Critério ÚNICO da janela efetiva (sem ele, o contêiner entra pela atracação prevista), do filtro
     `so_com_desembarque` e do selo "sem desembarque" do card (`_itens_com_desembarque`): o card nunca contradiz a
     janela — a família que o card usa para achar o ciclo (`busca_familias_navii`, do Mercante) pode divergir da
     gravada pelo ciclo de vida."""
-    return _existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None))
+    return _existe_ciclo(CicloDeVidaImportacao.data_desembarque.isnot(None), atalho_bl_unico=atalho_bl_unico)
 
 
 def _itens_com_desembarque(session, ids: List[int]) -> Set[int]:
@@ -271,7 +273,9 @@ def _itens_com_desembarque(session, ids: List[int]) -> Set[int]:
         return set()
     q = (session.query(Item.ID)
          .join(Conhecimento, Conhecimento.numeroCEmercante == Item.numeroCEmercante)
-         .filter(Item.ID.in_(ids), _tem_desembarque_localizado()))
+         # sem o atalho do BL único (só os ~20 itens da página): o BL único de um contêiner consolidado está na
+         # família gravada pelo ciclo (C7, 23/10/2026) — com o atalho, o selo diria "sem desembarque"
+         .filter(Item.ID.in_(ids), _tem_desembarque_localizado(atalho_bl_unico=False)))
     return {id_ for id_, in q}
 
 
@@ -930,6 +934,10 @@ def busca_ciclos_navii(session, itens: List[Item],
     master, um filhote ou um irmão — vale qualquer CE da família com o mesmo contêiner, preferindo o
     do próprio CE. Sem `familias`, só o CE exato. Com mais de um ciclo (ex.: vários desembarques
     informados), prevalece o mais recente (maior ID). Contêiner sem ciclo não aparece no dict.
+
+    Sem ciclo pelo CE nem pela família do Mercante, vale a família GRAVADA pelo ciclo de vida
+    (`ciclodevida_ciclo_ce`): o BL único de um contêiner consolidado (C7, 23/10/2026: os BLs únicos do mesmo manifesto
+    com o mesmo contêiner são uma família; o principal é um deles).
     """
     familias = familias or {}
     pares = [(item.numeroCEmercante, item.codigoConteiner) for item in itens
@@ -950,6 +958,26 @@ def busca_ciclos_navii(session, itens: List[Item],
         ciclo = por_chave.get((ce, conteiner)) or max(da_familia, key=lambda c: c.ID, default=None)
         if ciclo is not None:
             resultado[(ce, conteiner)] = ciclo
+    if LIGACAO_FAMILIA:   # o mesmo interruptor da janela: com ele desligado, o card não contradiz o selo
+        resultado.update(_ciclos_pela_familia_gravada(session, [par for par in pares if par not in resultado]))
+    return resultado
+
+
+def _ciclos_pela_familia_gravada(session, pares: List[Tuple[str, str]]) -> Dict[Tuple[str, str], CicloDeVidaImportacao]:
+    """{(CE, contêiner): ciclo mais recente} pela família gravada pelo ciclo de vida (`ciclodevida_ciclo_ce`)."""
+    if not pares:
+        return {}
+    procurados, resultado = set(pares), {}
+    for ce, ciclo in (session.query(CicloDeVidaCE.numeroCEmercante, CicloDeVidaImportacao)
+                      .join(CicloDeVidaImportacao, CicloDeVidaImportacao.ID == CicloDeVidaCE.ciclo_de_vida_id)
+                      .options(undefer_group('v2'),
+                               selectinload(CicloDeVidaImportacao.escaneamentos).undefer_group('v2'))
+                      .filter(CicloDeVidaCE.numeroCEmercante.in_({c for c, _ in pares}),
+                              CicloDeVidaImportacao.numeroConteiner.in_({c for _, c in pares}))
+                      .order_by(CicloDeVidaImportacao.ID)):
+        chave = ((ce or '').strip(), ciclo.numeroConteiner)
+        if chave in procurados:
+            resultado[chave] = ciclo
     return resultado
 
 
@@ -1206,7 +1234,7 @@ def _dados_bl_e_familia(conhecimento: Conhecimento, ciclo: Optional[CicloDeVidaI
         'tipoBLCodigo': tipo_bl.get('codigo'),
         'tipoBLDescricao': tipo_bl.get('descricao'),
         'filhotes': (familia or {}).get('filhotes', []),
-        # o ciclo de vida foi achado por outro CE da família (master/filhote/irmão)
+        # o ciclo de vida foi achado por outro CE da família (master/filhote/irmão ou BL do mesmo manifesto)
         'cicloPorCE': ciclo.numeroCEmercante if outro_ce else None,
     }
 
