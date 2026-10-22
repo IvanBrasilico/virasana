@@ -277,6 +277,23 @@ Regras e limitações (importantes):
    manifesto)". `_itens_com_desembarque` (selo da página) usa `_existe_ciclo(atalho_bl_unico=False)`. Os filtros por
    candidato mantêm o atalho do BL único (desempenho medido em 02/10) — limitação: contêiner + "só com desembarque"
    deixa de fora o BL que não é o principal. Testes: `test_navii_sem_desembarque.TestConteinerConsolidado`.
+22. **Modos de exibição dos cards** (22/10/2026, pedido do usuário: "como o Explorer do Windows"). Detalhado (o card
+   de sempre; *Contêineres e NCMs declarados* num `<details>` recolhido com contagem e prévia dos NCMs),
+   Simplificado (grade `auto-fill`, imagem 2,2:1 em cima, só o começo do card) e Galeria (só as imagens em linhas
+   justificadas; dados do card simplificado num painel ao passar o mouse/foco; Esc dispensa — WCAG 1.4.13; em tela
+   de toque, legenda curta fixa). **Uma só marcação por card**: o modo é a classe `visao-*` da lista e o CSS esconde
+   partes; as regras valem para `.card-navii:not(.expandido)` — "Ver detalhes" (`.expandido`) mostra o card
+   detalhado no lugar, ocupando a linha. Assim menus, Abrir Ficha, lightbox e coleta de uso valem nos três sem
+   código por modo. Galeria: `montaLinhasGaleria` (JS) fecha cada linha na altura mais próxima da alvo
+   (`--altura-galeria`, controle deslizante) com ou sem o card seguinte (só CSS, um card sozinho na linha esticava
+   2,5×); larguras inteiras sobre a largura real arredondada para baixo (a fracionária quebrava a linha);
+   `--proporcao` vem da imagem carregada. Modo e tamanho no `localStorage` (por navegador). Barra de ferramentas
+   fixa (≥ 64em) e âncora na troca de modo (o card do topo continua à vista); em tela ≤ 48em, filtros em cima,
+   recolhidos de início (antes, lado a lado, sobravam 15 px para os cards). Imagem principal: botão de teclado
+   (Enter amplia) e `loading="lazy"`. Coleta de uso: a definição de visto é a mesma (50% do card por 1 s) — na
+   galeria vários cards pequenos ficam à vista de uma vez; "Ver detalhes" conta como interação `detalhes`. Testes:
+   `test_navii_visoes.py` (a tela); comportamento conferido no navegador com servidor de demonstração (imagens
+   sintéticas 20'/40'), desktop e celular.
 
 ## Como a busca funciona (desenho atual)
 

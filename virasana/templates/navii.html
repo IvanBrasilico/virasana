@@ -65,6 +65,13 @@
         .painel-filtros .campo { margin-bottom: 1rem; }
         .painel-filtros input, .painel-filtros select { width: 100%; }
         .painel-resultados { flex: 1 1 auto; min-width: 0; }
+        /* tela estreita (celular, tablet em pé): filtros em cima dos resultados, recolhidos de início (☰ abre);
+           lado a lado, sobravam poucos pixels para os cards */
+        @media (max-width: 48em) {
+            .layout-navii { flex-direction: column; align-items: stretch; }
+            .painel-filtros { position: static; flex-basis: auto; width: auto; max-height: none; }
+            .layout-navii.filtros-recolhidos .painel-filtros { display: none; }
+        }
 
         .barra-ferramentas {
             display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem;
@@ -222,11 +229,13 @@
         .lista-cards { display: flex; flex-direction: column; gap: 1.25rem; }
 
         .card-navii {
-            border-left-width: 5px; border-left-style: solid; border-left-color: #ADB3B8;
+            --cor-status: #ADB3B8;   /* a galeria usa a mesma cor numa faixa embaixo da imagem */
+            border-left-width: 5px; border-left-style: solid; border-left-color: var(--cor-status);
             box-shadow: 0 1px 4px rgba(0,0,0,.08); border-radius: 8px; overflow: hidden;
+            scroll-margin-top: 1rem;   /* ao trocar o modo de exibição, o card âncora não cola no topo */
         }
-        .card-navii.concluido { border-left-color: #168821; }
-        .card-navii.aberto { border-left-color: #E8A33D; }
+        .card-navii.concluido { --cor-status: #168821; }
+        .card-navii.aberto { --cor-status: #E8A33D; }
 
         .card-navii .card-content {
             display: grid; grid-template-columns: 20rem 1fr; gap: 1.75rem; padding: 1.5rem 1.75rem;
@@ -468,12 +477,23 @@
         .etapa-timeline.pendente .data-etapa,
         .etapa-timeline.pendente .recinto-etapa { color: #BBB; }
 
-        /* ---------- Contêineres e NCMs declarados ---------- */
+        /* ---------- Contêineres e NCMs declarados (recolhível: o resumo mostra quantos e os primeiros NCMs) ---------- */
         .secao-conteineres { margin-top: 1.25rem; border-top: 1px solid #F0F0F0; padding-top: .875rem; }
         .secao-conteineres .titulo-secao {
             font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
             color: #666; margin-bottom: .625rem;
         }
+        .secao-conteineres > summary.titulo-secao {
+            cursor: pointer; margin-bottom: 0; padding: .25rem 0; border-radius: 4px; list-style-position: inside;
+        }
+        .secao-conteineres > summary.titulo-secao:hover { color: #1351B4; }
+        .secao-conteineres > summary.titulo-secao:focus-visible { outline: 2px solid #1351B4; outline-offset: 2px; }
+        .secao-conteineres[open] > summary.titulo-secao { margin-bottom: .625rem; }
+        .secao-conteineres .resumo-secao { font-weight: 400; text-transform: none; letter-spacing: 0; color: #888; }
+        .secao-conteineres .previa-ncms {
+            font-weight: 600; text-transform: none; letter-spacing: 0; color: #1c1c1c; margin-left: .375rem;
+        }
+        .secao-conteineres[open] .previa-ncms { display: none; }
         .lista-conteineres { display: flex; flex-direction: column; gap: .5rem; }
         .conteiner-item { background: #FAFBFC; border: 1px solid #EDEDED; border-radius: 6px; padding: .625rem .75rem; }
         .conteiner-cabecalho { display: flex; flex-wrap: wrap; gap: .375rem 1rem; align-items: baseline; }
@@ -561,6 +581,169 @@
         .linha-sem-card { padding: .5rem .75rem; border: 1px dashed #B0B0B0; border-radius: 6px; margin-bottom: .75rem;
                           font-size: .875rem; overflow-wrap: anywhere; }
         .linha-sem-card .tag-sem-card { font-size: .75rem; color: #666; }
+
+        /* ---------- Modo de exibição dos cards: detalhado (padrão), simplificado e galeria ----------
+           Uma só marcação por card; o modo é uma classe na lista (.visao-*). O simplificado e a galeria escondem
+           partes do card detalhado; "Ver detalhes" (.expandido) mostra o card detalhado no lugar, ocupando a linha
+           — por isso as regras dos modos valem só para o card :not(.expandido). */
+        .seletor-visao {
+            display: inline-flex; margin-left: auto; border: 1px solid #CCC; border-radius: 6px; overflow: hidden;
+            flex: 0 0 auto;
+        }
+        .seletor-visao button {
+            display: inline-flex; align-items: center; gap: .375rem; border: none; background: #fff; color: #333;
+            font-size: .8125rem; font-weight: 600; padding: 0 .75rem; height: 2.25rem; cursor: pointer;
+        }
+        .seletor-visao button + button { border-left: 1px solid #CCC; }
+        .seletor-visao button:hover { background: #F0F4FC; }
+        .seletor-visao button:focus-visible { outline: 2px solid #1351B4; outline-offset: -2px; }
+        .seletor-visao button[aria-pressed="true"] { background: #1351B4; color: #fff; }
+        .tamanho-galeria { display: inline-flex; align-items: center; gap: .375rem; color: #666; margin: 0; }
+        .tamanho-galeria[hidden] { display: none; }
+        .tamanho-galeria input { width: 7rem; accent-color: #1351B4; }
+        .barra-ferramentas { flex-wrap: wrap; }
+        /* a barra (filtros, período, modo de exibição) fica no alto ao rolar a lista: troca-se o modo de qualquer
+           ponto, e o card que estava à vista continua à vista (em tela estreita a barra quebra em várias linhas e
+           tomaria muito da altura: não fixa) */
+        @media (min-width: 64em) {
+            .barra-ferramentas {
+                position: sticky; top: 0; z-index: 20; background: #fff; padding: .5rem 0;
+                margin: -.5rem 0 .5rem; box-shadow: 0 6px 6px -6px rgba(0,0,0,.15);
+            }
+            .card-navii { scroll-margin-top: calc(var(--altura-barra, 4rem) + .5rem); }   /* a altura vem do JS */
+        }
+        @media (max-width: 40em) {
+            .seletor-visao button { padding: 0 .625rem; }
+            .seletor-visao button span { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                                         clip: rect(0 0 0 0); white-space: nowrap; }   /* só o ícone; o leitor lê */
+            .tamanho-galeria input { width: 5rem; }
+        }
+
+        /* botão "Ver detalhes"/"Recolher" do card: só no simplificado e na galeria */
+        .lado-status { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; }
+        .btn-detalhes-card {
+            display: inline-flex; align-items: center; gap: .3125rem; background: #fff; color: #1351B4;
+            border: 1px solid #1351B4; border-radius: 999px; font-size: .6875rem; font-weight: 700;
+            padding: .1875rem .625rem; cursor: pointer; white-space: nowrap;
+        }
+        .btn-detalhes-card:hover, .btn-detalhes-card:focus-visible { background: #E8EEF9; }
+        .lista-cards.visao-detalhado .btn-detalhes-card { display: none; }
+        .card-navii.expandido { box-shadow: 0 0 0 2px #1351B4, 0 4px 16px rgba(0,0,0,.12); }
+        .card-navii.destaque { animation: destaque-card 1.2s ease-out; }
+        @keyframes destaque-card { from { box-shadow: 0 0 0 4px #4B85E8; } to { box-shadow: 0 0 0 2px #1351B4; } }
+
+        /* imagem principal: botão (teclado) e o contador "+N" (no simplificado e na galeria, sem as miniaturas) */
+        .imagem-principal:focus-visible { outline: 3px solid #4B85E8; outline-offset: -3px; }
+        .contador-imagens {
+            position: absolute; top: .5rem; right: .5rem; display: none; align-items: center; gap: .25rem;
+            background: rgba(0,0,0,.65); color: #fff; font-size: .6875rem; font-weight: 700;
+            padding: .1875rem .5rem; border-radius: 999px; pointer-events: none;
+        }
+
+        /* ----- simplificado: grade responsiva de cards; imagem grande em cima, só o começo do card embaixo ----- */
+        .lista-cards.visao-simples {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+            gap: 1.25rem; align-items: start;
+        }
+        .lista-cards.visao-simples > .card-navii.expandido,
+        .lista-cards.visao-simples > .linha-sem-card { grid-column: 1 / -1; }
+        .visao-simples .card-navii:not(.expandido) .card-content { grid-template-columns: 1fr; gap: 1rem; padding: 0 0 1.25rem; }
+        .visao-simples .card-navii:not(.expandido) .painel-imagens { border-radius: 0; }
+        .visao-simples .card-navii:not(.expandido) .imagem-principal,
+        .visao-simples .card-navii:not(.expandido) .sem-imagens { height: auto; aspect-ratio: 2.2 / 1; }
+        .visao-simples .card-navii:not(.expandido) .bloco-dados { padding: 0 1.25rem; }
+        /* sem imagem: uma faixa clara e baixa no lugar do quadro preto */
+        .visao-simples .card-navii.sem-imagem:not(.expandido) .painel-imagens { background: #F3F5F7; }
+        .visao-simples .card-navii.sem-imagem:not(.expandido) .sem-imagens { aspect-ratio: 6 / 1; color: #888; }
+        /* status e "Ver detalhes" à direita do título (no card estreito o título quebra, não o lado do status) */
+        .visao-simples .card-navii:not(.expandido) .cabecalho-card { flex-wrap: nowrap; }
+        .visao-simples .card-navii:not(.expandido) .cabecalho-card > div:first-child { flex: 1 1 auto; min-width: 0; }
+        /* na galeria o card pode ser bem estreito: o título nunca é espremido; o status desce, se preciso */
+        .visao-galeria .card-navii:not(.expandido) .cabecalho-card > div:first-child { flex: 1 1 9rem; min-width: 0; }
+        .visao-simples .card-navii:not(.expandido) .contador-imagens,
+        .visao-galeria .card-navii:not(.expandido) .contador-imagens { display: inline-flex; }
+        .visao-simples .card-navii:not(.expandido) :is(.miniaturas-secundarias, .btn-expandir-descricao, .grid-dados,
+            .timeline-navii, .situacao-ciclo, .escaneamentos-card, .aviso-familia, .aviso-sem-ciclo, .secao-pesagem,
+            .secao-risco, .secao-dta, .secao-conteineres) { display: none; }
+
+        /* ----- galeria: só as imagens, em linhas justificadas (largura proporcional ao formato da imagem, sem
+           cortar: --proporcao vem da imagem carregada); dados do card ao passar o mouse ou com o foco. O tamanho
+           de cada card sai do JS (montaLinhasGaleria, no estilo do card); o flex abaixo vale até ele rodar ----- */
+        /* align-items: a altura do card sai do aspect-ratio (esticar a linha a ignoraria) */
+        .lista-cards.visao-galeria {
+            flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: .5rem; --altura-galeria: 10rem;
+        }
+        .lista-cards.visao-galeria::after { content: ''; flex-grow: 1000000; }   /* a última linha não estica */
+        .lista-cards.visao-galeria > .card-navii.expandido,
+        .lista-cards.visao-galeria > .linha-sem-card { flex: 1 1 100%; }
+        .visao-galeria .card-navii:not(.expandido) {
+            flex: var(--proporcao, 2.5) 1 calc(var(--proporcao, 2.5) * var(--altura-galeria));
+            aspect-ratio: var(--proporcao, 2.5); max-width: 100%; min-height: 0; position: relative; margin: 0;
+            border-left-width: 0; border-bottom: 4px solid var(--cor-status); border-radius: 6px; background: #000;
+        }
+        .visao-galeria .card-navii:not(.expandido) .card-content { display: block; height: 100%; padding: 0; }
+        .visao-galeria .card-navii:not(.expandido) .painel-imagens { height: 100%; border-radius: 0; }
+        .visao-galeria .card-navii:not(.expandido) .imagem-principal { height: 100%; }
+        .visao-galeria .card-navii:not(.expandido) .imagem-principal:hover img { transform: none; }
+        .visao-galeria .card-navii:not(.expandido) .sem-imagens { height: 100%; padding: .5rem; }
+        .visao-galeria .card-navii:not(.expandido) :is(.miniaturas-secundarias, .dica-zoom) { display: none; }
+        .visao-galeria .card-navii:not(.expandido) .origem-imagem {
+            position: absolute; top: 0; left: 0; max-width: 75%; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; border-bottom-right-radius: 6px;
+        }
+        /* sem barra de rolagem: num card baixo, fica à vista o começo (título, status e "Ver detalhes") */
+        .visao-galeria .card-navii:not(.expandido) .bloco-dados {
+            position: absolute; left: 0; right: 0; bottom: 0; max-height: 100%; overflow: hidden;
+            background: rgba(255,255,255,.96); padding: .5rem .75rem; box-shadow: 0 -2px 8px rgba(0,0,0,.25);
+            opacity: 0; transform: translateY(.5rem); pointer-events: none;
+            transition: opacity .15s ease, transform .15s ease;
+        }
+        .visao-galeria .card-navii:not(.expandido):hover .bloco-dados,
+        .visao-galeria .card-navii:not(.expandido):focus-within .bloco-dados {
+            opacity: 1; transform: none; pointer-events: auto;
+        }
+        /* sem imagem: o quadro diz qual é o contêiner (os dados, como nos outros, ao passar o mouse) */
+        .conteiner-sem-imagem { display: none; }
+        .visao-galeria .card-navii:not(.expandido) .conteiner-sem-imagem {
+            display: block; margin-top: .375rem; font-family: monospace; font-size: .875rem; color: #ddd;
+            text-transform: none;
+        }
+        .visao-galeria .card-navii.sem-imagem:not(.expandido) .sem-imagens {
+            flex-direction: column; justify-content: center; align-items: center; background: #2b2b2b;
+        }
+        /* Esc esconde os dados até o mouse/foco sair do card (WCAG 1.4.13: conteúdo de hover dispensável) */
+        .visao-galeria .card-navii.sem-sobreposicao:not(.expandido) .bloco-dados { opacity: 0; pointer-events: none; }
+        .visao-galeria .card-navii:not(.expandido) .conteiner-titulo { font-size: 1rem; }
+        .visao-galeria .card-navii:not(.expandido) .ce-subtitulo { font-size: .75rem; gap: .375rem; }
+        .visao-galeria .card-navii:not(.expandido) .rota-navii { font-size: .75rem; margin-top: .375rem; }
+        .visao-galeria .card-navii:not(.expandido) :is(.faixa-sem-desembarque, .trechos-texto, .badge-baldeacao,
+            .descricao-mercadoria, .btn-expandir-descricao, .grid-dados, .timeline-navii, .situacao-ciclo,
+            .escaneamentos-card, .aviso-familia, .aviso-sem-ciclo, .secao-pesagem, .secao-risco, .secao-dta,
+            .secao-conteineres) { display: none; }
+        @media (max-width: 40em) { .lista-cards.visao-galeria { --altura-galeria: 6.5rem; } }
+        /* tela de toque (sem hover): uma legenda curta sempre à vista — o contêiner e "Ver detalhes" (a cor do
+           status já está na faixa de baixo; o resto, no card detalhado) */
+        @media (hover: none) {
+            .visao-galeria .card-navii:not(.expandido) .bloco-dados {
+                opacity: 1; transform: none; pointer-events: auto; padding: .25rem .5rem;
+            }
+            .visao-galeria .card-navii:not(.expandido) :is(.ce-subtitulo, .rota-navii, .status-navii) { display: none; }
+            .visao-galeria .card-navii:not(.expandido) .cabecalho-card { flex-wrap: nowrap; align-items: center; }
+            .visao-galeria .card-navii:not(.expandido) .cabecalho-card > div:first-child { flex: 1 1 auto; }
+            .visao-galeria .card-navii:not(.expandido) .conteiner-titulo {
+                font-size: .875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            .visao-galeria .card-navii:not(.expandido) .btn-detalhes-card {   /* alvo de toque confortável */
+                min-width: 2.5rem; min-height: 2rem; justify-content: center;
+            }
+            .visao-galeria .card-navii:not(.expandido) .btn-detalhes-card .texto-botao {   /* só o ícone; o leitor lê */
+                position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .visao-galeria .card-navii .bloco-dados, .imagem-principal img { transition: none; }
+            .card-navii.destaque { animation: none; }
+        }
     </style>
 </head>
 <body>
@@ -854,6 +1037,26 @@
                     <i class="fas fa-bars" aria-hidden="true"></i>
                 </button>
                 <span class="periodo-ativo" id="periodo-ativo"></span>
+                <label class="tamanho-galeria" id="tamanho-galeria" title="Tamanho das imagens da galeria" hidden>
+                    <i class="fas fa-image" aria-hidden="true"></i>
+                    <input type="range" id="f-tamanho-galeria" min="6" max="18" step="1" value="10"
+                           aria-label="Tamanho das imagens da galeria" />
+                    <i class="fas fa-image fa-lg" aria-hidden="true"></i>
+                </label>
+                <div class="seletor-visao" id="seletor-visao" role="group" aria-label="Modo de exibição dos cards">
+                    <button type="button" data-visao="detalhado" aria-pressed="true"
+                            title="Detalhado: o card com todos os dados">
+                        <i class="fas fa-th-list" aria-hidden="true"></i><span>Detalhado</span>
+                    </button>
+                    <button type="button" data-visao="simples" aria-pressed="false"
+                            title="Simplificado: imagem maior, com os alertas e os dados básicos do CE">
+                        <i class="fas fa-th-large" aria-hidden="true"></i><span>Simplificado</span>
+                    </button>
+                    <button type="button" data-visao="galeria" aria-pressed="false"
+                            title="Galeria: só as imagens (os dados aparecem ao passar o mouse)">
+                        <i class="fas fa-images" aria-hidden="true"></i><span>Galeria</span>
+                    </button>
+                </div>
             </div>
 
             <div class="chips" id="chips"></div>
@@ -1016,7 +1219,10 @@
         avisos: document.getElementById('avisos-busca'),
         contagem: document.getElementById('contagem'),
         periodoAtivo: document.getElementById('periodo-ativo'),
-        sentinela: document.getElementById('sentinela')
+        sentinela: document.getElementById('sentinela'),
+        seletorVisao: document.getElementById('seletor-visao'),
+        tamanhoGaleria: document.getElementById('tamanho-galeria'),
+        campoTamanhoGaleria: document.getElementById('f-tamanho-galeria')
     };
 
     function escapeHtml(texto) {
@@ -1219,21 +1425,31 @@
     function montaPainelImagens(card) {
         var imagens = card.imagens_ids || [];
         if (imagens.length === 0 || !IMAGEM_URL_TEMPLATE) {
-            return '<div class="painel-imagens"><div class="sem-imagens">Sem imagem de escaneamento</div></div>';
+            return '<div class="painel-imagens"><div class="sem-imagens">Sem imagem de escaneamento' +
+                (card.numeroConteiner ? '<span class="conteiner-sem-imagem">' + escapeHtml(card.numeroConteiner) + '</span>' : '') +
+                '</div></div>';
         }
 
         var urlImagem = function (id) { return IMAGEM_URL_TEMPLATE.replace('imagem_id', encodeURIComponent(id)); };
         var urls = imagens.map(urlImagem);
 
         var miniaturas = imagens.slice(1, 8).map(function (id, i) {
-            return '<img src="' + urlImagem(id) + '" alt="Miniatura de escaneamento" data-indice="' + (i + 1) + '">';
+            return '<img src="' + urlImagem(id) + '" alt="Miniatura de escaneamento" data-indice="' + (i + 1) +
+                '" loading="lazy" decoding="async">';
         }).join('');
+        // a imagem principal é um botão (teclado: Enter/Espaço amplia); "+N" aparece no simplificado e na galeria,
+        // que não mostram as miniaturas
+        var rotulo = 'Ampliar a imagem de escaneamento' + (card.numeroConteiner ? ' do contêiner ' + card.numeroConteiner : '') +
+            (imagens.length > 1 ? ' (' + imagens.length + ' imagens)' : '');
 
         var html =
             '<div class="painel-imagens">' +
-                '<div class="imagem-principal" data-indice="0">' +
-                    '<img src="' + urls[0] + '" alt="Imagem de escaneamento em destaque">' +
+                '<div class="imagem-principal" data-indice="0" role="button" tabindex="0" aria-label="' +
+                    escapeAttr(rotulo) + '">' +
+                    '<img src="' + urls[0] + '" alt="Imagem de escaneamento em destaque" loading="lazy" decoding="async">' +
                     '<span class="dica-zoom"><i class="fas fa-search-plus" aria-hidden="true"></i> Clique para ampliar</span>' +
+                    (imagens.length > 1 ? '<span class="contador-imagens" title="' + imagens.length + ' imagens">' +
+                        '<i class="fas fa-clone" aria-hidden="true"></i>' + imagens.length + '</span>' : '') +
                 '</div>' +
                 (imagens.length > 1 ? '<div class="miniaturas-secundarias">' + miniaturas + '</div>' : '') +
                 montaOrigemImagem(card) +
@@ -1565,6 +1781,8 @@
             filhotes.length + ' filhote' + (filhotes.length > 1 ? 's' : '') + '</span>';
     }
 
+    var NCMS_NA_PREVIA = 4;   // NCMs mostrados no resumo da seção recolhida
+
     function montaConteineres(card) {
         var conteineres = card.conteineres || [];
         if (conteineres.length === 0) {
@@ -1609,11 +1827,25 @@
             );
         }).join('');
 
+        // recolhida: o resumo diz quantos contêineres e NCMs há e mostra os primeiros NCMs (o card fica mais curto)
+        var ncmsDistintos = [];
+        conteineres.forEach(function (c) {
+            (c.ncms || []).forEach(function (n) {
+                if (n.identificacaoNCM && ncmsDistintos.indexOf(n.identificacaoNCM) < 0) { ncmsDistintos.push(n.identificacaoNCM); }
+            });
+        });
+        var previa = ncmsDistintos.length
+            ? '<span class="previa-ncms texto-mono">' + escapeHtml(ncmsDistintos.slice(0, NCMS_NA_PREVIA).join(', ')) +
+              (ncmsDistintos.length > NCMS_NA_PREVIA ? ' +' + (ncmsDistintos.length - NCMS_NA_PREVIA) : '') + '</span>'
+            : '';
         return (
-            '<div class="secao-conteineres">' +
-                '<div class="titulo-secao">Contêineres e NCMs declarados (' + conteineres.length + ')</div>' +
+            '<details class="secao-conteineres">' +
+                '<summary class="titulo-secao">Contêineres e NCMs declarados <span class="resumo-secao">(' +
+                    conteineres.length + (conteineres.length > 1 ? ' contêineres' : ' contêiner') + ' · ' +
+                    ncmsDistintos.length + (ncmsDistintos.length === 1 ? ' NCM' : ' NCMs') + ')</span>' + previa +
+                '</summary>' +
                 '<div class="lista-conteineres">' + itens + '</div>' +
-            '</div>'
+            '</details>'
         );
     }
 
@@ -1722,6 +1954,209 @@
         return div;
     }
 
+    /* ---------------- Modo de exibição dos cards: detalhado, simplificado e galeria ---------------- */
+    // Como as visualizações do Explorer do Windows: a mesma marcação por card e o modo numa classe da lista (CSS),
+    // então menus, Abrir Ficha, lightbox e coleta de uso valem nos três. No simplificado e na galeria, "Ver detalhes"
+    // mostra o card detalhado no lugar (.expandido). Modo e tamanho da galeria ficam no navegador (localStorage).
+    var VISOES = ['detalhado', 'simples', 'galeria'];
+    var TEXTO_VER_DETALHES = '<i class="fas fa-expand-alt" aria-hidden="true"></i><span class="texto-botao">Ver detalhes</span>';
+    var TEXTO_RECOLHER = '<i class="fas fa-compress-alt" aria-hidden="true"></i><span class="texto-botao">Recolher</span>';
+    var TAMANHO_GALERIA = { minimo: 6, maximo: 18 };   // altura das linhas da galeria, em rem
+    var visao = { atual: 'detalhado' };
+
+    function lePreferencia(chave) {
+        try { return localStorage.getItem(chave); } catch (e) { return null; }
+    }
+
+    function gravaPreferencia(chave, valor) {
+        try { localStorage.setItem(chave, valor); } catch (e) { /* sem armazenamento: vale só nesta carga da tela */ }
+    }
+
+    function marcaProporcao(div, img) {
+        // largura/altura da imagem: a galeria dá a cada card a largura proporcional (linhas justificadas, sem cortar)
+        function marca() {
+            if (img.naturalWidth && img.naturalHeight) {
+                var proporcao = Math.min(6, Math.max(1, img.naturalWidth / img.naturalHeight));
+                div.style.setProperty('--proporcao', proporcao.toFixed(3));
+                agendaGaleria();
+            }
+        }
+        if (img.complete) { marca(); } else { img.addEventListener('load', marca); }
+    }
+
+    // Galeria em linhas justificadas (como o Google Fotos e o Flickr): cada linha fecha com a altura mais próxima
+    // da altura alvo (--altura-galeria) que preenche a largura, com ou sem o card seguinte; a última linha fica na
+    // altura alvo. Só com CSS (flex-grow pela proporção), um card que sobra sozinho na linha esticava demais.
+    var galeria = { agendada: false, largura: 0 };
+
+    function agendaGaleria() {
+        if (galeria.agendada || visao.atual !== 'galeria') { return; }
+        galeria.agendada = true;
+        window.requestAnimationFrame(function () { galeria.agendada = false; montaLinhasGaleria(); });
+    }
+
+    function alturaAlvoGaleria() {
+        var valor = window.getComputedStyle(el.grid).getPropertyValue('--altura-galeria').trim();
+        var raiz = parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+        return (parseFloat(valor) || 10) * (/px$/.test(valor) ? 1 : raiz);
+    }
+
+    function tamanhoDoCard(card, largura, altura) {
+        card.style.flex = largura === null ? '' : '0 0 ' + largura + 'px';
+        card.style.height = altura === null ? '' : altura + 'px';
+    }
+
+    function fechaLinhaGaleria(linha, altura, largura, vao) {
+        // larguras inteiras; o último card da linha cheia leva o resto (a soma não passa da largura: não quebra)
+        var usada = 0;
+        linha.forEach(function (item, i) {
+            var w = Math.floor(item.proporcao * altura);
+            if (largura !== null && i === linha.length - 1) { w = largura - vao * (linha.length - 1) - usada; }
+            usada += w;
+            tamanhoDoCard(item.card, w, Math.round(altura));
+        });
+    }
+
+    function montaLinhasGaleria() {
+        // a largura real pode ser fracionária (904,8 px): a soma inteira das larguras tem de caber nela
+        galeria.largura = el.grid.getBoundingClientRect().width;
+        var largura = Math.floor(galeria.largura) - 1;
+        if (largura <= 0) { return; }
+        var vao = parseFloat(window.getComputedStyle(el.grid).columnGap) || 8;
+        var alvo = alturaAlvoGaleria();
+        var linha = [], soma = 0;
+        function fechaParcial() {   // fim da lista ou antes de algo que ocupa a linha: altura alvo, sem esticar
+            if (linha.length) { fechaLinhaGaleria(linha, Math.min(alvo, (largura - vao * (linha.length - 1)) / soma), null, vao); }
+            linha = [];
+            soma = 0;
+        }
+        Array.prototype.forEach.call(el.grid.children, function (card) {
+            if (!card.classList.contains('card-navii') || card.classList.contains('expandido')) {
+                tamanhoDoCard(card, null, null);
+                fechaParcial();
+                return;
+            }
+            var proporcao = parseFloat(card.style.getPropertyValue('--proporcao')) || 2.5;
+            var alturaCom = (largura - vao * linha.length) / (soma + proporcao);
+            if (alturaCom > alvo) {   // ainda cabe mais um na linha
+                linha.push({ card: card, proporcao: proporcao });
+                soma += proporcao;
+                return;
+            }
+            var alturaSem = linha.length ? (largura - vao * (linha.length - 1)) / soma : Infinity;
+            if (Math.abs(alturaSem - alvo) < Math.abs(alturaCom - alvo)) {   // fecha sem ele; ele abre a próxima
+                fechaLinhaGaleria(linha, alturaSem, largura, vao);
+                linha = [{ card: card, proporcao: proporcao }];
+                soma = proporcao;
+            } else {
+                linha.push({ card: card, proporcao: proporcao });
+                fechaLinhaGaleria(linha, alturaCom, largura, vao);
+                linha = [];
+                soma = 0;
+            }
+        });
+        fechaParcial();
+    }
+
+    function limpaGaleria() {
+        Array.prototype.forEach.call(el.grid.children, function (card) { tamanhoDoCard(card, null, null); });
+    }
+
+    new MutationObserver(agendaGaleria).observe(el.grid, { childList: true });   // páginas novas e busca nova
+    new ResizeObserver(function (entradas) {   // a barra fixa quebra em linhas: rolar até um card desconta a altura dela
+        document.documentElement.style.setProperty('--altura-barra', Math.ceil(entradas[0].target.offsetHeight) + 'px');
+    }).observe(el.seletorVisao.parentNode);
+    new ResizeObserver(function () {   // largura nova (filtros recolhidos, janela); a altura muda a cada linha
+        if (el.grid.getBoundingClientRect().width !== galeria.largura) { agendaGaleria(); }
+    }).observe(el.grid);
+
+    function marcaExpandido(div, expandido) {
+        div.classList.toggle('expandido', expandido);
+        var botao = div.querySelector('.btn-detalhes-card');
+        botao.setAttribute('aria-expanded', expandido ? 'true' : 'false');
+        botao.innerHTML = expandido ? TEXTO_RECOLHER : TEXTO_VER_DETALHES;
+    }
+
+    function alternaDetalhes(div) {
+        var expandido = !div.classList.contains('expandido');
+        marcaExpandido(div, expandido);
+        if (visao.atual === 'galeria') { montaLinhasGaleria(); }   // já, antes de rolar até o card
+        if (expandido) {   // o card detalhado no lugar, a partir do topo, com um destaque breve
+            div.classList.remove('destaque');
+            void div.offsetWidth;   // reinicia a animação
+            div.classList.add('destaque');
+            div.scrollIntoView({ block: 'start' });
+        } else {
+            div.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function preparaVisaoDoCard(div) {
+        div.querySelector('.btn-detalhes-card').addEventListener('click', function () { alternaDetalhes(div); });
+        // galeria: Esc esconde os dados sobre a imagem; voltam quando o mouse ou o foco saem do card
+        div.addEventListener('mouseleave', function () { div.classList.remove('sem-sobreposicao'); });
+        div.addEventListener('focusout', function (e) {
+            if (!div.contains(e.relatedTarget)) { div.classList.remove('sem-sobreposicao'); }
+        });
+    }
+
+    function primeiroCardVisivel() {
+        // o primeiro card com o meio abaixo da barra fixa (ao menos metade à vista)
+        var limite = el.seletorVisao.parentNode.getBoundingClientRect().bottom;
+        var cards = el.grid.querySelectorAll('.card-navii');
+        for (var i = 0; i < cards.length; i++) {
+            var r = cards[i].getBoundingClientRect();
+            if ((r.top + r.bottom) / 2 > limite) { return cards[i]; }
+        }
+        return null;
+    }
+
+    function aplicaVisao(nova) {
+        if (VISOES.indexOf(nova) < 0) { nova = 'detalhado'; }
+        // como no Explorer: o card que estava no topo da tela continua à vista depois da troca
+        var ancora = window.pageYOffset > 0 ? primeiroCardVisivel() : null;
+        visao.atual = nova;
+        VISOES.forEach(function (v) { el.grid.classList.toggle('visao-' + v, v === nova); });
+        el.seletorVisao.querySelectorAll('button').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.dataset.visao === nova ? 'true' : 'false');
+        });
+        el.grid.querySelectorAll('.card-navii.expandido').forEach(function (div) { marcaExpandido(div, false); });
+        el.tamanhoGaleria.hidden = nova !== 'galeria';
+        if (nova === 'galeria' && !lePreferencia('navii_tamanho_galeria')) {   // o padrão do CSS (menor no celular)
+            var altura = parseFloat(window.getComputedStyle(el.grid).getPropertyValue('--altura-galeria'));
+            if (altura) { el.campoTamanhoGaleria.value = Math.round(altura); }
+        }
+        if (nova === 'galeria') { montaLinhasGaleria(); } else { limpaGaleria(); }
+        gravaPreferencia('navii_visao', nova);
+        if (ancora) { ancora.scrollIntoView({ block: 'start' }); }
+    }
+
+    function aplicaTamanhoGaleria(valor, gravar) {
+        var rem = Math.min(TAMANHO_GALERIA.maximo, Math.max(TAMANHO_GALERIA.minimo, parseInt(valor, 10) || 10));
+        el.campoTamanhoGaleria.value = rem;
+        el.grid.style.setProperty('--altura-galeria', rem + 'rem');
+        if (gravar) { gravaPreferencia('navii_tamanho_galeria', String(rem)); }
+        agendaGaleria();
+    }
+
+    el.seletorVisao.addEventListener('click', function (e) {
+        var botao = e.target.closest('button[data-visao]');
+        if (botao) { aplicaVisao(botao.dataset.visao); }
+    });
+    el.campoTamanhoGaleria.addEventListener('input', function (e) { aplicaTamanhoGaleria(e.target.value, true); });
+    document.addEventListener('keydown', function (e) {
+        // WCAG 1.4.13: o conteúdo que aparece com o mouse/foco se dispensa sem mover o mouse
+        if (e.key !== 'Escape' || visao.atual !== 'galeria') { return; }
+        el.grid.querySelectorAll('.card-navii:hover, .card-navii:focus-within').forEach(function (div) {
+            div.classList.add('sem-sobreposicao');
+        });
+    });
+    if (lePreferencia('navii_tamanho_galeria')) { aplicaTamanhoGaleria(lePreferencia('navii_tamanho_galeria'), false); }
+    aplicaVisao(lePreferencia('navii_visao') || 'detalhado');
+    if (window.matchMedia('(max-width: 48em)').matches) {   // tela estreita: os resultados primeiro (☰ abre os filtros)
+        el.layout.classList.add('filtros-recolhidos');
+    }
+
     function montaCard(card) {
         var div = document.createElement('div');
         var classeStatus = card.cicloDeVidaLocalizado === false ? 'sem-ciclo' : (card.concluido ? 'concluido' : 'aberto');
@@ -1770,7 +2205,11 @@
                                 botaoAbrirFicha(card) +
                             '</div>' +
                         '</div>' +
-                        '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
+                        '<div class="lado-status">' +
+                            '<span class="status-navii" title="' + escapeAttr(tituloStatus) + '">' + escapeHtml(textoStatus) + '</span>' +
+                            '<button type="button" class="btn-detalhes-card" aria-expanded="false">' +
+                                TEXTO_VER_DETALHES + '</button>' +
+                        '</div>' +
                     '</div>' +
 
                     '<div class="rota-navii">' + montaPorto(card.portoOrigemCarga, card.nomePortoOrigemCarga) +
@@ -1811,7 +2250,15 @@
                     abrirLightbox(urls, indice);
                 });
             });
+            div.querySelector('.imagem-principal').addEventListener('keydown', function (e) {
+                // o clique (e não a lightbox direto): a coleta de uso conta a interação "imagem"
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); }
+            });
+            marcaProporcao(div, div.querySelector('.imagem-principal img'));
+        } else {
+            div.classList.add('sem-imagem');
         }
+        preparaVisaoDoCard(div);
 
         var btnDescricao = div.querySelector('.btn-expandir-descricao');
         if (btnDescricao) {
@@ -1937,7 +2384,7 @@
         ['.imagem-principal, .miniaturas-secundarias img', 'imagem'], ['.btn-expandir-descricao', 'descricao'],
         ['a.link-ce, a.link-master', 'extrato'], ['.conteiner-titulo a', 'conteiner'],
         ['button.btn-acoes-codigo', 'menu'], ['button.btn-abrir-ficha', 'ficha'], ['a.tag-ficha', 'fichas'],
-        ['summary', 'detalhes']
+        ['summary', 'detalhes'], ['button.btn-detalhes-card', 'detalhes']
     ];
     // origem: de onde vem a PRÓXIMA pesquisa (tela, link, salvo, card, desfazer); anterior: a última desta aba
     var uso = { aba: idDaAba(), origem: 'tela', pesquisa: null, anterior: null, cards: {}, visiveis: {} };
