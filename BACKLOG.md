@@ -149,13 +149,28 @@ A lista de revisão saiu com erros de digitação no topo (peso acima da carga m
 5,8×, RVF com peso divergente 6,4×). O controle da combinação não saiu (bug: código da combinação sem o prefixo "18",
 zero avaliáveis — corrigido, com teste). A lista de revisão mostrou cubagem SIMBÓLICA (1 m³ num 40', 6 m³) e NCM 9999.
 
-**5ª versão (24/10/2026), falta rodar** (na estação, ~3 min): 18b+ redondo dividido em cubagem plausível e simbólica
-(abaixo de 10% da capacidade); cubagem redonda e simbólica validadas sozinhas (controles); NCM fora dos capítulos 01 a 97
-não conta; lista de revisão só do 18b+ redondo plausível. `virasana-venv/Scripts/python.exe
-virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao5.log --csv declaracao5.csv --revisao
-revisao5.csv`. Depois: revisão no NAVI-I e plano do piloto (candidato: "densidade acima da típica do NCM com cubagem
-estimada"; mudança em produção, com aprovação). Limitação a medir no piloto: os marcados vêm em embarques inteiros do
-mesmo importador — pode se sobrepor ao risco histórico do importador.
+**5ª rodada (24/10/2026) — o candidato está definido:** densidade acima da típica do NCM com cubagem em m³ inteiro e
+plausível (10%+ da capacidade): 1,18% dos CEs (1.867 em 30 dias), positivas 32/146 contra 2,1% no controle (**10,4×**),
+RVF 6,0×, falsa declaração 6,3×, RVF com peso divergente 6,4×. Os controles mostram que é a COMBINAÇÃO: a cubagem
+redonda sozinha (56% dos contêineres) dá 1,3×; densidade acima com cubagem com fração, 1,1×; cubagem simbólica, 0
+positivas. Leitura: o peso é real, a cubagem foi inventada e a densidade não combina com o NCM declarado — a mercadoria
+pode não ser a declarada. Lista de revisão (`revisao5.csv`) limpa.
+
+**Revisão do usuário (24/10/2026) — suspende o piloto:** nos CEs de Santos da `revisao5.csv` (com pesagem e
+imagem; todos de 20'), o peso declarado confere com o produto e a imagem: a anomalia é a CUBAGEM. O típico de
+densidade não separa 20' de 40' (o de peso separa) e muitos 40' declaram a capacidade (68/76 m³) como cubagem — quem
+declara o volume real num 20' parece "denso" (cerveja a 996 kg/m³ é física). 16 dos 30 da lista são de 20' (~17%
+dos contêineres). Conclusão provisória: o sinal mede o jeito de declarar a cubagem, não a mercadoria; os 10× nas
+positivas podem ser o perfil do declarante. Também (usuário): o NAVI-I não mostra a cubagem declarada, nem no card do
+CE nem no dos contêineres.
+
+**Plano do piloto (rascunho de 24/10/2026, SUSPENSO pela revisão):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 7 decisões.
+
+**Próximo passo:** o usuário revisa os 30 CEs no NAVI-I (avaliação: suspeito / explicável / erro de dado / sem como
+avaliar). Se confirmar: plano do piloto para aprovação — típicos de densidade por NCM recalculados periodicamente (30
+dias), marcas por CE numa tabela própria (filtro rápido, como o risco histórico), selo no card "densidade acima da
+típica do NCM com cubagem estimada — em observação" com o motivo, medição pelas Fichas abertas a partir do card.
+Limitação a medir: embarques inteiros do mesmo importador (sobreposição com o risco histórico do importador).
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o
