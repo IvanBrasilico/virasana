@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from virasana.analytic_scripts.ciclo_de_vida import gravacao_ciclo as gc
 from virasana.integracao.mercante.mercantealchemy import Conhecimento
-from virasana.saude import aplicacoes, ciclo, saude_ajna
+from virasana.saude import aplicacoes, ciclo, saude_navi
 from virasana.saude.verificacao import ATENCAO, FALHA, NAO_MEDIDO, OK, Contexto
 from virasana.tests import test_audita_ciclos, test_risco_historico_lotes
 
@@ -155,7 +155,32 @@ class TestRisco(unittest.TestCase):
             Extracao(conexao, relogio=lambda: agora - timedelta(hours=1)).grava_marca(MARCA_CE, maior)
         em_dia = aplicacoes.verifica_risco(Contexto(engine, agora=agora))
         self.assertEqual((em_dia.estado, em_dia.detalhes), (OK, []))
-        self.assertTrue(em_dia.resumo.startswith('extração há 1,0 h; 0 IDs por ler; fila 0'))
+        self.assertTrue(em_dia.resumo.startswith('extração há 1,0 h; 0 IDs por ler; fila 0 (versão None sem registro)'))
+
+    def test_fila_grande_so_conta_depois_da_repontuacao(self):
+        """Versão nova dos parâmetros repontua todos os CEs (1ª rodada em produção: 327 mil na fila): até
+        RISCO_REPONTUACAO_HORAS depois dela a fila é normal; depois, atenção."""
+        from virasana.risco_historico.extracao import MARCA_CE, Extracao
+        from virasana.risco_historico.pontuacao import Pontuacao
+        engine = test_risco_historico_lotes.banco()
+        agora = test_risco_historico_lotes.AGORA
+        with engine.begin() as conexao:
+            Extracao(conexao, relogio=lambda: agora).grava_marca(
+                MARCA_CE, conexao.execute(text('SELECT MAX(ID) FROM conhecimentosresumo')).scalar())
+        situacao = {'CEs por faixa': {'alto': 1}, 'CEs na fila da pontuação': 327569}
+
+        def resultado(horas_da_versao):
+            versao = {'ID': 7, 'criado_em': agora - timedelta(hours=horas_da_versao)}
+            with mock.patch.object(Pontuacao, 'situacao', return_value=situacao), \
+                    mock.patch('virasana.risco_historico.parametros.ultima_versao', return_value=versao):
+                return aplicacoes.verifica_risco(Contexto(engine, agora=agora))
+        recente = resultado(2)
+        self.assertEqual(recente.estado, OK)
+        self.assertIn('fila 327.569 (versão 7 há 2,0 h)', recente.resumo)
+        atrasada = resultado(8)
+        self.assertEqual(atrasada.estado, ATENCAO)
+        self.assertEqual(atrasada.detalhes, ['327.569 CEs na fila da pontuação há 8,0 h depois da versão 7 dos '
+                                             'parâmetros — a etapa do risco não está dando conta?'])
 
 
 class Meili:
@@ -189,6 +214,14 @@ class TestBusca(unittest.TestCase):
         self.assertEqual(aplicacoes.verifica_busca(self.contexto(Meili(ultimo_id=1000))).estado, ATENCAO)
         self.assertEqual(aplicacoes.verifica_busca(self.contexto(Meili(ultimo_id=None))).estado, ATENCAO)
         self.assertEqual(aplicacoes.verifica_busca(self.contexto(Meili(status='unavailable'))).estado, FALHA)
+        # nada escuta na porta (2ª rodada, fora do servidor): mensagem curta, sem o traceback
+        fora = Meili()
+        fora.url = 'http://127.0.0.1:7700'
+        fora.saude = mock.Mock(side_effect=ConnectionRefusedError('[WinError 10061] conexão recusada'))
+        resultado = aplicacoes.verifica_busca(self.contexto(fora))
+        self.assertEqual((resultado.estado, resultado.resumo),
+                         (FALHA, 'Meilisearch não responde em http://127.0.0.1:7700 — o serviço está parado ou o '
+                                 'health check rodou fora do servidor'))
         self.assertEqual(aplicacoes.verifica_busca(self.contexto(None)).estado, NAO_MEDIDO)
 
 
@@ -235,15 +268,15 @@ class TestFma(unittest.TestCase):
 class TestLinhaDeComando(unittest.TestCase):
 
     def test_argumentos(self):
-        args = saude_ajna._argumentos(['--nucleo-desde', '2026-10-22', '--so', 'mercante', 'api'])
+        args = saude_navi._argumentos(['--nucleo-desde', '2026-10-22', '--so', 'mercante', 'api'])
         self.assertEqual((args.nucleo_desde, args.so), (datetime(2026, 10, 22), ['mercante', 'api']))
 
     def test_roda_so_as_pedidas_e_isola_o_erro(self):
-        resultados = saude_ajna.roda(Contexto(None, agora=AGORA), so=['mercante', 'imagens'])
+        resultados = saude_navi.roda(Contexto(None, agora=AGORA), so=['mercante', 'imagens'])
         self.assertEqual([(r.componente, r.estado) for r in resultados],
                          [('Mercante (carga)', FALHA), ('Imagens (MongoDB)', NAO_MEDIDO)])   # sem banco: erro isolado
         self.assertTrue(resultados[0].resumo.startswith('erro na verificação: AttributeError'))
-        self.assertEqual(len(saude_ajna.VERIFICACOES), 12)
+        self.assertEqual(len(saude_navi.VERIFICACOES), 12)
 
 
 if __name__ == '__main__':  # pragma: no cover

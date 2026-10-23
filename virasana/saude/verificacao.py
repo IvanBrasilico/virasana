@@ -61,6 +61,7 @@ def horas_desde(agora: datetime, momento) -> Optional[float]:
 def ha_quanto(horas: Optional[float]) -> str:
     if horas is None:
         return 'sem registro'
+    horas = max(horas, 0.0)   # relógios de servidores diferentes (Mongo x aplicação) diferem por segundos
     if horas < 48:
         return f'há {horas:.1f} h'.replace('.', ',')
     return f'há {horas / 24:.1f} dias'.replace('.', ',')
@@ -73,7 +74,7 @@ def numero(valor) -> str:
 def relatorio(resultados: List[Resultado], agora: datetime) -> List[str]:
     """Primeiro uma linha por componente (o pior estado no topo do resumo), depois os detalhes de cada um."""
     geral = pior(r.estado for r in resultados)
-    linhas = [f'HEALTH CHECK do AJNA — {agora:%d/%m/%Y %H:%M} — {geral}', '']
+    linhas = [f'HEALTH CHECK do NAVI — {agora:%d/%m/%Y %H:%M} — {geral}', '']
     largura = max((len(r.componente) for r in resultados), default=0)
     linhas += [f'[{r.estado:^10}] {r.componente:<{largura}}  {r.resumo}' for r in resultados]
     for r in resultados:

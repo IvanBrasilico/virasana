@@ -84,7 +84,7 @@ class TestPecasComuns(unittest.TestCase):
         resultados = [Resultado('A', OK, 'tudo certo'), Resultado('B', ATENCAO, 'algo', ['detalhe 1']),
                       Resultado('C', NAO_MEDIDO, 'sem chave')]
         linhas = relatorio(resultados, AGORA)
-        self.assertEqual(linhas[0], 'HEALTH CHECK do AJNA — 23/10/2026 07:00 — ATENÇÃO')
+        self.assertEqual(linhas[0], 'HEALTH CHECK do NAVI — 23/10/2026 07:00 — ATENÇÃO')
         self.assertIn('[ ATENÇÃO  ] B  algo', linhas)
         self.assertIn('  - detalhe 1', linhas)
         self.assertEqual(codigo_de_saida(resultados), 1)
@@ -93,6 +93,8 @@ class TestPecasComuns(unittest.TestCase):
 
     def test_ha_quanto(self):
         self.assertEqual((ha_quanto(None), ha_quanto(3.25), ha_quanto(72)), ('sem registro', 'há 3,2 h', 'há 3,0 dias'))
+        # relógio do Mongo segundos adiantado (1ª rodada em produção: "há -0,0 h")
+        self.assertEqual(ha_quanto(-0.004), 'há 0,0 h')
 
 
 class TestMercante(unittest.TestCase):
@@ -191,6 +193,12 @@ class TestImagens(unittest.TestCase):
         resultado = imagens.verifica_imagens(self.contexto(fs_files(velha)))
         self.assertEqual(resultado.estado, FALHA)
         self.assertEqual(resultado.detalhes[0], 'a imagem mais nova chegou há 10,0 h — carga das imagens parada?')
+
+    def test_sem_ponteiro_das_imagens_o_resumo_nao_o_cita(self):
+        contexto = Contexto(banco(), mongo=fs_files(imagem('BTP', AGORA_UTC - timedelta(hours=1))), agora=AGORA,
+                            agora_utc=AGORA_UTC)
+        self.assertEqual(imagens.verifica_imagens(contexto).resumo,
+                         'mais nova há 1,0 h; 1 nas últimas 24 h (sem. ant. 0)')
 
     def test_sem_mongo_nao_mede(self):
         self.assertEqual(imagens.verifica_imagens(Contexto(banco(), agora=AGORA)).estado, NAO_MEDIDO)

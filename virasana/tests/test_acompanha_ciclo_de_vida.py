@@ -134,12 +134,42 @@ class TestAlertas(AcompanhamentoTestCase):
 
     def test_abertos_que_deviam_ser_abandono(self):
         # 90 dias depois: CTRV no operador sem saída (desembarque 10/03) e CTRA no EADI (entrada 04/03) passam de
-        # 93 dias; o CTRC (saiu do operador, em trânsito) não conta
-        _, alertas = self.relatorio(agora=AGORA + timedelta(days=90), secao='secao_situacao')
-        self.assertIn('2 ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais de 93 dias — deviam '
-                      'ser abandono', alertas)
+        # 93 dias; o CTRC (saiu do operador, em trânsito) não conta. Sem a tabela de Fichas, os dois contam.
+        texto, alertas = self.relatorio(agora=AGORA + timedelta(days=90), secao='secao_situacao')
+        self.assertIn('2 ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais de 93 dias sem Ficha de '
+                      'FMA — abandono não tratado', alertas)
+        self.assertIn('Abertos além do prazo do abandono (93 dias): 2 (sem a tabela de Fichas', texto)
+        # a composição: de onde vêm (recinto do desembarque, fluxo, motivo), desembarque mais antigo e revisita
+        self.assertRegex(texto, r'desembarque em\s+\|\s+fluxo\s+\|\s+motivo\s+\|\s+ciclos')
+        self.assertRegex(texto, r'8931359\s+\|.*\|\s+1\s+\|\s+2026-03-10')
         _, alertas = self.relatorio(secao='secao_situacao')
         self.assertFalse([a for a in alertas if 'abandono' in a])
+
+    def test_so_alerta_o_abandono_nao_tratado(self):
+        """23/10/2026 (usuário): o abandono com Ficha de FMA (aberta pelo fma_update.py do Fichas para o CE) já está
+        em tratamento — só os sem Ficha alertam. A Ficha de outro tipo não conta."""
+        with self.engine.begin() as c:
+            ce_do_ctra = c.execute(text(f'SELECT numeroCEmercante FROM {gc.CICLOS.name} '
+                                        "WHERE numeroConteiner = 'CTRA' AND versao_heuristica = 'v2'")).scalar()
+            c.execute(text('CREATE TABLE ovr_ovrs (id INTEGER PRIMARY KEY, tipooperacao INTEGER, '
+                           'numeroCEmercante TEXT)'))
+            c.execute(text('INSERT INTO ovr_ovrs (tipooperacao, numeroCEmercante) VALUES (0, :ce), (1, :outro)'),
+                      {'ce': ce_do_ctra, 'outro': '999999999999999'})
+        texto, alertas = self.relatorio(agora=AGORA + timedelta(days=90), secao='secao_situacao')
+        self.assertIn('1 ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais de 93 dias sem Ficha de '
+                      'FMA — abandono não tratado', alertas)
+        self.assertIn('Abertos além do prazo do abandono (93 dias): 2; com Ficha de FMA (abandono em tratamento no '
+                      'Fichas): 1; sem: 1', texto)
+        # a FMA do CTRV veio por outro CE da família (ex.: o master): também está em tratamento
+        with self.engine.begin() as c:
+            ciclo_ctrv = c.execute(text(f'SELECT ID FROM {gc.CICLOS.name} '
+                                        "WHERE numeroConteiner = 'CTRV' AND versao_heuristica = 'v2'")).scalar()
+            c.execute(gc.CICLO_CE.insert(), dict(ciclo_de_vida_id=ciclo_ctrv, numeroCEmercante='152600000000777',
+                                                 papel='master', principal=False))
+            c.execute(text("INSERT INTO ovr_ovrs (tipooperacao, numeroCEmercante) VALUES (0, '152600000000777')"))
+        texto, alertas = self.relatorio(agora=AGORA + timedelta(days=90), secao='secao_situacao')
+        self.assertFalse([a for a in alertas if 'abandono' in a])
+        self.assertIn('com Ficha de FMA (abandono em tratamento no Fichas): 2; sem: 0', texto)
 
     def test_abertos_no_operador_por_operador(self):
         texto, _ = self.relatorio(secao='secao_situacao')

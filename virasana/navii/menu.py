@@ -19,6 +19,7 @@ ENTRADAS_NAVII = [
     ('Transporte das apreensões', 'apreensoes.index'),
     ('Risco histórico das Fichas', 'risco_historico.index'),
     ('Completude de escaneamentos', 'completude.index'),
+    ('Saúde do sistema (supervisores)', 'saude.index'),   # health check; a tela recusa quem não é Supervisor
 ]
 
 # Manual publicado no Apache, fora das apps (ver ajna_docs/docs2.0/publica_manual.sh)

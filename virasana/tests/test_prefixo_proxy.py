@@ -9,6 +9,7 @@ URL interna emitida no HTML/JS começa com o prefixo.
 import os
 import re
 import unittest
+from unittest import mock
 
 from flask import Flask, url_for
 from flask_login import LoginManager, UserMixin
@@ -24,6 +25,7 @@ from virasana.entregas.views_entregas import bp_entregas
 from virasana.risco_historico.views_risco_historico import bp_risco_historico
 from virasana.navii.menu import ENTRADAS_NAVII, URL_MANUAL, subgrupo_navii
 from virasana.navii.views_navii import bp_navii
+from virasana.saude import views_saude
 from virasana.tests.test_navii_busca_sqlite import cria_sessao
 from virasana.tests.test_navii_filtros_salvos import banco_mongo
 
@@ -42,6 +44,7 @@ TELAS = [
     ('/navii/fichas', 'Fichas em acompanhamento'),
     ('/navii/estatisticas', 'Estatísticas de uso'),
     ('/completude_escaneamentos', 'Completude de escaneamentos'),
+    ('/saude', 'Saúde do sistema'),   # o usuário de teste como Supervisor (setUp)
 ]
 
 # links para a OUTRA app usam o prefixo dela (ex.: ficha no Fichas)
@@ -70,6 +73,7 @@ def cria_app():
     app.register_blueprint(bp_apreensoes)
     app.register_blueprint(bp_risco_historico)
     app.register_blueprint(bp_completude)
+    app.register_blueprint(views_saude.bp_saude)
     return app
 
 
@@ -82,6 +86,9 @@ class TestPrefixoProxy(unittest.TestCase):
     def setUp(self):
         # o "Apache": fora do prefixo, nada responde
         self.client = Client(DispatcherMiddleware(NotFound(), {PREFIXO: cria_app()}))
+        supervisor = mock.patch.object(views_saude, 'eh_supervisor', return_value=True)   # a tela de saúde
+        supervisor.start()
+        self.addCleanup(supervisor.stop)
 
     def get(self, caminho):
         return self.client.get(PREFIXO + caminho, environ_base={'HTTP_HOST': HOST_INTERNO})
@@ -165,7 +172,7 @@ class TestPrefixoProxy(unittest.TestCase):
         Vale também para as abas (Fichas em acompanhamento, Estatísticas de uso)."""
         for caminho, esperada in (('/navii/', 'montaSeloRisco'), ('/navii/texto', 'carregarPaginaTexto'),
                                   ('/navii/fichas', 'montaCard'),
-                                  ('/navii/estatisticas', 'calculaUniverso')):
+                                  ('/navii/estatisticas', 'calculaUniverso'), ('/saude/', 'renderizaPainel')):
             with self.subTest(tela=caminho):
                 html = self.get(caminho).get_data(as_text=True)
                 script = html[html.index('<script>\n(function'):html.rindex('</script>')]

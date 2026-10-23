@@ -24,9 +24,9 @@ import argparse
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 
 sys.path.append('.')
 sys.path.append('../ajna_docs/commons')
@@ -46,6 +46,15 @@ API_PARADA_HORAS = 6             # evento mais novo da tabela da API mais velho 
 REVISITA_ATRASADA_HORAS = 12     # abertos são revisitados a cada 6 h
 IMAGEM_MINIMA = 0.5              # recinto com menos imagens que isso: conferir a defasagem (imagens_ciclo)
 ESCANEAMENTOS_MINIMOS = 20       # ... desde que tenha escaneamentos suficientes para medir
+# aberto além do prazo do abandono: no operador sem saída (pelo desembarque) ou no recinto seco (pela entrada)
+ALEM_DO_PRAZO = (f"c.situacao = 'aberto' AND {V2} AND ((c.data_saida IS NULL AND c.data_entrada_seco IS NULL "
+                 'AND c.data_desembarque < :d93) OR c.data_entrada_seco < :d93)')
+# abandono já em tratamento: Ficha de FMA (tipooperacao 0, aberta pelo fma_update.py do Fichas) para o CE do ciclo ou
+# para outro CE da família (23/10/2026, pedido do usuário: alertar só os não tratados)
+FICHA = 'ovr_ovrs'
+COM_FMA = ('(EXISTS (SELECT 1 FROM ovr_ovrs o WHERE o.tipooperacao = 0 AND o.numeroCEmercante = c.numeroCEmercante) '
+           'OR EXISTS (SELECT 1 FROM ciclodevida_ciclo_ce f JOIN ovr_ovrs o ON o.numeroCEmercante = f.numeroCEmercante '
+           'AND o.tipooperacao = 0 WHERE f.ciclo_de_vida_id = c.ID))')
 
 
 def _pct(parte, total) -> str:
@@ -188,17 +197,40 @@ class Acompanhamento(Diagnostico):
                      'ex.: entrada no seco —, por isso pode haver aberto com desembarque há mais de 93 dias):')
         self.tabela(['idade', 'abertos', f'sem revisita há > {REVISITA_ATRASADA_HORAS} h'], linhas)
         atrasados = sum(int(n or 0) for _, _, n in linhas)
-        sem_abandono = self.numero(
-            f"SELECT COUNT(*) FROM {CICLO} c WHERE c.situacao = 'aberto' AND {V2} AND "  # nosec B608
-            '((c.data_saida IS NULL AND c.data_entrada_seco IS NULL AND c.data_desembarque < :d93) '
-            'OR c.data_entrada_seco < :d93)', limites)
+        alem_do_prazo, com_fma = self._alem_do_prazo(limites)
+        self.escreve(f'Abertos além do prazo do abandono (93 dias): {alem_do_prazo}' + (
+            ' (sem a tabela de Fichas: não separa os que já têm Ficha de FMA)' if com_fma is None else
+            f'; com Ficha de FMA (abandono em tratamento no Fichas): {com_fma}; sem: {alem_do_prazo - com_fma}'))
+        if alem_do_prazo:
+            self._composicao_alem_do_prazo(limites)
         self._abertos_no_operador(limites)
-        if sem_abandono:
-            self.alertas.append(f'{sem_abandono} ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais '
-                                'de 93 dias — deviam ser abandono')
+        nao_tratados = alem_do_prazo - (com_fma or 0)
+        if nao_tratados:
+            self.alertas.append(f'{nao_tratados} ciclos v2 abertos no operador (sem saída) ou no recinto seco há mais '
+                                'de 93 dias sem Ficha de FMA — abandono não tratado')
         if atrasados:
             self.alertas.append(f'{atrasados} ciclos v2 abertos sem revisita há mais de {REVISITA_ATRASADA_HORAS} h '
                                 '(fila de revisita maior que 2.000 por volta?)')
+
+    def _alem_do_prazo(self, limites) -> Tuple[int, Optional[int]]:
+        """(abertos além do prazo do abandono, quantos deles já têm Ficha de FMA — None sem a tabela de Fichas)."""
+        total = self.numero(f'SELECT COUNT(*) FROM {CICLO} c WHERE {ALEM_DO_PRAZO}', limites)  # nosec B608
+        if not total:
+            return 0, 0
+        if not inspect(self.conexao).has_table(FICHA):
+            return total, None
+        return total, self.numero(f'SELECT COUNT(*) FROM {CICLO} c WHERE {ALEM_DO_PRAZO} AND {COM_FMA}',  # nosec B608
+                                  limites)
+
+    def _composicao_alem_do_prazo(self, limites):
+        """De onde vêm os abertos além do prazo: recinto do desembarque, fluxo e motivo, com o desembarque mais antigo
+        e a revisita mais recente — revisitados e mantidos abertos (a estada atual começou depois do desembarque) ou
+        operador que não transmite a saída (23/10/2026: 99, nenhum com Ficha de FMA)."""
+        self.tabela(['desembarque em', 'fluxo', 'motivo', 'ciclos', 'desembarque mais antigo', 'revisita mais recente'],
+                    self.consulta(
+                        'SELECT c.codigoRecintoDesembarque, c.fluxo, c.motivo, COUNT(*), '  # nosec B608
+                        f'MIN(c.data_desembarque), MAX(c.processado_em) FROM {CICLO} c WHERE {ALEM_DO_PRAZO} '
+                        'GROUP BY c.codigoRecintoDesembarque, c.fluxo, c.motivo ORDER BY 4 DESC LIMIT 15', limites))
 
     def _abertos_no_operador(self, limites):
         """Abertos ainda no operador do desembarque (sem saída), por operador: concentração num terminal pode ser

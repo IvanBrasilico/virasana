@@ -16,7 +16,7 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     A=virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py
     virasana-venv/bin/python $A --dias 7 --saida auditoria_ciclos.log --csv auditoria_ciclos.csv
 
-Sai com código 1 quando há violação (0 sem nenhuma). O health check (`virasana/saude/saude_ajna.py`) audita os
+Sai com código 1 quando há violação (0 sem nenhuma). O health check (`virasana/saude/saude_navi.py`) audita os
 desembarques dos últimos 2 dias com a mesma classe.
 """
 import argparse

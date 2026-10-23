@@ -2,7 +2,8 @@
 Fichas de FMA (carga abandonada) criadas pelo `fma_update.py` do Fichas.
 
 - risco histórico: a etapa roda a cada volta do serviço do ciclo — marca da extração atualizada há mais de
-  RISCO_PARADO_HORAS, IDs do Mercante ainda não lidos ou CEs na fila da pontuação acima dos limites = atenção;
+  RISCO_PARADO_HORAS, IDs do Mercante ainda não lidos ou CEs na fila da pontuação acima dos limites = atenção (a fila
+  só conta RISCO_REPONTUACAO_HORAS depois da última versão dos parâmetros: a versão nova repontua todos os CEs);
 - busca por texto: o Meilisearch responde, o índice acompanha o Mercante (IDs por indexar acima de BUSCA_ATRASO_IDS =
   atenção) — precisa da chave do indexador no ambiente (`NAVII_MEILI_CHAVE_ESCRITA`), senão sai não medido;
 - NAVI-I: tempo no servidor da 1ª página das pesquisas das últimas 24 h (a coleta de uso grava contagem, consulta e
@@ -24,6 +25,7 @@ RISCO, BUSCA, NAVII, FMA = ('Risco histórico', 'Busca por texto (Meilisearch)',
 RISCO_PARADO_HORAS = 6
 RISCO_IDS_NAO_LIDOS = 100000
 RISCO_FILA_PONTUACAO = 50000
+RISCO_REPONTUACAO_HORAS = 6      # tempo para repontuar todos os CEs depois de uma versão nova dos parâmetros
 BUSCA_ATRASO_IDS = 20000
 NAVII_MINIMO = 20                # pesquisas nas 24 h para julgar o tempo
 NAVII_P95_SEGUNDOS = 10
@@ -38,12 +40,17 @@ def verifica_risco(contexto) -> Resultado:
     from virasana.risco_historico.tabelas import CES, MARCAS
     if not inspect(contexto.engine).has_table(CES.name):
         return Resultado(RISCO, NAO_MEDIDO, f'tabela {CES.name} ausente')
+    from virasana.risco_historico.parametros import ultima_versao
+    if not inspect(contexto.engine).has_table(CES.name):
+        return Resultado(RISCO, NAO_MEDIDO, f'tabela {CES.name} ausente')
     with contexto.engine.connect() as conexao:
         atualizada = conexao.execute(select(MARCAS.c.atualizado_em).order_by(MARCAS.c.atualizado_em.desc())
                                      .limit(1)).scalar()
         extracao = Extracao(conexao, relogio=lambda: contexto.agora).situacao()
         pontuacao = Pontuacao(conexao, relogio=lambda: contexto.agora).situacao()
+        versao = ultima_versao(conexao) or {}
     horas = horas_desde(contexto.agora, atualizada)
+    idade_versao = horas_desde(contexto.agora, versao.get('criado_em'))
     nao_lidos, fila = extracao['IDs do Mercante ainda não lidos'], pontuacao['CEs na fila da pontuação'] or 0
     detalhes = []
     if horas is None or horas > RISCO_PARADO_HORAS:
@@ -51,12 +58,15 @@ def verifica_risco(contexto) -> Resultado:
                         '(sem --sem-risco?)')
     if nao_lidos > RISCO_IDS_NAO_LIDOS:
         detalhes.append(f'{numero(nao_lidos)} IDs do Mercante ainda não lidos pela extração')
-    if fila > RISCO_FILA_PONTUACAO:
-        detalhes.append(f'{numero(fila)} CEs na fila da pontuação')
+    # versão nova dos parâmetros (Ficha positiva nova ou versão vencida) repontua todos os CEs: fila grande é normal
+    # até RISCO_REPONTUACAO_HORAS depois dela (23/10/2026: 327 mil na fila na 1ª rodada do health check)
+    if fila > RISCO_FILA_PONTUACAO and (idade_versao is None or idade_versao > RISCO_REPONTUACAO_HORAS):
+        detalhes.append(f'{numero(fila)} CEs na fila da pontuação {ha_quanto(idade_versao)} depois da versão '
+                        f'{versao.get("ID")} dos parâmetros — a etapa do risco não está dando conta?')
     faixas = ', '.join(f'{faixa} {numero(n)}' for faixa, n in sorted(pontuacao['CEs por faixa'].items()))
     return Resultado(RISCO, ATENCAO if detalhes else OK,
-                     f'extração {ha_quanto(horas)}; {numero(nao_lidos)} IDs por ler; fila {numero(fila)}; {faixas}',
-                     detalhes)
+                     f'extração {ha_quanto(horas)}; {numero(nao_lidos)} IDs por ler; fila {numero(fila)} (versão '
+                     f'{versao.get("ID")} {ha_quanto(idade_versao)}); {faixas}', detalhes)
 
 
 # ---------------------------------------------------------------------------------------------------- busca por texto
@@ -65,7 +75,11 @@ def verifica_busca(contexto) -> Resultado:
     from virasana.navii.indexador_texto import CHAVE_MARCAS
     if contexto.meili is None:
         return Resultado(BUSCA, NAO_MEDIDO, f'sem a chave do indexador ({tn.VARIAVEL_ESCRITA}) no ambiente')
-    estado = (contexto.meili.saude() or {}).get('status')
+    try:
+        estado = (contexto.meili.saude() or {}).get('status')
+    except OSError:   # requests.ConnectionError é OSError: nada escuta na porta (fora do servidor, serviço parado)
+        return Resultado(BUSCA, FALHA, f'Meilisearch não responde em {getattr(contexto.meili, "url", "?")} — o serviço '
+                         'está parado ou o health check rodou fora do servidor')
     if estado != 'available':
         return Resultado(BUSCA, FALHA, f'Meilisearch não está disponível (status {estado!r})')
     marcas = contexto.meili.documento(tn.INDICE_ESTADO, CHAVE_MARCAS) or {}

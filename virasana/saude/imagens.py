@@ -54,8 +54,10 @@ def verifica_imagens(contexto) -> Resultado:
         estados.append(ATENCAO)
     with contexto.engine.connect() as conexao:
         ponteiro = posicao_do_extrator(ponteiros_da_extracao(conexao), '99')
-    resumo = (f'mais nova {ha_quanto(horas)}; {numero(total)} nas últimas 24 h (sem. ant. {numero(total_base)}); '
-              f'ponteiro do extrator {ha_quanto(horas_desde(contexto.agora, ponteiro))}')
+    # sem ponteiro '99' no controle (a 1ª rodada em produção, 23/10/2026, não achou nenhum), o resumo não o cita: a
+    # medida da carga é o volume por recinto
+    resumo = (f'mais nova {ha_quanto(horas)}; {numero(total)} nas últimas 24 h (sem. ant. {numero(total_base)})'
+              + (f'; ponteiro do extrator {ha_quanto(horas_desde(contexto.agora, ponteiro))}' if ponteiro else ''))
     return Resultado(IMAGENS, pior(estados), resumo, detalhes + avisos)
 
 

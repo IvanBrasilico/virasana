@@ -1,25 +1,25 @@
 # coding: utf-8
 """
-HEALTH CHECK diário do AJNA — OK / ATENÇÃO / FALHA por componente (plano em `BACKLOG.md`, 23/10/2026).
+HEALTH CHECK diário do NAVI — OK / ATENÇÃO / FALHA por componente (plano em `BACKLOG.md`, 23/10/2026).
 
 Componentes, na ordem do relatório: fontes de dados (Mercante, API Recintos, imagens no MongoDB), ciclo de vida
 (serviço, invariantes, refaz, cobertura), pesagens, risco histórico, busca por texto, NAVI-I e Fichas de FMA. O
 detalhe de cada medida e os limiares estão nos módulos de `virasana/saude/`. Só leitura; cada consulta SQL com limite
 de tempo; uma verificação que falha (banco fora, tabela ausente) vira FALHA dela e as outras seguem.
 
-Sai com 0 (tudo OK), 1 (alguma ATENÇÃO) ou 2 (alguma FALHA): o cron decide quem avisar.
+A rodada diária (7 h) e as pedidas pela tela `/saude/` (perfil Supervisor) ficam com o SERVIÇO `servico_saude.py`
+(programa `saude_navi` do supervisor), que grava o histórico no Mongo (`historico.py`). Esta linha de comando é para
+rodar à mão: sai com 0 (tudo OK), 1 (alguma ATENÇÃO) ou 2 (alguma FALHA); com `--grava`, a rodada entra no histórico
+(origem "manual").
 
 Uso (no servidor, na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons — SQL_URI, MONGODB_URI
 — e, para medir a busca por texto, NAVII_MEILI_CHAVE_ESCRITA):
-    S=virasana/saude/saude_ajna.py
+    S=virasana/saude/saude_navi.py
     virasana-venv/bin/python $S                                   # na tela
     virasana-venv/bin/python $S --saida /var/log/virasana/saude/saude_$(date +%Y%m%d).log
     virasana-venv/bin/python $S --nucleo-desde 2026-10-22         # depois de trocar o núcleo do ciclo de vida
     virasana-venv/bin/python $S --so mercante api imagens         # só algumas verificações
-
-Cron sugerido (todo dia às 7 h):
-    0 7 * * * cd /home/ajna/apps/ajna/virasana && virasana-venv/bin/python virasana/saude/saude_ajna.py \
-        --saida /var/log/virasana/saude/saude_$(date +\\%Y\\%m\\%d).log
+    virasana-venv/bin/python $S --grava                           # e grava no histórico da tela
 """
 import argparse
 import os
@@ -67,10 +67,13 @@ def _argumentos(argv=None):
     parser.add_argument('--so', nargs='+', choices=[atalho for atalho, _, _ in VERIFICACOES], metavar='VERIFICAÇÃO',
                         help='só estas: ' + ', '.join(atalho for atalho, _, _ in VERIFICACOES))
     parser.add_argument('--saida', help='grava o relatório neste arquivo (além da tela)')
+    parser.add_argument('--grava', action='store_true', help='grava a rodada no histórico (tela /saude/)')
     return parser.parse_args(argv)
 
 
-def _contexto(args) -> Contexto:  # pragma: no cover - depende dos bancos reais
+def recursos(args):  # pragma: no cover - depende dos bancos reais
+    """(engine com limite de tempo, banco do Mongo do virasana ou None, cliente do Meilisearch ou None) — a linha de
+    comando e o serviço usam os mesmos."""
     from sqlalchemy import create_engine
     from virasana.analytic_scripts.ciclo_de_vida.servico_ciclo_de_vida import uri_do_banco
     from virasana.navii import texto_navii as tn
@@ -83,18 +86,22 @@ def _contexto(args) -> Contexto:  # pragma: no cover - depende dos bancos reais
         from ajna_commons.flask.conf import DATABASE, MONGODB_URI
         mongo = MongoClient(host=MONGODB_URI, serverSelectionTimeoutMS=20000)[DATABASE]
     meili = tn.cliente_do_ambiente(tn.VARIAVEL_ESCRITA) if os.environ.get(tn.VARIAVEL_ESCRITA) else None
-    return Contexto(engine, mongo=mongo, meili=meili, nucleo_desde=args.nucleo_desde)
+    return engine, mongo, meili
 
 
 def main(argv=None):  # pragma: no cover - depende dos bancos reais
     args = _argumentos(argv)
-    contexto = _contexto(args)
+    engine, mongo, meili = recursos(args)
+    contexto = Contexto(engine, mongo=mongo, meili=meili, nucleo_desde=args.nucleo_desde)
     resultados = roda(contexto, args.so)
     linhas = relatorio(resultados, contexto.agora)
     print('\n'.join(linhas))
     if args.saida:
         with open(args.saida, 'w', encoding='utf-8') as arquivo:
             arquivo.write('\n'.join(linhas) + '\n')
+    if args.grava and mongo is not None:
+        from virasana.saude.historico import grava_rodada
+        grava_rodada(mongo, resultados, contexto.agora, datetime.now(), 'manual', os.environ.get('USER'))
     sys.exit(codigo_de_saida(resultados))
 
 

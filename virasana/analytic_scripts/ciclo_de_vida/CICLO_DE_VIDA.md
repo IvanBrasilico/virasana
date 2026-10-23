@@ -1550,6 +1550,6 @@ que falharam; nenhuma depois. Refazer essa janela no servidor e auditar de novo 
 **Refaz robusto e health check (23/10/2026)**: uma parte do refaz que falha é repetida até 3 vezes (30 s e 2 min de
 espera, reconectando); no fim, o log lista o período de desembarque de cada parte não refeita e o comando para
 refazê-la, e o programa sai com código 1 (`audita_ciclos.py` também sai com 1 quando há violação). O health check
-diário (`virasana/saude/saude_ajna.py`, ver `BACKLOG.md`) acompanha o serviço (alertas deste acompanhamento), as
+diário (`virasana/saude/saude_navi.py`, ver `BACKLOG.md`) acompanha o serviço (alertas deste acompanhamento), as
 invariantes dos desembarques das últimas 48 h, a cobertura semana a semana, as pesagens e — com `--nucleo-desde` — os
 ciclos ainda não refeitos depois de uma troca do núcleo.

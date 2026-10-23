@@ -19,13 +19,17 @@ nova.
   pesagens P1–P3, imagem pelo contêiner e data — 20 a 22/10/2026.
 - Ciclo de vida fora de Santos (MultiRio, Suape, Pecém) e pesagens em produção — 21/10/2026.
 - Gate de qualidade: `qualidade_navii.py --alterados` e `tox -e navii` isolado — 22/10/2026.
-- **Health check diário v1** (`virasana/saude/saude_ajna.py`, seção abaixo) e **refaz robusto** — feitos no código em
+- **Health check diário v1** (`virasana/saude/saude_navi.py`, seção abaixo) e **refaz robusto** — feitos no código em
   23/10/2026 (aprovados pelo usuário, com as checagens da carga da API Recintos e das imagens no MongoDB que ele
-  pediu); falta publicar e pôr no cron.
+  pediu). **Serviço e tela** (F1 e F2, decisões do usuário de 23/10: serviço próprio no supervisor, rodada diária às
+  7 h e as pedidas pela tela, só o perfil Supervisor vê e comanda, histórico de 180 dias) — feitos no código no mesmo
+  dia; falta publicar e ativar (P0.3).
+- Nome NAVI no código novo: tela e relatório do health check dizem NAVI; programa e script `saude_navi` — 23/10/2026.
 
 ## P0 — agora
 
-1. **Terminar o refaz de 22/10.** O `--refaz-desde 2026-09-22` rodou da estação de trabalho e perdeu a rede: 24 de
+1. ~~Terminar o refaz de 22/10~~ — feito no servidor: a 1ª rodada do health check (23/10, `--nucleo-desde
+   2026-10-22`) achou só 2 ciclos de 20/10 por refazer e 0 violações nas invariantes. Histórico: o `--refaz-desde 2026-09-22` rodou da estação de trabalho e perdeu a rede: 24 de
    41 partes falharam (a parte 3 às 16:22, conexão reiniciada; as partes 19 a 41 às 17:27, rede inacessível).
    Só 85 mil dos 202.692 contêineres foram refeitos. O refaz anda do desembarque mais recente para o mais antigo, e
    **todos** os 118 ciclos com violação na 2ª auditoria (113 "CE principal com a carga saindo do porto" e 9 "TRA
@@ -35,9 +39,18 @@ nova.
 2. ~~Refaz robusto~~ — feito (23/10): a parte que falha é repetida até 3 vezes (30 s e 2 min de espera,
    reconectando); no fim, o log lista o período de desembarque de cada parte não refeita com o comando para
    refazê-la, e o programa sai com código 1.
-3. **Health check v1: publicar e pôr no cron** (feito no código em 23/10). Depois de 1 a 2 semanas de relatórios,
-   calibrar os limiares (constantes no topo de cada módulo de `virasana/saude/`). *Decisão: onde o resultado aparece
-   além do log (e-mail do cron, aba "Saúde").*
+3. **Health check v1** — feito no código (23/10), 1ª rodada no servidor no mesmo dia, calibrado. Para fechar o P0:
+   - [x] refazer os 2 ciclos de 20/10 que sobraram — a 2ª rodada (23/10 10:50) mediu 0 não refeitos;
+   - [ ] publicar a calibração, o alerta de abandono só dos não tratados e a composição dos abertos além do prazo
+     (23/10);
+   - [x] **serviço e tela, no lugar do cron** — feitos no código (23/10): programa `saude_navi` do supervisor
+     (`servico_saude.py`, `supervisor_saude.conf`), histórico no Mongo com "novo" / "desde dd/mm" (`historico.py`) e
+     a tela `/saude/` (`views_saude.py`, `templates/saude.html`; menu NAVII "Saúde do sistema (supervisores)");
+   - [ ] ativar: publicar (o virasana web ganha a tela e a entrada no menu), criar `/var/log/virasana/saude/`,
+     incluir `supervisor_saude.conf` no supervisor e iniciar `saude_navi`; conferir a 1ª rodada pela tela;
+   - fora do código: cobrar MultiRio e ICTSI (embarques/desembarques parados) e ver a BTP3 (sem imagem).
+   Depois, com 1 a 2 semanas de relatórios, calibrar os limiares (constantes no topo de cada módulo de
+   `virasana/saude/`).
 
 ## P1 — próximas semanas
 
@@ -70,6 +83,13 @@ nova.
 13. **C4** (o CE declarado vence a única família plausível não declarada): só se a auditoria mostrar casos.
 14. **C7 nos filtros por candidato**: contêiner + "só com desembarque" deixa de fora o BL único que não é o
     principal (atalho mantido por desempenho).
+14b. **AJNA → NAVI no legado** (o sistema foi rebatizado em 23/10/2026: NAVI-I, NAVI-E e Navi-Fichas). Decidido
+    pelo usuário em 23/10: grafia em maiúsculas; o Fichas fica Navi-Fichas; o código novo já diz NAVI (tela
+    `saude.html` e relatório do health check) e o programa/script do health check virou `saude_navi`. O legado
+    (`virasana/templates/layout.html` e ~29 templates do virasana, ~37 do bhadrasana2, textos históricos dos
+    documentos) fica como está por enquanto — só com novo pedido (layouts compartilhados: planejar e confirmar).
+    Identificadores técnicos (repositórios, `ajna_commons`, `ajna_docs`, URL `/ajna/` do manual, programas do
+    supervisor já em produção) não mudam sem pedido.
 15. **Pendentes do loop antigo**: `servico_ciclo_de_vida.py --reprocessa N`, se a seção 6 do acompanhamento ainda
     mostrar pendentes.
 
@@ -113,14 +133,29 @@ sinal do risco histórico.
 - Fichas pelo NAVI-I, fase 3 (histórico das encerradas); retirar a tela legada da completude (com aval).
 - `tox.ini` do bhadrasana2 (instala o `ajna_commons` de 2019, que passa na frente do vivo).
 - Migração Flask/Python e da apresentação para o gov.br: só quando pedidas.
+- **Tela de abandono e risco de abandono** (ideia do usuário, 23/10/2026 — para o futuro, quando houver histórico
+  bastante de ciclos v2 e de FMAs para analisar). Acompanhar as cargas paradas e, se der, prever o abandono antes dos
+  90 dias. Perguntas para o diagnóstico: aos 30 ou 60 dias sem retirada já dá para prever o abandono, ou muitas cargas
+  chegam lá e são retiradas (e não vale acompanhar como risco)? Aos 90 dias, a FMA foi mesmo emitida? Quanto tempo
+  entre o prazo e a FMA, e entre a FMA e a retomada ou o perdimento? Que sinais pesam (importador, NCM, recinto,
+  valor, risco histórico)? Fontes: ciclo de vida (estada, sem saída), Fichas de FMA (`fma_update.py`, `tipooperacao
+  = 0`, com o CE) e o risco histórico.
 
 ## Health check (v1, feito em 23/10/2026)
 
-`virasana/saude/saude_ajna.py`: **um relatório curto por dia**, OK / ATENÇÃO / FALHA por componente, reaproveitando o
-que cada parte já mede. Só leitura; cada consulta SQL com limite de 120 s; uma verificação que quebra vira FALHA
-dela e as outras seguem. Sai com 0 (OK), 1 (atenção) ou 2 (falha) — o cron decide quem avisar. `--so` escolhe
-verificações; `--nucleo-desde AAAA-MM-DD` mede os ciclos não refeitos depois de uma troca do núcleo. Limiares
-provisórios (constantes no topo de cada módulo), a calibrar com as primeiras semanas.
+**Um relatório curto por dia**, OK / ATENÇÃO / FALHA por componente, reaproveitando o que cada parte já mede. Só
+leitura; cada consulta SQL com limite de 120 s; uma verificação que quebra vira FALHA dela e as outras seguem.
+Limiares provisórios (constantes no topo de cada módulo), a calibrar com as primeiras semanas.
+- **Serviço** `saude_navi` (supervisor; `servico_saude.py`): acorda a cada minuto, grava o batimento e roda às 7 h
+  (uma vez por dia; se subir depois das 7 h, roda na hora) ou quando há pedido da tela. Fica fora dos serviços que
+  vigia. Erro fora das verificações vira uma rodada com FALHA "Health check".
+- **Histórico** no Mongo do virasana (`historico.py`): rodadas, pedidos e batimento; TTL de 180 dias. Cada achado é
+  "novo" ou "desde dd/mm" (chave = o texto sem os números que variam; códigos de 7+ dígitos ficam) — trata os
+  crônicos sem exceção por recinto.
+- **Tela** `/saude/` (só perfil Supervisor, a regra das estatísticas de uso): estado geral, última e próxima rodada,
+  serviço ativo ou parado, "Rodar agora"; um bloco por componente (cor + ícone + texto) com o resumo, "nesse estado
+  desde", a faixa das últimas 14 rodadas e os achados marcados; histórico das rodadas e o detalhe de cada uma.
+- **Linha de comando** `saude_navi.py` para rodar à mão (0/1/2; `--so`, `--nucleo-desde`, `--grava`).
 
 | Componente | Medida | Alerta | Módulo |
 |---|---|---|---|
@@ -141,10 +176,48 @@ Próximos passos possíveis: cruzar, por recinto, inspeções transmitidas × im
 `metadata.recinto` para o código do recinto); erros 5xx do NAVI-I (log do gunicorn); espaço em disco e programas do
 supervisor; aba "Saúde" no menu NAVII lendo o último relatório.
 
+**1ª rodada em produção (23/10/2026 10:27 — ATENÇÃO)**. Achados reais:
+- API Recintos: **MultiRio (7921303) e ICTSI (7921302) pararam de transmitir embarques/desembarques** — 0 nas últimas
+  24 h contra 3.051 e 550 na semana anterior; último transmitido há 25 h e 35 h; ponteiro da extração andando (o
+  extrator pergunta, o recinto não manda). O MultiRio está no escopo do ciclo de vida desde 21/10. Cobrar os
+  recintos.
+- Imagens: **BTP3 parou de mandar imagem** (10 nas últimas 24 h contra 1.382) — e os escaneados com imagem caíram
+  de 90% para 82% na cobertura semanal (abaixo do limite de 10 pontos, mas na mesma direção).
+- Refaz: 2 ciclos de 20/10 processados antes da troca do núcleo — sobra da parte 3 do refaz de 22/10 (o serviço não
+  revisita concluídos): `--refaz-desde 2026-10-20 --refaz-ate 2026-10-21`.
+- NAVI-I: 40 pesquisas, mediana de 6,1 s e p95 de 10,5 s no servidor só na 1ª página — reforça a contagem
+  assíncrona (P1.6).
+- Invariantes: 12.492 ciclos das últimas 48 h, **0 violações** (C6/C7/C8 em produção).
+
+Calibração feita no mesmo dia: fila da pontuação do risco (327 mil) só conta 6 h depois da última versão dos
+parâmetros (a versão nova repontua todos os CEs); relógio do Mongo segundos adiantado ("há -0,0 h"); sem ponteiro
+'99' das imagens no controle, o resumo não o cita.
+
+Crônicos (alertas do acompanhamento que vão se repetir todo dia):
+- **98 ciclos v2 abertos há mais de 93 dias** ("deviam ser abandono"; 99 na 2ª rodada, **nenhum** com Ficha de FMA —
+  hipótese: os ciclos de MultiRio, Suape e Pecém criados pelo refaz desde 19–20/07, operadores que não transmitem a
+  saída, fora dos recintos de onde o `fma_update.py` baixa FMAs (os com `cod_dte`); o acompanhamento passou a mostrar
+  a composição deles para confirmar) — **ajustado em 23/10** (pedido do usuário): o
+  abandono com Ficha de FMA (aberta pelo `fma_update.py` para o CE do ciclo ou outro CE da família) já está em
+  tratamento; o acompanhamento mostra quantos têm e quantos não têm Ficha, e só alerta os sem. Se ainda sobrarem: o
+  alerta conta pelo desembarque e o núcleo fecha pelo início da estada atual — ver se `processado_em` é recente
+  (revisitados e mantidos abertos: estada mais nova) ou velho (não revisitados):
+  `SELECT c.codigoRecintoDesembarque, c.fluxo, c.motivo, COUNT(*), MIN(c.data_desembarque), MAX(c.processado_em)
+  FROM ciclodevida_ciclo_de_vida_importacao c WHERE c.situacao = 'aberto' AND c.versao_heuristica = 'v2' AND
+  ((c.data_saida IS NULL AND c.data_entrada_seco IS NULL AND c.data_desembarque < NOW() - INTERVAL 93 DAY) OR
+  c.data_entrada_seco < NOW() - INTERVAL 93 DAY) GROUP BY 1, 2, 3 ORDER BY 4 DESC;`
+- **Pecém (3111401) com 21% dos escaneamentos com imagem**: conhecido (imagens com +3 h e escâneres que não mandam
+  ao Mongo — "Fora de Santos e pesagens" no CICLO_DE_VIDA.md).
+- *Decisão:* como tratar o crônico — (a) histórico das rodadas, marcando cada achado como "novo" ou "desde dd/mm" e
+  só subindo o código de saída com achado novo ou pior; (b) lista de achados conhecidos com motivo e validade; (c)
+  deixar como está.
+
 ## Decisões em aberto (resumo)
 
-1. Refazer agora no servidor as partes que falharam (P0.1).
-2. Onde o health check aparece além do log diário: e-mail do cron, aba "Saúde" (P0.3).
+1. ~~Refazer as partes que falharam (P0.1)~~ — feito no servidor (a 1ª rodada do health check só achou 2 ciclos de
+   20/10 por refazer, da parte 3).
+2. Onde o health check aparece além do log diário: e-mail do cron, aba "Saúde" (P0.3); e como tratar os achados
+   crônicos — histórico "novo / desde", lista de conhecidos ou nada (ver "1ª rodada em produção").
 3. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
 4. Aprovar a revisita de imagens (P1.5) e a contagem assíncrona (P1.6), propostas desde 13/10 e 02/10.
 5. Gravar o modo de exibição na coleta de uso (P2.11).

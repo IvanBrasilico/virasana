@@ -40,6 +40,7 @@ from virasana.entregas.views_entregas import bp_entregas
 from virasana.apreensoes.views_apreensoes import bp_apreensoes
 from virasana.risco_historico.views_risco_historico import bp_risco_historico
 from virasana.completude.views_completude import bp_completude
+from virasana.saude.views_saude import bp_saude
 
 
 # from bhadrasana.models import db_session
@@ -70,6 +71,7 @@ app.register_blueprint(bp_entregas)
 app.register_blueprint(bp_apreensoes)
 app.register_blueprint(bp_risco_historico)
 app.register_blueprint(bp_completude)
+app.register_blueprint(bp_saude)
 
 configure_applog(app)
 api = api_login.configure(app)

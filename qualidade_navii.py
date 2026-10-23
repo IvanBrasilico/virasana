@@ -147,6 +147,8 @@ TESTES = [
     'virasana/tests/test_navii_visoes.py',
     'virasana/tests/test_saude_fontes.py',
     'virasana/tests/test_saude_ciclo.py',
+    'virasana/tests/test_saude_historico.py',
+    'virasana/tests/test_saude_tela.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',
