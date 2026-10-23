@@ -18,6 +18,9 @@ Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no 
     com cubagem com fração não separa. Peso abaixo de 100 kg (em toneladas?) ou acima da carga máxima (o 16b) não
     entra no 18 — nem nos típicos: é erro de digitação. Cubagem SIMBÓLICA (abaixo de 10% da capacidade do tipo — 1 m³
     num 40', 4ª rodada) não é estimativa: o diagnóstico a separa. NCM fora dos capítulos 01 a 97 (9999) não é NCM.
+    6ª versão (24/10/2026, revisão do usuário: nos casos de Santos o peso confere com a pesagem e a imagem — a anomalia
+    é a cubagem): o típico da DENSIDADE também por tamanho do contêiner — muitos 40' declaram a capacidade (68/76 m³)
+    como cubagem, e quem declara o volume real num 20' parecia "denso".
 
 Qualidade do dado (contados, não são sinal de risco — 1ª rodada: sem força nas referências; erro de digitação):
   - 16a, cubagem acima da capacidade do tipo (`capacidades` de `navii/referencias/tipos_conteiner.json`);
@@ -480,17 +483,15 @@ def peso_comparavel(c: Conteiner) -> bool:
 
 def medidas_ncm(c: Conteiner) -> List[Tuple[str, str, float]]:
     """[(medida, chave, valor)] do contêiner FCL de um NCM só e de peso comparável, do nível mais específico (8) ao
-    mais geral (4): peso por contêiner (18a) na chave 'tamanho|NCM' e densidade (18b) na chave 'NCM'."""
+    mais geral (4): peso por contêiner (18a) e densidade (18b), as duas na chave 'tamanho|NCM'."""
     unico = c.ncm_unico
-    if not unico or c.uso_parcial or not peso_comparavel(c):
+    if not unico or c.uso_parcial or not peso_comparavel(c) or not c.tamanho:
         return []
     niveis = [unico[:n] for n in NIVEIS_NCM if len(unico) >= n]
-    medidas = []
-    if c.tamanho:
-        medidas += [(PESO_NCM, f'{c.tamanho}|{nivel}', c.peso) for nivel in niveis]
+    medidas = [(PESO_NCM, f'{c.tamanho}|{nivel}', c.peso) for nivel in niveis]
     valor = densidade(c)
     if valor:
-        medidas += [(DENSIDADE_NCM, nivel, valor) for nivel in niveis]
+        medidas += [(DENSIDADE_NCM, f'{c.tamanho}|{nivel}', valor) for nivel in niveis]
     return medidas
 
 

@@ -1287,6 +1287,34 @@
         return Number(valor).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg';
     }
 
+    function formatarCubagem(valor) {
+        if (valor === null || valor === undefined) { return '--'; }
+        return Number(valor).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³';
+    }
+
+    /* Cubagem declarada no CE; sem ela, a soma dos contêineres; as duas quando diferem (24/10/2026). */
+    function montaCubagemCe(card) {
+        var noCe = card.cubagemDeclarada, soma = card.cubagemTotal;
+        var temCe = noCe !== null && noCe !== undefined, temSoma = soma !== null && soma !== undefined;
+        if (!temCe && !temSoma) { return '--'; }
+        if (!temCe) { return formatarCubagem(soma) + ' <span class="nome-ref">(soma dos contêineres)</span>'; }
+        return formatarCubagem(noCe) + (temSoma && Math.abs(soma - noCe) >= 0.05 ?
+            ' <span class="nome-ref" title="Soma das cubagens declaradas nos contêineres do CE">contêineres: ' +
+            formatarCubagem(soma) + '</span>' : '');
+    }
+
+    /* Cubagem do contêiner com a ocupação (cubagem ÷ capacidade de referência do tipo) e a densidade (peso ÷ cubagem). */
+    function montaCubagemConteiner(c) {
+        if (c.cubagem === null || c.cubagem === undefined) { return ''; }
+        var ocupacao = c.ocupacao ? Math.round(c.ocupacao * 100) + '%' : '';
+        return '<span class="detalhe"' + (ocupacao ? ' title="' + escapeAttr('Ocupação: ' + ocupacao +
+                ' da capacidade de referência do tipo (' + formatarCubagem(c.capacidade) + ')') + '"' : '') + '>' +
+                'Cubagem <strong>' + formatarCubagem(c.cubagem) + '</strong>' + (ocupacao ? ' (' + ocupacao + ')' : '') +
+            '</span>' +
+            (c.densidade ? '<span class="detalhe" title="Peso bruto ÷ cubagem declarados">Densidade <strong>' +
+                Number(c.densidade).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg/m³</strong></span>' : '');
+    }
+
     /* ---------------- Sidebar recolhível ---------------- */
     document.getElementById('btn-toggle-filtros').addEventListener('click', function () {
         el.layout.classList.toggle('filtros-recolhidos');
@@ -1819,6 +1847,7 @@
                         (c.tipoConteiner && c.tipoConteiner.oog ? '<span class="tag-oog">Potencial OOG</span>' : '') +
                         (c.tipoCarga ? '<span class="detalhe">Carga <strong>' + escapeHtml(c.tipoCarga) + '</strong></span>' : '') +
                         '<span class="detalhe">Peso <strong>' + formatarPeso(c.pesoBruto) + '</strong></span>' +
+                        montaCubagemConteiner(c) +
                         (c.tara !== null && c.tara !== undefined ? '<span class="detalhe">Tara <strong>' + formatarPeso(c.tara) + '</strong></span>' : '') +
                         (c.lacre ? '<span class="detalhe">Lacre <strong>' + escapeHtml(c.lacre) + '</strong></span>' : '') +
                     '</div>' +
@@ -2226,6 +2255,7 @@
                         '<div><span class="rotulo-mini"><i class="fas fa-building" aria-hidden="true"></i>Embarcador</span>' + montaValorEmpresa(card.embarcador, card.nomeEmbarcador) + '</div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-warehouse" aria-hidden="true"></i>Consignatário</span>' + montaValorEmpresa(card.consignatario, card.nomeConsignatario) + montaCorad(card) + '</div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-weight-hanging" aria-hidden="true"></i>Peso bruto total</span><span class="valor-mini">' + formatarPeso(card.pesoBrutoTotal) + '</span></div>' +
+                        '<div><span class="rotulo-mini"><i class="fas fa-cube" aria-hidden="true"></i>Cubagem declarada</span><span class="valor-mini">' + montaCubagemCe(card) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-tags" aria-hidden="true"></i>NCMs distintos</span><span class="valor-mini">' + (card.qtdNcmsDistintos || 0) + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-route" aria-hidden="true"></i>Tráfego</span><span class="valor-mini">' + escapeHtml(card.tipoTrafego || '--') + '</span></div>' +
                         '<div><span class="rotulo-mini"><i class="fas fa-file-alt" aria-hidden="true"></i>Tipo BL</span><span class="valor-mini">' + escapeHtml(card.tipoBL || '--') +

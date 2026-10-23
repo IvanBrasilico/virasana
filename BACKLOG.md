@@ -164,6 +164,16 @@ dos contêineres). Conclusão provisória: o sinal mede o jeito de declarar a cu
 positivas podem ser o perfil do declarante. Também (usuário): o NAVI-I não mostra a cubagem declarada, nem no card do
 CE nem no dos contêineres.
 
+**6ª versão (24/10/2026), falta rodar** (opção A do usuário): típico da densidade por NCM E tamanho do contêiner (como
+o do peso); concentração do candidato por importador (raiz do CNPJ) e empresa de navegação, na população e nos
+acertos das referências (e quantos importadores dos acertos já têm 2+ fichas positivas); tamanho dos marcados. Se a
+força sumir ou vier de poucos importadores já cobertos pelo risco histórico, fechar 16–18 como "não vale".
+`virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
+declaracao6.log --csv declaracao6.csv --revisao revisao6.csv`.
+
+**Cubagem no card do NAVI-I — feita no código (24/10/2026, pedido do usuário), falta publicar:** cubagem declarada
+do CE e de cada contêiner, com ocupação e densidade (`navii/CONTEXTO.md`, item 23).
+
 **Plano do piloto (rascunho de 24/10/2026, SUSPENSO pela revisão):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 7 decisões.
 
 **Próximo passo:** o usuário revisa os 30 CEs no NAVI-I (avaliação: suspeito / explicável / erro de dado / sem como

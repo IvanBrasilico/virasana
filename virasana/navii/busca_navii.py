@@ -69,6 +69,7 @@ from virasana.analytic_scripts.ciclo_de_vida.ciclo_de_vida import (
     CicloDeVidaCE, CicloDeVidaImportacao, CicloDeVidaImportacaoEscaneamentos, logger,
 )
 from virasana.analytic_scripts.ciclo_de_vida import estagios_ciclo
+from virasana.analytic_scripts.declaracao import regras_declaracao
 from bhadrasana.models.laudo import Empresa
 from bhadrasana.models.riscocorad import MatrizCorad
 from virasana.navii import dta_navii, fichas_ovr, pesagem_navii, referencias, risco_navii, tabelas_opcionais
@@ -1094,6 +1095,19 @@ def _texto_para_float(valor: Optional[str]) -> Optional[float]:
         return None
 
 
+def _volume_do_conteiner(peso: Optional[float], cubagem: Optional[float], iso_code: Optional[str]) -> dict:
+    """Cubagem declarada do contêiner (`Item.cubagemM3`), a capacidade de referência do tipo e a ocupação (cubagem ÷
+    capacidade; `navii/referencias/tipos_conteiner.json`, `capacidades`) e a densidade (peso ÷ cubagem, kg/m³) —
+    pedido do usuário (24/10/2026): o card não mostrava a cubagem informada."""
+    chave = regras_declaracao.chave_tipo(iso_code)
+    return {
+        'cubagem': cubagem,
+        'capacidade': (regras_declaracao.capacidade(chave) or {}).get('m3'),
+        'ocupacao': regras_declaracao.ocupacao(cubagem, chave),
+        'densidade': peso / cubagem if peso and cubagem and cubagem > 0 else None,
+    }
+
+
 def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
     """Enriquecimento em lote com os contêineres e NCMs declarados de cada CE
     — para a seção "Contêineres" do card e para o peso bruto total / contagem
@@ -1115,10 +1129,12 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
         Dict por numeroCEmercante:
             {
               'pesoBrutoTotal': float | None,
+              'cubagemTotal': float | None,  (soma das cubagens dos contêineres)
               'qtdNcmsDistintos': int,
               'conteineres': [
                   {'codigoConteiner': str, 'isoCode': str, 'tipoConteiner': dict | None,
                    'pesoBruto': float | None, 'tara': float | None, 'lacre': str,
+                   'cubagem', 'capacidade' (m³), 'ocupacao' (fração), 'densidade' (kg/m³): float | None,
                    'tipoCarga': str | None,
                    'ncms': [{'identificacaoNCM': str, 'descritivo': str,
                              'descricaoPosicao': str | None}, ...]},
@@ -1151,13 +1167,15 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
 
     for item in itens:
         conteineres = por_ce.setdefault(item.numeroCEmercante, {})
+        peso = _texto_para_float(item.pesoBruto)
         conteineres[item.codigoConteiner] = {
             'codigoConteiner': item.codigoConteiner,
             'isoCode': item.isoCode,
             'tipoConteiner': referencias.tipo_conteiner(item.isoCode),
-            'pesoBruto': _texto_para_float(item.pesoBruto),
+            'pesoBruto': peso,
             'tara': _texto_para_float(item.tara),
             'lacre': item.lacre,
+            **_volume_do_conteiner(peso, _texto_para_float(item.cubagemM3), item.isoCode),
             'tipoCarga': tipos_carga.get(item.tipoItemCarga),
             'ncms': [],
         }
@@ -1177,7 +1195,7 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
             conteiner = conteineres.setdefault(ncm_item.codigoConteiner, {
                 'codigoConteiner': ncm_item.codigoConteiner,
                 'isoCode': None, 'tipoConteiner': None, 'pesoBruto': None, 'tara': None, 'lacre': None,
-                'tipoCarga': None, 'ncms': [],
+                **_volume_do_conteiner(None, None, None), 'tipoCarga': None, 'ncms': [],
             })
         conteiner['ncms'].append({
             'identificacaoNCM': ncm_item.identificacaoNCM,
@@ -1185,17 +1203,20 @@ def busca_itens_navii(session, numeros_ce: List[str]) -> Dict[str, dict]:
             'descricaoPosicao': referencias.descricao_posicao_ncm(ncm_item.identificacaoNCM),
         })
 
-    resultado: Dict[str, dict] = {}
-    for numero_ce, conteineres in por_ce.items():
-        lista_conteineres = list(conteineres.values())
-        pesos = [c['pesoBruto'] for c in lista_conteineres if c['pesoBruto'] is not None]
-        todos_ncms = {ncm['identificacaoNCM'] for c in lista_conteineres for ncm in c['ncms']}
-        resultado[numero_ce] = {
-            'pesoBrutoTotal': sum(pesos) if pesos else None,
-            'qtdNcmsDistintos': len(todos_ncms),
-            'conteineres': lista_conteineres,
-        }
-    return resultado
+    return {numero_ce: _resumo_dos_conteineres(list(conteineres.values())) for numero_ce, conteineres in por_ce.items()}
+
+
+def _resumo_dos_conteineres(lista_conteineres: List[dict]) -> dict:
+    """Peso e cubagem totais (soma dos contêineres que os têm), NCMs distintos e a lista, para o card do CE."""
+    pesos = [c['pesoBruto'] for c in lista_conteineres if c['pesoBruto'] is not None]
+    cubagens = [c['cubagem'] for c in lista_conteineres if c['cubagem'] is not None]
+    todos_ncms = {ncm['identificacaoNCM'] for c in lista_conteineres for ncm in c['ncms']}
+    return {
+        'pesoBrutoTotal': sum(pesos) if pesos else None,
+        'cubagemTotal': sum(cubagens) if cubagens else None,
+        'qtdNcmsDistintos': len(todos_ncms),
+        'conteineres': lista_conteineres,
+    }
 
 
 def busca_nomes_empresas(session, valores: List[str]) -> Dict[str, str]:
@@ -1339,7 +1360,7 @@ def monta_card_navii(
     nomes_recintos = nomes_recintos or {}
     nomes_terminais = nomes_terminais or {}
     imagens = [e.imagem_id for e in ciclo.escaneamentos if e.imagem_id is not None] if ciclo else []
-    itens = itens or {'pesoBrutoTotal': None, 'qtdNcmsDistintos': 0, 'conteineres': []}
+    itens = itens or {'pesoBrutoTotal': None, 'cubagemTotal': None, 'qtdNcmsDistintos': 0, 'conteineres': []}
     numero_ce_master = _master_do(conhecimento)
 
     dados_manifesto = None
@@ -1388,6 +1409,9 @@ def monta_card_navii(
         'previsaoAtracacao': _previsao_atracacao(data_prevista_atracacao, hoje),
         'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
+        # cubagem declarada no CE (`Conhecimento.cubagem`) e a soma das dos contêineres (24/10/2026)
+        'cubagemDeclarada': _texto_para_float(conhecimento.cubagem),
+        'cubagemTotal': itens.get('cubagemTotal'),
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
         'conteineres': itens['conteineres'],
         **_dados_situacao(ciclo),

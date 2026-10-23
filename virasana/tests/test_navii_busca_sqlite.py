@@ -467,6 +467,18 @@ class TestEnriquecimento(NaviiSqliteTestCase):
         self.assertEqual(card['dataPrevistaAtracacao'], '2026-01-10')
         self.assertIsNotNone(card['item_id'])
 
+    def test_card_traz_a_cubagem_declarada_do_ce_e_do_conteiner(self):
+        item = self.resultado('C2').item
+        item.cubagemM3, item.isoCode = '20.000', '22G1'
+        ce = self.session.query(Conhecimento).filter_by(numeroCEmercante=item.numeroCEmercante).one()
+        ce.cubagem = '25.000'
+        self.session.commit()
+        card = self.card('C2')
+        conteiner = next(c for c in card['conteineres'] if c['codigoConteiner'] == 'C2')
+        self.assertEqual((card['cubagemDeclarada'], conteiner['cubagem'], conteiner['densidade']), (25.0, 20.0, 50.0))
+        self.assertAlmostEqual(conteiner['ocupacao'], 20 / 33.2)
+        self.assertIsNone(self.card('C4')['cubagemDeclarada'])          # sem cubagem no CE
+
     def test_card_traz_nomes_de_portos_navio_e_posicao_ncm(self):
         card = self.card('C4')  # CE3: origem CNNGB, destino BRSSZ, manifesto M2 carregado em SGSIN
         self.assertEqual(card['nomePortoOrigemCarga'], 'Ningbo, China')

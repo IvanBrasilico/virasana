@@ -31,7 +31,10 @@ amostras e, se for o caso, um piloto no NAVI-I.
      cubagem em m³ inteiro): a lista de revisão sai do 18b+ com cubagem redonda (desvios de 3 a 10, um CE por posição
      do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação. 5ª versão (24/10/2026, depois
      da 4ª rodada: 1 m³ num 40' na lista): o 18b+ redondo dividido em cubagem plausível e simbólica (abaixo de 10% da
-     capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível;
+     capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível. 6ª versão (24/10/2026, depois
+     da revisão do usuário — o peso confere, a anomalia é a cubagem): típico da densidade por tamanho do contêiner;
+     concentração do candidato por importador e empresa de navegação (na população e nos acertos das referências) e
+     o tamanho dos marcados — poucos declarantes explicando muito = perfil de quem declara, não da carga;
   C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
@@ -90,7 +93,7 @@ COLUNAS_REVISAO = ('ce', 'conteiner', 'ncm', 'tipo', 'peso_kg', 'cubagem_m3', 's
                    'desvios_densidade', 'motivo', 'avaliacao', 'observacao')
 
 CAMPOS_CE = ('ID, numeroCEmercante, numeroCEMaster, tipoBLConhecimento, tipoTrafego, codigoEmpresaNavegacao, '
-             'portoOrigemCarga, numConhecimento, cubagem')
+             'portoOrigemCarga, numConhecimento, cubagem, consignatario')
 # SQL: só a lista fixa de campos acima entra no texto
 SQL_CES_JANELA = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE ID >= :de AND ID < :ate'  # nosec B608
 SQL_CES_NUMERO = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE numeroCEmercante IN :ces'  # nosec B608
@@ -109,7 +112,10 @@ SQL_PESAGENS = ('SELECT numeroCEmercante, diagnostico FROM ciclodevida_pesagem '
 CAMPOS_ITEM = ('ce', 'conteiner', 'tipo', 'peso', 'cubagem', 'embalagem', 'uso_parcial')
 CAMPOS_NCM = ('ce', 'conteiner', 'ncm', 'embalagem', 'volumes')
 
-LinhaCE = namedtuple('LinhaCE', 'id master tipo_bl empresa numero cubagem')
+LinhaCE = namedtuple('LinhaCE', 'id master tipo_bl empresa numero cubagem importador')
+CANDIDATO = '18b+ redonda plausível'
+CONCENTRACAO_N = 10               # os maiores na tabela de concentração
+REFERENCIAS_DA_CONCENTRACAO = ('fichas positivas', 'RVF: todas', 'RVF com a infração "Falsa declaração de conteúdo"')
 
 
 def _t(valor) -> str:
@@ -133,6 +139,14 @@ def situacao_tipo(codigo) -> str:
     if not chave:
         return 'não reconhecido'
     return f'reconhecido, {"com" if rd.capacidade(chave) else "sem"} capacidade de referência'
+
+
+def raiz_importador(valor) -> str:
+    """Raiz do CNPJ (8 dígitos) do consignatário; o CPF inteiro; '' sem documento."""
+    digitos = re.sub(r'\D', '', _t(valor))
+    if len(digitos) == 14:
+        return digitos[:8]
+    return digitos if len(digitos) == 11 else ''
 
 
 def _quantil(ordenados: Sequence[float], q: float) -> float:
@@ -219,12 +233,12 @@ class DiagnosticoDeclaracao(Diagnostico):
     def _guarda_ces(self, linhas) -> List[str]:
         """Guarda os CEs ainda não lidos (sem exportação); devolve os novos."""
         novos = []
-        for id_, numero_ce, master, tipo_bl, trafego, empresa, _origem, numero_bl, cubagem in linhas:
+        for id_, numero_ce, master, tipo_bl, trafego, empresa, _origem, numero_bl, cubagem, consignatario in linhas:
             ce = normaliza_ce(numero_ce)
             if not ce or ce in self.ces or _t(trafego) == TRAFEGO_EXPORTACAO:
                 continue
             self.ces[ce] = LinhaCE(int(id_), normaliza_ce(master), _t(tipo_bl), _t(empresa), _t(numero_bl),
-                                   _t(cubagem))
+                                   _t(cubagem), raiz_importador(consignatario))
             novos.append(ce)
         return novos
 
@@ -682,6 +696,58 @@ class DiagnosticoDeclaracao(Diagnostico):
         self._dispersao()
         self._marcados('18')
         self._sobreposicao()
+        self._concentracao()
+
+    def _candidato(self) -> Set[str]:
+        return next((ces for codigo, _, ces in self._derivados() if codigo == CANDIDATO), set())
+
+    def _tabela_concentracao(self, nome: str, campo: str, marcados: Set[str], avaliaveis: Set[str]):
+        contagem = Counter(getattr(self.ces[ce], campo) or '(vazio)' for ce in marcados if ce in self.ces)
+        base = Counter(getattr(self.ces[ce], campo) or '(vazio)' for ce in avaliaveis if ce in self.ces)
+        total = sum(contagem.values())
+        maiores = contagem.most_common(CONCENTRACAO_N)
+        self.escreve()
+        self.escreve(f'{nome}: {total} CEs marcados, de {len(contagem)} diferentes; os {CONCENTRACAO_N} maiores somam '
+                     f'{rd.pct(sum(n for _, n in maiores) / total) if total else "-"}')
+        self.tabela([nome, 'marcados', 'avaliáveis dele', '% dele marcado'],
+                    [(valor, n, base[valor], rd.pct(n / base[valor]) if base[valor] else '-') for valor, n in maiores])
+
+    def _acertos_por_importador(self, candidato: Set[str]):
+        """Nos acertos das referências: de quantos importadores vêm, e quantos deles têm 2+ fichas positivas (o risco
+        histórico do importador já os pega)."""
+        positivas = Counter(self.ces[ce].importador for ce in self.referencias.get('fichas positivas', set())
+                            if ce in self.ces and self.ces[ce].importador)
+        linhas = []
+        for nome in REFERENCIAS_DA_CONCENTRACAO:
+            acertos = candidato & self.referencias.get(nome, set())
+            importadores = Counter(self.ces[ce].importador or '(vazio)' for ce in acertos if ce in self.ces)
+            linhas.append((nome, len(acertos), len(importadores), sum(1 for i in importadores if positivas[i] >= 2),
+                           '; '.join(f'{i} ({n})' for i, n in importadores.most_common(5))))
+        self.escreve()
+        self.tabela(['referência', 'acertos', 'importadores', 'com 2+ fichas positivas', 'os que mais acertam'], linhas)
+
+    def _tamanhos(self, marcados: Set[str]):
+        base = Counter(rd.TAMANHOS.get(c.tamanho, '?') for c in self._fcl_da_populacao() if c.ncm_unico)
+        marcas = Counter(rd.TAMANHOS.get((rd.chave_tipo(self.info_18[ce]['tipo']) or '?')[0], '?')
+                         for ce in marcados if ce in self.info_18)
+        total_base, total_marcas = sum(base.values()), sum(marcas.values())
+        self.escreve()
+        self.tabela(['tamanho', 'contêineres avaliáveis', '%', 'CEs marcados', '%'],
+                    [(tamanho, base[tamanho], rd.pct(base[tamanho] / total_base) if total_base else '-',
+                      marcas[tamanho], rd.pct(marcas[tamanho] / total_marcas) if total_marcas else '-')
+                     for tamanho in sorted(set(base) | set(marcas))])
+
+    def _concentracao(self):
+        """O candidato por importador, por empresa de navegação e por tamanho: poucos declarantes explicando muito =
+        perfil de quem declara, não da carga."""
+        candidato = self._candidato()
+        marcados, avaliaveis = candidato & self.populacao, self.avaliaveis['18'] & self.populacao
+        self.escreve()
+        self.escreve(f'Concentração do candidato ({CANDIDATO}):')
+        self._tabela_concentracao('importador (raiz do CNPJ)', 'importador', marcados, avaliaveis)
+        self._tabela_concentracao('empresa de navegação', 'empresa', marcados, avaliaveis)
+        self._acertos_por_importador(candidato)
+        self._tamanhos(marcados)
 
     def _acima(self, ce: str) -> List[str]:
         return [sinal for sinal in ACIMA if ce in self.marcas[sinal]]

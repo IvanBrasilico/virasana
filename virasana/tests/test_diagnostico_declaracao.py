@@ -61,7 +61,8 @@ class Base:
         self.con.execute(Conhecimento.__table__.insert(), {
             'numeroCEmercante': numero, 'numeroCEMaster': master, 'tipoBLConhecimento': tipo_bl,
             'tipoTrafego': trafego, 'codigoEmpresaNavegacao': empresa, 'portoOrigemCarga': 'CNSHA',
-            'numConhecimento': bl or f'MAEU{self.n:09d}', 'cubagem': '25.000', 'create_date': criado})
+            'numConhecimento': bl or f'MAEU{self.n:09d}', 'cubagem': '25.000', 'create_date': criado,
+            'consignatario': '11222333000181' if empresa == 'EMP1' else '44555666000199'})
         for conteiner, tipo, peso, cubagem, ncms, uso in conteineres:
             self.con.execute(Item.__table__.insert(), {
                 'numeroCEmercante': numero, 'codigoConteiner': conteiner, 'isoCode': tipo, 'pesoBruto': peso,
@@ -203,7 +204,15 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
         self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['cubagem_m3'], linhas[0]['avaliacao']),
                          (ce(206), '61091000', '28,0', ''))
-        self.assertIn('786 kg/m³; típico do NCM 61091000', linhas[0]['motivo'])
+        self.assertIn("786 kg/m³; típico do NCM 61091000 em contêiner de 20'", linhas[0]['motivo'])
+
+    def test_concentracao_do_candidato(self):
+        self.assertEqual(self.diag.ces[ce(205)].importador, '11222333')    # raiz do CNPJ (a cadeia é da EMP1)
+        self.assertEqual(dd.raiz_importador('123.456.789-09'), '12345678909')
+        trecho = self.log.split('Concentração do candidato')[1].split('V. VALIDAÇÃO')[0]
+        self.assertIn('importador (raiz do CNPJ): 2 CEs marcados, de 1 diferentes', trecho)   # 205 e 206
+        self.assertIn('11222333', trecho)
+        self.assertIn("20'", trecho)
 
     def test_refaz_a_conexao_que_caiu(self):
         engine = create_engine('sqlite://')

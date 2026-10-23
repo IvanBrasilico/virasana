@@ -197,8 +197,9 @@ class TestSinais18(unittest.TestCase):
         c = conteiner(peso=10000.0, cubagem=25.0)
         self.assertEqual(rd.medidas_ncm(c), [
             (rd.PESO_NCM, '2|84713012', 10000.0), (rd.PESO_NCM, '2|847130', 10000.0),
-            (rd.PESO_NCM, '2|8471', 10000.0), (rd.DENSIDADE_NCM, '84713012', 400.0),
-            (rd.DENSIDADE_NCM, '847130', 400.0), (rd.DENSIDADE_NCM, '8471', 400.0)])
+            (rd.PESO_NCM, '2|8471', 10000.0), (rd.DENSIDADE_NCM, '2|84713012', 400.0),
+            (rd.DENSIDADE_NCM, '2|847130', 400.0), (rd.DENSIDADE_NCM, '2|8471', 400.0)])   # densidade por tamanho
+        self.assertEqual(rd.medidas_ncm(conteiner(chave=None, tipo=None)), [])   # sem tamanho, sem medida
         self.assertIsNone(rd.densidade(conteiner(cubagem=41.5)))             # cubagem impossível: sem densidade
         self.assertEqual(rd.medidas_ncm(conteiner(ncms=(('84713012', ''), ('61091000', '')))), [])
         self.assertEqual(rd.medidas_ncm(conteiner(uso_parcial=True)), [])
@@ -208,7 +209,7 @@ class TestSinais18(unittest.TestCase):
 
     def test_atipico_com_a_direcao(self):
         tabelas = {rd.PESO_NCM: {'2|8471': rd.tipico([10000.0 + n for n in range(40)], '2|8471')},
-                   rd.DENSIDADE_NCM: {'84713012': rd.tipico([400.0] * 40, '84713012')}}
+                   rd.DENSIDADE_NCM: {'2|84713012': rd.tipico([400.0] * 40, '2|84713012')}}
         [(sinal, motivo)] = rd.sinais_ncm(conteiner(peso=30000.0, cubagem=75.0), tabelas)  # densidade 400: típica
         self.assertEqual(sinal, '18a+')
         self.assertIn("30.000 kg; típico do NCM 8471 em contêiner de 20': 10.004 a 10.036 kg (40 contêineres)", motivo)

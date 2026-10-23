@@ -104,7 +104,7 @@ class TestBuscaItensNavii(unittest.TestCase):
     def test_agrupa_conteineres_e_ncms_por_ce(self):
         itens = [
             Item(numeroCEmercante='CE1', codigoConteiner='CONT1', isoCode='22G1',
-                pesoBruto='1000.5', tara='2200', lacre='LAC1'),
+                pesoBruto='1000.5', tara='2200', lacre='LAC1', cubagemM3='16.600'),
             Item(numeroCEmercante='CE1', codigoConteiner='CONT2', isoCode='42G1',
                 pesoBruto='2500', tara='3800', lacre='LAC2'),
         ]
@@ -128,6 +128,13 @@ class TestBuscaItensNavii(unittest.TestCase):
         self.assertEqual(cont1['lacre'], 'LAC1')
         self.assertEqual(cont1['pesoBruto'], 1000.5)
         self.assertEqual(len(cont1['ncms']), 2)
+        # cubagem declarada (24/10/2026): ocupação pela capacidade do 20' dry (33,2 m³) e densidade
+        self.assertEqual((cont1['cubagem'], cont1['capacidade']), (16.6, 33.2))
+        self.assertAlmostEqual(cont1['ocupacao'], 0.5)
+        self.assertAlmostEqual(cont1['densidade'], 1000.5 / 16.6)
+        cont2 = next(c for c in resultado['CE1']['conteineres'] if c['codigoConteiner'] == 'CONT2')
+        self.assertEqual((cont2['cubagem'], cont2['ocupacao'], cont2['densidade']), (None, None, None))
+        self.assertEqual(resultado['CE1']['cubagemTotal'], 16.6)
 
     def test_ncm_traz_texto_declarado_e_descricao_oficial_da_posicao(self):
         itens = [Item(numeroCEmercante='CE1', codigoConteiner='CONT1')]
