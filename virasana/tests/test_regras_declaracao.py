@@ -44,6 +44,7 @@ class TestNumerosDoMercante(unittest.TestCase):
         self.assertEqual((rd.br(28300), rd.br(33.2, 1), rd.br(None), rd.pct(0.0123, 2)),
                          ('28.300', '33,2', '-', '1,23%'))
         self.assertEqual((rd.ncm('8471.30.12'), rd.ncm('847'), rd.ncm(None)), ('84713012', None, None))
+        self.assertEqual((rd.ncm('9999'), rd.ncm('0000'), rd.ncm('0101')), (None, None, '0101'))   # capítulos 01-97
         self.assertTrue(rd.uso_parcial(' true '))      # o Mercante informa true / false (1ª rodada)
         self.assertFalse(rd.uso_parcial('false'))
 
@@ -226,6 +227,9 @@ class TestDesviosECubagemRedonda(unittest.TestCase):
         self.assertEqual(chave, '2|8471')
         self.assertAlmostEqual(distancia, 3.0)
         self.assertEqual([rd.cubagem_redonda(v) for v in (68.0, 67.7, 0, None)], [True, False, False, False])
+        self.assertEqual([rd.cubagem_simbolica(v, chave) for v, chave in (
+            (1.0, '45G'), (7.0, '45G'), (8.0, '45G'), (2.0, '22T'), (5.0, '22T'), (None, '22G'))],
+            [True, True, False, True, False, False])                        # 10% de 76,3 m³; 3 m³ sem capacidade
 
 
 class TestValidacao(unittest.TestCase):

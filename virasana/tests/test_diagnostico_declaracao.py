@@ -12,7 +12,8 @@ Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzido
     infração "Falsa declaração" e peso da RVF 3× o declarado, e RVF no NORU 0; pesagem "divergencia" no PESA;
   - controle da mesma época com deslocamentos (+1, +2): P0 (ID 3) -> NORU 0 (é referência: fica fora) e NORU 1;
     PESA (ID 80) -> REPE e ZZZU;
-  - lista de revisão: o 18b+ com cubagem em m³ inteiro — a cadeia M3 (28 m³, 786 kg/m³ × 480 da HAP).
+  - SIMB (o último): 1 m³ num 20' (cubagem simbólica: 18b+ redondo, fora da lista de revisão);
+  - lista de revisão: o 18b+ com cubagem em m³ inteiro e plausível — a cadeia M3 (28 m³, 786 kg/m³ × 480 da HAP).
 """
 from virasana.navii.busca_navii import tabela_recintos  # noqa: F401 — 1º: ajusta o sys.path
 import csv  # noqa: I100
@@ -105,6 +106,7 @@ def monta(engine):
         b.ce(ce(207), dia, maquina('LCLU0000001', uso='true'))                                        # uso parcial
         b.ce(ce(208), dia, maquina('EXPU0000001', cubagem='99.000'), trafego='7')                     # exportação
         b.ce(ce(209), dia, maquina('PEZU0000001', peso='35000.000'))                                  # PEZO
+        b.ce(ce(210), dia, maquina('SIMU0000001', cubagem='1.000'))                                   # SIMB
         con.execute(text('INSERT INTO ovr_ovrs (id, numero, datahora, tipooperacao, numeroCEmercante) VALUES '
                          f"(1, '1', '2026-10-10', 1, '{ce(201)}'), (2, '2', '2025-01-10', 1, '{ce(902)}')"))
         con.execute(text('INSERT INTO ovr_resultados (id, ovr_id, tipo_resultado) VALUES (1, 1, 2), (2, 2, 6)'))
@@ -137,7 +139,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_populacao_pela_janela_de_id_sem_exportacao_e_com_as_familias(self):
         self.assertTrue(self.ok)
         self.assertEqual(self.diag.janela[0], 4)                          # os 3 de agosto ficam antes
-        self.assertEqual(len(self.diag.populacao), 75 + 9)                # sem a exportação
+        self.assertEqual(len(self.diag.populacao), 75 + 10)               # sem a exportação
         self.assertNotIn(ce(208), self.diag.ces)
         self.assertIn(ce(900), self.diag.ces)                             # master fora da janela, lido pela família
         por_conteiner = {c.conteiner: c for c in self.diag.conteineres}
@@ -177,14 +179,26 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_combinacoes_do_18(self):
         derivados = {codigo: ces for codigo, _, ces in self.diag._derivados()}
         self.assertEqual(derivados['18b+ com fração'], {ce(201)})                  # 25,5 m³
-        self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901)})   # 28 m³ (a cadeia M3)
+        self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901), ce(210)})   # 28 m³ e o SIMB
         self.assertTrue({ce(201), ce(204)} <= derivados['18+'])                    # F1: só o peso (20 t × 12 t)
         self.assertEqual(derivados['18a+ e 18b+'], {ce(201), ce(205), ce(206), ce(901)})
-        self.assertTrue({ce(0), ce(205), ce(206)} <= derivados['cubagem redonda'])   # 25 e 28 m³
-        self.assertNotIn(ce(201), derivados['cubagem redonda'])                   # 25,5 m³
+        self.assertTrue({ce(0), ce(205), ce(206)} <= derivados['18 cubagem redonda'])   # 25 e 28 m³
+        self.assertNotIn(ce(201), derivados['18 cubagem redonda'])                   # 25,5 m³
+        self.assertEqual(derivados['18b+ redonda simbólica'], {ce(210)})             # 1 m³ num 20'
+        self.assertEqual(derivados['18b+ redonda plausível'], {ce(205), ce(206), ce(901)})
+        self.assertEqual(derivados['18 cubagem simbólica'], {ce(210)})
+
+    def test_combinacoes_tem_os_avaliaveis_do_18(self):
+        avaliaveis = len(self.diag.avaliaveis['18'] & self.diag.populacao)
+        for codigo, _, marcados in self.diag._derivados():
+            with self.subTest(codigo=codigo):
+                self.assertEqual(self.diag._taxa(codigo, self.diag.populacao, marcados)[0], avaliaveis)
+                bloco = self.log.split(f'\n{codigo} — ')[1]
+                linha = next(linha for linha in bloco.splitlines() if linha.startswith('população (janela)'))
+                self.assertEqual(int(linha.split('|')[1]), avaliaveis)
 
     def test_revisao_so_densidade_acima_com_cubagem_redonda(self):
-        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(206)])   # o PESA tem fração
+        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(206)])   # PESA: fração; SIMB
         with open(self.revisao, encoding='utf-8-sig') as arquivo:              # para o Excel
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
         self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['cubagem_m3'], linhas[0]['avaliacao']),
@@ -206,7 +220,8 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
                        'V. VALIDAÇÃO', 'Evidência FRACA', 'vezes o controle', 'Falsa declaração', 'A. AMOSTRAS',
                        '3 contêineres com NCM 39011000 e a mesma cubagem (68,0 m³)', 'C. CONSULTAS MAIS LENTAS',
                        '18+ — peso OU densidade acima', '18b+ com fração — densidade acima', 'os dois',
-                       'cubagem redonda — cubagem em m³ inteiro, sem olhar a densidade',
+                       '18 cubagem redonda — cubagem em m³ inteiro, sem olhar a densidade',
+                       '18b+ redonda plausível — densidade acima', '... simbólica (abaixo de 10%)',
                        'R. REVISÃO'):
             with self.subTest(trecho=trecho):
                 self.assertIn(trecho, self.log)

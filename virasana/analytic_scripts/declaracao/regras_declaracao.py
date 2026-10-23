@@ -16,7 +16,8 @@ Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no 
     e MAD), no nível mais específico (8, 6 ou 4 dígitos) com amostras suficientes. Na 1ª rodada só a densidade ACIMA
     se separou nas referências; na 3ª (24/10/2026), só quando a cubagem é em m³ inteiro (estimada): densidade acima
     com cubagem com fração não separa. Peso abaixo de 100 kg (em toneladas?) ou acima da carga máxima (o 16b) não
-    entra no 18 — nem nos típicos: é erro de digitação.
+    entra no 18 — nem nos típicos: é erro de digitação. Cubagem SIMBÓLICA (abaixo de 10% da capacidade do tipo — 1 m³
+    num 40', 4ª rodada) não é estimativa: o diagnóstico a separa. NCM fora dos capítulos 01 a 97 (9999) não é NCM.
 
 Qualidade do dado (contados, não são sinal de risco — 1ª rodada: sem força nas referências; erro de digitação):
   - 16a, cubagem acima da capacidade do tipo (`capacidades` de `navii/referencias/tipos_conteiner.json`);
@@ -45,6 +46,8 @@ from virasana.navii import referencias
 OCUPACAO_IMPOSSIVEL = 1.10        # cubagem acima de 110% da capacidade do tipo
 CARGA_ACIMA = 1.10                # peso acima de 110% da carga máxima publicada (exemplo da frota: há folga)
 PESO_MINIMO = 100.0               # kg: declarado abaixo disto não é peso de carga (como nas pesagens; em toneladas?)
+OCUPACAO_SIMBOLICA = 0.10         # cubagem abaixo de 10% da capacidade do tipo: valor simbólico (1 m³), não estimativa
+CUBAGEM_SIMBOLICA = 3.0           # m³: o mesmo, sem capacidade de referência
 QUANTIDADE_DIFERENTE = 0.10       # 16e: pesos (ou volumes) que diferem mais de 10% (maior ÷ menor − 1)
 PREFIXO_RARO = 0.01               # prefixo em menos de 1% dos BLs da empresa de navegação
 PREFIXO_DOMINANTE = 0.90          # ... de uma empresa cujo prefixo comum cobre 90%+ dos BLs
@@ -129,9 +132,9 @@ def uso_parcial(valor) -> bool:
 
 
 def ncm(valor) -> Optional[str]:
-    """Os dígitos do NCM (até 8); menos de 4 dígitos não é NCM."""
+    """Os dígitos do NCM (até 8); menos de 4 dígitos ou capítulo fora de 01 a 97 (9999) não é NCM."""
     digitos = re.sub(r'\D', '', _texto(valor))
-    return digitos[:8] if len(digitos) >= 4 else None
+    return digitos[:8] if len(digitos) >= 4 and '01' <= digitos[:2] <= '97' else None
 
 
 def faixa(valor: float, faixas: Sequence[Tuple[float, str]]) -> str:
@@ -519,6 +522,15 @@ def sinais_ncm(c: Conteiner, tabelas: Dict[str, Dict[str, Tipico]]) -> List[Tupl
                            f'{br(valor)} {unidade}; típico do {_descreve_chave(chave)}: {br(referencia.p10)} a '
                            f'{br(referencia.p90)} {unidade} ({referencia.n} contêineres) — {br(distancia, 1)} desvios'))
     return sinais
+
+
+def cubagem_simbolica(cubagem: Optional[float], chave: Optional[str]) -> bool:
+    """Cubagem que não é nem estimativa: abaixo de OCUPACAO_SIMBOLICA da capacidade do tipo (1 m³ num 40'); sem
+    capacidade de referência, abaixo de CUBAGEM_SIMBOLICA."""
+    if not cubagem or cubagem <= 0:
+        return False
+    ocupado = ocupacao(cubagem, chave)
+    return ocupado < OCUPACAO_SIMBOLICA if ocupado is not None else cubagem < CUBAGEM_SIMBOLICA
 
 
 def cubagem_redonda(cubagem: Optional[float]) -> bool:

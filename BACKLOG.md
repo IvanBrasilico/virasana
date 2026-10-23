@@ -145,13 +145,16 @@ fração (1,2%) — positivas 1,1×, RVF 0,8×. Ou seja: cubagem estimada E merc
 inventado do 16e só separa junto com a incoerência física). 18+ (peso ou densidade acima): positivas 5,4×, RVF 2,9×.
 A lista de revisão saiu com erros de digitação no topo (peso acima da carga máxima; 73 "kg" num 40', em toneladas).
 
-**4ª versão (24/10/2026), falta rodar** (na estação, ~3 min): peso abaixo de 100 kg ou acima da carga máxima (16b) fora
-do 18 e dos típicos; a cubagem redonda sozinha validada (controle da combinação: se ela sozinha já separar, o sinal é
-só "cubagem redonda"); lista de revisão só do 18b+ com cubagem redonda, desvios de 3 a 10, um CE por posição do NCM.
-Na raiz do virasana: `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
---saida declaracao4.log --csv declaracao4.csv --revisao revisao4.csv`. Depois: o usuário revisa a lista no NAVI-I e,
-se confirmar, plano do piloto (selo "densidade acima da típica do NCM com cubagem estimada — em observação", filtro e
-motivo; mudança em produção, com aprovação). Limitação a medir no piloto: os marcados vêm em embarques inteiros do
+**4ª rodada (24/10/2026):** sem os pesos impossíveis, o 18b+ com cubagem redonda ficou igual (positivas 9,5×, RVF
+5,8×, RVF com peso divergente 6,4×). O controle da combinação não saiu (bug: código da combinação sem o prefixo "18",
+zero avaliáveis — corrigido, com teste). A lista de revisão mostrou cubagem SIMBÓLICA (1 m³ num 40', 6 m³) e NCM 9999.
+
+**5ª versão (24/10/2026), falta rodar** (na estação, ~3 min): 18b+ redondo dividido em cubagem plausível e simbólica
+(abaixo de 10% da capacidade); cubagem redonda e simbólica validadas sozinhas (controles); NCM fora dos capítulos 01 a 97
+não conta; lista de revisão só do 18b+ redondo plausível. `virasana-venv/Scripts/python.exe
+virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao5.log --csv declaracao5.csv --revisao
+revisao5.csv`. Depois: revisão no NAVI-I e plano do piloto (candidato: "densidade acima da típica do NCM com cubagem
+estimada"; mudança em produção, com aprovação). Limitação a medir no piloto: os marcados vêm em embarques inteiros do
 mesmo importador — pode se sobrepor ao risco histórico do importador.
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e

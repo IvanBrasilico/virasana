@@ -29,7 +29,9 @@ amostras e, se for o caso, um piloto no NAVI-I.
      colunas para a avaliação; e, na validação, as combinações do 18 (18+ = peso ou densidade acima; os dois; 18b+ com
      cubagem em m³ inteiro ou com fração). 4ª versão (24/10/2026, depois da 3ª rodada: a força do 18b+ está toda na
      cubagem em m³ inteiro): a lista de revisão sai do 18b+ com cubagem redonda (desvios de 3 a 10, um CE por posição
-     do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação;
+     do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação. 5ª versão (24/10/2026, depois
+     da 4ª rodada: 1 m³ num 40' na lista): o 18b+ redondo dividido em cubagem plausível e simbólica (abaixo de 10% da
+     capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível;
   C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
@@ -195,6 +197,7 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.avaliaveis: Dict[str, Set[str]] = defaultdict(set)
         self.info_18: Dict[str, dict] = {}       # CE marcado no 18a+ / 18b+ -> o contêiner e os desvios (revisão)
         self.redondas: Set[str] = set()          # CEs com contêiner avaliável no 18 de cubagem em m³ inteiro
+        self.simbolicas: Set[str] = set()        # ... de cubagem simbólica (abaixo de 10% da capacidade)
 
     # ---------------------------------------------------------------- leitura
     def consulta(self, sql, params=None, listas=()) -> list:
@@ -447,6 +450,8 @@ class DiagnosticoDeclaracao(Diagnostico):
             self.avaliaveis['18'].update(c.ces)
             if rd.cubagem_redonda(c.cubagem):
                 self.redondas.update(c.ces)
+            if rd.cubagem_simbolica(c.cubagem, c.chave):
+                self.simbolicas.update(c.ces)
             sinais_18 = rd.sinais_ncm(c, self.tipicos)
             self._guarda_18(c, sinais_18)
             sinais += sinais_18
@@ -460,7 +465,7 @@ class DiagnosticoDeclaracao(Diagnostico):
             return
         achados = rd.desvios_ncm(c, self.tipicos)
         info = {'conteiner': c.conteiner, 'ncm': c.ncm_unico, 'tipo': c.tipo, 'peso': c.peso, 'cubagem': c.cubagem,
-                'redonda': rd.cubagem_redonda(c.cubagem),
+                'redonda': rd.cubagem_redonda(c.cubagem), 'simbolica': rd.cubagem_simbolica(c.cubagem, c.chave),
                 'z_peso': achados.get(rd.PESO_NCM, (None, None, None))[2],
                 'z_densidade': achados.get(rd.DENSIDADE_NCM, (None, None, None))[2]}
         for ce in c.ces:
@@ -687,12 +692,19 @@ class DiagnosticoDeclaracao(Diagnostico):
             return []
         peso, densidade = set(self.marcas['18a+']), set(self.marcas['18b+'])
         redonda = {ce for ce in densidade if self.info_18.get(ce, {}).get('redonda')}
-        return [('18+', 'peso OU densidade acima do típico do NCM (candidato ao piloto)', peso | densidade),
+        simbolica = {ce for ce in redonda if self.info_18[ce]['simbolica']}
+        # o código começa com '18': é ele que escolhe os avaliáveis (base_do_sinal)
+        return [('18+', 'peso OU densidade acima do típico do NCM', peso | densidade),
                 ('18a+ e 18b+', 'peso E densidade acima do típico do NCM', peso & densidade),
                 ('18b+ redonda', 'densidade acima, cubagem em m³ inteiro (estimada)', redonda),
+                ('18b+ redonda plausível', 'densidade acima, cubagem em m³ inteiro e de 10%+ da capacidade '
+                 '(candidato ao piloto)', redonda - simbolica),
+                ('18b+ redonda simbólica', 'densidade acima, cubagem simbólica (abaixo de 10% da capacidade)',
+                 simbolica),
                 ('18b+ com fração', 'densidade acima, cubagem com fração de m³', densidade - redonda),
-                ('cubagem redonda', 'cubagem em m³ inteiro, sem olhar a densidade (controle da combinação)',
-                 set(self.redondas))]
+                ('18 cubagem redonda', 'cubagem em m³ inteiro, sem olhar a densidade (controle da combinação)',
+                 set(self.redondas)),
+                ('18 cubagem simbólica', 'cubagem simbólica, sem olhar a densidade (controle)', set(self.simbolicas))]
 
     def _sobreposicao(self):
         derivados = {codigo: ces & self.populacao for codigo, _, ces in self._derivados()}
@@ -702,6 +714,8 @@ class DiagnosticoDeclaracao(Diagnostico):
             ('só peso (18a+)', len(peso - densidade)), ('só densidade (18b+)', len(densidade - peso)),
             ('os dois', len(peso & densidade)), ('algum (18+)', len(peso | densidade)),
             ('18b+ com cubagem em m³ inteiro', len(derivados['18b+ redonda'])),
+            ('   ... plausível (10%+ da capacidade)', len(derivados['18b+ redonda plausível'])),
+            ('   ... simbólica (abaixo de 10%)', len(derivados['18b+ redonda simbólica'])),
             ('18b+ com cubagem com fração de m³', len(derivados['18b+ com fração']))])
 
     # ---------------------------------------------------------------- V, A e CSV
@@ -766,13 +780,13 @@ class DiagnosticoDeclaracao(Diagnostico):
                 self.escreve(f'  CE {ce}' + (f' contêiner {conteiner}' if conteiner else '') + f': {motivo}')
 
     def candidatos_revisao(self) -> List[Tuple[str, dict]]:
-        """Um CE da população por posição do NCM (4 dígitos), do 18b+ com cubagem em m³ inteiro (o subgrupo que separou
-        na 3ª rodada), com desvios da densidade de DESVIOS a REVISAO_DESVIO_MAXIMO (acima, quase sempre digitação):
-        o maior desvio de cada posição."""
+        """Um CE da população por posição do NCM (4 dígitos), do 18b+ com cubagem em m³ inteiro e plausível (o subgrupo
+        que separou na 3ª rodada, sem a cubagem simbólica), com desvios da densidade de DESVIOS a REVISAO_DESVIO_MAXIMO
+        (acima, quase sempre digitação): o maior desvio de cada posição."""
         por_posicao = {}
         for ce, info in self.info_18.items():
             desvio = info['z_densidade'] or 0
-            if (ce not in self.populacao or not info['redonda'] or ce not in self.marcas['18b+']
+            if (ce not in self.populacao or not info['redonda'] or info['simbolica'] or ce not in self.marcas['18b+']
                     or desvio > REVISAO_DESVIO_MAXIMO):
                 continue
             chave = (desvio, ce)
@@ -785,8 +799,8 @@ class DiagnosticoDeclaracao(Diagnostico):
     def secao_revisao(self):
         if '18' not in self.secoes:
             return
-        self.titulo('R. REVISÃO — densidade acima da típica do NCM com cubagem em m³ inteiro, um CE por posição (para '
-                    'olhar no NAVI-I; no --revisao, com o motivo e colunas para a avaliação)')
+        self.titulo('R. REVISÃO — densidade acima da típica do NCM com cubagem em m³ inteiro e plausível, um CE por '
+                    'posição (para olhar no NAVI-I; no --revisao, com o motivo e colunas para a avaliação)')
         self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'sinais'],
                     [(ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
                       rd.br(info['cubagem'], 1), ' '.join(self._acima(ce))) for ce, info in self.candidatos_revisao()])
