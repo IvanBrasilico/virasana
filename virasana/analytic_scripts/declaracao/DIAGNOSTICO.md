@@ -109,7 +109,7 @@ infrações de contrafação e contrabando; lista de revisão do candidato, um C
 `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
 declaracao7.log --csv declaracao7.csv --revisao revisao7.csv`.
 
-**Cubagem no card do NAVI-I — feita no código (23/10/2026, pedido do usuário), falta publicar:** cubagem declarada
+**Cubagem no card do NAVI-I — publicada (23/10/2026, pedido do usuário):** cubagem declarada
 do CE e de cada contêiner, com ocupação e densidade (`navii/CONTEXTO.md`, item 23).
 
 **Plano do piloto (reescrito em 23/10/2026 para o PESO, para aprovação):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — selo "carga pesada para a mercadoria declarada — em observação"; módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas que guardam as medidas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 8 decisões. A 1ª versão (cubagem) foi suspensa e derrubada pela 6ª rodada.

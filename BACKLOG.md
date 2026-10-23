@@ -12,6 +12,14 @@ usuários (em andamento) entram como itens novos.
 
 ## Feito (recente)
 
+- **Revisita de imagens** publicada e `--completa-imagens 2026-09-01` rodado no servidor (23/10/2026): ciclos
+  (inclusive concluídos) dos últimos 10 dias com escaneamento sem imagem voltam à revisita (até 1/4 do limite);
+  detalhe no `CICLO_DE_VIDA.md` ("Imagens que faltam"). Medir no próximo acompanhamento: "com imagem" por semana
+  (82–91% antes) e os 9.757 escaneamentos sem imagem com mais de 3 dias.
+- **Pendentes do loop antigo**: `--reprocessa 100` rodado com a publicação da revisita (23/10/2026; eram 21, de
+  91.397 em 02/10). Conferir no próximo acompanhamento (seção 6) que zerou; sobra aceitável = contêiner sem evento.
+- **Cubagem no card do NAVI-I** publicada (23/10/2026): a do CE e a de cada contêiner, com ocupação e densidade
+  (`navii/CONTEXTO.md`, item 23).
 - **Health check v1** publicado e ativo (23/10/2026): serviço `saude_navi`, tela `/saude/` (perfil Supervisor),
   histórico "novo / desde" — desenho, limiares e 1ª rodada em `virasana/saude/CONTEXTO.md`. Refaz robusto e refaz
   de 22/10 concluídos no servidor (0 não refeitos, 0 violações).
@@ -40,12 +48,6 @@ usuários (em andamento) entram como itens novos.
    XMLs) chegam **vazios**; dados complementares do consignatário, observações e nome do embarcador com CNPJ se
    perdem. Os XMLs são apagados depois da carga: **cada dia sem a correção é dado perdido para sempre**. Afeta a
    Entregas por CNPJ e a Busca por texto. Precisa de `ALTER TABLE` (DBA). *Decisão: priorizar agora?*
-5. **Revisita de imagens** — feita no código (23/10/2026, plano aprovado), **falta publicar**: o serviço do ciclo
-   revisita os ciclos (inclusive concluídos) dos últimos 10 dias com escaneamento sem imagem (até 1/4 do limite da
-   revisita); `--completa-imagens DATA` para os anteriores. Detalhe no `CICLO_DE_VIDA.md` ("Imagens que faltam").
-   Publicar = pull + reiniciar o programa do ciclo no supervisor; depois, uma vez no servidor:
-   `servico_ciclo_de_vida.py --completa-imagens 2026-09-01`. Medida (acompanhamento de 23/10, antes): 9.757
-   escaneamentos sem imagem com mais de 3 dias, 7.025 em ciclos encerrados; com imagem por semana 82–91%.
 6. **Contagem assíncrona no NAVI-I** (proposta de 02/10/2026): a contagem com NCM leva 18–20 s e segura a 1ª página;
    no health check, mediana de 6,1 s e p95 de 10,5 s só na 1ª página. Mostrar os cards já e a contagem quando
    chegar. *Decisão: aprovar.*
@@ -65,9 +67,6 @@ usuários (em andamento) entram como itens novos.
     principal (atalho mantido por desempenho).
 15. **AJNA → NAVI no legado** (`layout.html` e ~29 templates do virasana, ~37 do bhadrasana2, textos históricos):
     só com novo pedido (layouts compartilhados: planejar e confirmar). Identificadores técnicos não mudam sem pedido.
-16. **Pendentes do loop antigo**: eram 91.397 em 02/10; o acompanhamento de 23/10 mostrou **21** (9 de julho, 11 de
-    agosto, 1 de setembro). Para fechar: `servico_ciclo_de_vida.py --reprocessa 100` uma vez no servidor (o log diz
-    os "pendentes antigos restantes"; se sobrar algum, é contêiner sem evento no período — aceitar).
 16b. **Achados do acompanhamento de 23/10 (20:12)**:
     - alerta "inspeções da API Recintos: evento mais novo de 03:26" (17 h sem inspeção nova) — a marca d'água está
       em dia (0 não lidos): a carga da API parou de trazer inspeções. Conferir se o health check do dia seguinte
@@ -85,8 +84,6 @@ usuários (em andamento) entram como itens novos.
     *decisão: aprovar o plano (8 decisões)*. `virasana-venv/Scripts/python.exe
     virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao7.log --csv declaracao7.csv
     --revisao revisao7.csv`.
-18. **Cubagem no card do NAVI-I** — feita no código (23/10/2026), falta publicar (pull + reiniciar o virasana web;
-    sem mudança de tabela). `navii/CONTEXTO.md`, item 23.
 
 ## P3 — estacionados (dependem de terceiros ou de decisão futura)
 

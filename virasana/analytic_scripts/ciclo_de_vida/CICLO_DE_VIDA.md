@@ -582,7 +582,7 @@ corrigido: sorteio no período inteiro e contagem de imagens do Mongo por dia. C
 os sem imagem (BTP: 58% dos sem imagem, 40% dos com imagem). Imagens que chegam depois não são ligadas a
 ciclos já encerrados (o serviço só procura a imagem ao refazer o contêiner) — ver a revisita de imagens abaixo.
 
-**Revisita de imagens (23/10/2026, aprovada pelo usuário; falta publicar).** No acompanhamento de 23/10, dos 9.757
+**Revisita de imagens (23/10/2026, aprovada pelo usuário; publicada e `--completa-imagens 2026-09-01` rodado no mesmo dia).** No acompanhamento de 23/10, dos 9.757
 escaneamentos sem imagem com mais de 3 dias, 7.025 estavam em ciclos já encerrados. Agora a revisita do serviço
 (`Servico.revisitar` / `sem_imagem`) inclui os ciclos v2 — abertos ou concluídos — desembarcados nos últimos 10 dias
 com escaneamento sem imagem (fora os "escaneamento fora") e processados há mais de 6 h; usa até 1/4 do limite da
