@@ -78,6 +78,8 @@ class TestConteineresDaFamilia(unittest.TestCase):
         self.assertEqual((c.familia, c.ces, c.chave, c.peso, c.origem_peso, c.cubagem),
                          (MBL, (MBL, HBL1, HBL2), '22G', 24000.0, 'item do master', 30.0))
         self.assertEqual((c.ncm_unico, c.tamanho), ('61091000', '2'))
+        self.assertIsNone(conteiner(ncms=(('97970000', ''),)).ncm_unico)    # bagagem: fora do 18 (7ª versão)
+        self.assertIsNone(conteiner(ncms=(('9797', ''),)).ncm_unico)
 
     def test_sem_o_item_do_master_soma_os_filhotes(self):
         master_de = {HBL1: MBL, HBL2: MBL}

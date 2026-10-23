@@ -98,18 +98,23 @@ NÃO se sustenta.** Típico da densidade por NCM E tamanho do contêiner (como o
   — cubagem abaixo do volume físico da mercadoria); 9 são de peso (8418, 8539, 7020, 8709, 8422, 8451, 4415, 7311,
   8704, com a cubagem perto da capacidade).
 
-**Conclusão (aguarda o usuário):** fechar o candidato da cubagem e o plano do piloto ("não vale": era a mistura de
-tamanhos, a bagagem e o jeito de declarar). Sobra uma hipótese, que não depende da cubagem: **carga pesada demais
-para a mercadoria declarada** (18a+ com 18b+). Ou se fecha 16–18 inteiro, ou uma 7ª versão só para ela: população
-sem o NCM 9797, lista de revisão do 18a+ e 18b+ com preferência por Santos (pesagem e imagem), um CE por NCM — o
-usuário julga se a carga parece a declarada.
+**Conclusão:** o candidato da cubagem está fechado ("não vale": era a mistura de tamanhos, a bagagem e o jeito de
+declarar). Sobra uma hipótese, que não depende da cubagem: **carga pesada demais para a mercadoria declarada**
+(18a+ com 18b+). Decisão do usuário (23/10/2026): **seguir com o piloto** — dela.
+
+**7ª versão (23/10/2026), falta rodar** — o P0 do piloto: bagagem (NCM 9797) fora do 18; candidato "18a+ e 18b+";
+concentração também por capítulo do NCM (máquinas e veículos, 84 e 87, eram ~60% dos marcados sem acertar) e pelas
+infrações de contrafação e contrabando; lista de revisão do candidato, um CE por posição, **os com pesagem primeiro**
+(coluna `pesagem`) — o usuário confere o peso na balança e olha a imagem: a carga parece a declarada?
+`virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
+declaracao7.log --csv declaracao7.csv --revisao revisao7.csv`.
 
 **Cubagem no card do NAVI-I — feita no código (23/10/2026, pedido do usuário), falta publicar:** cubagem declarada
 do CE e de cada contêiner, com ocupação e densidade (`navii/CONTEXTO.md`, item 23).
 
-**Plano do piloto (rascunho de 23/10/2026, SUSPENSO pela revisão):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 7 decisões.
+**Plano do piloto (reescrito em 23/10/2026 para o PESO, para aprovação):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — selo "carga pesada para a mercadoria declarada — em observação"; módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas que guardam as medidas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 8 decisões. A 1ª versão (cubagem) foi suspensa e derrubada pela 6ª rodada.
 
-**Próximo passo:** decisão do usuário sobre a conclusão da 6ª rodada (fechar 16–18, ou 7ª versão só do peso).
+**Próximo passo:** o usuário roda a 7ª versão e revisa a `revisao7.csv`; aprova (ou não) o plano e as decisões.
 
 - **16. Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

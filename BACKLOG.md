@@ -77,12 +77,14 @@ usuários (em andamento) entram como itens novos.
       `caso_ciclo.py` e decidir se viram caso do corpus;
     - Pecém com 27% dos escaneamentos com imagem (crônico conhecido, P3).
 17. **Sinais da informação declarada (itens 16–18 de 22/10)** — histórico em
-    `virasana/analytic_scripts/declaracao/DIAGNOSTICO.md`; piloto SUSPENSO (`PLANO_PILOTO.md`). A **6ª rodada**
-    (23/10/2026) derrubou o candidato da cubagem: com o típico por tamanho, as positivas caem de 32 para 10 e as RVF
-    de 151 para 73, e metade das RVF que sobram é bagagem (NCM 9797, RVF de rotina); sem ela, densidade acima com
-    peso normal não separa (0,9×). Sobra o peso: "18a+ e 18b+" (0,61% dos CEs; positivas 7,2×, RVF 2,2×,
-    contrafação e contrabando com 3–4 casos). *Decisão: fechar 16–18, ou 7ª versão só do peso (sem bagagem, lista
-    de revisão de Santos).*
+    `virasana/analytic_scripts/declaracao/DIAGNOSTICO.md`. A **6ª rodada** (23/10/2026) derrubou o candidato da
+    cubagem (era a mistura de tamanhos e a bagagem, NCM 9797); sobra o peso: "18a+ e 18b+" (0,61% dos CEs;
+    positivas 7,2×, RVF 2,2×, contrafação e contrabando com 3–4 casos). O usuário seguiu com o piloto: plano
+    reescrito para o peso (`PLANO_PILOTO.md`, selo "carga pesada para a mercadoria declarada"). Falta: rodar a
+    **7ª versão** (P0: sem bagagem, por capítulo, lista de revisão com pesagem primeiro) e revisar a `revisao7.csv`;
+    *decisão: aprovar o plano (8 decisões)*. `virasana-venv/Scripts/python.exe
+    virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao7.log --csv declaracao7.csv
+    --revisao revisao7.csv`.
 18. **Cubagem no card do NAVI-I** — feita no código (23/10/2026), falta publicar (pull + reiniciar o virasana web;
     sem mudança de tabela). `navii/CONTEXTO.md`, item 23.
 
@@ -109,6 +111,6 @@ usuários (em andamento) entram como itens novos.
 
 1. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
 2. Aprovar a contagem assíncrona (P1.6).
-3. Itens 16–18: fechar, ou 7ª versão só do peso acima do típico (P2.17).
+3. Itens 16–18: aprovar o plano do piloto do peso, depois da 7ª rodada e da revisão (P2.17).
 4. Gravar o modo de exibição na coleta de uso (P2.11).
 5. Quando começar unidade/equipe do usuário (P2.9).

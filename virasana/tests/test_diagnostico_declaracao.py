@@ -12,8 +12,9 @@ Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzido
     infração "Falsa declaração" e peso da RVF 3× o declarado, e RVF no NORU 0; pesagem "divergencia" no PESA;
   - controle da mesma época com deslocamentos (+1, +2): P0 (ID 3) -> NORU 0 (é referência: fica fora) e NORU 1;
     PESA (ID 80) -> REPE e ZZZU;
-  - SIMB (o último): 1 m³ num 20' (cubagem simbólica: 18b+ redondo, fora da lista de revisão);
-  - lista de revisão: o 18b+ com cubagem em m³ inteiro e plausível — a cadeia M3 (28 m³, 786 kg/m³ × 480 da HAP).
+  - SIMB: 1 m³ num 20' (cubagem simbólica: 18b+ redondo); BAGA (o último): bagagem, NCM 9797, 25 t (fora do 18);
+  - lista de revisão (7ª versão): o candidato "18a+ e 18b+", um por posição, os com pesagem primeiro — PESA (8471,
+    pesagem "divergencia") e a cadeia M3 (6109: 22 t × 12 t da HAP).
 """
 from virasana.navii.busca_navii import tabela_recintos  # noqa: F401 — 1º: ajusta o sys.path
 import csv  # noqa: I100
@@ -108,6 +109,7 @@ def monta(engine):
         b.ce(ce(208), dia, maquina('EXPU0000001', cubagem='99.000'), trafego='7')                     # exportação
         b.ce(ce(209), dia, maquina('PEZU0000001', peso='35000.000'))                                  # PEZO
         b.ce(ce(210), dia, maquina('SIMU0000001', cubagem='1.000'))                                   # SIMB
+        b.ce(ce(211), dia, [('BAGU0000001', '22G1', '25000.000', '25.000', ['97970000'], 'false')])   # BAGA
         con.execute(text('INSERT INTO ovr_ovrs (id, numero, datahora, tipooperacao, numeroCEmercante) VALUES '
                          f"(1, '1', '2026-10-10', 1, '{ce(201)}'), (2, '2', '2025-01-10', 1, '{ce(902)}')"))
         con.execute(text('INSERT INTO ovr_resultados (id, ovr_id, tipo_resultado) VALUES (1, 1, 2), (2, 2, 6)'))
@@ -140,7 +142,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_populacao_pela_janela_de_id_sem_exportacao_e_com_as_familias(self):
         self.assertTrue(self.ok)
         self.assertEqual(self.diag.janela[0], 4)                          # os 3 de agosto ficam antes
-        self.assertEqual(len(self.diag.populacao), 75 + 10)               # sem a exportação
+        self.assertEqual(len(self.diag.populacao), 75 + 11)               # sem a exportação
         self.assertNotIn(ce(208), self.diag.ces)
         self.assertIn(ce(900), self.diag.ces)                             # master fora da janela, lido pela família
         por_conteiner = {c.conteiner: c for c in self.diag.conteineres}
@@ -161,6 +163,11 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertIn(ce(201), self.marcados('18a+'))
         self.assertIn(ce(201), self.marcados('18b+'))
         self.assertNotIn(ce(207), set().union(*(self.marcados(s) for s in rd.DESCRICOES)))   # uso parcial: fora
+
+    def test_bagagem_fora_do_18(self):
+        self.assertIn(ce(211), self.diag.populacao)
+        self.assertNotIn(ce(211), self.diag.avaliaveis['18'])
+        self.assertNotIn(ce(211), self.marcados('18a+') | self.marcados('18b+'))
 
     def test_referencias(self):
         refs = self.diag.referencias
@@ -198,21 +205,28 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
                 linha = next(linha for linha in bloco.splitlines() if linha.startswith('população (janela)'))
                 self.assertEqual(int(linha.split('|')[1]), avaliaveis)
 
-    def test_revisao_so_densidade_acima_com_cubagem_redonda(self):
-        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(206)])   # PESA: fração; SIMB
+    def test_revisao_do_peso_com_pesagem_primeiro(self):
+        # o candidato da 7ª versão; na cadeia M3 (205 e 206, mesmo contêiner), um CE por posição
+        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(201), ce(206)])
         with open(self.revisao, encoding='utf-8-sig') as arquivo:              # para o Excel
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
-        self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['cubagem_m3'], linhas[0]['avaliacao']),
-                         (ce(206), '61091000', '28,0', ''))
-        self.assertIn("786 kg/m³; típico do NCM 61091000 em contêiner de 20'", linhas[0]['motivo'])
+        self.assertEqual([(linha['ce'], linha['ncm'], linha['cubagem_m3'], linha['pesagem'], linha['avaliacao'])
+                          for linha in linhas],
+                         [(ce(201), '84713012', '25,5', 'divergencia', ''), (ce(206), '61091000', '28,0', '', '')])
+        self.assertIn("25.000 kg; típico do NCM 84713012 em contêiner de 20'", linhas[0]['motivo'])
+        self.assertIn("786 kg/m³; típico do NCM 61091000 em contêiner de 20'", linhas[1]['motivo'])
 
     def test_concentracao_do_candidato(self):
         self.assertEqual(self.diag.ces[ce(205)].importador, '11222333')    # raiz do CNPJ (a cadeia é da EMP1)
         self.assertEqual(dd.raiz_importador('123.456.789-09'), '12345678909')
         trecho = self.log.split('Concentração do candidato')[1].split('V. VALIDAÇÃO')[0]
-        self.assertIn('importador (raiz do CNPJ): 2 CEs marcados, de 1 diferentes', trecho)   # 205 e 206
+        self.assertIn('Concentração do candidato (18a+ e 18b+)', self.log)
+        self.assertIn('importador (raiz do CNPJ): 3 CEs marcados, de 1 diferentes', trecho)   # 201, 205 e 206
         self.assertIn('11222333', trecho)
         self.assertIn("20'", trecho)
+        capitulos = trecho.split('capítulo do NCM')[1].splitlines()
+        self.assertTrue(any(linha.startswith('84 ') and linha.split('|')[1].strip() == '1' for linha in capitulos))
+        self.assertTrue(any(linha.startswith('61 ') and linha.split('|')[1].strip() == '2' for linha in capitulos))
 
     def test_refaz_a_conexao_que_caiu(self):
         engine = create_engine('sqlite://')

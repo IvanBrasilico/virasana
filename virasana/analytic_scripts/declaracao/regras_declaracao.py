@@ -21,6 +21,8 @@ Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no 
     6ª versão (23/10/2026, revisão do usuário: nos casos de Santos o peso confere com a pesagem e a imagem — a anomalia
     é a cubagem): o típico da DENSIDADE também por tamanho do contêiner — muitos 40' declaram a capacidade (68/76 m³)
     como cubagem, e quem declara o volume real num 20' parecia "denso".
+    7ª versão (23/10/2026, depois da 6ª rodada): a BAGAGEM (NCM 9797, `bagagens_manager`) fica fora do 18 — tem RVF de
+    rotina (não é seleção por risco) e cubagem própria, e respondia por metade dos acertos de RVF do 18b+.
 
 Qualidade do dado (contados, não são sinal de risco — 1ª rodada: sem força nas referências; erro de digitação):
   - 16a, cubagem acima da capacidade do tipo (`capacidades` de `navii/referencias/tipos_conteiner.json`);
@@ -56,6 +58,7 @@ PREFIXO_RARO = 0.01               # prefixo em menos de 1% dos BLs da empresa de
 PREFIXO_DOMINANTE = 0.90          # ... de uma empresa cujo prefixo comum cobre 90%+ dos BLs
 MINIMO_DA_EMPRESA = 50            # BLs da empresa para o mapa valer
 NIVEIS_NCM = (8, 6, 4)
+NCM_BAGAGEM = '9797'              # bagagem desacompanhada: não é mercadoria comercial (fora do 18)
 AMOSTRAS_MINIMAS = 30             # contêineres de um NCM só para o típico daquele nível valer
 DESVIOS = 3.0                     # |desvios robustos| a partir dos quais peso / densidade são atípicos
 MAD_MINIMO = 0.05                 # log10 (~12%): NCM de valores repetidos não vira alarme por qualquer diferença
@@ -218,8 +221,10 @@ class Conteiner:
 
     @property
     def ncm_unico(self) -> Optional[str]:
+        """O NCM, quando o contêiner tem um só; a bagagem (NCM_BAGAGEM) não conta."""
         codigos = {codigo for codigo, _ in self.ncms}
-        return codigos.pop() if len(codigos) == 1 else None
+        unico = codigos.pop() if len(codigos) == 1 else None
+        return None if unico and unico.startswith(NCM_BAGAGEM) else unico
 
 
 def raiz(ce: str, master_de) -> str:

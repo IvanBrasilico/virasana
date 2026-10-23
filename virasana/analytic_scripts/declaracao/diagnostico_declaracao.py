@@ -34,13 +34,18 @@ amostras e, se for o caso, um piloto no NAVI-I.
      capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível. 6ª versão (23/10/2026, depois
      da revisão do usuário — o peso confere, a anomalia é a cubagem): típico da densidade por tamanho do contêiner;
      concentração do candidato por importador e empresa de navegação (na população e nos acertos das referências) e
-     o tamanho dos marcados — poucos declarantes explicando muito = perfil de quem declara, não da carga;
+     o tamanho dos marcados — poucos declarantes explicando muito = perfil de quem declara, não da carga. 7ª versão
+     (23/10/2026, depois da 6ª rodada: o candidato da cubagem caiu — era a mistura de tamanhos, a bagagem e o jeito
+     de declarar; o usuário seguiu com o piloto do PESO): bagagem (NCM 9797) fora do 18; o candidato passa a ser
+     "18a+ e 18b+" (carga pesada demais para a mercadoria declarada); a lista de revisão sai dele, com os CEs com
+     pesagem primeiro (o usuário confere o peso na balança e olha a imagem) e a coluna da pesagem; a concentração
+     ganha o capítulo do NCM e as infrações de contrafação e contrabando;
   C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
 a conexão que cai pela rede é refeita e a consulta repetida):
     D=virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
-    virasana-venv/bin/python $D --saida declaracao3.log --csv declaracao3.csv --revisao revisao.csv
+    virasana-venv/bin/python $D --saida declaracao7.log --csv declaracao7.csv --revisao revisao7.csv
 """
 import argparse
 import csv
@@ -89,7 +94,7 @@ COLUNAS_CSV = ('sinal', 'descricao', 'ce', 'conteiner', 'na_janela', 'referencia
 REVISAO_N = 30                    # CEs na lista de revisão (um por posição do NCM)
 REVISAO_DESVIO_MAXIMO = 10.0      # acima disto é quase sempre digitação: fica fora da lista de revisão
 ACIMA = ('18a+', '18b+')
-COLUNAS_REVISAO = ('ce', 'conteiner', 'ncm', 'tipo', 'peso_kg', 'cubagem_m3', 'sinais', 'desvios_peso',
+COLUNAS_REVISAO = ('ce', 'conteiner', 'ncm', 'tipo', 'peso_kg', 'cubagem_m3', 'pesagem', 'sinais', 'desvios_peso',
                    'desvios_densidade', 'motivo', 'avaliacao', 'observacao')
 
 CAMPOS_CE = ('ID, numeroCEmercante, numeroCEMaster, tipoBLConhecimento, tipoTrafego, codigoEmpresaNavegacao, '
@@ -113,9 +118,12 @@ CAMPOS_ITEM = ('ce', 'conteiner', 'tipo', 'peso', 'cubagem', 'embalagem', 'uso_p
 CAMPOS_NCM = ('ce', 'conteiner', 'ncm', 'embalagem', 'volumes')
 
 LinhaCE = namedtuple('LinhaCE', 'id master tipo_bl empresa numero cubagem importador')
-CANDIDATO = '18b+ redonda plausível'
+CANDIDATO = '18a+ e 18b+'         # 7ª versão: carga pesada demais para a mercadoria declarada
 CONCENTRACAO_N = 10               # os maiores na tabela de concentração
-REFERENCIAS_DA_CONCENTRACAO = ('fichas positivas', 'RVF: todas', 'RVF com a infração "Falsa declaração de conteúdo"')
+CAPITULOS_N = 15                  # capítulos do NCM na tabela de concentração
+REFERENCIAS_DA_CONCENTRACAO = ('fichas positivas', 'RVF: todas', 'RVF com a infração "Contrafação"',
+                               'RVF com a infração "Contrabando - produto proibido"',
+                               'RVF com a infração "Falsa declaração de conteúdo"')
 
 
 def _t(valor) -> str:
@@ -737,9 +745,23 @@ class DiagnosticoDeclaracao(Diagnostico):
                       marcas[tamanho], rd.pct(marcas[tamanho] / total_marcas) if total_marcas else '-')
                      for tamanho in sorted(set(base) | set(marcas))])
 
+    def _capitulos(self, candidato: Set[str]):
+        """O candidato por capítulo do NCM, na população e nos acertos das referências (na 6ª rodada, máquinas e
+        veículos — NCM de 4 dígitos heterogêneo — dominavam a população; eletrônicos e calçados, os acertos)."""
+        def capitulo(ce):
+            return self.info_18[ce]['ncm'][:2] if ce in self.info_18 else '?'
+
+        populacao = Counter(capitulo(ce) for ce in candidato & self.populacao)
+        acertos = {nome: Counter(capitulo(ce) for ce in candidato & self.referencias.get(nome, set()))
+                   for nome in REFERENCIAS_DA_CONCENTRACAO}
+        capitulos = [c for c, _ in sum(acertos.values(), Counter(populacao)).most_common(CAPITULOS_N)]
+        self.escreve()
+        self.tabela(['capítulo do NCM', 'marcados na população'] + list(REFERENCIAS_DA_CONCENTRACAO),
+                    [[c, populacao[c]] + [acertos[nome][c] for nome in REFERENCIAS_DA_CONCENTRACAO] for c in capitulos])
+
     def _concentracao(self):
-        """O candidato por importador, por empresa de navegação e por tamanho: poucos declarantes explicando muito =
-        perfil de quem declara, não da carga."""
+        """O candidato por importador, por empresa de navegação, por tamanho e por capítulo do NCM: poucos
+        declarantes explicando muito = perfil de quem declara, não da carga."""
         candidato = self._candidato()
         marcados, avaliaveis = candidato & self.populacao, self.avaliaveis['18'] & self.populacao
         self.escreve()
@@ -748,6 +770,7 @@ class DiagnosticoDeclaracao(Diagnostico):
         self._tabela_concentracao('empresa de navegação', 'empresa', marcados, avaliaveis)
         self._acertos_por_importador(candidato)
         self._tamanhos(marcados)
+        self._capitulos(candidato)
 
     def _acima(self, ce: str) -> List[str]:
         return [sinal for sinal in ACIMA if ce in self.marcas[sinal]]
@@ -761,10 +784,11 @@ class DiagnosticoDeclaracao(Diagnostico):
         simbolica = {ce for ce in redonda if self.info_18[ce]['simbolica']}
         # o código começa com '18': é ele que escolhe os avaliáveis (base_do_sinal)
         return [('18+', 'peso OU densidade acima do típico do NCM', peso | densidade),
-                ('18a+ e 18b+', 'peso E densidade acima do típico do NCM', peso & densidade),
+                ('18a+ e 18b+', 'peso E densidade acima do típico do NCM (candidato ao piloto, 7ª versão)',
+                 peso & densidade),
                 ('18b+ redonda', 'densidade acima, cubagem em m³ inteiro (estimada)', redonda),
                 ('18b+ redonda plausível', 'densidade acima, cubagem em m³ inteiro e de 10%+ da capacidade '
-                 '(candidato ao piloto)', redonda - simbolica),
+                 '(o candidato da 5ª rodada)', redonda - simbolica),
                 ('18b+ redonda simbólica', 'densidade acima, cubagem simbólica (abaixo de 10% da capacidade)',
                  simbolica),
                 ('18b+ com fração', 'densidade acima, cubagem com fração de m³', densidade - redonda),
@@ -845,31 +869,40 @@ class DiagnosticoDeclaracao(Diagnostico):
                 conteiner, motivo = self.marcas[sinal][ce]
                 self.escreve(f'  CE {ce}' + (f' contêiner {conteiner}' if conteiner else '') + f': {motivo}')
 
+    def _pesagem(self, ce: str) -> str:
+        """O diagnóstico da pesagem do CE ('' sem pesagem)."""
+        return next((codigo for codigo in DIAGNOSTICOS_PESAGEM
+                     if ce in self.referencias.get(f'pesagem: {codigo}', ())), '')
+
     def candidatos_revisao(self) -> List[Tuple[str, dict]]:
-        """Um CE da população por posição do NCM (4 dígitos), do 18b+ com cubagem em m³ inteiro e plausível (o subgrupo
-        que separou na 3ª rodada, sem a cubagem simbólica), com desvios da densidade de DESVIOS a REVISAO_DESVIO_MAXIMO
-        (acima, quase sempre digitação): o maior desvio de cada posição."""
+        """Um CE da população por posição do NCM (4 dígitos), do candidato (peso E densidade acima do típico do NCM,
+        7ª versão), sem a cubagem simbólica e com desvios do peso até REVISAO_DESVIO_MAXIMO (acima, quase sempre
+        digitação). Em cada posição, o CE com pesagem (o usuário confere o peso na balança e olha a imagem) e de maior
+        desvio; na lista, os com pesagem primeiro."""
+        candidato = self._candidato()
         por_posicao = {}
         for ce, info in self.info_18.items():
-            desvio = info['z_densidade'] or 0
-            if (ce not in self.populacao or not info['redonda'] or info['simbolica'] or ce not in self.marcas['18b+']
+            desvio = info['z_peso'] or 0
+            if (ce not in self.populacao or ce not in candidato or info['simbolica']
                     or desvio > REVISAO_DESVIO_MAXIMO):
                 continue
-            chave = (desvio, ce)
+            chave = (bool(self._pesagem(ce)), desvio, ce)
             posicao = info['ncm'][:4]
             if posicao not in por_posicao or chave > por_posicao[posicao]:
                 por_posicao[posicao] = chave
         escolhidos = sorted(por_posicao.values(), reverse=True)[:self.revisao_n]
-        return [(ce, self.info_18[ce]) for _, ce in escolhidos]
+        return [(ce, self.info_18[ce]) for _, _, ce in escolhidos]
 
     def secao_revisao(self):
         if '18' not in self.secoes:
             return
-        self.titulo('R. REVISÃO — densidade acima da típica do NCM com cubagem em m³ inteiro e plausível, um CE por '
-                    'posição (para olhar no NAVI-I; no --revisao, com o motivo e colunas para a avaliação)')
-        self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'sinais'],
+        self.titulo('R. REVISÃO — peso E densidade acima do típico do NCM (carga pesada demais para a mercadoria '
+                    'declarada), um CE por posição, os com pesagem primeiro (para olhar no NAVI-I; no --revisao, com o '
+                    'motivo e colunas para a avaliação)')
+        self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'pesagem', 'sinais'],
                     [(ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
-                      rd.br(info['cubagem'], 1), ' '.join(self._acima(ce))) for ce, info in self.candidatos_revisao()])
+                      rd.br(info['cubagem'], 1), self._pesagem(ce), ' '.join(self._acima(ce)))
+                     for ce, info in self.candidatos_revisao()])
 
     def grava_revisao(self, caminho: str):
         """A lista de revisão em CSV para o Excel (utf-8 com BOM), com colunas vazias para a avaliação."""
@@ -879,7 +912,8 @@ class DiagnosticoDeclaracao(Diagnostico):
             for ce, info in self.candidatos_revisao():
                 sinais = self._acima(ce)
                 escritor.writerow([ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
-                                   rd.br(info['cubagem'], 1), ' '.join(sinais), rd.br(info['z_peso'], 1),
+                                   rd.br(info['cubagem'], 1), self._pesagem(ce), ' '.join(sinais),
+                                   rd.br(info['z_peso'], 1),
                                    rd.br(info['z_densidade'], 1), ' | '.join(self.marcas[s][ce][1] for s in sinais),
                                    '', ''])
 
@@ -939,7 +973,8 @@ def _argumentos(argv=None):
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
     parser.add_argument('--csv', help='grava todos os CEs marcados neste CSV (;)')
-    parser.add_argument('--revisao', help='grava a lista de revisão (18a+ / 18b+) neste CSV (;), para o Excel')
+    parser.add_argument('--revisao', help='grava a lista de revisão (o candidato: 18a+ e 18b+) neste CSV (;), para o '
+                                          'Excel')
     parser.add_argument('--revisao-n', type=int, default=REVISAO_N,
                         help=f'CEs na lista de revisão, um por posição do NCM (padrão {REVISAO_N})')
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
