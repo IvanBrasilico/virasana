@@ -1,4 +1,4 @@
-"""HEALTH CHECK diário do NAVI (NAVI-I, ciclo de vida e o que os alimenta) — plano em `BACKLOG.md`, 23/10/2026.
+"""HEALTH CHECK diário do NAVI (NAVI-I, ciclo de vida e o que os alimenta) — desenho em `saude/CONTEXTO.md`, 23/10/2026.
 
 Um relatório curto, OK / ATENÇÃO / FALHA por componente, que reaproveita o que cada parte já mede:
 `verificacao.py` (resultado, contexto e relatório), `fontes.py` (carga do Mercante e da API Recintos),

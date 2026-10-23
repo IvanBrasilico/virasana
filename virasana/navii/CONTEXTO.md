@@ -1164,7 +1164,7 @@ Dependem de dados reais (rodar `python virasana/navii/diagnostico_sql.py --amost
    `notify` e `cnpjNotify` no documento: passam a valer para os CEs novos sem mudar o índice; os campos novos entram
    no `texto_navii.documento_do_ce`.
 
-Índices sugeridos, **não criados** (decisão do usuário/DBA, medir antes):
+Índices sugeridos (conferido em 23/10/2026): `ix_ciclo_ce_conteiner` foi criado em 30/09; `ix_itens_ce_conteiner` não, e não faz falta (`ix_itens_chave` já entra pelo CE):
 
 ```sql
 -- ajuda todos os _existe do ciclo (hoje entram por numeroCEmercante e filtram o contêiner)

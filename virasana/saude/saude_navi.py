@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-HEALTH CHECK diário do NAVI — OK / ATENÇÃO / FALHA por componente (plano em `BACKLOG.md`, 23/10/2026).
+HEALTH CHECK diário do NAVI — OK / ATENÇÃO / FALHA por componente (desenho em `saude/CONTEXTO.md`, 23/10/2026).
 
 Componentes, na ordem do relatório: fontes de dados (Mercante, API Recintos, imagens no MongoDB), ciclo de vida
 (serviço, invariantes, refaz, cobertura), pesagens, risco histórico, busca por texto, NAVI-I e Fichas de FMA. O
