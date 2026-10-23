@@ -25,9 +25,11 @@ amostras e, se for o caso, um piloto no NAVI-I.
      infração, com peso/volume da RVF fora de 0,8–1,2 do declarado; pesagens do ciclo de vida, por diagnóstico) e no
      controle da mesma época de cada referência;
   A. AMOSTRAS de CEs marcados (todos no --csv);
-  R. REVISÃO (3ª versão, 24/10/2026): um CE por posição do NCM marcado no 18a+ ou no 18b+, para o usuário olhar no
-     NAVI-I (imagem, descrição) — no --revisao, com colunas para a avaliação; e, na validação, as combinações do 18
-     (18+ = peso ou densidade acima, candidato ao piloto; os dois; 18b+ com cubagem em m³ inteiro ou com fração);
+  R. REVISÃO (3ª versão, 24/10/2026): CEs para o usuário olhar no NAVI-I (imagem, descrição) — no --revisao, com
+     colunas para a avaliação; e, na validação, as combinações do 18 (18+ = peso ou densidade acima; os dois; 18b+ com
+     cubagem em m³ inteiro ou com fração). 4ª versão (24/10/2026, depois da 3ª rodada: a força do 18b+ está toda na
+     cubagem em m³ inteiro): a lista de revisão sai do 18b+ com cubagem redonda (desvios de 3 a 10, um CE por posição
+     do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação;
   C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
@@ -80,7 +82,7 @@ FAIXAS_DESVIOS = ((0.0, 'até 2'), (2.0, '2 a 3'), (rd.DESVIOS, '3 a 4'), (4.0, 
 FAIXAS_CONTEINERES = ((2, '2'), (3, '3'), (4, '4 a 5'), (6, '6 a 10'), (11, 'mais de 10'))
 COLUNAS_CSV = ('sinal', 'descricao', 'ce', 'conteiner', 'na_janela', 'referencias', 'controle_de', 'motivo')
 REVISAO_N = 30                    # CEs na lista de revisão (um por posição do NCM)
-REVISAO_DESVIO_MAXIMO = 15.0      # acima disto é quase sempre digitação: fica fora da lista de revisão
+REVISAO_DESVIO_MAXIMO = 10.0      # acima disto é quase sempre digitação: fica fora da lista de revisão
 ACIMA = ('18a+', '18b+')
 COLUNAS_REVISAO = ('ce', 'conteiner', 'ncm', 'tipo', 'peso_kg', 'cubagem_m3', 'sinais', 'desvios_peso',
                    'desvios_densidade', 'motivo', 'avaliacao', 'observacao')
@@ -192,6 +194,7 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.marcas: Dict[str, Dict[str, Tuple[str, str]]] = defaultdict(dict)
         self.avaliaveis: Dict[str, Set[str]] = defaultdict(set)
         self.info_18: Dict[str, dict] = {}       # CE marcado no 18a+ / 18b+ -> o contêiner e os desvios (revisão)
+        self.redondas: Set[str] = set()          # CEs com contêiner avaliável no 18 de cubagem em m³ inteiro
 
     # ---------------------------------------------------------------- leitura
     def consulta(self, sql, params=None, listas=()) -> list:
@@ -442,6 +445,8 @@ class DiagnosticoDeclaracao(Diagnostico):
             sinais += rd.sinais_capacidade(c)
         if '18' in self.secoes and c.ncm_unico:
             self.avaliaveis['18'].update(c.ces)
+            if rd.cubagem_redonda(c.cubagem):
+                self.redondas.update(c.ces)
             sinais_18 = rd.sinais_ncm(c, self.tipicos)
             self._guarda_18(c, sinais_18)
             sinais += sinais_18
@@ -685,7 +690,9 @@ class DiagnosticoDeclaracao(Diagnostico):
         return [('18+', 'peso OU densidade acima do típico do NCM (candidato ao piloto)', peso | densidade),
                 ('18a+ e 18b+', 'peso E densidade acima do típico do NCM', peso & densidade),
                 ('18b+ redonda', 'densidade acima, cubagem em m³ inteiro (estimada)', redonda),
-                ('18b+ com fração', 'densidade acima, cubagem com fração de m³', densidade - redonda)]
+                ('18b+ com fração', 'densidade acima, cubagem com fração de m³', densidade - redonda),
+                ('cubagem redonda', 'cubagem em m³ inteiro, sem olhar a densidade (controle da combinação)',
+                 set(self.redondas))]
 
     def _sobreposicao(self):
         derivados = {codigo: ces & self.populacao for codigo, _, ces in self._derivados()}
@@ -759,25 +766,27 @@ class DiagnosticoDeclaracao(Diagnostico):
                 self.escreve(f'  CE {ce}' + (f' contêiner {conteiner}' if conteiner else '') + f': {motivo}')
 
     def candidatos_revisao(self) -> List[Tuple[str, dict]]:
-        """Um CE da população por posição do NCM (4 dígitos), marcado no 18a+ ou no 18b+: primeiro os marcados nos
-        dois, depois o maior desvio — sem os extremos (REVISAO_DESVIO_MAXIMO: quase sempre digitação)."""
+        """Um CE da população por posição do NCM (4 dígitos), do 18b+ com cubagem em m³ inteiro (o subgrupo que separou
+        na 3ª rodada), com desvios da densidade de DESVIOS a REVISAO_DESVIO_MAXIMO (acima, quase sempre digitação):
+        o maior desvio de cada posição."""
         por_posicao = {}
         for ce, info in self.info_18.items():
-            desvio = max(abs(info['z_peso'] or 0), abs(info['z_densidade'] or 0))
-            if ce not in self.populacao or desvio > REVISAO_DESVIO_MAXIMO:
+            desvio = info['z_densidade'] or 0
+            if (ce not in self.populacao or not info['redonda'] or ce not in self.marcas['18b+']
+                    or desvio > REVISAO_DESVIO_MAXIMO):
                 continue
-            chave = (len(self._acima(ce)), desvio, ce)
+            chave = (desvio, ce)
             posicao = info['ncm'][:4]
             if posicao not in por_posicao or chave > por_posicao[posicao]:
                 por_posicao[posicao] = chave
         escolhidos = sorted(por_posicao.values(), reverse=True)[:self.revisao_n]
-        return [(ce, self.info_18[ce]) for _, _, ce in escolhidos]
+        return [(ce, self.info_18[ce]) for _, ce in escolhidos]
 
     def secao_revisao(self):
         if '18' not in self.secoes:
             return
-        self.titulo('R. REVISÃO — um CE por posição do NCM marcado acima do típico (para olhar no NAVI-I; no '
-                    '--revisao, com o motivo e colunas para a avaliação)')
+        self.titulo('R. REVISÃO — densidade acima da típica do NCM com cubagem em m³ inteiro, um CE por posição (para '
+                    'olhar no NAVI-I; no --revisao, com o motivo e colunas para a avaliação)')
         self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'sinais'],
                     [(ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
                       rd.br(info['cubagem'], 1), ' '.join(self._acima(ce))) for ce, info in self.candidatos_revisao()])

@@ -138,14 +138,21 @@ medindo as Fichas abertas pelo card.
   "atípico para o NCM" pode ser o padrão daquele importador — refinamento possível: comparar também com o histórico
   do importador.
 
-**3ª versão (24/10/2026), falta rodar — da estação de trabalho** (sem SFTP por alguns dias; a conexão que cai pela rede
-é refeita): seção R (lista de revisão — um CE por posição do NCM marcado no 18a+/18b+, para o usuário olhar no
-NAVI-I; `--revisao` grava o CSV para o Excel com colunas de avaliação); na validação, as combinações **18+** (peso OU
-densidade acima — candidato ao piloto), os dois, e o 18b+ dividido pela cubagem (m³ inteiro, estimada × com fração).
+**3ª rodada (24/10/2026, da estação de trabalho — `declaracao3.log`, ~3 min de população):** toda a força do 18b+
+está na **cubagem em m³ inteiro** (estimada): densidade acima com cubagem redonda (1,2% marcados) — positivas 32/146
+contra 2,3% no controle (**9,5×**), RVF 5,8×, RVF com peso divergente 6,4×, falsa declaração 6,3×; com cubagem com
+fração (1,2%) — positivas 1,1×, RVF 0,8×. Ou seja: cubagem estimada E mercadoria pesada demais para ela (o dado
+inventado do 16e só separa junto com a incoerência física). 18+ (peso ou densidade acima): positivas 5,4×, RVF 2,9×.
+A lista de revisão saiu com erros de digitação no topo (peso acima da carga máxima; 73 "kg" num 40', em toneladas).
+
+**4ª versão (24/10/2026), falta rodar** (na estação, ~3 min): peso abaixo de 100 kg ou acima da carga máxima (16b) fora
+do 18 e dos típicos; a cubagem redonda sozinha validada (controle da combinação: se ela sozinha já separar, o sinal é
+só "cubagem redonda"); lista de revisão só do 18b+ com cubagem redonda, desvios de 3 a 10, um CE por posição do NCM.
 Na raiz do virasana: `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
---saida declaracao3.log --csv declaracao3.csv --revisao revisao.csv`. Depois da revisão, se confirmar: plano do
-piloto no NAVI-I (selo "carga mais pesada que a mercadoria declarada — em observação", filtro e motivo; mudança em
-produção, com aprovação).
+--saida declaracao4.log --csv declaracao4.csv --revisao revisao4.csv`. Depois: o usuário revisa a lista no NAVI-I e,
+se confirmar, plano do piloto (selo "densidade acima da típica do NCM com cubagem estimada — em observação", filtro e
+motivo; mudança em produção, com aprovação). Limitação a medir no piloto: os marcados vêm em embarques inteiros do
+mesmo importador — pode se sobrepor ao risco histórico do importador.
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

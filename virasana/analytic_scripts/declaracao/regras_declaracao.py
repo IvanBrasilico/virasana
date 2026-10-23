@@ -14,7 +14,9 @@ Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no 
   - 18, peso × volume × NCM, por DIREÇÃO: nos contêineres de UM NCM só, o PESO POR CONTÊINER (por tamanho, 18a) e a
     DENSIDADE (peso ÷ cubagem, 18b) acima (+) ou abaixo (-) do típico do NCM, aprendido da base em escala log (mediana
     e MAD), no nível mais específico (8, 6 ou 4 dígitos) com amostras suficientes. Na 1ª rodada só a densidade ACIMA
-    se separou nas referências.
+    se separou nas referências; na 3ª (24/10/2026), só quando a cubagem é em m³ inteiro (estimada): densidade acima
+    com cubagem com fração não separa. Peso abaixo de 100 kg (em toneladas?) ou acima da carga máxima (o 16b) não
+    entra no 18 — nem nos típicos: é erro de digitação.
 
 Qualidade do dado (contados, não são sinal de risco — 1ª rodada: sem força nas referências; erro de digitação):
   - 16a, cubagem acima da capacidade do tipo (`capacidades` de `navii/referencias/tipos_conteiner.json`);
@@ -42,6 +44,7 @@ from virasana.navii import referencias
 
 OCUPACAO_IMPOSSIVEL = 1.10        # cubagem acima de 110% da capacidade do tipo
 CARGA_ACIMA = 1.10                # peso acima de 110% da carga máxima publicada (exemplo da frota: há folga)
+PESO_MINIMO = 100.0               # kg: declarado abaixo disto não é peso de carga (como nas pesagens; em toneladas?)
 QUANTIDADE_DIFERENTE = 0.10       # 16e: pesos (ou volumes) que diferem mais de 10% (maior ÷ menor − 1)
 PREFIXO_RARO = 0.01               # prefixo em menos de 1% dos BLs da empresa de navegação
 PREFIXO_DOMINANTE = 0.90          # ... de uma empresa cujo prefixo comum cobre 90%+ dos BLs
@@ -464,15 +467,23 @@ def densidade(c: Conteiner) -> Optional[float]:
     return None if ocupado is not None and ocupado > OCUPACAO_IMPOSSIVEL else c.peso / c.cubagem
 
 
+def peso_comparavel(c: Conteiner) -> bool:
+    """De PESO_MINIMO até a carga máxima do tipo com a folga (acima, é o 16b: erro de digitação)."""
+    if not c.peso or c.peso < PESO_MINIMO:
+        return False
+    carregado = carga(c.peso, c.chave)
+    return carregado is None or carregado <= CARGA_ACIMA
+
+
 def medidas_ncm(c: Conteiner) -> List[Tuple[str, str, float]]:
-    """[(medida, chave, valor)] do contêiner FCL de um NCM só, do nível mais específico (8) ao mais geral (4):
-    peso por contêiner (18a) na chave 'tamanho|NCM' e densidade (18b) na chave 'NCM'."""
+    """[(medida, chave, valor)] do contêiner FCL de um NCM só e de peso comparável, do nível mais específico (8) ao
+    mais geral (4): peso por contêiner (18a) na chave 'tamanho|NCM' e densidade (18b) na chave 'NCM'."""
     unico = c.ncm_unico
-    if not unico or c.uso_parcial:
+    if not unico or c.uso_parcial or not peso_comparavel(c):
         return []
     niveis = [unico[:n] for n in NIVEIS_NCM if len(unico) >= n]
     medidas = []
-    if c.peso and c.peso > 0 and c.tamanho:
+    if c.tamanho:
         medidas += [(PESO_NCM, f'{c.tamanho}|{nivel}', c.peso) for nivel in niveis]
     valor = densidade(c)
     if valor:

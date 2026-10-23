@@ -3,15 +3,16 @@
 Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzidos para uma base pequena.
   - 40 BLs normais da EMP1 (MAEU..., 20' dry, NCM 84713012, ~10 t, 25 m³) e 35 MBLs da HAP (HLCUSHA..., NCM 61091000,
     ~12 t);
-  - CUBA: 41,5 m³ num 20' dry (16a, qualidade); PESA: 35 t e 25,5 m³ (16b, qualidade; 18a+ e 18b+ com cubagem com
-    fração; o 1º da lista de revisão); REPE: 3 contêineres com o
+  - CUBA: 41,5 m³ num 20' dry (16a, qualidade); PESA: 25 t e 25,5 m³ (18a+ e 18b+ com cubagem com fração);
+    PEZO (o último): 35 t num 20' (16b — peso impossível: fora do 18); REPE: 3 contêineres com o
     mesmo NCM e a mesma cubagem, pesos de 10 a 20 t (16e); ZZZU: prefixo raro na EMP1, de prefixo dominante (17a);
   - família fora da janela: o HBL F1 (na janela) e o master M0 (agosto) — o peso do contêiner é o do master;
     cadeia MBL M3 (agosto) > MHBL H3 > HBL F3; uso parcial (fora); um CE de exportação (fora);
   - referências: ficha positiva no PESA e noutra fora da janela (P0, ID 3, cubagem impossível); RVF no PESA com a
     infração "Falsa declaração" e peso da RVF 3× o declarado, e RVF no NORU 0; pesagem "divergencia" no PESA;
   - controle da mesma época com deslocamentos (+1, +2): P0 (ID 3) -> NORU 0 (é referência: fica fora) e NORU 1;
-    PESA (ID 80) -> REPE e ZZZU.
+    PESA (ID 80) -> REPE e ZZZU;
+  - lista de revisão: o 18b+ com cubagem em m³ inteiro — a cadeia M3 (28 m³, 786 kg/m³ × 480 da HAP).
 """
 from virasana.navii.busca_navii import tabela_recintos  # noqa: F401 — 1º: ajusta o sys.path
 import csv  # noqa: I100
@@ -91,7 +92,7 @@ def monta(engine):
             b.ce(ce(100 + n), dia, [(f'HAPU{n:07d}', '22G1', f'{12000 + n}.000', '25.000', ['61091000'], 'false')],
                  tipo_bl='11', empresa='HAP', bl=f'HLCUSHA{n:06d}')
         b.ce(ce(200), dia, maquina('CUBU0000001', cubagem='41.500'))                                  # CUBA
-        b.ce(ce(201), dia, maquina('PESU0000001', peso='35000.000', cubagem='25.500'))                # PESA, ID 80
+        b.ce(ce(201), dia, maquina('PESU0000001', peso='25000.000', cubagem='25.500'))                # PESA, ID 80
         b.ce(ce(202), dia, [(f'REPU000000{n}', '45G1', peso, '68.000', ['39011000'], 'false')          # REPE
                             for n, peso in enumerate(('10000.000', '15000.000', '20000.000'))])
         b.ce(ce(203), dia, maquina('ZZZU0000001'), bl='ZZZU000000001')                                # ZZZU
@@ -103,6 +104,7 @@ def monta(engine):
              master=ce(205))                                                                          # F3
         b.ce(ce(207), dia, maquina('LCLU0000001', uso='true'))                                        # uso parcial
         b.ce(ce(208), dia, maquina('EXPU0000001', cubagem='99.000'), trafego='7')                     # exportação
+        b.ce(ce(209), dia, maquina('PEZU0000001', peso='35000.000'))                                  # PEZO
         con.execute(text('INSERT INTO ovr_ovrs (id, numero, datahora, tipooperacao, numeroCEmercante) VALUES '
                          f"(1, '1', '2026-10-10', 1, '{ce(201)}'), (2, '2', '2025-01-10', 1, '{ce(902)}')"))
         con.execute(text('INSERT INTO ovr_resultados (id, ovr_id, tipo_resultado) VALUES (1, 1, 2), (2, 2, 6)'))
@@ -135,7 +137,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_populacao_pela_janela_de_id_sem_exportacao_e_com_as_familias(self):
         self.assertTrue(self.ok)
         self.assertEqual(self.diag.janela[0], 4)                          # os 3 de agosto ficam antes
-        self.assertEqual(len(self.diag.populacao), 75 + 8)                # sem a exportação
+        self.assertEqual(len(self.diag.populacao), 75 + 9)                # sem a exportação
         self.assertNotIn(ce(208), self.diag.ces)
         self.assertIn(ce(900), self.diag.ces)                             # master fora da janela, lido pela família
         por_conteiner = {c.conteiner: c for c in self.diag.conteineres}
@@ -148,7 +150,8 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
 
     def test_sinais(self):
         self.assertEqual(self.marcados(rd.OCUPACAO), {ce(200), ce(902)})   # o P0 veio pelas referências
-        self.assertEqual(self.marcados(rd.CARGA_MAXIMA), {ce(201)})
+        self.assertEqual(self.marcados(rd.CARGA_MAXIMA), {ce(209)})
+        self.assertNotIn(ce(209), self.marcados('18a+') | self.marcados('18b+'))   # peso impossível: fora do 18
         self.assertEqual(self.marcados(rd.CUBAGEM_REPETIDA), {ce(202)})
         self.assertEqual(self.diag.avaliaveis[rd.CUBAGEM_REPETIDA], {ce(202)})
         self.assertEqual(self.marcados(rd.PREFIXO), {ce(203)})
@@ -161,7 +164,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertEqual(refs['fichas positivas'], {ce(201), ce(902)})
         self.assertEqual(refs['RVF: todas'], {ce(201), ce(0)})
         self.assertEqual(refs['RVF com a infração "Falsa declaração"'], {ce(201)})
-        self.assertEqual(refs['RVF com peso fora de 0,8–1,2 do declarado'], {ce(201)})   # 105 t × 35 t
+        self.assertEqual(refs['RVF com peso fora de 0,8–1,2 do declarado'], {ce(201)})   # 105 t × 25 t
         self.assertEqual(refs['pesagem: divergencia'], {ce(201)})
         self.assertEqual(self.diag.razoes_rvf['volume']['sem medida na RVF'], 1)
 
@@ -177,14 +180,16 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901)})   # 28 m³ (a cadeia M3)
         self.assertTrue({ce(201), ce(204)} <= derivados['18+'])                    # F1: só o peso (20 t × 12 t)
         self.assertEqual(derivados['18a+ e 18b+'], {ce(201), ce(205), ce(206), ce(901)})
+        self.assertTrue({ce(0), ce(205), ce(206)} <= derivados['cubagem redonda'])   # 25 e 28 m³
+        self.assertNotIn(ce(201), derivados['cubagem redonda'])                   # 25,5 m³
 
-    def test_revisao_um_ce_por_posicao_primeiro_os_dois_sinais(self):
-        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(201), ce(206)])
+    def test_revisao_so_densidade_acima_com_cubagem_redonda(self):
+        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(206)])   # o PESA tem fração
         with open(self.revisao, encoding='utf-8-sig') as arquivo:              # para o Excel
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
-        self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['sinais'], linhas[0]['avaliacao']),
-                         (ce(201), '84713012', '18a+ 18b+', ''))
-        self.assertIn("35.000 kg; típico do NCM 84713012 em contêiner de 20'", linhas[0]['motivo'])
+        self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['cubagem_m3'], linhas[0]['avaliacao']),
+                         (ce(206), '61091000', '28,0', ''))
+        self.assertIn('786 kg/m³; típico do NCM 61091000', linhas[0]['motivo'])
 
     def test_refaz_a_conexao_que_caiu(self):
         engine = create_engine('sqlite://')
@@ -201,6 +206,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
                        'V. VALIDAÇÃO', 'Evidência FRACA', 'vezes o controle', 'Falsa declaração', 'A. AMOSTRAS',
                        '3 contêineres com NCM 39011000 e a mesma cubagem (68,0 m³)', 'C. CONSULTAS MAIS LENTAS',
                        '18+ — peso OU densidade acima', '18b+ com fração — densidade acima', 'os dois',
+                       'cubagem redonda — cubagem em m³ inteiro, sem olhar a densidade',
                        'R. REVISÃO'):
             with self.subTest(trecho=trecho):
                 self.assertIn(trecho, self.log)
@@ -210,7 +216,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_csv(self):
         with open(self.csv, encoding='utf-8') as arquivo:
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
-        pesa = [linha for linha in linhas if linha['ce'] == ce(201) and linha['sinal'] == rd.CARGA_MAXIMA]
+        pesa = [linha for linha in linhas if linha['ce'] == ce(201) and linha['sinal'] == '18a+']
         self.assertEqual(len(pesa), 1)
         self.assertEqual((pesa[0]['na_janela'], pesa[0]['controle_de']), ('sim', ''))
         self.assertIn('fichas positivas', pesa[0]['referencias'])

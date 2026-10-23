@@ -201,6 +201,9 @@ class TestSinais18(unittest.TestCase):
         self.assertIsNone(rd.densidade(conteiner(cubagem=41.5)))             # cubagem impossível: sem densidade
         self.assertEqual(rd.medidas_ncm(conteiner(ncms=(('84713012', ''), ('61091000', '')))), [])
         self.assertEqual(rd.medidas_ncm(conteiner(uso_parcial=True)), [])
+        self.assertEqual(rd.medidas_ncm(conteiner(peso=73.0)), [])              # em toneladas?
+        self.assertEqual(rd.medidas_ncm(conteiner(peso=35000.0)), [])           # 124% da carga máxima do 20': o 16b
+        self.assertNotEqual(rd.medidas_ncm(conteiner(peso=30000.0)), [])        # 106%: na folga
 
     def test_atipico_com_a_direcao(self):
         tabelas = {rd.PESO_NCM: {'2|8471': rd.tipico([10000.0 + n for n in range(40)], '2|8471')},
