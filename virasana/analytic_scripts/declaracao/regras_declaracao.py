@@ -487,22 +487,32 @@ def _descreve_chave(chave: str) -> str:
     return f'NCM {chave}'
 
 
+def desvios_ncm(c: Conteiner, tabelas: Dict[str, Dict[str, Tipico]]) -> Dict[str, Tuple[str, float, float]]:
+    """{medida: (chave, valor, desvios)} pelo típico do nível mais específico que existe (18a peso, 18b densidade)."""
+    achados = {}
+    for medida, chave, valor in medidas_ncm(c):
+        referencia = tabelas.get(medida, {}).get(chave)
+        if medida not in achados and referencia is not None:
+            achados[medida] = (chave, valor, desvios(valor, referencia))
+    return achados
+
+
 def sinais_ncm(c: Conteiner, tabelas: Dict[str, Dict[str, Tipico]]) -> List[Tuple[str, str]]:
     """[(sinal com direção, motivo)] quando o peso / a densidade fica a DESVIOS ou mais do típico do nível mais
     específico: '18a+' / '18a-' (peso), '18b+' / '18b-' (densidade)."""
-    sinais, vistos = [], set()
-    for medida, chave, valor in medidas_ncm(c):
-        referencia = tabelas.get(medida, {}).get(chave)
-        if medida in vistos or referencia is None:
-            continue
-        vistos.add(medida)
-        distancia = desvios(valor, referencia)
+    sinais = []
+    for medida, (chave, valor, distancia) in desvios_ncm(c, tabelas).items():
         if abs(distancia) >= DESVIOS:
-            unidade = 'kg' if medida == PESO_NCM else 'kg/m³'
+            referencia, unidade = tabelas[medida][chave], 'kg' if medida == PESO_NCM else 'kg/m³'
             sinais.append((medida + ('+' if distancia > 0 else '-'),
                            f'{br(valor)} {unidade}; típico do {_descreve_chave(chave)}: {br(referencia.p10)} a '
                            f'{br(referencia.p90)} {unidade} ({referencia.n} contêineres) — {br(distancia, 1)} desvios'))
     return sinais
+
+
+def cubagem_redonda(cubagem: Optional[float]) -> bool:
+    """Cubagem em metro cúbico inteiro (68,000): o valor estimado de praxe — a densidade dela é menos confiável."""
+    return cubagem is not None and cubagem > 0 and abs(cubagem - round(cubagem)) < 1e-6
 
 
 # ---------------------------------------------------------------------- validação

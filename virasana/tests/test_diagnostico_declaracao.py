@@ -3,7 +3,8 @@
 Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzidos para uma base pequena.
   - 40 BLs normais da EMP1 (MAEU..., 20' dry, NCM 84713012, ~10 t, 25 m³) e 35 MBLs da HAP (HLCUSHA..., NCM 61091000,
     ~12 t);
-  - CUBA: 41,5 m³ num 20' dry (16a, qualidade); PESA: 35 t (16b, qualidade; 18a+ e 18b+); REPE: 3 contêineres com o
+  - CUBA: 41,5 m³ num 20' dry (16a, qualidade); PESA: 35 t e 25,5 m³ (16b, qualidade; 18a+ e 18b+ com cubagem com
+    fração; o 1º da lista de revisão); REPE: 3 contêineres com o
     mesmo NCM e a mesma cubagem, pesos de 10 a 20 t (16e); ZZZU: prefixo raro na EMP1, de prefixo dominante (17a);
   - família fora da janela: o HBL F1 (na janela) e o master M0 (agosto) — o peso do contêiner é o do master;
     cadeia MBL M3 (agosto) > MHBL H3 > HBL F3; uso parcial (fora); um CE de exportação (fora);
@@ -90,7 +91,7 @@ def monta(engine):
             b.ce(ce(100 + n), dia, [(f'HAPU{n:07d}', '22G1', f'{12000 + n}.000', '25.000', ['61091000'], 'false')],
                  tipo_bl='11', empresa='HAP', bl=f'HLCUSHA{n:06d}')
         b.ce(ce(200), dia, maquina('CUBU0000001', cubagem='41.500'))                                  # CUBA
-        b.ce(ce(201), dia, maquina('PESU0000001', peso='35000.000'))                                  # PESA, ID 80
+        b.ce(ce(201), dia, maquina('PESU0000001', peso='35000.000', cubagem='25.500'))                # PESA, ID 80
         b.ce(ce(202), dia, [(f'REPU000000{n}', '45G1', peso, '68.000', ['39011000'], 'false')          # REPE
                             for n, peso in enumerate(('10000.000', '15000.000', '20000.000'))])
         b.ce(ce(203), dia, maquina('ZZZU0000001'), bl='ZZZU000000001')                                # ZZZU
@@ -123,8 +124,9 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         with mock.patch.multiple(rd, **LIMIARES), cls.engine.connect() as conexao:
             cls.diag = dd.DiagnosticoDeclaracao(conexao, cls.saida, DESDE, ATE, bloco=20, progresso=lambda _: None,
                                                 deslocamentos=(1, 2))
-            cls.csv = os.path.join(tempfile.mkdtemp(), 'declaracao.csv')
-            cls.ok = dd.roda(cls.diag, cls.csv)
+            pasta = tempfile.mkdtemp()
+            cls.csv, cls.revisao = os.path.join(pasta, 'declaracao.csv'), os.path.join(pasta, 'revisao.csv')
+            cls.ok = dd.roda(cls.diag, cls.csv, cls.revisao)
         cls.log = cls.saida.getvalue()
 
     def marcados(self, sinal):
@@ -169,12 +171,37 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertEqual(self.diag._taxa('18b+', controle), (3, 0))
         self.assertEqual(self.diag._taxa('18b+', self.diag.referencias['fichas positivas']), (2, 1))
 
+    def test_combinacoes_do_18(self):
+        derivados = {codigo: ces for codigo, _, ces in self.diag._derivados()}
+        self.assertEqual(derivados['18b+ com fração'], {ce(201)})                  # 25,5 m³
+        self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901)})   # 28 m³ (a cadeia M3)
+        self.assertTrue({ce(201), ce(204)} <= derivados['18+'])                    # F1: só o peso (20 t × 12 t)
+        self.assertEqual(derivados['18a+ e 18b+'], {ce(201), ce(205), ce(206), ce(901)})
+
+    def test_revisao_um_ce_por_posicao_primeiro_os_dois_sinais(self):
+        self.assertEqual([numero for numero, _ in self.diag.candidatos_revisao()], [ce(201), ce(206)])
+        with open(self.revisao, encoding='utf-8-sig') as arquivo:              # para o Excel
+            linhas = list(csv.DictReader(arquivo, delimiter=';'))
+        self.assertEqual((linhas[0]['ce'], linhas[0]['ncm'], linhas[0]['sinais'], linhas[0]['avaliacao']),
+                         (ce(201), '84713012', '18a+ 18b+', ''))
+        self.assertIn("35.000 kg; típico do NCM 84713012 em contêiner de 20'", linhas[0]['motivo'])
+
+    def test_refaz_a_conexao_que_caiu(self):
+        engine = create_engine('sqlite://')
+        caida = mock.Mock(invalidated=True, dialect=engine.dialect)
+        caida.execute.side_effect = Exception('Lost connection to MySQL server during query')
+        diag = dd.DiagnosticoDeclaracao(caida, io.StringIO(), DESDE, ATE, engine=engine)
+        self.assertEqual(diag.consulta('SELECT 1'), [(1,)])
+        self.assertIn('conexão perdida: refeita', diag.saida.getvalue())
+
     def test_relatorio(self):
         for trecho in ('(SHOW INDEX só no MariaDB/MySQL)', '1. POPULAÇÃO, FAMÍLIAS E TEMPO',
                        'estimativa da população em 90 dias', '16. CONTÊINER × CUBAGEM', 'Cubagens mais frequentes',
                        '16e cubagem repetida (m³)', '17. NÚMERO DO BL', 'dominante', '18. PESO × VOLUME',
                        'V. VALIDAÇÃO', 'Evidência FRACA', 'vezes o controle', 'Falsa declaração', 'A. AMOSTRAS',
-                       '3 contêineres com NCM 39011000 e a mesma cubagem (68,0 m³)', 'C. CONSULTAS MAIS LENTAS'):
+                       '3 contêineres com NCM 39011000 e a mesma cubagem (68,0 m³)', 'C. CONSULTAS MAIS LENTAS',
+                       '18+ — peso OU densidade acima', '18b+ com fração — densidade acima', 'os dois',
+                       'R. REVISÃO'):
             with self.subTest(trecho=trecho):
                 self.assertIn(trecho, self.log)
         self.assertNotIn('!! ERRO', self.log)

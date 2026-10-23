@@ -125,12 +125,27 @@ medindo as Fichas abertas pelo card.
   pode ser época (cubagem declarada de outro jeito), daí o controle. Peso atípico (18a) acompanha a pesagem
   divergente (1,9×; 15,6× com NCM de 8 dígitos): erro de declaração do peso, não fraude.
 
-**2ª versão (23/10/2026), falta rodar**: controle da mesma época (vizinhos de cada referência pelo ID, `-150/+100/+250`,
-de outra família) com "vezes o controle"; 18 por direção (`18a+/-`, `18b+/-`); 17a com prefixo dominante; e o sinal
-novo **16e — cubagem copiada** (pedido do usuário): no CE, 2+ contêineres cheios com a mesma mercadoria (mesmo conjunto
-de NCMs) e a MESMA cubagem, mas pesos ou volumes diferentes (> 10%) — no mínimo, dado inventado. Rodar (raiz do
-virasana, no servidor): `virasana-venv/bin/python virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
---saida declaracao2.log --csv declaracao2.csv` (`--sem-controle` pula os vizinhos).
+**2ª rodada (23/10/2026, `declaracao2.log`; controle da mesma época = vizinhos de cada referência pelo ID):**
+- **18a+ e 18b+ sobreviveram ao controle**: densidade acima (2,4% marcados) — positivas 36/146 contra 4,6% no controle
+  (**5,4×**; contra a população dava 10,4×: metade era época), RVF 3,1×, RVF com peso divergente 4,7×, falsa
+  declaração 4,7×; peso acima (0,9%) — positivas 5,7×, contrafação/contrabando ~6× (poucos CEs) e a pesagem confirma
+  (divergente ÷ coerente = 5,7×). As direções "abaixo" não separam (≤ 0,7× o controle): peso declarado errado;
+- **17a era época**: 389× contra a população, 1,4× contra o controle — descartado;
+- **16e** (cubagem copiada) marca 9,4% dos CEs com 2+ contêineres, com cubagens redondas (68, 60, 50, 40 m³): confirma
+  o dado inventado (1,8× na pesagem divergente ÷ coerente), mas não o risco (~1× o controle) — fica como qualidade do
+  dado. Falha conhecida: NCM sem contêiner vira "mesma mercadoria" para o CE inteiro;
+- os marcados vêm em embarques inteiros (dezenas de contêineres do mesmo importador e NCM, com o mesmo valor): o
+  "atípico para o NCM" pode ser o padrão daquele importador — refinamento possível: comparar também com o histórico
+  do importador.
+
+**3ª versão (24/10/2026), falta rodar — da estação de trabalho** (sem SFTP por alguns dias; a conexão que cai pela rede
+é refeita): seção R (lista de revisão — um CE por posição do NCM marcado no 18a+/18b+, para o usuário olhar no
+NAVI-I; `--revisao` grava o CSV para o Excel com colunas de avaliação); na validação, as combinações **18+** (peso OU
+densidade acima — candidato ao piloto), os dois, e o 18b+ dividido pela cubagem (m³ inteiro, estimada × com fração).
+Na raiz do virasana: `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
+--saida declaracao3.log --csv declaracao3.csv --revisao revisao.csv`. Depois da revisão, se confirmar: plano do
+piloto no NAVI-I (selo "carga mais pesada que a mercadoria declarada — em observação", filtro e motivo; mudança em
+produção, com aprovação).
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

@@ -24,11 +24,16 @@ amostras e, se for o caso, um piloto no NAVI-I.
   V. VALIDAÇÃO: cada sinal na população, nas referências (fichas positivas do risco histórico; RVFs — todas, por
      infração, com peso/volume da RVF fora de 0,8–1,2 do declarado; pesagens do ciclo de vida, por diagnóstico) e no
      controle da mesma época de cada referência;
-  A. AMOSTRAS de CEs marcados (todos no --csv); C. as consultas mais lentas.
+  A. AMOSTRAS de CEs marcados (todos no --csv);
+  R. REVISÃO (3ª versão, 24/10/2026): um CE por posição do NCM marcado no 18a+ ou no 18b+, para o usuário olhar no
+     NAVI-I (imagem, descrição) — no --revisao, com colunas para a avaliação; e, na validação, as combinações do 18
+     (18+ = peso ou densidade acima, candidato ao piloto; os dois; 18b+ com cubagem em m³ inteiro ou com fração);
+  C. as consultas mais lentas.
 
-Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
+Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
+a conexão que cai pela rede é refeita e a consulta repetida):
     D=virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
-    virasana-venv/bin/python $D --saida declaracao2.log --csv declaracao2.csv
+    virasana-venv/bin/python $D --saida declaracao3.log --csv declaracao3.csv --revisao revisao.csv
 """
 import argparse
 import csv
@@ -74,6 +79,11 @@ FAIXAS_DISPERSAO = ((1.0, 'até ×1,3'), (1.3, '×1,3 a ×2'), (2.0, '×2 a ×4'
 FAIXAS_DESVIOS = ((0.0, 'até 2'), (2.0, '2 a 3'), (rd.DESVIOS, '3 a 4'), (4.0, '4 a 6'), (6.0, 'acima de 6'))
 FAIXAS_CONTEINERES = ((2, '2'), (3, '3'), (4, '4 a 5'), (6, '6 a 10'), (11, 'mais de 10'))
 COLUNAS_CSV = ('sinal', 'descricao', 'ce', 'conteiner', 'na_janela', 'referencias', 'controle_de', 'motivo')
+REVISAO_N = 30                    # CEs na lista de revisão (um por posição do NCM)
+REVISAO_DESVIO_MAXIMO = 15.0      # acima disto é quase sempre digitação: fica fora da lista de revisão
+ACIMA = ('18a+', '18b+')
+COLUNAS_REVISAO = ('ce', 'conteiner', 'ncm', 'tipo', 'peso_kg', 'cubagem_m3', 'sinais', 'desvios_peso',
+                   'desvios_densidade', 'motivo', 'avaliacao', 'observacao')
 
 CAMPOS_CE = ('ID, numeroCEmercante, numeroCEMaster, tipoBLConhecimento, tipoTrafego, codigoEmpresaNavegacao, '
              'portoOrigemCarga, numConhecimento, cubagem')
@@ -152,9 +162,10 @@ class DiagnosticoDeclaracao(Diagnostico):
 
     def __init__(self, conexao, saida, desde: datetime, ate: datetime, secoes: Sequence[str] = SECOES,
                  amostras: int = 5, bloco: int = BLOCO_IDS, progresso: Optional[Callable[[str], None]] = None,
-                 deslocamentos: Sequence[int] = DESLOCAMENTOS_CONTROLE):
+                 deslocamentos: Sequence[int] = DESLOCAMENTOS_CONTROLE, engine=None, revisao: int = REVISAO_N):
         super().__init__(conexao, saida, desde, ate, agora=ate, amostras=amostras)
         self.desde, self.ate, self.bloco, self.deslocamentos = desde, ate, bloco, tuple(deslocamentos)
+        self.engine, self.revisao_n = engine, revisao
         self.secoes = [secao for secao in SECOES if secao in secoes]
         self.progresso = progresso or (lambda texto: print(texto, file=sys.stderr))
         self.ces: Dict[str, LinhaCE] = {}
@@ -180,8 +191,18 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.razoes_rvf: Dict[str, Counter] = defaultdict(Counter)
         self.marcas: Dict[str, Dict[str, Tuple[str, str]]] = defaultdict(dict)
         self.avaliaveis: Dict[str, Set[str]] = defaultdict(set)
+        self.info_18: Dict[str, dict] = {}       # CE marcado no 18a+ / 18b+ -> o contêiner e os desvios (revisão)
 
     # ---------------------------------------------------------------- leitura
+    def consulta(self, sql, params=None, listas=()) -> list:
+        """Como a do Diagnostico; se a conexão caiu (rodada da estação de trabalho, pela rede), refaz e repete."""
+        linhas = super().consulta(sql, params, listas)
+        if not linhas and self.engine is not None and getattr(self.conexao, 'invalidated', False):
+            self.escreve('   (conexão perdida: refeita e a consulta repetida)')
+            self.conexao = self.engine.connect()
+            linhas = super().consulta(sql, params, listas)
+        return linhas
+
     def _cronometra(self, etapa: str, funcao, *args):
         inicio = time.perf_counter()
         try:
@@ -421,9 +442,24 @@ class DiagnosticoDeclaracao(Diagnostico):
             sinais += rd.sinais_capacidade(c)
         if '18' in self.secoes and c.ncm_unico:
             self.avaliaveis['18'].update(c.ces)
-            sinais += rd.sinais_ncm(c, self.tipicos)
+            sinais_18 = rd.sinais_ncm(c, self.tipicos)
+            self._guarda_18(c, sinais_18)
+            sinais += sinais_18
         for sinal, motivo in sinais:
             self._marca(sinal, c.ces, c.conteiner, motivo)
+
+    def _guarda_18(self, c: rd.Conteiner, sinais: List[Tuple[str, str]]):
+        """O contêiner e os desvios dos CEs marcados acima do típico (18a+ / 18b+): a lista de revisão e a divisão do
+        18b+ pela cubagem."""
+        if not any(sinal in ACIMA for sinal, _ in sinais):
+            return
+        achados = rd.desvios_ncm(c, self.tipicos)
+        info = {'conteiner': c.conteiner, 'ncm': c.ncm_unico, 'tipo': c.tipo, 'peso': c.peso, 'cubagem': c.cubagem,
+                'redonda': rd.cubagem_redonda(c.cubagem),
+                'z_peso': achados.get(rd.PESO_NCM, (None, None, None))[2],
+                'z_densidade': achados.get(rd.DENSIDADE_NCM, (None, None, None))[2]}
+        for ce in c.ces:
+            self.info_18.setdefault(ce, info)
 
     def calcula_marcas(self):
         for c in self.conteineres:
@@ -635,32 +671,60 @@ class DiagnosticoDeclaracao(Diagnostico):
         self._niveis_e_desvios(unicos)
         self._dispersao()
         self._marcados('18')
+        self._sobreposicao()
+
+    def _acima(self, ce: str) -> List[str]:
+        return [sinal for sinal in ACIMA if ce in self.marcas[sinal]]
+
+    def _derivados(self) -> List[Tuple[str, str, Set[str]]]:
+        """(código, descrição, CEs marcados) das combinações do 18 que a validação também mede."""
+        if '18' not in self.secoes:
+            return []
+        peso, densidade = set(self.marcas['18a+']), set(self.marcas['18b+'])
+        redonda = {ce for ce in densidade if self.info_18.get(ce, {}).get('redonda')}
+        return [('18+', 'peso OU densidade acima do típico do NCM (candidato ao piloto)', peso | densidade),
+                ('18a+ e 18b+', 'peso E densidade acima do típico do NCM', peso & densidade),
+                ('18b+ redonda', 'densidade acima, cubagem em m³ inteiro (estimada)', redonda),
+                ('18b+ com fração', 'densidade acima, cubagem com fração de m³', densidade - redonda)]
+
+    def _sobreposicao(self):
+        derivados = {codigo: ces & self.populacao for codigo, _, ces in self._derivados()}
+        peso, densidade = set(self.marcas['18a+']) & self.populacao, set(self.marcas['18b+']) & self.populacao
+        self.escreve()
+        self.tabela(['CEs da população marcados acima do típico', 'quantidade'], [
+            ('só peso (18a+)', len(peso - densidade)), ('só densidade (18b+)', len(densidade - peso)),
+            ('os dois', len(peso & densidade)), ('algum (18+)', len(peso | densidade)),
+            ('18b+ com cubagem em m³ inteiro', len(derivados['18b+ redonda'])),
+            ('18b+ com cubagem com fração de m³', len(derivados['18b+ com fração']))])
 
     # ---------------------------------------------------------------- V, A e CSV
     def _controle(self, ces: Set[str]) -> Set[str]:
         return {vizinho for ce in ces for vizinho in self.vizinhos.get(ce, ())}
 
-    def _taxa(self, sinal: str, ces: Set[str]) -> Tuple[int, int]:
-        """(avaliáveis, marcados) do sinal entre os CEs."""
+    def _taxa(self, sinal: str, ces: Set[str], marcados: Optional[Set[str]] = None) -> Tuple[int, int]:
+        """(avaliáveis, marcados) do sinal entre os CEs (`marcados`: os de uma combinação)."""
         avaliaveis = self.avaliaveis[base_do_sinal(sinal)] & ces
-        return len(avaliaveis), len(set(self.marcas[sinal]) & avaliaveis)
+        marcados = set(self.marcas[sinal]) if marcados is None else marcados
+        return len(avaliaveis), len(marcados & avaliaveis)
 
-    def _valida(self, sinal: str, grupos: List[Tuple[str, Set[str]]]):
-        total_base, marcados_base = self._taxa(sinal, self.populacao)
+    def _valida(self, sinal: str, grupos: List[Tuple[str, Set[str]]], descricao: Optional[str] = None,
+                marcados: Optional[Set[str]] = None):
+        marcados = set(self.marcas[sinal]) if marcados is None else marcados
+        total_base, marcados_base = self._taxa(sinal, self.populacao, marcados)
         linhas = []
         for nome, ces in grupos:
-            total, marcados = self._taxa(sinal, ces)
-            linha = [nome, total, marcados, rd.pct(marcados / total, 2) if total else '-',
-                     rd.br(rd.vezes(marcados, total, marcados_base, total_base), 1)]
+            total, no_grupo = self._taxa(sinal, ces, marcados)
+            linha = [nome, total, no_grupo, rd.pct(no_grupo / total, 2) if total else '-',
+                     rd.br(rd.vezes(no_grupo, total, marcados_base, total_base), 1)]
             if nome.startswith(GRUPOS_COM_CONTROLE) and self.vizinhos:
-                total_c, marcados_c = self._taxa(sinal, self._controle(ces))
+                total_c, marcados_c = self._taxa(sinal, self._controle(ces), marcados)
                 linha += [total_c, rd.pct(marcados_c / total_c, 2) if total_c else '-',
-                          rd.br(rd.vezes(marcados, total, marcados_c, total_c), 1)]
+                          rd.br(rd.vezes(no_grupo, total, marcados_c, total_c), 1)]
             else:
                 linha += ['', '', '']
             linhas.append(linha)
         self.escreve()
-        self.escreve(f'{sinal} — {rd.DESCRICOES[sinal]}:')
+        self.escreve(f'{sinal} — {descricao or rd.DESCRICOES[sinal]}:')
         self.tabela(['grupo', 'avaliáveis', 'marcados', 'taxa', 'vezes a população', 'controle', 'taxa no controle',
                      'vezes o controle'], linhas)
 
@@ -681,6 +745,8 @@ class DiagnosticoDeclaracao(Diagnostico):
                                faixas=FAIXAS_RAZAO)
         for sinal in self._sinais_ativos():
             self._valida(sinal, grupos)
+        for codigo, descricao, marcados in self._derivados():
+            self._valida(codigo, grupos, descricao, marcados)
 
     def secao_amostras(self):
         self.titulo(f'A. AMOSTRAS ({self.amostras} CEs da população por sinal; todos no --csv)')
@@ -691,6 +757,42 @@ class DiagnosticoDeclaracao(Diagnostico):
             for ce in sorted(marcados, key=lambda numero: numero[::-1])[:self.amostras]:   # espalha pelas datas
                 conteiner, motivo = self.marcas[sinal][ce]
                 self.escreve(f'  CE {ce}' + (f' contêiner {conteiner}' if conteiner else '') + f': {motivo}')
+
+    def candidatos_revisao(self) -> List[Tuple[str, dict]]:
+        """Um CE da população por posição do NCM (4 dígitos), marcado no 18a+ ou no 18b+: primeiro os marcados nos
+        dois, depois o maior desvio — sem os extremos (REVISAO_DESVIO_MAXIMO: quase sempre digitação)."""
+        por_posicao = {}
+        for ce, info in self.info_18.items():
+            desvio = max(abs(info['z_peso'] or 0), abs(info['z_densidade'] or 0))
+            if ce not in self.populacao or desvio > REVISAO_DESVIO_MAXIMO:
+                continue
+            chave = (len(self._acima(ce)), desvio, ce)
+            posicao = info['ncm'][:4]
+            if posicao not in por_posicao or chave > por_posicao[posicao]:
+                por_posicao[posicao] = chave
+        escolhidos = sorted(por_posicao.values(), reverse=True)[:self.revisao_n]
+        return [(ce, self.info_18[ce]) for _, _, ce in escolhidos]
+
+    def secao_revisao(self):
+        if '18' not in self.secoes:
+            return
+        self.titulo('R. REVISÃO — um CE por posição do NCM marcado acima do típico (para olhar no NAVI-I; no '
+                    '--revisao, com o motivo e colunas para a avaliação)')
+        self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'sinais'],
+                    [(ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
+                      rd.br(info['cubagem'], 1), ' '.join(self._acima(ce))) for ce, info in self.candidatos_revisao()])
+
+    def grava_revisao(self, caminho: str):
+        """A lista de revisão em CSV para o Excel (utf-8 com BOM), com colunas vazias para a avaliação."""
+        with open(caminho, 'w', encoding='utf-8-sig', newline='') as arquivo:
+            escritor = csv.writer(arquivo, delimiter=';')
+            escritor.writerow(COLUNAS_REVISAO)
+            for ce, info in self.candidatos_revisao():
+                sinais = self._acima(ce)
+                escritor.writerow([ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
+                                   rd.br(info['cubagem'], 1), ' '.join(sinais), rd.br(info['z_peso'], 1),
+                                   rd.br(info['z_densidade'], 1), ' | '.join(self.marcas[s][ce][1] for s in sinais),
+                                   '', ''])
 
     def grava_csv(self, caminho: str):
         referencias_do_ce, controle_de = defaultdict(list), defaultdict(set)
@@ -711,7 +813,8 @@ class DiagnosticoDeclaracao(Diagnostico):
                                        ' '.join(sorted(controle_de.get(ce, ()))), motivo])
 
 
-def roda(diag: DiagnosticoDeclaracao, caminho_csv: Optional[str] = None) -> bool:
+def roda(diag: DiagnosticoDeclaracao, caminho_csv: Optional[str] = None,
+         caminho_revisao: Optional[str] = None) -> bool:
     """O diagnóstico inteiro; False quando para na estrutura (falta índice)."""
     if not diag.secao_estrutura():
         return False
@@ -725,9 +828,12 @@ def roda(diag: DiagnosticoDeclaracao, caminho_csv: Optional[str] = None) -> bool
         getattr(diag, 'secao_' + secao)()
     diag.secao_validacao()
     diag.secao_amostras()
+    diag.secao_revisao()
     diag.resumo('C')
     if caminho_csv:
         diag.grava_csv(caminho_csv)
+    if caminho_revisao:
+        diag.grava_revisao(caminho_revisao)
     return True
 
 
@@ -744,6 +850,9 @@ def _argumentos(argv=None):
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
     parser.add_argument('--csv', help='grava todos os CEs marcados neste CSV (;)')
+    parser.add_argument('--revisao', help='grava a lista de revisão (18a+ / 18b+) neste CSV (;), para o Excel')
+    parser.add_argument('--revisao-n', type=int, default=REVISAO_N,
+                        help=f'CEs na lista de revisão, um por posição do NCM (padrão {REVISAO_N})')
     parser.add_argument('--uri', help='URI SQLAlchemy do banco (padrão: SQL_URI do ajna_commons)')
     parser.add_argument('--homologacao', action='store_true', help='usa o banco de homologação (SQL_URI_HOM)')
     return parser.parse_args(argv)
@@ -760,8 +869,8 @@ def main(argv=None):  # pragma: no cover - depende do banco real
         with engine.connect() as conexao:
             diag = DiagnosticoDeclaracao(conexao, saida, ate - timedelta(days=args.dias), ate, args.secoes,
                                          args.amostras, deslocamentos=() if args.sem_controle else
-                                         DESLOCAMENTOS_CONTROLE)
-            roda(diag, args.csv)
+                                         DESLOCAMENTOS_CONTROLE, engine=engine, revisao=args.revisao_n)
+            roda(diag, args.csv, args.revisao)
     finally:
         if args.saida:
             saida.close()

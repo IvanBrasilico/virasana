@@ -213,6 +213,18 @@ class TestSinais18(unittest.TestCase):
         self.assertEqual(set(rd.SINAIS), {'16e', '17a', '18a+', '18a-', '18b+', '18b-'})
 
 
+class TestDesviosECubagemRedonda(unittest.TestCase):
+
+    def test_desvios_por_medida_e_cubagem_redonda(self):
+        tabelas = {rd.PESO_NCM: {'2|8471': rd.tipico([10000.0] * 40, '2|8471')}}
+        achados = rd.desvios_ncm(conteiner(peso=10000.0 * 10 ** 0.15), tabelas)
+        self.assertEqual(list(achados), [rd.PESO_NCM])                         # sem típico de densidade
+        chave, _, distancia = achados[rd.PESO_NCM]
+        self.assertEqual(chave, '2|8471')
+        self.assertAlmostEqual(distancia, 3.0)
+        self.assertEqual([rd.cubagem_redonda(v) for v in (68.0, 67.7, 0, None)], [True, False, False, False])
+
+
 class TestValidacao(unittest.TestCase):
 
     def test_vezes_a_base(self):
