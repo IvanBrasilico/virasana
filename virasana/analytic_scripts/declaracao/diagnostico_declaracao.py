@@ -3,25 +3,32 @@
 DIAGNÓSTICO DOS SINAIS DE DECLARAÇÃO INVENTADA (itens 16, 17 e 18 do `BACKLOG.md`) — passo 0 do plano aprovado pelo
 usuário em 23/10/2026. Somente leitura. Regras em `regras_declaracao.py`.
 
+2ª versão (23/10/2026, depois da 1ª rodada em produção): sinal novo 16e (cubagem copiada, pedido do usuário); 18 por
+direção; 17a só em empresa de prefixo dominante; 16a/16b só como qualidade do dado; fora os pares raros e a cidade no
+BL. E o CONTROLE DA MESMA ÉPOCA: na 1ª rodada todo acerto nas fichas e RVFs veio de CEs antigos (2021, sobretudo),
+comparados com uma população de 30 dias — diferença de época, não de fraude, explicava o 17a. Agora cada CE de
+referência ganha vizinhos pelo ID (criados na mesma hora, de outra família), e a validação mostra "vezes o controle".
+
+As referências são evidência FRACA (usuário, 23/10/2026): as Fichas são poucas e foram escolhidas por outros critérios
+(a análise de risco delas não usava estas técnicas) — sinal sem força nelas não está descartado, e força nelas não
+prova fraude. O relatório dá os números; a decisão junta coerência do sinal, taxa de marcação, pesagem, revisão de
+amostras e, se for o caso, um piloto no NAVI-I.
+
   0. ESTRUTURA: os índices de que a leitura depende (itens e NCMs por CE, filhotes pelo master) — sem eles, para;
   1. POPULAÇÃO E TEMPO: CEs (sem exportação) CRIADOS na janela — pela janela de ID do `conhecimentosresumo`, nunca
-     pela create_date (= última alteração) —, com as famílias completadas (master e filhotes fora da janela);
-     contêineres; tempo de cada etapa e estimativa para 90 e 180 dias;
-  16. TIPO × CUBAGEM × CARGA × EMBALAGEM: preenchimento e formato dos campos; cubagens mais frequentes por tipo
-     (valor padrão?); ocupação e peso ÷ carga máxima por tipo (com a mediana e o p99 da própria base); pares raros
-     carga × tipo e carga × embalagem — a lista é para o usuário dizer quais fazem sentido;
-  17. NÚMERO DO BL: formato da empresa de navegação e do número por tipo de BL; prefixo comum por empresa; cidade no
-     número × origem, por prefixo;
-  18. PESO × VOLUME × NCM: contêineres de um NCM só; nível do NCM com típico; dispersão dos típicos; desvios;
-  V. VALIDAÇÃO: cada sinal na população e nas referências — fichas positivas do risco histórico, RVFs (todas, por
-     infração encontrada e com peso/volume da RVF fora de 0,8–1,2 do declarado) e pesagens do ciclo de vida (por
-     diagnóstico) — com contagens e "vezes a população" (as referências são poucas: valem os números, não só o %);
-  A. AMOSTRAS de CEs marcados por sinal, com o motivo (todos no --csv); C. as consultas mais lentas.
+     pela create_date (= última alteração) —, com as famílias completadas; contêineres; tempo e estimativas;
+  16. CONTÊINER × CUBAGEM × CARGA: preenchimento e formato; cubagens mais frequentes por tipo; ocupação e peso ÷ carga
+     máxima por tipo; qualidade do dado (16a, 16b); cubagem copiada (16e);
+  17. NÚMERO DO BL: formato da empresa de navegação e do número por tipo de BL; prefixo comum por empresa (17a);
+  18. PESO × VOLUME × NCM: contêineres de um NCM só; nível do NCM com típico; dispersão; desvios; 18a/18b por direção;
+  V. VALIDAÇÃO: cada sinal na população, nas referências (fichas positivas do risco histórico; RVFs — todas, por
+     infração, com peso/volume da RVF fora de 0,8–1,2 do declarado; pesagens do ciclo de vida, por diagnóstico) e no
+     controle da mesma época de cada referência;
+  A. AMOSTRAS de CEs marcados (todos no --csv); C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     D=virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
-    virasana-venv/bin/python $D --saida declaracao.log --csv declaracao.csv
-    virasana-venv/bin/python $D --dias 90 --secoes 18 --saida declaracao_18.log    # se a estimativa de tempo couber
+    virasana-venv/bin/python $D --saida declaracao2.log --csv declaracao2.csv
 """
 import argparse
 import csv
@@ -40,7 +47,6 @@ sys.path.append('../ajna_docs/commons')
 from virasana.analytic_scripts.ciclo_de_vida.ces_do_ciclo import normaliza_ce  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.diagnostico_ciclo_de_vida import Diagnostico  # noqa: E402
 from virasana.analytic_scripts.declaracao import regras_declaracao as rd  # noqa: E402
-from virasana.navii import referencias  # noqa: E402
 from virasana.navii.mercante_por_id import id_na_data, limita_tempo  # noqa: E402
 from virasana.risco_historico import fichas_positivas  # noqa: E402
 
@@ -51,9 +57,11 @@ LIMITE_CONSULTA = 300             # s por consulta no MariaDB
 TRAFEGO_EXPORTACAO = '7'
 TIPOS_MASTER = ('11', '15')       # MBL e MHBL: têm filhotes
 VOLTAS_FAMILIA = 3                # MBL > MHBL > HBL
+DESLOCAMENTOS_CONTROLE = (-150, 100, 250)       # vizinhos de cada referência pelo ID: a mesma época, outra família
+GRUPOS_COM_CONTROLE = ('fichas positivas', 'RVF')   # as referências antigas (pesagem: já são da janela)
 INDICES = (('conhecimentosresumo', 'numeroCEmercante'), ('conhecimentosresumo', 'numeroCEMaster'),
            ('itensresumo', 'numeroCEmercante'), ('ncmitemresumo', 'numeroCEMercante'))
-TIPOS_NO_RELATORIO, PARES_NO_RELATORIO, EMPRESAS_NO_RELATORIO, PREFIXOS_NO_RELATORIO = 8, 30, 20, 20
+TIPOS_NO_RELATORIO, EMPRESAS_NO_RELATORIO = 8, 20
 INFRACOES_NA_VALIDACAO = 12
 DIAGNOSTICOS_PESAGEM = ('divergencia', 'digitacao', 'moderada', 'coerente')
 DIVERGENTE = (0.8, 1.2)           # RVF ÷ declarado fora disto: referência "peso/volume da RVF diverge"
@@ -64,7 +72,8 @@ FAIXAS_CARGA = ((0.0, 'até 50%'), (0.5, '50 a 80%'), (0.8, '80 a 100%'), (1.0, 
 FAIXAS_RAZAO = ((0.0, 'até 0,5'), (0.5, '0,5 a 0,8'), (0.8, '0,8 a 1,2'), (1.2, '1,2 a 2'), (2.0, 'acima de 2'))
 FAIXAS_DISPERSAO = ((1.0, 'até ×1,3'), (1.3, '×1,3 a ×2'), (2.0, '×2 a ×4'), (4.0, 'acima de ×4'))
 FAIXAS_DESVIOS = ((0.0, 'até 2'), (2.0, '2 a 3'), (rd.DESVIOS, '3 a 4'), (4.0, '4 a 6'), (6.0, 'acima de 6'))
-COLUNAS_CSV = ('sinal', 'descricao', 'ce', 'conteiner', 'na_janela', 'referencias', 'motivo')
+FAIXAS_CONTEINERES = ((2, '2'), (3, '3'), (4, '4 a 5'), (6, '6 a 10'), (11, 'mais de 10'))
+COLUNAS_CSV = ('sinal', 'descricao', 'ce', 'conteiner', 'na_janela', 'referencias', 'controle_de', 'motivo')
 
 CAMPOS_CE = ('ID, numeroCEmercante, numeroCEMaster, tipoBLConhecimento, tipoTrafego, codigoEmpresaNavegacao, '
              'portoOrigemCarga, numConhecimento, cubagem')
@@ -72,10 +81,11 @@ CAMPOS_CE = ('ID, numeroCEmercante, numeroCEMaster, tipoBLConhecimento, tipoTraf
 SQL_CES_JANELA = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE ID >= :de AND ID < :ate'  # nosec B608
 SQL_CES_NUMERO = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE numeroCEmercante IN :ces'  # nosec B608
 SQL_CES_MASTER = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE numeroCEMaster IN :masters'  # nosec B608
+SQL_CES_ID = f'SELECT {CAMPOS_CE} FROM conhecimentosresumo WHERE ID IN :ids'  # nosec B608
 SQL_ITENS = ('SELECT numeroCEmercante, codigoConteiner, isoCode, pesoBruto, cubagemM3, codigoTipoEmbalagem, '
              'indicadorUsoParcial FROM itensresumo WHERE numeroCEmercante IN :ces')
-SQL_NCMS = ('SELECT numeroCEMercante, codigoConteiner, identificacaoNCM, codigoTipoEmbalagem FROM ncmitemresumo '
-            'WHERE numeroCEMercante IN :ces')
+SQL_NCMS = ('SELECT numeroCEMercante, codigoConteiner, identificacaoNCM, codigoTipoEmbalagem, qtdeVolumes '
+            'FROM ncmitemresumo WHERE numeroCEMercante IN :ces')
 SQL_PESO_DO_CE = 'SELECT numeroCEmercante, pesoBruto, cubagemM3 FROM itensresumo WHERE numeroCEmercante IN :ces'
 SQL_RVFS = ('SELECT id, numeroCEmercante, peso, volume FROM ovr_verificacoesfisicas '
             "WHERE numeroCEmercante IS NOT NULL AND numeroCEmercante <> ''")
@@ -83,9 +93,9 @@ SQL_INFRACOES = 'SELECT e.rvf_id, i.nome FROM ovr_infracoesencontradas e JOIN ov
 SQL_PESAGENS = ('SELECT numeroCEmercante, diagnostico FROM ciclodevida_pesagem '
                 'WHERE principal = 1 AND numeroCEmercante IS NOT NULL')
 CAMPOS_ITEM = ('ce', 'conteiner', 'tipo', 'peso', 'cubagem', 'embalagem', 'uso_parcial')
-CAMPOS_NCM = ('ce', 'conteiner', 'ncm', 'embalagem')
+CAMPOS_NCM = ('ce', 'conteiner', 'ncm', 'embalagem', 'volumes')
 
-LinhaCE = namedtuple('LinhaCE', 'master tipo_bl empresa numero origem cubagem')
+LinhaCE = namedtuple('LinhaCE', 'id master tipo_bl empresa numero cubagem')
 
 
 def _t(valor) -> str:
@@ -115,8 +125,16 @@ def _quantil(ordenados: Sequence[float], q: float) -> float:
     return ordenados[min(len(ordenados) - 1, int(q * len(ordenados)))]
 
 
-def _sinais_da(secao: str) -> List[str]:
-    return [sinal for sinal in rd.SINAIS if sinal.startswith(secao)]
+def base_do_sinal(sinal: str) -> str:
+    """O conjunto de avaliáveis do sinal: '16e' tem o seu; os outros, o da seção ('16', '17', '18')."""
+    return sinal if sinal == rd.CUBAGEM_REPETIDA else sinal[:2]
+
+
+def _por_ce(linhas: List[dict]) -> Dict[str, List[dict]]:
+    agrupadas = defaultdict(list)
+    for linha in linhas:
+        agrupadas[linha['ce']].append(linha)
+    return agrupadas
 
 
 class _Masters:
@@ -133,9 +151,10 @@ class _Masters:
 class DiagnosticoDeclaracao(Diagnostico):
 
     def __init__(self, conexao, saida, desde: datetime, ate: datetime, secoes: Sequence[str] = SECOES,
-                 amostras: int = 5, bloco: int = BLOCO_IDS, progresso: Optional[Callable[[str], None]] = None):
+                 amostras: int = 5, bloco: int = BLOCO_IDS, progresso: Optional[Callable[[str], None]] = None,
+                 deslocamentos: Sequence[int] = DESLOCAMENTOS_CONTROLE):
         super().__init__(conexao, saida, desde, ate, agora=ate, amostras=amostras)
-        self.desde, self.ate, self.bloco = desde, ate, bloco
+        self.desde, self.ate, self.bloco, self.deslocamentos = desde, ate, bloco, tuple(deslocamentos)
         self.secoes = [secao for secao in SECOES if secao in secoes]
         self.progresso = progresso or (lambda texto: print(texto, file=sys.stderr))
         self.ces: Dict[str, LinhaCE] = {}
@@ -147,18 +166,15 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.com_itens: Set[str] = set()
         self.familias_feitas: Set[str] = set()
         self.conteineres: List[rd.Conteiner] = []
-        self.da_populacao = 0                     # os primeiros N contêineres são da população; os outros, referências
+        self.da_populacao = 0                     # os primeiros N contêineres são da população; os outros, não
         self.fase = 'população'
         self.contagens: Dict[str, Counter] = defaultdict(Counter)
         self.etapas: Counter = Counter()
-        self.pares: Dict[str, Counter] = {'tipo': Counter(), 'embalagem': Counter()}
-        self.raros: Dict[str, frozenset] = {'tipo': frozenset(), 'embalagem': frozenset()}
         self.bls_populacao: List[rd.BL] = []
         self.mapa: Dict[str, Counter] = {}
-        self.taxas: Dict[str, Tuple[int, int]] = {}
-        self.prefixos_cidade: frozenset = frozenset()
         self.tipicos: Dict[str, Dict[str, rd.Tipico]] = {}
         self.referencias: Dict[str, Set[str]] = {}
+        self.vizinhos: Dict[str, Set[str]] = defaultdict(set)    # CE de referência -> CEs de controle
         self.infracoes: Counter = Counter()
         self.rvfs: List[Tuple[str, Optional[float], Optional[float]]] = []
         self.razoes_rvf: Dict[str, Counter] = defaultdict(Counter)
@@ -176,11 +192,11 @@ class DiagnosticoDeclaracao(Diagnostico):
     def _guarda_ces(self, linhas) -> List[str]:
         """Guarda os CEs ainda não lidos (sem exportação); devolve os novos."""
         novos = []
-        for _id, numero_ce, master, tipo_bl, trafego, empresa, origem, numero_bl, cubagem in linhas:
+        for id_, numero_ce, master, tipo_bl, trafego, empresa, _origem, numero_bl, cubagem in linhas:
             ce = normaliza_ce(numero_ce)
             if not ce or ce in self.ces or _t(trafego) == TRAFEGO_EXPORTACAO:
                 continue
-            self.ces[ce] = LinhaCE(normaliza_ce(master), _t(tipo_bl), _t(empresa), _t(numero_bl), _t(origem),
+            self.ces[ce] = LinhaCE(int(id_), normaliza_ce(master), _t(tipo_bl), _t(empresa), _t(numero_bl),
                                    _t(cubagem))
             novos.append(ce)
         return novos
@@ -212,12 +228,29 @@ class DiagnosticoDeclaracao(Diagnostico):
                 for linha in self._por_lotes(SQL_NCMS, 'ces', ces)]
         return itens, ncms
 
+    def _cubagens_repetidas(self, itens: List[dict], ncms: List[dict]):
+        """16e, CE a CE (os itens do próprio CE; só se lê uma vez)."""
+        ncms_do_ce = _por_ce(ncms)
+        for ce, do_ce in _por_ce(itens).items():
+            avaliavel, repeticao = rd.cubagem_repetida(do_ce, ncms_do_ce.get(ce, []))
+            if avaliavel:
+                self.avaliaveis[rd.CUBAGEM_REPETIDA].add(ce)
+            if repeticao:
+                self.marcas[rd.CUBAGEM_REPETIDA][ce] = ('', repeticao.motivo)
+                if self.fase == 'população':
+                    self.contagens['16e cubagem repetida (m³)'][rd.br(repeticao.cubagem, 1)] += 1
+                    self.contagens['16e contêineres com a mesma cubagem'][
+                        rd.faixa(repeticao.conteineres, FAIXAS_CONTEINERES)] += 1
+
     def _processa(self, novos: List[str]):
-        """Completa as famílias dos CEs novos, lê itens e NCMs e monta os contêineres das famílias novas."""
+        """Completa as famílias dos CEs novos, lê itens e NCMs, aplica o 16e e monta os contêineres das famílias
+        novas."""
         todos = self._cronometra('famílias (masters e filhotes)', self._completa_familias, novos)
         itens, ncms = self._cronometra('itens e NCMs', self._le_itens, todos)
         if self.fase == 'população':
             self._conta_itens(itens, ncms)
+        if '16' in self.secoes:
+            self._cubagens_repetidas(itens, ncms)
         feitos = [c for c in rd.conteineres(itens, ncms, self.masters) if c.familia not in self.familias_feitas]
         self.familias_feitas.update(c.familia for c in feitos)
         self.conteineres += feitos
@@ -229,11 +262,10 @@ class DiagnosticoDeclaracao(Diagnostico):
             conta['cubagem do item (formato)'][rd.formato(item['cubagem'])] += 1
             conta['tipo do contêiner (item)'][situacao_tipo(item['tipo'])] += 1
             conta['uso parcial (valor informado)'][_t(item['uso_parcial']) or '(vazio)'] += 1
-            conta['embalagem do item'][_t(item['embalagem']) or '(vazia)'] += 1
         for linha in ncms:
             codigo = rd.ncm(linha['ncm'])
             conta['NCM (dígitos)'][f'{len(codigo)} dígitos' if codigo else '(sem NCM)'] += 1
-            conta['embalagem do NCM'][_t(linha['embalagem']) or '(vazia)'] += 1
+            conta['volumes do NCM (formato)'][rd.formato(linha['volumes'])] += 1
             conta['NCM com contêiner'][
                 'sim' if _t(linha['conteiner']) else 'não (vai para o único contêiner do CE)'] += 1
 
@@ -258,7 +290,7 @@ class DiagnosticoDeclaracao(Diagnostico):
             self.progresso(f'IDs até {fim} de {ate}: {len(self.populacao)} CEs, {len(self.conteineres)} contêineres')
         self.da_populacao = len(self.conteineres)
 
-    # ---------------------------------------------------------------- referências
+    # ---------------------------------------------------------------- referências e controle
     def _positivas(self) -> Set[str]:
         try:
             fichas = fichas_positivas.busca(self.conexao)
@@ -314,6 +346,15 @@ class DiagnosticoDeclaracao(Diagnostico):
             if por_diagnostico.get(codigo):
                 self.referencias[f'pesagem: {codigo}'] = por_diagnostico[codigo]
 
+    def _carrega_por_lotes(self, sql: str, nome: str, valores: List, etapa: str) -> list:
+        """Lê os CEs em blocos (CEs, famílias, itens) e devolve as linhas lidas."""
+        lidas = []
+        for inicio in range(0, len(valores), self.bloco):
+            linhas = self._cronometra(etapa, self._por_lotes, sql, nome, valores[inicio:inicio + self.bloco])
+            self._processa(self._guarda_ces(linhas))
+            lidas += linhas
+        return lidas
+
     def carrega_referencias(self):
         self.fase = 'referências'
         self.referencias['fichas positivas'] = self._cronometra('fichas positivas', self._positivas)
@@ -321,10 +362,30 @@ class DiagnosticoDeclaracao(Diagnostico):
         self._cronometra('RVF × declarado', self._compara_rvf)
         self._cronometra('pesagens', self._pesagens)
         fora = sorted({ce for ces in self.referencias.values() for ce in ces if ce not in self.ces})
-        for inicio in range(0, len(fora), self.bloco):
-            linhas = self._cronometra('CEs', self._por_lotes, SQL_CES_NUMERO, 'ces', fora[inicio:inicio + self.bloco])
-            self._processa(self._guarda_ces(linhas))
+        self._carrega_por_lotes(SQL_CES_NUMERO, 'ces', fora, 'CEs')
         self.progresso(f'referências: {len(fora)} CEs fora da janela')
+
+    def carrega_controles(self):
+        """Para cada CE de referência antiga (fichas, RVFs), os vizinhos pelo ID (DESLOCAMENTOS_CONTROLE): CEs
+        criados na mesma época, que não sejam referência nem da mesma família."""
+        self.fase = 'controles'
+        if not self.deslocamentos:
+            return
+        com_controle = {ce for nome, ces in self.referencias.items() if nome.startswith(GRUPOS_COM_CONTROLE)
+                        for ce in ces if ce in self.ces}
+        todas = {ce for ces in self.referencias.values() for ce in ces}
+        alvos = defaultdict(list)                          # ID vizinho -> CEs de referência
+        for ce in com_controle:
+            for deslocamento in self.deslocamentos:
+                alvos[self.ces[ce].id + deslocamento].append(ce)
+        for linha in self._carrega_por_lotes(SQL_CES_ID, 'ids', sorted(i for i in alvos if i > 0), 'CEs vizinhos'):
+            vizinho = normaliza_ce(linha[1])
+            if vizinho not in self.ces or vizinho in todas:
+                continue
+            for ce in alvos[int(linha[0])]:
+                if rd.raiz(vizinho, self.masters) != rd.raiz(ce, self.masters):
+                    self.vizinhos[ce].add(vizinho)
+        self.progresso(f'controles: {len(set().union(*self.vizinhos.values())) if self.vizinhos else 0} CEs vizinhos')
 
     # ---------------------------------------------------------------- aprendizado e marcas
     def _fcl_da_populacao(self) -> List[rd.Conteiner]:
@@ -332,27 +393,20 @@ class DiagnosticoDeclaracao(Diagnostico):
 
     def _bl(self, ce: str) -> rd.BL:
         linha = self.ces[ce]
-        return rd.BL(ce, linha.tipo_bl, linha.empresa, linha.numero, linha.origem)
+        return rd.BL(ce, linha.tipo_bl, linha.empresa, linha.numero)
 
     def aprende(self):
-        """Tabelas aprendidas da POPULAÇÃO: pares raros, mapa de prefixos, cidades e típicos dos NCMs."""
-        fcl = self._fcl_da_populacao()
-        for c in fcl:
-            self.pares['tipo'].update(rd.pares_tipo_carga(c))
-            self.pares['embalagem'].update(rd.pares_embalagem_carga(c))
-        # os limiares são lidos aqui, na chamada (o teste os reduz para uma base pequena)
-        self.raros = {nome: rd.pares_raros(contagem, rd.FRACAO_PAR_RARO, rd.MINIMO_DO_CAPITULO)
-                      for nome, contagem in self.pares.items()}
+        """Tabelas aprendidas da POPULAÇÃO: mapa de prefixos e típicos dos NCMs (limiares lidos na chamada: o teste os
+        reduz para uma base pequena)."""
         self.bls_populacao = [self._bl(ce) for ce in sorted(self.populacao) if ce in self.ces]
         self.mapa = rd.mapa_prefixos(self.bls_populacao)
-        self.taxas = rd.taxas_cidade(self.bls_populacao)
-        self.prefixos_cidade = rd.prefixos_com_cidade(self.taxas, rd.CIDADE_BATE, rd.AMOSTRAS_MINIMAS)
         if '18' in self.secoes:
             amostras = defaultdict(lambda: defaultdict(list))
-            for c in fcl:
-                for sinal, chave, valor in rd.medidas_ncm(c):
-                    amostras[sinal][chave].append(valor)
-            self.tipicos = {sinal: rd.tipicos(por_chave, rd.AMOSTRAS_MINIMAS) for sinal, por_chave in amostras.items()}
+            for c in self._fcl_da_populacao():
+                for medida, chave, valor in rd.medidas_ncm(c):
+                    amostras[medida][chave].append(valor)
+            self.tipicos = {medida: rd.tipicos(por_chave, rd.AMOSTRAS_MINIMAS)
+                            for medida, por_chave in amostras.items()}
 
     def _marca(self, sinal: str, ces, conteiner: str, motivo: str):
         for ce in ces:
@@ -364,7 +418,7 @@ class DiagnosticoDeclaracao(Diagnostico):
         sinais = []
         if '16' in self.secoes and c.chave:
             self.avaliaveis['16'].update(c.ces)
-            sinais += rd.sinais_capacidade(c) + rd.sinais_pares(c, self.raros['tipo'], self.raros['embalagem'])
+            sinais += rd.sinais_capacidade(c)
         if '18' in self.secoes and c.ncm_unico:
             self.avaliaveis['18'].update(c.ces)
             sinais += rd.sinais_ncm(c, self.tipicos)
@@ -380,11 +434,12 @@ class DiagnosticoDeclaracao(Diagnostico):
             bl = self._bl(ce)
             if bl.da_companhia:
                 self.avaliaveis['17'].add(ce)
-                for sinal, motivo in rd.sinais_bl(bl, self.mapa, self.prefixos_cidade):
+                for sinal, motivo in rd.sinais_bl(bl, self.mapa):
                     self._marca(sinal, [ce], '', motivo)
 
-    def _sinais_ativos(self) -> List[str]:
-        return [sinal for sinal in rd.SINAIS if sinal[:2] in self.secoes]
+    def _sinais_ativos(self, todos: bool = False) -> List[str]:
+        """Os sinais em teste das seções pedidas (com `todos`, também os de qualidade do dado)."""
+        return [sinal for sinal in (rd.DESCRICOES if todos else rd.SINAIS) if sinal[:2] in self.secoes]
 
     # ---------------------------------------------------------------- 0 e 1
     def secao_estrutura(self) -> bool:
@@ -436,10 +491,10 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.escreve()
         self.tabela(['população', 'quantidade'], [
             ('CEs (sem exportação)', len(self.populacao)),
-            ('CEs carregados (com famílias e referências)', len(self.ces)),
+            ('CEs carregados (com famílias, referências e controles)', len(self.ces)),
             ('contêineres (família × contêiner)', len(populacao)),
             ('cheios (FCL)', sum(not c.uso_parcial for c in populacao)),
-            ('uso parcial (LCL, fora dos 16 e 18)', sum(c.uso_parcial for c in populacao))])
+            ('uso parcial (LCL, fora)', sum(c.uso_parcial for c in populacao))])
         self._conta_tabela('tipo de BL (população)', Counter(
             self.ces[ce].tipo_bl or '(vazio)' for ce in self.populacao if ce in self.ces))
         self._tempos(dias)
@@ -475,50 +530,31 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.escreve(f'{titulo} — tipos com capacidade de referência:')
         self.tabela(['tipo', 'contêineres'] + rotulos + ['mediana', 'p99'], linhas)
 
-    def _pares_raros(self, nome: str, coluna: str, descreve: Callable[[str], str]):
-        contagem, raros, totais = self.pares[nome], self.raros[nome], Counter()
-        for (capitulo, _), quantidade in contagem.items():
-            totais[capitulo] += quantidade
-        ordem = sorted(raros, key=lambda par: (-totais[par[0]], -contagem[par], par))
-        linhas = [(f'{capitulo} {(referencias.descricao_posicao_ncm(capitulo) or "")[:40]}', descreve(valor),
-                   contagem[par], totais[capitulo], rd.pct(contagem[par] / totais[capitulo], 2))
-                  for par in ordem[:PARES_NO_RELATORIO] for capitulo, valor in [par]]
-        self.escreve()
-        self.escreve(f'Pares raros carga × {coluna}: {len(raros)} (menos de {rd.pct(rd.FRACAO_PAR_RARO)} dos '
-                     f'contêineres da carga, nas cargas com {rd.MINIMO_DO_CAPITULO}+ contêineres). Os das cargas mais '
-                     'frequentes — quais fazem sentido como sinal?')
-        self.tabela(['capítulo', coluna, 'contêineres', 'da carga', '%'], linhas)
-
     def _marcados(self, secao: str):
-        avaliaveis = self.avaliaveis[secao] & self.populacao
-        linhas, algum = [], set()
-        for sinal in _sinais_da(secao):
-            marcados = set(self.marcas[sinal]) & avaliaveis
-            algum |= marcados
-            linhas.append((sinal, rd.SINAIS[sinal], len(marcados), rd.pct(len(marcados) / len(avaliaveis), 2)
-                           if avaliaveis else '-'))
-        linhas.append(('', 'algum sinal da seção', len(algum), rd.pct(len(algum) / len(avaliaveis), 2)
-                       if avaliaveis else '-'))
+        linhas = []
+        for sinal in self._sinais_ativos(todos=True):
+            if sinal[:2] == secao:
+                avaliaveis = self.avaliaveis[base_do_sinal(sinal)] & self.populacao
+                marcados = len(set(self.marcas[sinal]) & avaliaveis)
+                linhas.append((sinal, rd.DESCRICOES[sinal], len(avaliaveis), marcados,
+                               rd.pct(marcados / len(avaliaveis), 2) if avaliaveis else '-'))
         self.escreve()
-        self.escreve(f'CEs da população avaliáveis: {len(avaliaveis)}')
-        self.tabela(['sinal', 'descrição', 'CEs marcados', '% dos avaliáveis'], linhas)
+        self.escreve('CEs da população:')
+        self.tabela(['sinal', 'descrição', 'avaliáveis', 'marcados', '% dos avaliáveis'], linhas)
 
     def secao_16(self):
-        self.titulo('16. TIPO DO CONTÊINER × CUBAGEM × CARGA × EMBALAGEM')
+        self.titulo('16. CONTÊINER × CUBAGEM × CARGA (16a/16b: qualidade do dado; 16e: cubagem copiada)')
         fcl = self._fcl_da_populacao()
         for nome in ('tipo do contêiner (item)', 'peso do item (formato)', 'cubagem do item (formato)',
-                     'uso parcial (valor informado)', 'embalagem do item', 'embalagem do NCM', 'NCM (dígitos)',
-                     'NCM com contêiner'):
+                     'uso parcial (valor informado)', 'NCM (dígitos)', 'volumes do NCM (formato)', 'NCM com contêiner'):
             self._conta_tabela(nome)
-        self._conta_tabela('cubagem do CE (formato)', Counter(
-            rd.formato(self.ces[ce].cubagem) for ce in self.populacao if ce in self.ces))
-        self._conta_tabela('origem do peso do contêiner (FCL)', Counter(c.origem_peso for c in fcl))
-        self._conta_tabela('origem da cubagem do contêiner (FCL)', Counter(c.origem_cubagem for c in fcl))
+        self._conta_tabela('origem do peso do contêiner (FCL)', Counter(c.origem_peso for c in fcl), limite=4)
+        self._conta_tabela('origem da cubagem do contêiner (FCL)', Counter(c.origem_cubagem for c in fcl), limite=4)
         self._cubagens_frequentes(fcl)
         self._por_faixa('Ocupação (cubagem ÷ capacidade) por tipo', fcl, rd.ocupacao, 'cubagem', FAIXAS_OCUPACAO)
         self._por_faixa('Peso ÷ carga máxima por tipo', fcl, rd.carga, 'peso', FAIXAS_CARGA)
-        self._pares_raros('tipo', 'tipo do contêiner', rd.nome_grupo)
-        self._pares_raros('embalagem', 'embalagem', str)
+        self._conta_tabela('16e cubagem repetida (m³)', limite=12)
+        self._conta_tabela('16e contêineres com a mesma cubagem', faixas=FAIXAS_CONTEINERES)
         self._marcados('16')
 
     # ---------------------------------------------------------------- 17
@@ -538,110 +574,108 @@ class DiagnosticoDeclaracao(Diagnostico):
             comum, quantidade = contagem.most_common(1)[0]
             raros = sum(q for prefixo, q in contagem.items() if prefixo and q < rd.PREFIXO_RARO * total)
             linhas.append((empresa, total, comum or '(sem prefixo)', rd.pct(quantidade / total), len(contagem),
-                           rd.pct(contagem[''] / total), raros))
+                           'sim' if quantidade >= rd.PREFIXO_DOMINANTE * total else 'não', raros))
         self.escreve()
-        self.escreve('Prefixo do número por empresa de navegação (só BL e MBL):')
-        self.tabela(['empresa', 'BLs', 'prefixo comum', '%', 'prefixos', 'sem prefixo', 'BLs de prefixo raro'], linhas)
-
-    def _cidades_relatorio(self):
-        linhas = [(prefixo, total, bate, rd.pct(bate / total), 'sim' if prefixo in self.prefixos_cidade else '')
-                  for prefixo, (bate, total) in sorted(self.taxas.items(), key=lambda par: -par[1][1])[
-                      :PREFIXOS_NO_RELATORIO]]
-        self.escreve()
-        self.escreve(f'Cidade no número (3 letras depois do prefixo) × porto de origem — vira sinal com '
-                     f'{rd.pct(rd.CIDADE_BATE, 0)}+ e {rd.AMOSTRAS_MINIMAS}+ BLs:')
-        self.tabela(['prefixo', 'BLs com cidade e origem', 'batem', '%', 'vira sinal'], linhas)
+        self.escreve(f'Prefixo do número por empresa de navegação (só BL e MBL; o 17a só vale com prefixo dominante, '
+                     f'{rd.pct(rd.PREFIXO_DOMINANTE, 0)}+):')
+        self.tabela(['empresa', 'BLs', 'prefixo comum', '%', 'prefixos', 'dominante', 'BLs de prefixo raro'], linhas)
 
     def secao_17(self):
-        self.titulo('17. NÚMERO DO BL × EMPRESA DE NAVEGAÇÃO × ORIGEM')
+        self.titulo('17. NÚMERO DO BL × EMPRESA DE NAVEGAÇÃO')
         bls = self.bls_populacao
         self._conta_tabela('empresa de navegação (formato)', Counter(formato_empresa(bl.empresa) for bl in bls))
-        self._conta_tabela('empresa de navegação (as mais frequentes)', Counter(bl.empresa or '(vazia)' for bl in bls))
         self._formatos_por_tipo(bls)
         self._mapa_relatorio()
-        self._cidades_relatorio()
         self._marcados('17')
 
     # ---------------------------------------------------------------- 18
     def _mais_especificos(self, c: rd.Conteiner) -> Dict[str, Tuple[str, float]]:
-        """{sinal: (chave, valor)} do nível mais específico que tem típico."""
+        """{medida: (chave, valor)} do nível mais específico que tem típico."""
         achados = {}
-        for sinal, chave, valor in rd.medidas_ncm(c):
-            if sinal not in achados and chave in self.tipicos.get(sinal, {}):
-                achados[sinal] = (chave, valor)
+        for medida, chave, valor in rd.medidas_ncm(c):
+            if medida not in achados and chave in self.tipicos.get(medida, {}):
+                achados[medida] = (chave, valor)
         return achados
 
     def _niveis_e_desvios(self, unicos: List[rd.Conteiner]):
         niveis, desvios = defaultdict(Counter), defaultdict(Counter)
         for c in unicos:
             achados = self._mais_especificos(c)
-            for sinal in (rd.PESO_NCM, rd.DENSIDADE_NCM):
-                if sinal not in achados:
-                    niveis[sinal]['sem típico (ou sem medida)'] += 1
+            for medida in (rd.PESO_NCM, rd.DENSIDADE_NCM):
+                if medida not in achados:
+                    niveis[medida]['sem típico (ou sem medida)'] += 1
                     continue
-                chave, valor = achados[sinal]
-                niveis[sinal][f'NCM com {len(chave.split("|")[-1])} dígitos'] += 1
-                desvios[sinal][rd.faixa(abs(rd.desvios(valor, self.tipicos[sinal][chave])), FAIXAS_DESVIOS)] += 1
-        for sinal in (rd.PESO_NCM, rd.DENSIDADE_NCM):
-            self._conta_tabela(f'{sinal} nível do típico usado', niveis[sinal])
-            self._conta_tabela(f'{sinal} |desvios| do típico', desvios[sinal], faixas=FAIXAS_DESVIOS)
+                chave, valor = achados[medida]
+                niveis[medida][f'NCM com {len(chave.split("|")[-1])} dígitos'] += 1
+                desvios[medida][rd.faixa(abs(rd.desvios(valor, self.tipicos[medida][chave])), FAIXAS_DESVIOS)] += 1
+        for medida in (rd.PESO_NCM, rd.DENSIDADE_NCM):
+            self._conta_tabela(f'{medida} nível do típico usado', niveis[medida])
+            self._conta_tabela(f'{medida} |desvios| do típico', desvios[medida], faixas=FAIXAS_DESVIOS)
 
     def _dispersao(self):
         linhas = []
-        for sinal, tabela in sorted(self.tipicos.items()):
+        for medida, tabela in sorted(self.tipicos.items()):
             por_nivel = defaultdict(Counter)
             for chave, referencia in tabela.items():
                 por_nivel[len(chave.split('|')[-1])][rd.faixa(10 ** referencia.mad, FAIXAS_DISPERSAO)] += 1
             for nivel, contagem in sorted(por_nivel.items(), reverse=True):
-                linhas.append([sinal, nivel, sum(contagem.values())] + [contagem[r] for _, r in FAIXAS_DISPERSAO])
+                linhas.append([medida, nivel, sum(contagem.values())] + [contagem[r] for _, r in FAIXAS_DISPERSAO])
         self.escreve()
         self.escreve('Dispersão dos típicos (fator de 1 desvio robusto; estreito = sinal útil):')
-        self.tabela(['sinal', 'dígitos', 'típicos'] + [r for _, r in FAIXAS_DISPERSAO], linhas)
-
-    def _maiores_tipicos(self):
-        tabela = {chave: t for chave, t in self.tipicos.get(rd.PESO_NCM, {}).items() if len(chave.split('|')[1]) == 4}
-        linhas = [(chave, (referencias.descricao_posicao_ncm(chave.split('|')[1]) or '')[:50], t.n, rd.br(t.p10),
-                   rd.br(10 ** t.mediana), rd.br(t.p90))
-                  for chave, t in sorted(tabela.items(), key=lambda par: -par[1].n)[:TIPOS_NO_RELATORIO + 2]]
-        self.escreve()
-        self.escreve('Peso por contêiner das posições (4 dígitos) mais frequentes, em kg:')
-        self.tabela(['tamanho|NCM', 'posição', 'contêineres', 'p10', 'mediana', 'p90'], linhas)
+        self.tabela(['medida', 'dígitos', 'típicos'] + [r for _, r in FAIXAS_DISPERSAO], linhas)
 
     def secao_18(self):
-        self.titulo('18. PESO × VOLUME × NCM (contêineres de um NCM só)')
+        self.titulo('18. PESO × VOLUME × NCM (contêineres de um NCM só; por direção)')
         fcl = self._fcl_da_populacao()
         unicos = [c for c in fcl if c.ncm_unico]
         self.tabela(['contêineres FCL', 'quantidade'], [
-            ('todos', len(fcl)), ('com NCM', sum(bool(c.ncms) for c in fcl)), ('com um NCM só', len(unicos)),
+            ('todos', len(fcl)), ('com um NCM só', len(unicos)),
             ('um NCM só, com peso e tamanho', sum(bool(c.peso and c.tamanho) for c in unicos)),
             ('um NCM só, com densidade', sum(rd.densidade(c) is not None for c in unicos))])
         self._niveis_e_desvios(unicos)
         self._dispersao()
-        self._maiores_tipicos()
         self._marcados('18')
 
     # ---------------------------------------------------------------- V, A e CSV
+    def _controle(self, ces: Set[str]) -> Set[str]:
+        return {vizinho for ce in ces for vizinho in self.vizinhos.get(ce, ())}
+
+    def _taxa(self, sinal: str, ces: Set[str]) -> Tuple[int, int]:
+        """(avaliáveis, marcados) do sinal entre os CEs."""
+        avaliaveis = self.avaliaveis[base_do_sinal(sinal)] & ces
+        return len(avaliaveis), len(set(self.marcas[sinal]) & avaliaveis)
+
     def _valida(self, sinal: str, grupos: List[Tuple[str, Set[str]]]):
-        avaliaveis_secao, marcados = self.avaliaveis[sinal[:2]], set(self.marcas[sinal])
-        base = avaliaveis_secao & self.populacao
-        marcados_base = len(marcados & base)
+        total_base, marcados_base = self._taxa(sinal, self.populacao)
         linhas = []
         for nome, ces in grupos:
-            avaliaveis = avaliaveis_secao & ces
-            no_grupo = len(marcados & avaliaveis)
-            linhas.append((nome, len(avaliaveis), no_grupo, rd.pct(no_grupo / len(avaliaveis), 2) if avaliaveis
-                           else '-', rd.br(rd.vezes(no_grupo, len(avaliaveis), marcados_base, len(base)), 1)))
+            total, marcados = self._taxa(sinal, ces)
+            linha = [nome, total, marcados, rd.pct(marcados / total, 2) if total else '-',
+                     rd.br(rd.vezes(marcados, total, marcados_base, total_base), 1)]
+            if nome.startswith(GRUPOS_COM_CONTROLE) and self.vizinhos:
+                total_c, marcados_c = self._taxa(sinal, self._controle(ces))
+                linha += [total_c, rd.pct(marcados_c / total_c, 2) if total_c else '-',
+                          rd.br(rd.vezes(marcados, total, marcados_c, total_c), 1)]
+            else:
+                linha += ['', '', '']
+            linhas.append(linha)
         self.escreve()
-        self.escreve(f'{sinal} — {rd.SINAIS[sinal]}:')
-        self.tabela(['grupo', 'avaliáveis', 'marcados', 'taxa', 'vezes a população'], linhas)
+        self.escreve(f'{sinal} — {rd.DESCRICOES[sinal]}:')
+        self.tabela(['grupo', 'avaliáveis', 'marcados', 'taxa', 'vezes a população', 'controle', 'taxa no controle',
+                     'vezes o controle'], linhas)
 
     def secao_validacao(self):
-        self.titulo('V. VALIDAÇÃO — os sinais nas referências')
+        self.titulo('V. VALIDAÇÃO — os sinais nas referências e no controle da mesma época')
+        self.escreve('Evidência FRACA: as Fichas são poucas e foram escolhidas por outros critérios. "Vezes o '
+                     'controle" compara cada referência com CEs vizinhos pelo ID (criados na mesma época); "vezes a '
+                     'população", com os CEs da janela (de outra época, para as referências antigas).')
         grupos = [('população (janela)', self.populacao)] + list(self.referencias.items())
-        self.tabela(['grupo', 'CEs', 'carregados (sem exportação)'],
-                    [(nome, len(ces), sum(ce in self.ces for ce in ces)) for nome, ces in grupos])
-        self._conta_tabela('infração encontrada na RVF (todas; quais contam como declaração falsa?)', self.infracoes,
-                           limite=60)
+        self.escreve()
+        self.tabela(['grupo', 'CEs', 'carregados (sem exportação)', 'controles (vizinhos)'],
+                    [(nome, len(ces), sum(ce in self.ces for ce in ces),
+                      len(self._controle(ces)) if nome.startswith(GRUPOS_COM_CONTROLE) else '')
+                     for nome, ces in grupos])
+        self._conta_tabela('infração encontrada na RVF (todas)', self.infracoes, limite=60)
         for nome in ('peso', 'volume'):
             self._conta_tabela(f'{nome} da RVF ÷ declarado nos itens do CE', self.razoes_rvf[nome],
                                faixas=FAIXAS_RAZAO)
@@ -650,26 +684,31 @@ class DiagnosticoDeclaracao(Diagnostico):
 
     def secao_amostras(self):
         self.titulo(f'A. AMOSTRAS ({self.amostras} CEs da população por sinal; todos no --csv)')
-        for sinal in self._sinais_ativos():
+        for sinal in self._sinais_ativos(todos=True):
             marcados = [ce for ce in self.marcas[sinal] if ce in self.populacao]
             self.escreve()
-            self.escreve(f'{sinal} — {rd.SINAIS[sinal]}: {len(marcados)} CEs')
+            self.escreve(f'{sinal} — {rd.DESCRICOES[sinal]}: {len(marcados)} CEs')
             for ce in sorted(marcados, key=lambda numero: numero[::-1])[:self.amostras]:   # espalha pelas datas
                 conteiner, motivo = self.marcas[sinal][ce]
                 self.escreve(f'  CE {ce}' + (f' contêiner {conteiner}' if conteiner else '') + f': {motivo}')
 
     def grava_csv(self, caminho: str):
-        referencias_do_ce = defaultdict(list)
+        referencias_do_ce, controle_de = defaultdict(list), defaultdict(set)
         for nome, ces in self.referencias.items():
             for ce in ces:
                 referencias_do_ce[ce].append(nome)
+        for ce, vizinhos in self.vizinhos.items():
+            for vizinho in vizinhos:
+                controle_de[vizinho].add(ce)
         with open(caminho, 'w', encoding='utf-8', newline='') as arquivo:
             escritor = csv.writer(arquivo, delimiter=';')
             escritor.writerow(COLUNAS_CSV)
-            for sinal in self._sinais_ativos():
+            for sinal in self._sinais_ativos(todos=True):
                 for ce, (conteiner, motivo) in sorted(self.marcas[sinal].items()):
-                    escritor.writerow([sinal, rd.SINAIS[sinal], ce, conteiner, 'sim' if ce in self.populacao else 'não',
-                                       ' | '.join(referencias_do_ce.get(ce, [])), motivo])
+                    escritor.writerow([sinal, rd.DESCRICOES[sinal], ce, conteiner,
+                                       'sim' if ce in self.populacao else 'não',
+                                       ' | '.join(referencias_do_ce.get(ce, [])),
+                                       ' '.join(sorted(controle_de.get(ce, ()))), motivo])
 
 
 def roda(diag: DiagnosticoDeclaracao, caminho_csv: Optional[str] = None) -> bool:
@@ -679,6 +718,7 @@ def roda(diag: DiagnosticoDeclaracao, caminho_csv: Optional[str] = None) -> bool
     diag.carrega_populacao()
     diag.aprende()
     diag.carrega_referencias()
+    diag.carrega_controles()
     diag.calcula_marcas()
     diag.secao_populacao()
     for secao in diag.secoes:
@@ -698,6 +738,8 @@ def _argumentos(argv=None):
     parser.add_argument('--secoes', nargs='+', choices=SECOES, default=list(SECOES),
                         help='itens do backlog a diagnosticar (padrão: 16 17 18)')
     parser.add_argument('--amostras', type=int, default=5, help='CEs marcados por sinal no log (padrão 5)')
+    parser.add_argument('--sem-controle', action='store_true',
+                        help='não lê os vizinhos das referências (o controle da mesma época)')
     parser.add_argument('--limite', type=float, default=LIMITE_CONSULTA,
                         help=f'segundos por consulta no MariaDB, 0 = sem limite (padrão {LIMITE_CONSULTA})')
     parser.add_argument('--saida', help='grava o relatório neste arquivo (padrão: só na tela)')
@@ -717,7 +759,8 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     try:
         with engine.connect() as conexao:
             diag = DiagnosticoDeclaracao(conexao, saida, ate - timedelta(days=args.dias), ate, args.secoes,
-                                         args.amostras)
+                                         args.amostras, deslocamentos=() if args.sem_controle else
+                                         DESLOCAMENTOS_CONTROLE)
             roda(diag, args.csv)
     finally:
         if args.saida:

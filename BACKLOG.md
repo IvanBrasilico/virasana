@@ -95,31 +95,42 @@ nova.
 
 ### Ideias de sinais de risco — informação declarada inventada (pedido do usuário, 22/10/2026)
 
-Antes de implementar, cada uma precisa de um **diagnóstico nos dados** (como os F0 dos outros trabalhos):
-preenchimento real dos campos, distribuição, quantos CEs seriam marcados e se os marcados batem com as fichas positivas
-do risco histórico. Se valerem, viram selo/filtro no NAVI-I (como o diagnóstico das pesagens) e/ou sinal do risco
-histórico.
+Antes de implementar, cada uma precisa de um **diagnóstico nos dados** (como os F0 dos outros trabalhos). Código:
+`virasana/analytic_scripts/declaracao/` — `regras_declaracao.py` (regras puras) e `diagnostico_declaracao.py` (só
+leitura). Plano do passo 0 aprovado em 23/10/2026: um script, janela de 30 dias pela janela de ID; unidade o contêiner
+cheio (FCL) na família master/filhote (17: só BL e MBL); referências = fichas positivas, RVFs e pesagens.
 
-**Passo 0 (plano aprovado pelo usuário em 23/10/2026) — escrito, falta rodar no servidor.**
-`virasana/analytic_scripts/declaracao/`: `regras_declaracao.py` (regras puras) e `diagnostico_declaracao.py` (só
-leitura; seções 0, 1, 16, 17, 18, V, A). Decisões do plano:
-- um script com as três seções, uma rodada no servidor; janela de **30 dias** (pela janela de ID) para 16 e 17 e, se o
-  tempo estimado na seção 1 couber, outra de **90 dias só com o 18** (mais amostras por NCM);
-- unidade dos 16 e 18: o **contêiner cheio (FCL)** na família master/filhote (peso e cubagem pela regra das pesagens);
-  uso parcial fica de fora. No 17, só **BL e MBL** (o número do HBL é do agente);
-- **referências** para validar: fichas positivas do risco histórico, RVFs (todas, por infração encontrada, peso e
-  volume da RVF × declarado) e pesagens do ciclo de vida (por diagnóstico). O usuário escolhe, pela lista de
-  infrações do log, quais contam como "declaração falsa";
-- tabelas de referência: capacidade e carga máxima por tipo em `navii/referencias/tipos_conteiner.json`
-  (`capacidades`, de páginas públicas das companhias — conferir antes de virar regra); prefixo × empresa aprendido
-  da base, o usuário confere os maiores;
-- **critério de "vale"** (propostas): dado utilizável em 70–80%+ dos contêineres/CEs; marcação entre 0,5% e 5%;
-  taxa nas referências ≥ 2× a da população, olhando as contagens; amostra de 20–30 marcados com o motivo para o
-  usuário olhar no NAVI-I. Limiares iniciais em `regras_declaracao.py` (calibrar com o log).
+**Como validar (usuário, 23/10/2026): as Fichas são evidência FRACA** — são poucas e foram escolhidas por outros
+critérios (a análise de risco delas não usava estas técnicas): força nelas não prova fraude e falta de força não
+descarta um sinal. A decisão junta: (1) o sinal ser uma inconsistência em si (dado impossível ou copiado); (2) taxa de
+marcação útil (0,5% a 5%); (3) corroboração independente quando existe (pesagem medida, peso da RVF); (4) as
+referências comparadas com o **controle da mesma época** (vizinhos pelo ID), nunca só com a população recente;
+(5) revisão de amostras no NAVI-I (imagens); e, se passar, (6) um piloto no NAVI-I como "sinal em observação",
+medindo as Fichas abertas pelo card.
 
-Rodar (raiz do virasana, no servidor):
-`virasana-venv/bin/python virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao.log
---csv declaracao.csv`; depois, se couber, `--dias 90 --secoes 18 --saida declaracao_18.log`.
+**1ª rodada em produção (23/10/2026, `declaracao.log`/`.csv`, 297 mil CEs, 317 mil contêineres FCL):**
+- dados: números do Mercante sempre com ponto e 3 casas ("25040.000"); NCM com só 4 dígitos em 97% das linhas;
+  cubagem vazia em 14% dos itens e em números redondos (estimada); embalagem vazia (94% no item; no NCM, 52% vazia e
+  33% "99"); `codigoEmpresaNavegacao` = CNPJ da agência (99,8%); tempo: população 2,5 min, referências ~11 min;
+- **descartados** como sinal de risco (decisão do usuário): 16a/16b (cubagem acima da capacidade, peso acima da carga
+  máxima — erro de digitação, sem força nas referências; ficam contados como qualidade do dado); 16c/16d (pares raros
+  carga × tipo e × embalagem — carga fora de gabarito legítima; embalagem inútil); 17b (cidade no número do BL — nenhum
+  prefixo bate com a origem em 90%: HLCU 40%, ONEY 46%, MEDU 0%);
+- **17a** (prefixo raro) parecia forte (35,8× nas positivas), mas era distorção: 1.054 das 1.471 marcações de uma
+  agência que numera com ~100 prefixos (CNPJ 53364616000108; nenhuma referência) e TODO acerto em CEs antigos (2021,
+  sobretudo) de empresas cuja numeração mudou — o mapa é dos últimos 30 dias. Agora só vale em empresa de prefixo
+  dominante (90%+) e é medido contra o controle da mesma época;
+- **18**: só a densidade ACIMA da típica do NCM separou (2,4% marcados; positivas 10,4×, RVF 4,1×, falsa declaração
+  8,9×); abaixo, nada. Mas os acertos são todos antigos (27 de 36 positivas de 2021) e a força cai no corte mais alto —
+  pode ser época (cubagem declarada de outro jeito), daí o controle. Peso atípico (18a) acompanha a pesagem
+  divergente (1,9×; 15,6× com NCM de 8 dígitos): erro de declaração do peso, não fraude.
+
+**2ª versão (23/10/2026), falta rodar**: controle da mesma época (vizinhos de cada referência pelo ID, `-150/+100/+250`,
+de outra família) com "vezes o controle"; 18 por direção (`18a+/-`, `18b+/-`); 17a com prefixo dominante; e o sinal
+novo **16e — cubagem copiada** (pedido do usuário): no CE, 2+ contêineres cheios com a mesma mercadoria (mesmo conjunto
+de NCMs) e a MESMA cubagem, mas pesos ou volumes diferentes (> 10%) — no mínimo, dado inventado. Rodar (raiz do
+virasana, no servidor): `virasana-venv/bin/python virasana/analytic_scripts/declaracao/diagnostico_declaracao.py
+--saida declaracao2.log --csv declaracao2.csv` (`--sem-controle` pula os vizinhos).
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

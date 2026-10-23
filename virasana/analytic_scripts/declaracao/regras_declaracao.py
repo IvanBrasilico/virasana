@@ -4,21 +4,28 @@ SINAIS DE DECLARAÇÃO INVENTADA no Mercante — regras PURAS, sem banco (itens 
 aprovado pelo usuário em 23/10/2026: o passo 0 é o diagnóstico nos dados, `diagnostico_declaracao.py`). Se um sinal
 valer, estas mesmas regras servem depois ao NAVI-I e/ou ao risco histórico.
 
-  - 16, contêiner × cubagem × carga × embalagem: OCUPAÇÃO = cubagem declarada ÷ capacidade do tipo (`capacidades` de
-    `navii/referencias/tipos_conteiner.json`, de fonte pública) — acima de 110%, impossível; PESO acima da carga
-    máxima do tipo (com folga: o valor publicado é um exemplo da frota); PARES raros na própria base: para cada
-    capítulo do NCM, o grupo do contêiner (dry, reefer, tanque...) e a embalagem pouco usados com aquela carga — são
-    candidatos que o usuário revisa (reefer com máquina pode ser normal; tanque com tecido, não);
-  - 17, número do BL × companhia × origem: o PREFIXO de 4 letras (tipo SCAC) do `numConhecimento` raro para a empresa
-    de navegação do CE (mapa aprendido da base); a CIDADE logo depois do prefixo diferente do porto de origem — só nos
-    prefixos em que ela costuma bater. Só BL (10) e MBL (11): no HBL o número é do agente, de formato livre;
-  - 18, peso × volume × NCM: nos contêineres de UM NCM só, o PESO POR CONTÊINER (por tamanho) e a DENSIDADE (peso ÷
-    cubagem) comparados com o típico do NCM, aprendido da base em escala log (mediana e MAD), no nível mais
-    específico (8, 6 ou 4 dígitos) com amostras suficientes.
+Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no mesmo dia):
+  - 16e, CUBAGEM COPIADA: no CE, 2+ contêineres cheios com a mesma mercadoria (o mesmo conjunto de NCMs) e a MESMA
+    cubagem, mas pesos ou volumes diferentes — a cubagem não foi medida (pedido do usuário: "no mínimo, dado
+    inventado");
+  - 17a, número do BL × companhia: o PREFIXO de 4 letras (tipo SCAC) do `numConhecimento` raro para a empresa de
+    navegação do CE (mapa aprendido da base) — só nas empresas com um prefixo DOMINANTE (a agência que numera de cem
+    jeitos não diz nada) e só em BL (10) e MBL (11): no HBL o número é do agente;
+  - 18, peso × volume × NCM, por DIREÇÃO: nos contêineres de UM NCM só, o PESO POR CONTÊINER (por tamanho, 18a) e a
+    DENSIDADE (peso ÷ cubagem, 18b) acima (+) ou abaixo (-) do típico do NCM, aprendido da base em escala log (mediana
+    e MAD), no nível mais específico (8, 6 ou 4 dígitos) com amostras suficientes. Na 1ª rodada só a densidade ACIMA
+    se separou nas referências.
 
-Unidade dos 16 e 18: o contêiner CHEIO (FCL) na família de CEs (master e filhotes) — peso e cubagem do contêiner pela
-regra das pesagens (`pesagens_ciclo.peso_da_familia`: o item do master; sem ele, a soma dos filhotes). Contêiner com
-item de uso parcial (LCL) fica de fora. Os limiares abaixo são as propostas do plano, a calibrar com o diagnóstico.
+Qualidade do dado (contados, não são sinal de risco — 1ª rodada: sem força nas referências; erro de digitação):
+  - 16a, cubagem acima da capacidade do tipo (`capacidades` de `navii/referencias/tipos_conteiner.json`);
+  - 16b, peso acima da carga máxima do tipo (com folga: o valor publicado é um exemplo da frota).
+Descartados na 1ª rodada: pares raros carga × tipo e carga × embalagem (16c/16d: carga fora de gabarito legítima;
+embalagem vazia ou "99" na maioria) e cidade no número do BL (17b: nenhum prefixo bate com a origem em 90%).
+
+Unidade dos 16a/16b e 18: o contêiner CHEIO (FCL) na família de CEs (master e filhotes) — peso e cubagem do contêiner
+pela regra das pesagens (`pesagens_ciclo.peso_da_familia`: o item do master; sem ele, a soma dos filhotes). Do 16e: os
+itens do próprio CE. Contêiner com item de uso parcial (LCL) fica de fora. Números do Mercante: texto com ponto e 3
+casas decimais ("25040.000" = 25.040 kg; 1ª rodada, 100% dos pesos).
 """
 import json
 import math
@@ -28,18 +35,17 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from virasana.analytic_scripts.ciclo_de_vida.pesagens_ciclo import peso_da_familia
 from virasana.navii import referencias
 
 OCUPACAO_IMPOSSIVEL = 1.10        # cubagem acima de 110% da capacidade do tipo
 CARGA_ACIMA = 1.10                # peso acima de 110% da carga máxima publicada (exemplo da frota: há folga)
-FRACAO_PAR_RARO = 0.002           # grupo do contêiner / embalagem em menos de 0,2% dos contêineres daquela carga
-MINIMO_DO_CAPITULO = 500          # contêineres do capítulo para "raro" querer dizer algo
+QUANTIDADE_DIFERENTE = 0.10       # 16e: pesos (ou volumes) que diferem mais de 10% (maior ÷ menor − 1)
 PREFIXO_RARO = 0.01               # prefixo em menos de 1% dos BLs da empresa de navegação
+PREFIXO_DOMINANTE = 0.90          # ... de uma empresa cujo prefixo comum cobre 90%+ dos BLs
 MINIMO_DA_EMPRESA = 50            # BLs da empresa para o mapa valer
-CIDADE_BATE = 0.90                # prefixos em que a cidade do número bate com a origem em 90%+ dos BLs
 NIVEIS_NCM = (8, 6, 4)
 AMOSTRAS_MINIMAS = 30             # contêineres de um NCM só para o típico daquele nível valer
 DESVIOS = 3.0                     # |desvios robustos| a partir dos quais peso / densidade são atípicos
@@ -50,19 +56,22 @@ TIPOS_BL_DA_COMPANHIA = ('10', '11')   # BL único e MBL: o número é da compan
 TAMANHOS = {'2': "20'", '4': "40'", 'L': "45'"}
 PES_DO_APELIDO = {'20': '22', '40': '42', '45': 'L5'}
 
-OCUPACAO, CARGA_MAXIMA, TIPO_CARGA, EMBALAGEM_CARGA = '16a', '16b', '16c', '16d'
-PREFIXO, CIDADE = '17a', '17b'
-PESO_NCM, DENSIDADE_NCM = '18a', '18b'
-SINAIS = {
-    OCUPACAO: 'cubagem acima da capacidade do contêiner',
-    CARGA_MAXIMA: 'peso acima da carga máxima do contêiner',
-    TIPO_CARGA: 'tipo de contêiner raro para a carga',
-    EMBALAGEM_CARGA: 'embalagem rara para a carga',
-    PREFIXO: 'prefixo do BL raro para a empresa de navegação',
-    CIDADE: 'cidade no número do BL diferente da origem',
-    PESO_NCM: 'peso por contêiner atípico para o NCM',
-    DENSIDADE_NCM: 'densidade atípica para o NCM',
+OCUPACAO, CARGA_MAXIMA, CUBAGEM_REPETIDA = '16a', '16b', '16e'
+PREFIXO = '17a'
+PESO_NCM, DENSIDADE_NCM = '18a', '18b'          # chaves dos típicos; o sinal leva a direção: '18a+', '18b-'...
+QUALIDADE = {
+    OCUPACAO: 'cubagem acima da capacidade do contêiner (qualidade do dado)',
+    CARGA_MAXIMA: 'peso acima da carga máxima do contêiner (qualidade do dado)',
 }
+SINAIS = {
+    CUBAGEM_REPETIDA: 'mesma cubagem em contêineres da mesma mercadoria com quantidades diferentes',
+    PREFIXO: 'prefixo do BL raro para a empresa de navegação',
+    PESO_NCM + '+': 'peso por contêiner ACIMA do típico do NCM',
+    PESO_NCM + '-': 'peso por contêiner ABAIXO do típico do NCM',
+    DENSIDADE_NCM + '+': 'densidade ACIMA da típica do NCM',
+    DENSIDADE_NCM + '-': 'densidade ABAIXO da típica do NCM',
+}
+DESCRICOES = {**QUALIDADE, **SINAIS}
 
 
 # ---------------------------------------------------------------------- números e textos do Mercante
@@ -72,8 +81,8 @@ def _texto(valor) -> str:
 
 
 def numero(valor) -> Optional[float]:
-    """Número do Mercante (texto): '33,5', '33.5', '1.234,5' ou 2350 -> float; vazio ou inválido -> None. Com ponto E
-    vírgula, o ponto é o milhar; com um só deles, é a casa decimal (como `pesagens_ciclo._kg`)."""
+    """Número do Mercante (texto): '25040.000', '33,5', '1.234,5' ou 2350 -> float; vazio ou inválido -> None. Com ponto
+    E vírgula, o ponto é o milhar; com um só deles, é a casa decimal (como `pesagens_ciclo._kg`)."""
     texto = _texto(valor)
     if ',' in texto and '.' in texto:
         texto = texto.replace('.', '')
@@ -84,7 +93,7 @@ def numero(valor) -> Optional[float]:
 
 
 def formato(valor) -> str:
-    """Classe do texto numérico — o diagnóstico mede o preenchimento real (ponto com 3 casas pode ser milhar)."""
+    """Classe do texto numérico (o diagnóstico mede o preenchimento real)."""
     texto, valor_numerico = _texto(valor), numero(valor)
     if not texto:
         return 'vazio'
@@ -95,7 +104,7 @@ def formato(valor) -> str:
     if ',' in texto and '.' in texto:
         return 'milhar e decimal'
     if re.fullmatch(r'\d+\.\d{3}', texto):
-        return 'ponto com 3 casas (milhar?)'
+        return 'decimal com 3 casas (padrão do Mercante)'
     if ',' in texto or '.' in texto:
         return 'decimal com ' + ('vírgula' if ',' in texto else 'ponto')
     return 'inteiro'
@@ -159,12 +168,6 @@ def capacidade(chave: Optional[str]) -> Optional[dict]:
     return None if not chave or chave.startswith('_') else _tipos().get('capacidades', {}).get(chave)
 
 
-def nome_grupo(grupo: Optional[str]) -> str:
-    """'R' -> 'refrigerado (reefer)'."""
-    dados = _tipos().get('grupos', {}).get(grupo or '') or _tipos().get('nao_iso', {}).get(grupo or '')
-    return dados['nome'] if dados else (grupo or '?')
-
-
 def nome_tipo(codigo) -> str:
     tipo = referencias.tipo_conteiner(codigo)
     return tipo['curta'] if tipo else (_texto(codigo) or 'tipo não informado')
@@ -188,7 +191,7 @@ def carga(peso: Optional[float], chave: Optional[str]) -> Optional[float]:
 class Conteiner:
     """O contêiner cheio numa família de CEs, com o que foi declarado para ele."""
     conteiner: str
-    familia: str                        # o master (ou o próprio CE, sem master)
+    familia: str                        # o master do topo (ou o próprio CE, sem master)
     ces: Tuple[str, ...]
     tipo: Optional[str]                 # código informado (o 1º não vazio)
     chave: Optional[str]                # tamanho + grupo ('22G')
@@ -201,10 +204,6 @@ class Conteiner:
     uso_parcial: bool
 
     @property
-    def grupo(self) -> Optional[str]:
-        return self.chave[-1] if self.chave else None
-
-    @property
     def tamanho(self) -> Optional[str]:
         return self.chave[0] if self.chave and self.chave[0] in TAMANHOS else None
 
@@ -212,10 +211,6 @@ class Conteiner:
     def ncm_unico(self) -> Optional[str]:
         codigos = {codigo for codigo, _ in self.ncms}
         return codigos.pop() if len(codigos) == 1 else None
-
-    @property
-    def capitulos(self) -> Set[str]:
-        return {codigo[:2] for codigo, _ in self.ncms}
 
 
 def raiz(ce: str, master_de) -> str:
@@ -246,7 +241,7 @@ def _primeiro(itens: List[dict], campo: str) -> str:
 
 
 def _monta(familia: str, conteiner: str, itens: List[dict], ncms_do_item: Dict[tuple, List[tuple]],
-           master_de: Dict[str, Optional[str]]) -> Conteiner:
+           master_de) -> Conteiner:
     ces = tuple(sorted({item['ce'] for item in itens}))
     peso, origem_peso = peso_da_familia([(i['ce'], master_de.get(i['ce']), numero(i['peso'])) for i in itens])
     cubagem, origem = peso_da_familia([(i['ce'], master_de.get(i['ce']), numero(i['cubagem'])) for i in itens])
@@ -258,7 +253,7 @@ def _monta(familia: str, conteiner: str, itens: List[dict], ncms_do_item: Dict[t
         embalagem=_primeiro(itens, 'embalagem'), uso_parcial=any(uso_parcial(i['uso_parcial']) for i in itens))
 
 
-def conteineres(itens: Sequence[dict], ncms: Iterable[dict], master_de: Dict[str, Optional[str]]) -> List[Conteiner]:
+def conteineres(itens: Sequence[dict], ncms: Iterable[dict], master_de) -> List[Conteiner]:
     """Um `Conteiner` por (família, contêiner).
 
     itens: {'ce', 'conteiner', 'tipo', 'peso', 'cubagem', 'embalagem', 'uso_parcial'} (itensresumo);
@@ -276,10 +271,10 @@ def conteineres(itens: Sequence[dict], ncms: Iterable[dict], master_de: Dict[str
             for (familia, conteiner), do_conteiner in sorted(por_conteiner.items())]
 
 
-# ---------------------------------------------------------------------- 16: capacidade e pares raros
+# ---------------------------------------------------------------------- 16a/16b: qualidade do dado
 
 def sinais_capacidade(c: Conteiner) -> List[Tuple[str, str]]:
-    """[(sinal, motivo)]: cubagem acima da capacidade; peso acima da carga máxima (com a folga de CARGA_ACIMA)."""
+    """[(código, motivo)]: cubagem acima da capacidade; peso acima da carga máxima (com a folga de CARGA_ACIMA)."""
     cap = capacidade(c.chave)
     if not cap or c.uso_parcial:
         return []
@@ -294,42 +289,68 @@ def sinais_capacidade(c: Conteiner) -> List[Tuple[str, str]]:
     return sinais
 
 
-def pares_tipo_carga(c: Conteiner) -> Set[Tuple[str, str]]:
-    """{(capítulo, grupo do contêiner)} do contêiner FCL de tipo conhecido."""
-    return {(capitulo, c.grupo) for capitulo in c.capitulos} if c.grupo and not c.uso_parcial else set()
+# ---------------------------------------------------------------------- 16e: cubagem copiada
+
+def _declarados_do_ce(itens: Sequence[dict], ncms: Sequence[dict]) -> Dict[str, dict]:
+    """{contêiner: {'cubagem', 'peso', 'volumes', 'ncms'}} dos contêineres cheios de UM CE (itens do mesmo contêiner
+    somados). NCM sem contêiner vale para todos os contêineres do CE (a mesma mercadoria declarada no CE)."""
+    por_conteiner = defaultdict(lambda: {'cubagem': 0.0, 'peso': 0.0, 'volumes': 0.0, 'ncms': set()})
+    parciais = set()
+    for item in itens:
+        conteiner = _texto(item['conteiner']).upper()
+        if conteiner and uso_parcial(item['uso_parcial']):
+            parciais.add(conteiner)
+        elif conteiner:
+            declarado = por_conteiner[conteiner]
+            declarado['cubagem'] += numero(item['cubagem']) or 0.0
+            declarado['peso'] += numero(item['peso']) or 0.0
+    sem_conteiner = {ncm(linha['ncm']) for linha in ncms if not _texto(linha['conteiner'])} - {None}
+    for linha in ncms:
+        conteiner = _texto(linha['conteiner']).upper()
+        if conteiner in por_conteiner and ncm(linha['ncm']):
+            por_conteiner[conteiner]['ncms'].add(ncm(linha['ncm']))
+            por_conteiner[conteiner]['volumes'] += numero(linha.get('volumes')) or 0.0
+    for conteiner, declarado in por_conteiner.items():
+        declarado['ncms'] |= sem_conteiner
+    return {c: d for c, d in por_conteiner.items() if c not in parciais}
 
 
-def pares_embalagem_carga(c: Conteiner) -> Set[Tuple[str, str]]:
-    """{(capítulo, embalagem)} de cada NCM com embalagem informada."""
-    return {(codigo[:2], embalagem) for codigo, embalagem in c.ncms if embalagem} if not c.uso_parcial else set()
+@dataclass(frozen=True)
+class Repeticao:
+    """O maior grupo de contêineres do CE com a mesma mercadoria e a mesma cubagem, mas quantidades diferentes."""
+    conteineres: int
+    cubagem: float
+    motivo: str
 
 
-def pares_raros(contagens: Counter, fracao: float = FRACAO_PAR_RARO,
-                minimo: int = MINIMO_DO_CAPITULO) -> FrozenSet[Tuple[str, str]]:
-    """Pares (carga, valor) com menos de `fracao` dos contêineres daquela carga — só nas cargas com pelo menos
-    `minimo` contêineres (com poucos, raro não quer dizer nada)."""
-    totais = Counter()
-    for (chave, _), quantidade in contagens.items():
-        totais[chave] += quantidade
-    return frozenset(par for par, quantidade in contagens.items()
-                     if totais[par[0]] >= minimo and quantidade < fracao * totais[par[0]])
+def _diferem(valores: List[float]) -> bool:
+    positivos = [v for v in valores if v > 0]
+    return len(positivos) >= 2 and max(positivos) > (1 + QUANTIDADE_DIFERENTE) * min(positivos)
 
 
-def descreve_carga(capitulo: str) -> str:
-    descricao = referencias.descricao_posicao_ncm(capitulo) or ''
-    return f'capítulo {capitulo}' + (f' ({descricao[:60]})' if descricao else '')
+def cubagem_repetida(itens: Sequence[dict], ncms: Sequence[dict]) -> Tuple[bool, Optional[Repeticao]]:
+    """16e num CE: (avaliável, repetição). Avaliável = 2+ contêineres cheios com cubagem e NCM. Repetição quando 2+
+    deles, com o mesmo conjunto de NCMs, têm a MESMA cubagem e pesos ou volumes diferentes (> QUANTIDADE_DIFERENTE).
+
+    itens e ncms: as linhas do CE (como em `conteineres`; ncms com 'volumes' = `qtdeVolumes`)."""
+    declarados = {c: d for c, d in _declarados_do_ce(itens, ncms).items() if d['cubagem'] > 0 and d['ncms']}
+    grupos = defaultdict(list)
+    for conteiner, declarado in declarados.items():
+        grupos[(frozenset(declarado['ncms']), round(declarado['cubagem'], 3))].append(conteiner)
+    achados = [(chave, sorted(lista)) for chave, lista in grupos.items() if len(lista) >= 2 and (
+        _diferem([declarados[c]['peso'] for c in lista]) or _diferem([declarados[c]['volumes'] for c in lista]))]
+    if not achados:
+        return len(declarados) >= 2, None
+    (ncms_do_grupo, cubagem), lista = max(achados, key=lambda achado: len(achado[1]))
+    pesos = [declarados[c]['peso'] for c in lista]
+    volumes = [declarados[c]['volumes'] for c in lista if declarados[c]['volumes'] > 0]
+    texto_volumes = f'; volumes de {br(min(volumes))} a {br(max(volumes))}' if _diferem(volumes) else ''
+    return True, Repeticao(len(lista), cubagem, (
+        f'{len(lista)} contêineres com NCM {", ".join(sorted(ncms_do_grupo))} e a mesma cubagem ({br(cubagem, 1)} m³), '
+        f'pesos de {br(min(pesos))} a {br(max(pesos))} kg{texto_volumes}'))
 
 
-def sinais_pares(c: Conteiner, raros_tipo: FrozenSet, raros_embalagem: FrozenSet) -> List[Tuple[str, str]]:
-    """[(sinal, motivo)] — um por sinal: o 1º par raro de cada (carga × tipo; carga × embalagem)."""
-    tipo = [f'{nome_tipo(c.tipo)} com carga do {descreve_carga(capitulo)} — par raro na base'
-            for capitulo, grupo in sorted(pares_tipo_carga(c)) if (capitulo, grupo) in raros_tipo]
-    embalagem = [f'embalagem {codigo} com carga do {descreve_carga(capitulo)} — par raro na base'
-                 for capitulo, codigo in sorted(pares_embalagem_carga(c)) if (capitulo, codigo) in raros_embalagem]
-    return [(sinal, motivos[0]) for sinal, motivos in ((TIPO_CARGA, tipo), (EMBALAGEM_CARGA, embalagem)) if motivos]
-
-
-# ---------------------------------------------------------------------- 17: número do BL
+# ---------------------------------------------------------------------- 17a: número do BL
 
 def limpa_bl(valor) -> str:
     return re.sub(r'[^A-Z0-9]', '', _texto(valor).upper())
@@ -351,9 +372,7 @@ def formato_bl(valor) -> str:
         return 'só letras'
     if letras == 4:
         return '4 letras + dígitos' if numero_bl[4:].isdigit() else '4 letras + misto'
-    if letras >= 7:
-        return '7+ letras (prefixo + cidade?)'
-    return f'{letras} letras + resto'
+    return '7+ letras + resto' if letras >= 7 else f'{letras} letras + resto'
 
 
 def prefixo_bl(valor) -> Optional[str]:
@@ -363,25 +382,12 @@ def prefixo_bl(valor) -> Optional[str]:
     return numero_bl[:4] if _letras_iniciais(numero_bl) >= 4 and tem_digito else None
 
 
-def cidade_bl(valor) -> Optional[str]:
-    """As 3 letras logo depois do prefixo (código de cidade em algumas companhias), com 7+ letras iniciais."""
-    numero_bl = limpa_bl(valor)
-    return numero_bl[4:7] if prefixo_bl(numero_bl) and _letras_iniciais(numero_bl) >= 7 else None
-
-
-def cidade_do_porto(locode) -> Optional[str]:
-    """'CNSHA' (UN/LOCODE) -> 'SHA'."""
-    limpo = re.sub(r'[^A-Z]', '', _texto(locode).upper())
-    return limpo[2:5] if len(limpo) == 5 else None
-
-
 @dataclass(frozen=True)
 class BL:
     ce: str
     tipo_bl: str
     empresa: str
     numero: str
-    origem: str
 
     @property
     def da_companhia(self) -> bool:
@@ -390,10 +396,6 @@ class BL:
     @property
     def prefixo(self) -> Optional[str]:
         return prefixo_bl(self.numero)
-
-    @property
-    def cidade(self) -> Optional[str]:
-        return cidade_bl(self.numero)
 
 
 def mapa_prefixos(bls: Iterable[BL]) -> Dict[str, Counter]:
@@ -405,37 +407,17 @@ def mapa_prefixos(bls: Iterable[BL]) -> Dict[str, Counter]:
     return dict(mapa)
 
 
-def taxas_cidade(bls: Iterable[BL]) -> Dict[str, Tuple[int, int]]:
-    """{prefixo: (BLs em que a cidade do número bate com a origem, BLs com cidade e origem)}."""
-    taxas = defaultdict(lambda: [0, 0])
-    for bl in bls:
-        origem = cidade_do_porto(bl.origem)
-        if bl.da_companhia and bl.cidade and origem:
-            taxas[bl.prefixo][0] += bl.cidade == origem
-            taxas[bl.prefixo][1] += 1
-    return {prefixo: (bate, total) for prefixo, (bate, total) in taxas.items()}
-
-
-def prefixos_com_cidade(taxas: Dict[str, Tuple[int, int]], minimo: float = CIDADE_BATE,
-                        amostras: int = AMOSTRAS_MINIMAS) -> FrozenSet[str]:
-    return frozenset(p for p, (bate, total) in taxas.items() if total >= amostras and bate >= minimo * total)
-
-
-def sinais_bl(bl: BL, mapa: Dict[str, Counter], prefixos_cidade: FrozenSet[str]) -> List[Tuple[str, str]]:
-    if not bl.da_companhia:
-        return []
-    sinais = []
+def sinais_bl(bl: BL, mapa: Dict[str, Counter]) -> List[Tuple[str, str]]:
+    """[(17a, motivo)] quando o prefixo é raro numa empresa de prefixo dominante."""
     contagem = mapa.get(bl.empresa) or Counter()
     total = sum(contagem.values())
-    if bl.prefixo and total >= MINIMO_DA_EMPRESA and contagem[bl.prefixo] < PREFIXO_RARO * total:
-        comum, quantidade = contagem.most_common(1)[0]
-        sinais.append((PREFIXO, f'BL {bl.numero}: prefixo {bl.prefixo} em {pct(contagem[bl.prefixo] / total)} dos '
-                                f'BLs da empresa {bl.empresa} (o comum: {comum or "sem prefixo"}, '
-                                f'{pct(quantidade / total, 0)})'))
-    origem = cidade_do_porto(bl.origem)
-    if bl.prefixo in prefixos_cidade and bl.cidade and origem and bl.cidade != origem:
-        sinais.append((CIDADE, f'BL {bl.numero}: o número indica {bl.cidade}; origem declarada {bl.origem}'))
-    return sinais
+    if not bl.da_companhia or not bl.prefixo or total < MINIMO_DA_EMPRESA:
+        return []
+    comum, quantidade = contagem.most_common(1)[0]
+    if quantidade < PREFIXO_DOMINANTE * total or contagem[bl.prefixo] >= PREFIXO_RARO * total:
+        return []
+    return [(PREFIXO, f'BL {bl.numero}: prefixo {bl.prefixo} em {pct(contagem[bl.prefixo] / total)} dos BLs da '
+                      f'empresa {bl.empresa} (o comum: {comum or "sem prefixo"}, {pct(quantidade / total, 0)})')]
 
 
 # ---------------------------------------------------------------------- 18: peso e densidade pelo NCM
@@ -483,8 +465,8 @@ def densidade(c: Conteiner) -> Optional[float]:
 
 
 def medidas_ncm(c: Conteiner) -> List[Tuple[str, str, float]]:
-    """[(sinal, chave, valor)] do contêiner FCL de um NCM só, do nível mais específico (8) ao mais geral (4):
-    peso por contêiner na chave 'tamanho|NCM' e densidade na chave 'NCM'."""
+    """[(medida, chave, valor)] do contêiner FCL de um NCM só, do nível mais específico (8) ao mais geral (4):
+    peso por contêiner (18a) na chave 'tamanho|NCM' e densidade (18b) na chave 'NCM'."""
     unico = c.ncm_unico
     if not unico or c.uso_parcial:
         return []
@@ -506,26 +488,27 @@ def _descreve_chave(chave: str) -> str:
 
 
 def sinais_ncm(c: Conteiner, tabelas: Dict[str, Dict[str, Tipico]]) -> List[Tuple[str, str]]:
-    """[(sinal, motivo)] quando o peso / a densidade fica a DESVIOS ou mais do típico do nível mais específico."""
+    """[(sinal com direção, motivo)] quando o peso / a densidade fica a DESVIOS ou mais do típico do nível mais
+    específico: '18a+' / '18a-' (peso), '18b+' / '18b-' (densidade)."""
     sinais, vistos = [], set()
-    for sinal, chave, valor in medidas_ncm(c):
-        referencia = tabelas.get(sinal, {}).get(chave)
-        if sinal in vistos or referencia is None:
+    for medida, chave, valor in medidas_ncm(c):
+        referencia = tabelas.get(medida, {}).get(chave)
+        if medida in vistos or referencia is None:
             continue
-        vistos.add(sinal)
+        vistos.add(medida)
         distancia = desvios(valor, referencia)
         if abs(distancia) >= DESVIOS:
-            unidade = 'kg' if sinal == PESO_NCM else 'kg/m³'
-            sinais.append((sinal, f'{br(valor)} {unidade}; típico do {_descreve_chave(chave)}: {br(referencia.p10)} a '
-                                  f'{br(referencia.p90)} {unidade} ({referencia.n} contêineres) — '
-                                  f'{br(distancia, 1)} desvios'))
+            unidade = 'kg' if medida == PESO_NCM else 'kg/m³'
+            sinais.append((medida + ('+' if distancia > 0 else '-'),
+                           f'{br(valor)} {unidade}; típico do {_descreve_chave(chave)}: {br(referencia.p10)} a '
+                           f'{br(referencia.p90)} {unidade} ({referencia.n} contêineres) — {br(distancia, 1)} desvios'))
     return sinais
 
 
 # ---------------------------------------------------------------------- validação
 
-def vezes(marcados: int, total: int, marcados_populacao: int, total_populacao: int) -> Optional[float]:
-    """Taxa de marcados no grupo ÷ taxa na população; None sem base."""
-    if not total or not total_populacao or not marcados_populacao:
+def vezes(marcados: int, total: int, marcados_base: int, total_base: int) -> Optional[float]:
+    """Taxa de marcados no grupo ÷ taxa na base (população ou controle); None sem base."""
+    if not total or not total_base or not marcados_base:
         return None
-    return (marcados / total) / (marcados_populacao / total_populacao)
+    return (marcados / total) / (marcados_base / total_base)

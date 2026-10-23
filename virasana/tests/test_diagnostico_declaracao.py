@@ -1,14 +1,16 @@
 """Diagnóstico dos sinais de declaração inventada (analytic_scripts/declaracao/diagnostico_declaracao.py), em SQLite.
 
 Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzidos para uma base pequena.
-  - 40 BLs normais da EMP1 (MAEU..., origem CNSHA, 20' dry, NCM 84713012, ~10 t, 25 m³, embalagem 01) e 35 MBLs da
-    HAP (HLCUSHA..., 20' dry, NCM 61091000, ~12 t);
-  - CUBA: 41,5 m³ num 20' dry (16a); PESA: 35 t (16b e 18a); TANQ: tanque com máquina (16c); EMBA: embalagem 99
-    com máquina (16d); ZZZU: prefixo raro da EMP1 (17a); NGB: HLCU com cidade NGB e origem CNSHA (17b);
+  - 40 BLs normais da EMP1 (MAEU..., 20' dry, NCM 84713012, ~10 t, 25 m³) e 35 MBLs da HAP (HLCUSHA..., NCM 61091000,
+    ~12 t);
+  - CUBA: 41,5 m³ num 20' dry (16a, qualidade); PESA: 35 t (16b, qualidade; 18a+ e 18b+); REPE: 3 contêineres com o
+    mesmo NCM e a mesma cubagem, pesos de 10 a 20 t (16e); ZZZU: prefixo raro na EMP1, de prefixo dominante (17a);
   - família fora da janela: o HBL F1 (na janela) e o master M0 (agosto) — o peso do contêiner é o do master;
     cadeia MBL M3 (agosto) > MHBL H3 > HBL F3; uso parcial (fora); um CE de exportação (fora);
-  - referências: ficha positiva no PESA e noutra fora da janela (P0, cubagem impossível: 16a); RVF no PESA com a
-    infração "Falsa declaração" e peso da RVF 3× o declarado; pesagem "divergencia" no PESA.
+  - referências: ficha positiva no PESA e noutra fora da janela (P0, ID 3, cubagem impossível); RVF no PESA com a
+    infração "Falsa declaração" e peso da RVF 3× o declarado, e RVF no NORU 0; pesagem "divergencia" no PESA;
+  - controle da mesma época com deslocamentos (+1, +2): P0 (ID 3) -> NORU 0 (é referência: fica fora) e NORU 1;
+    PESA (ID 80) -> REPE e ZZZU.
 """
 from virasana.navii.busca_navii import tabela_recintos  # noqa: F401 — 1º: ajusta o sys.path
 import csv  # noqa: I100
@@ -37,8 +39,7 @@ DDL = [
     'CREATE TABLE ovr_infracoes (id INTEGER PRIMARY KEY, nome VARCHAR(50))',
     'CREATE TABLE ovr_infracoesencontradas (rvf_id INTEGER, infracao_id INTEGER)',
 ]
-LIMIARES = {'MINIMO_DO_CAPITULO': 10, 'FRACAO_PAR_RARO': 0.05, 'MINIMO_DA_EMPRESA': 10, 'PREFIXO_RARO': 0.05,
-            'AMOSTRAS_MINIMAS': 5}
+LIMIARES = {'MINIMO_DA_EMPRESA': 10, 'PREFIXO_RARO': 0.05, 'AMOSTRAS_MINIMAS': 5}
 
 
 def ce(n: int) -> str:
@@ -51,26 +52,25 @@ class Base:
     def __init__(self, con):
         self.con, self.n = con, 0
 
-    def ce(self, numero, criado, conteineres, tipo_bl='10', master=None, empresa='EMP1', bl=None, origem='CNSHA',
-           trafego='5'):
-        """conteineres: [(contêiner, tipo, peso, cubagem, [(ncm, embalagem)], uso parcial)]"""
+    def ce(self, numero, criado, conteineres, tipo_bl='10', master=None, empresa='EMP1', bl=None, trafego='5'):
+        """conteineres: [(contêiner, tipo, peso, cubagem, [ncm], uso parcial)]"""
         self.n += 1
         self.con.execute(Conhecimento.__table__.insert(), {
             'numeroCEmercante': numero, 'numeroCEMaster': master, 'tipoBLConhecimento': tipo_bl,
-            'tipoTrafego': trafego, 'codigoEmpresaNavegacao': empresa, 'portoOrigemCarga': origem,
-            'numConhecimento': bl or f'MAEU{self.n:09d}', 'cubagem': '25', 'create_date': criado})
+            'tipoTrafego': trafego, 'codigoEmpresaNavegacao': empresa, 'portoOrigemCarga': 'CNSHA',
+            'numConhecimento': bl or f'MAEU{self.n:09d}', 'cubagem': '25.000', 'create_date': criado})
         for conteiner, tipo, peso, cubagem, ncms, uso in conteineres:
             self.con.execute(Item.__table__.insert(), {
                 'numeroCEmercante': numero, 'codigoConteiner': conteiner, 'isoCode': tipo, 'pesoBruto': peso,
                 'cubagemM3': cubagem, 'codigoTipoEmbalagem': '', 'indicadorUsoParcial': uso})
-            for codigo, embalagem in ncms:
+            for codigo in ncms:
                 self.con.execute(NCMItem.__table__.insert(), {
                     'numeroCEMercante': numero, 'codigoConteiner': conteiner, 'identificacaoNCM': codigo,
-                    'codigoTipoEmbalagem': embalagem})
+                    'codigoTipoEmbalagem': '99', 'qtdeVolumes': '10.000'})
 
 
-def maquina(conteiner, peso='10000', cubagem='25', tipo='22G1', embalagem='01', uso='N'):
-    return [(conteiner, tipo, peso, cubagem, [('84713012', embalagem)], uso)]
+def maquina(conteiner, peso='10000.000', cubagem='25.000', tipo='22G1', uso='false'):
+    return [(conteiner, tipo, peso, cubagem, ['84713012'], uso)]
 
 
 def monta(engine):
@@ -81,28 +81,27 @@ def monta(engine):
         for ddl in DDL:
             con.execute(text(ddl))
         b, agosto, dia = Base(con), datetime(2026, 8, 1), datetime(2026, 10, 1)
-        b.ce(ce(900), agosto, [('MMMU0000001', '22G1', '20000', '30', [], 'N')], tipo_bl='11')        # M0
-        b.ce(ce(901), agosto, [('CCCU3333333', '22G1', '22000', '28', [], 'N')], tipo_bl='11')        # M3
-        b.ce(ce(902), agosto, maquina('POSU0000002', cubagem='50'))                                    # P0
+        b.ce(ce(900), agosto, [('MMMU0000001', '22G1', '20000.000', '30.000', [], 'false')], tipo_bl='11')   # M0
+        b.ce(ce(901), agosto, [('CCCU3333333', '22G1', '22000.000', '28.000', [], 'false')], tipo_bl='11')   # M3
+        b.ce(ce(902), agosto, maquina('POSU0000002', cubagem='50.000'))                               # P0, ID 3
         for n in range(40):
-            b.ce(ce(n), dia, maquina(f'NORU{n:07d}', peso=str(10000 + 10 * n)))
+            b.ce(ce(n), dia, maquina(f'NORU{n:07d}', peso=f'{10000 + 10 * n}.000'))
         for n in range(35):
-            b.ce(ce(100 + n), dia, [(f'HAPU{n:07d}', '22G1', str(12000 + n), '25', [('61091000', '02')], 'N')],
+            b.ce(ce(100 + n), dia, [(f'HAPU{n:07d}', '22G1', f'{12000 + n}.000', '25.000', ['61091000'], 'false')],
                  tipo_bl='11', empresa='HAP', bl=f'HLCUSHA{n:06d}')
-        b.ce(ce(200), dia, maquina('CUBU0000001', cubagem='41,5'))                                     # CUBA
-        b.ce(ce(201), dia, maquina('PESU0000001', peso='35000'))                                       # PESA
-        b.ce(ce(202), dia, maquina('TANU0000001', tipo='22K1'))                                        # TANQ
-        b.ce(ce(203), dia, maquina('EMBU0000001', embalagem='99'))                                     # EMBA
-        b.ce(ce(204), dia, maquina('ZZZU0000001'), bl='ZZZU000000001')                                 # ZZZU
-        b.ce(ce(205), dia, [('NGBU0000001', '22G1', '12000', '25', [('61091000', '02')], 'N')],         # NGB
-             tipo_bl='11', empresa='HAP', bl='HLCUNGB000001')
-        b.ce(ce(206), dia, [('MMMU0000001', '', '8000', '10', [('61091000', '02')], 'N')], tipo_bl='12',
-             master=ce(900))                                                                           # F1
-        b.ce(ce(207), dia, [('CCCU3333333', '', '22000', '28', [], 'N')], tipo_bl='15', master=ce(901))  # H3
-        b.ce(ce(208), dia, [('CCCU3333333', '', '22000', '28', [('61091000', '02')], 'N')], tipo_bl='12',
-             master=ce(207))                                                                           # F3
-        b.ce(ce(209), dia, maquina('LCLU0000001', uso='S'))                                            # uso parcial
-        b.ce(ce(210), dia, maquina('EXPU0000001', cubagem='99'), trafego='7')                          # exportação
+        b.ce(ce(200), dia, maquina('CUBU0000001', cubagem='41.500'))                                  # CUBA
+        b.ce(ce(201), dia, maquina('PESU0000001', peso='35000.000'))                                  # PESA, ID 80
+        b.ce(ce(202), dia, [(f'REPU000000{n}', '45G1', peso, '68.000', ['39011000'], 'false')          # REPE
+                            for n, peso in enumerate(('10000.000', '15000.000', '20000.000'))])
+        b.ce(ce(203), dia, maquina('ZZZU0000001'), bl='ZZZU000000001')                                # ZZZU
+        b.ce(ce(204), dia, [('MMMU0000001', '', '8000.000', '10.000', ['61091000'], 'false')], tipo_bl='12',
+             master=ce(900))                                                                          # F1
+        b.ce(ce(205), dia, [('CCCU3333333', '', '22000.000', '28.000', [], 'false')], tipo_bl='15',
+             master=ce(901))                                                                          # H3
+        b.ce(ce(206), dia, [('CCCU3333333', '', '22000.000', '28.000', ['61091000'], 'false')], tipo_bl='12',
+             master=ce(205))                                                                          # F3
+        b.ce(ce(207), dia, maquina('LCLU0000001', uso='true'))                                        # uso parcial
+        b.ce(ce(208), dia, maquina('EXPU0000001', cubagem='99.000'), trafego='7')                     # exportação
         con.execute(text('INSERT INTO ovr_ovrs (id, numero, datahora, tipooperacao, numeroCEmercante) VALUES '
                          f"(1, '1', '2026-10-10', 1, '{ce(201)}'), (2, '2', '2025-01-10', 1, '{ce(902)}')"))
         con.execute(text('INSERT INTO ovr_resultados (id, ovr_id, tipo_resultado) VALUES (1, 1, 2), (2, 2, 6)'))
@@ -122,7 +121,8 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         monta(cls.engine)
         cls.saida = io.StringIO()
         with mock.patch.multiple(rd, **LIMIARES), cls.engine.connect() as conexao:
-            cls.diag = dd.DiagnosticoDeclaracao(conexao, cls.saida, DESDE, ATE, bloco=20, progresso=lambda _: None)
+            cls.diag = dd.DiagnosticoDeclaracao(conexao, cls.saida, DESDE, ATE, bloco=20, progresso=lambda _: None,
+                                                deslocamentos=(1, 2))
             cls.csv = os.path.join(tempfile.mkdtemp(), 'declaracao.csv')
             cls.ok = dd.roda(cls.diag, cls.csv)
         cls.log = cls.saida.getvalue()
@@ -133,26 +133,26 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_populacao_pela_janela_de_id_sem_exportacao_e_com_as_familias(self):
         self.assertTrue(self.ok)
         self.assertEqual(self.diag.janela[0], 4)                          # os 3 de agosto ficam antes
-        self.assertEqual(len(self.diag.populacao), 75 + 10)               # sem a exportação
-        self.assertNotIn(ce(210), self.diag.ces)
+        self.assertEqual(len(self.diag.populacao), 75 + 8)                # sem a exportação
+        self.assertNotIn(ce(208), self.diag.ces)
         self.assertIn(ce(900), self.diag.ces)                             # master fora da janela, lido pela família
         por_conteiner = {c.conteiner: c for c in self.diag.conteineres}
         f1 = por_conteiner['MMMU0000001']
-        self.assertEqual((f1.familia, f1.ces, f1.peso, f1.origem_peso), (ce(900), (ce(206), ce(900)), 20000.0,
-                                                                         'item do master'))
+        self.assertEqual((f1.familia, f1.ces, f1.peso, f1.origem_peso),
+                         (ce(900), (ce(204), ce(900)), 20000.0, 'item do master'))
         cadeia = por_conteiner['CCCU3333333']
-        self.assertEqual((cadeia.familia, cadeia.ces), (ce(901), (ce(207), ce(208), ce(901))))
+        self.assertEqual((cadeia.familia, cadeia.ces), (ce(901), (ce(205), ce(206), ce(901))))
         self.assertTrue(por_conteiner['LCLU0000001'].uso_parcial)
 
     def test_sinais(self):
         self.assertEqual(self.marcados(rd.OCUPACAO), {ce(200), ce(902)})   # o P0 veio pelas referências
         self.assertEqual(self.marcados(rd.CARGA_MAXIMA), {ce(201)})
-        self.assertEqual(self.marcados(rd.TIPO_CARGA), {ce(202)})
-        self.assertEqual(self.marcados(rd.EMBALAGEM_CARGA), {ce(203)})
-        self.assertEqual(self.marcados(rd.PREFIXO), {ce(204)})
-        self.assertEqual(self.marcados(rd.CIDADE), {ce(205)})
-        self.assertIn(ce(201), self.marcados(rd.PESO_NCM))
-        self.assertNotIn(ce(209), set().union(*(self.marcados(s) for s in rd.SINAIS)))   # uso parcial: fora
+        self.assertEqual(self.marcados(rd.CUBAGEM_REPETIDA), {ce(202)})
+        self.assertEqual(self.diag.avaliaveis[rd.CUBAGEM_REPETIDA], {ce(202)})
+        self.assertEqual(self.marcados(rd.PREFIXO), {ce(203)})
+        self.assertIn(ce(201), self.marcados('18a+'))
+        self.assertIn(ce(201), self.marcados('18b+'))
+        self.assertNotIn(ce(207), set().union(*(self.marcados(s) for s in rd.DESCRICOES)))   # uso parcial: fora
 
     def test_referencias(self):
         refs = self.diag.referencias
@@ -163,25 +163,32 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertEqual(refs['pesagem: divergencia'], {ce(201)})
         self.assertEqual(self.diag.razoes_rvf['volume']['sem medida na RVF'], 1)
 
+    def test_controle_da_mesma_epoca(self):
+        controle = self.diag._controle(self.diag.referencias['fichas positivas'])
+        self.assertEqual(controle, {ce(1), ce(202), ce(203)})             # o NORU 0 é referência (RVF): fora
+        self.assertEqual(self.diag._taxa('18b+', controle), (3, 0))
+        self.assertEqual(self.diag._taxa('18b+', self.diag.referencias['fichas positivas']), (2, 1))
+
     def test_relatorio(self):
         for trecho in ('(SHOW INDEX só no MariaDB/MySQL)', '1. POPULAÇÃO, FAMÍLIAS E TEMPO',
-                       'estimativa da população em 90 dias', '16. TIPO DO CONTÊINER', 'Cubagens mais frequentes',
-                       'Pares raros carga × tipo do contêiner: 1', '17. NÚMERO DO BL', 'HLCU', '18. PESO × VOLUME',
-                       'V. VALIDAÇÃO', 'Falsa declaração', 'A. AMOSTRAS', 'C. CONSULTAS MAIS LENTAS'):
+                       'estimativa da população em 90 dias', '16. CONTÊINER × CUBAGEM', 'Cubagens mais frequentes',
+                       '16e cubagem repetida (m³)', '17. NÚMERO DO BL', 'dominante', '18. PESO × VOLUME',
+                       'V. VALIDAÇÃO', 'Evidência FRACA', 'vezes o controle', 'Falsa declaração', 'A. AMOSTRAS',
+                       '3 contêineres com NCM 39011000 e a mesma cubagem (68,0 m³)', 'C. CONSULTAS MAIS LENTAS'):
             with self.subTest(trecho=trecho):
                 self.assertIn(trecho, self.log)
         self.assertNotIn('!! ERRO', self.log)
-        linha = next(linha for linha in self.log.splitlines() if linha.startswith('fichas positivas ')
-                     and '|' in linha and linha.count('|') == 4)
-        self.assertEqual([c.strip() for c in linha.split('|')][1:3], ['2', '1'])   # 16a: só o P0 (o PESA é peso)
+        self.assertNotIn('16a — ', self.log.split('V. VALIDAÇÃO')[1].split('A. AMOSTRAS')[0])  # qualidade: sem V
 
     def test_csv(self):
         with open(self.csv, encoding='utf-8') as arquivo:
             linhas = list(csv.DictReader(arquivo, delimiter=';'))
         pesa = [linha for linha in linhas if linha['ce'] == ce(201) and linha['sinal'] == rd.CARGA_MAXIMA]
         self.assertEqual(len(pesa), 1)
-        self.assertEqual(pesa[0]['na_janela'], 'sim')
+        self.assertEqual((pesa[0]['na_janela'], pesa[0]['controle_de']), ('sim', ''))
         self.assertIn('fichas positivas', pesa[0]['referencias'])
+        repe = next(linha for linha in linhas if linha['sinal'] == rd.CUBAGEM_REPETIDA)
+        self.assertEqual(repe['controle_de'], ce(201))                    # REPE é vizinho (controle) do PESA
 
     def test_para_sem_indice(self):
         diag = dd.DiagnosticoDeclaracao(mock.Mock(), io.StringIO(), DESDE, ATE)
@@ -193,12 +200,13 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
 
 class TestFormatos(unittest.TestCase):
 
-    def test_empresa_e_tipo(self):
+    def test_empresa_tipo_e_base_do_sinal(self):
         self.assertEqual([dd.formato_empresa(v) for v in ('', '12345678000199', '123', 'MSC', 'MSC1')],
                          ['(vazio)', 'CNPJ (14 dígitos)', '3 dígitos', 'só letras', 'letras e dígitos'])
         self.assertEqual([dd.situacao_tipo(v) for v in ('', 'XPTO', '22G1', '22T0')],
                          ['(vazio)', 'não reconhecido', 'reconhecido, com capacidade de referência',
                           'reconhecido, sem capacidade de referência'])
+        self.assertEqual([dd.base_do_sinal(s) for s in ('16a', '16e', '17a', '18b+')], ['16', '16e', '17', '18'])
 
 
 if __name__ == '__main__':  # pragma: no cover
