@@ -46,25 +46,25 @@ medindo as Fichas abertas pelo card.
   "atípico para o NCM" pode ser o padrão daquele importador — refinamento possível: comparar também com o histórico
   do importador.
 
-**3ª rodada (24/10/2026, da estação de trabalho — `declaracao3.log`, ~3 min de população):** toda a força do 18b+
+**3ª rodada (23/10/2026, da estação de trabalho — `declaracao3.log`, ~3 min de população):** toda a força do 18b+
 está na **cubagem em m³ inteiro** (estimada): densidade acima com cubagem redonda (1,2% marcados) — positivas 32/146
 contra 2,3% no controle (**9,5×**), RVF 5,8×, RVF com peso divergente 6,4×, falsa declaração 6,3×; com cubagem com
 fração (1,2%) — positivas 1,1×, RVF 0,8×. Ou seja: cubagem estimada E mercadoria pesada demais para ela (o dado
 inventado do 16e só separa junto com a incoerência física). 18+ (peso ou densidade acima): positivas 5,4×, RVF 2,9×.
 A lista de revisão saiu com erros de digitação no topo (peso acima da carga máxima; 73 "kg" num 40', em toneladas).
 
-**4ª rodada (24/10/2026):** sem os pesos impossíveis, o 18b+ com cubagem redonda ficou igual (positivas 9,5×, RVF
+**4ª rodada (23/10/2026):** sem os pesos impossíveis, o 18b+ com cubagem redonda ficou igual (positivas 9,5×, RVF
 5,8×, RVF com peso divergente 6,4×). O controle da combinação não saiu (bug: código da combinação sem o prefixo "18",
 zero avaliáveis — corrigido, com teste). A lista de revisão mostrou cubagem SIMBÓLICA (1 m³ num 40', 6 m³) e NCM 9999.
 
-**5ª rodada (24/10/2026) — o candidato está definido:** densidade acima da típica do NCM com cubagem em m³ inteiro e
+**5ª rodada (23/10/2026) — o candidato está definido:** densidade acima da típica do NCM com cubagem em m³ inteiro e
 plausível (10%+ da capacidade): 1,18% dos CEs (1.867 em 30 dias), positivas 32/146 contra 2,1% no controle (**10,4×**),
 RVF 6,0×, falsa declaração 6,3×, RVF com peso divergente 6,4×. Os controles mostram que é a COMBINAÇÃO: a cubagem
 redonda sozinha (56% dos contêineres) dá 1,3×; densidade acima com cubagem com fração, 1,1×; cubagem simbólica, 0
 positivas. Leitura: o peso é real, a cubagem foi inventada e a densidade não combina com o NCM declarado — a mercadoria
 pode não ser a declarada. Lista de revisão (`revisao5.csv`) limpa.
 
-**Revisão do usuário (24/10/2026) — suspende o piloto:** nos CEs de Santos da `revisao5.csv` (com pesagem e
+**Revisão do usuário (23/10/2026) — suspende o piloto:** nos CEs de Santos da `revisao5.csv` (com pesagem e
 imagem; todos de 20'), o peso declarado confere com o produto e a imagem: a anomalia é a CUBAGEM. O típico de
 densidade não separa 20' de 40' (o de peso separa) e muitos 40' declaram a capacidade (68/76 m³) como cubagem — quem
 declara o volume real num 20' parece "denso" (cerveja a 996 kg/m³ é física). 16 dos 30 da lista são de 20' (~17%
@@ -72,23 +72,44 @@ dos contêineres). Conclusão provisória: o sinal mede o jeito de declarar a cu
 positivas podem ser o perfil do declarante. Também (usuário): o NAVI-I não mostra a cubagem declarada, nem no card do
 CE nem no dos contêineres.
 
-**6ª versão (24/10/2026), falta rodar** (opção A do usuário): típico da densidade por NCM E tamanho do contêiner (como
-o do peso); concentração do candidato por importador (raiz do CNPJ) e empresa de navegação, na população e nos
-acertos das referências (e quantos importadores dos acertos já têm 2+ fichas positivas); tamanho dos marcados. Se a
-força sumir ou vier de poucos importadores já cobertos pelo risco histórico, fechar 16–18 como "não vale".
-`virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
-declaracao6.log --csv declaracao6.csv --revisao revisao6.csv`.
+**6ª rodada (23/10/2026, opção A do usuário — `declaracao6.log`, `declaracao6.csv`, `revisao6.csv`) — o candidato
+NÃO se sustenta.** Típico da densidade por NCM E tamanho do contêiner (como o do peso); concentração por importador
+(raiz do CNPJ) e empresa de navegação; tamanho dos marcados.
 
-**Cubagem no card do NAVI-I — feita no código (24/10/2026, pedido do usuário), falta publicar:** cubagem declarada
+- **A força era, na maior parte, a mistura de tamanhos.** O candidato (18b+ redonda plausível) marca 1,05% dos CEs
+  (1.667; eram 1.867), mas os acertos caem: positivas 10/146 (eram 32), contra 1,15% no controle (**6,0×**; era
+  10,4×); RVF 73/1840 (eram 151), **4,0×** (era 6,0×); RVF com peso divergente 2,4×. Os 20' agora são 14,9% dos
+  marcados (22,0% dos contêineres).
+- **Não é concentração de declarante:** 463 importadores (o maior com 22 CEs; sem CNPJ: 620, 37% dos marcados
+  contra 28% dos avaliáveis); empresas de navegação entre 0,6% e 1,8% de marcados cada. Acertos: positivas de 7
+  importadores (um com 3), RVF de 56.
+- **O que sobrava das RVF era bagagem** (análise do CSV): NCM **9797** (bagagem desacompanhada, `bagagens_manager`)
+  responde por 49 dos 101 acertos de RVF do 18b+ — a bagagem tem RVF de rotina (não é seleção por risco) e cubagem
+  própria; um contêiner de mudanças consolidadas (8 CEs) conta 8 vezes. Na população são só 22 CEs.
+- **Sem a bagagem, densidade acima com peso NORMAL para o NCM não separa:** RVF 1,52% contra 1,62% no controle
+  (0,9×); positivas 6/146 (2,5×, poucos casos). É o jeito de declarar a cubagem (revisão do usuário: o peso confere).
+- **O que resta é o PESO:** peso por contêiner acima do típico do NCM no mesmo tamanho E densidade acima (a cubagem
+  não acompanha) — "18a+ e 18b+": 0,61% dos CEs (961 em 30 dias, ~32/dia); positivas 6 (7,2× o controle), RVF 22
+  (2,2×), contrafação 3/37 (18,6×), contrabando 4/36 (19,6×), falsa declaração 2/19 (9,5×) — poucos casos, mas nas
+  infrações esperadas (capítulos 85 e 64 nos acertos: eletrônicos e calçados com 14–28 t num 40', típico de 4–13 t).
+  Peso acima sem densidade acima (314 CEs) não acerta quase nada. Na população, o 18a+ é dominado pelos capítulos 84
+  e 87 (máquinas e veículos, NCM de 4 dígitos heterogêneo).
+- `revisao6.csv`: 21 dos 30 são "só densidade" (sal, papel, leite em pó, couro, tabaco, algodão com 10–30 m³ num 40'
+  — cubagem abaixo do volume físico da mercadoria); 9 são de peso (8418, 8539, 7020, 8709, 8422, 8451, 4415, 7311,
+  8704, com a cubagem perto da capacidade).
+
+**Conclusão (aguarda o usuário):** fechar o candidato da cubagem e o plano do piloto ("não vale": era a mistura de
+tamanhos, a bagagem e o jeito de declarar). Sobra uma hipótese, que não depende da cubagem: **carga pesada demais
+para a mercadoria declarada** (18a+ com 18b+). Ou se fecha 16–18 inteiro, ou uma 7ª versão só para ela: população
+sem o NCM 9797, lista de revisão do 18a+ e 18b+ com preferência por Santos (pesagem e imagem), um CE por NCM — o
+usuário julga se a carga parece a declarada.
+
+**Cubagem no card do NAVI-I — feita no código (23/10/2026, pedido do usuário), falta publicar:** cubagem declarada
 do CE e de cada contêiner, com ocupação e densidade (`navii/CONTEXTO.md`, item 23).
 
-**Plano do piloto (rascunho de 24/10/2026, SUSPENSO pela revisão):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 7 decisões.
+**Plano do piloto (rascunho de 23/10/2026, SUSPENSO pela revisão):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 7 decisões.
 
-**Próximo passo:** o usuário revisa os 30 CEs no NAVI-I (avaliação: suspeito / explicável / erro de dado / sem como
-avaliar). Se confirmar: plano do piloto para aprovação — típicos de densidade por NCM recalculados periodicamente (30
-dias), marcas por CE numa tabela própria (filtro rápido, como o risco histórico), selo no card "densidade acima da
-típica do NCM com cubagem estimada — em observação" com o motivo, medição pelas Fichas abertas a partir do card.
-Limitação a medir: embarques inteiros do mesmo importador (sobreposição com o risco histórico do importador).
+**Próximo passo:** decisão do usuário sobre a conclusão da 6ª rodada (fechar 16–18, ou 7ª versão só do peso).
 
 - **16. Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

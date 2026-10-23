@@ -12,7 +12,11 @@ A cada volta:
      contêineres desses eventos são os afetados;
   2. junta os contêineres a REVISITAR: ciclos v2 abertos (prazos: trânsito de 48 h, estada curta,
      abandono em 93 dias), processados há mais de 6 h, e ciclos v2 dos últimos 30 dias sem CE (o CE chega
-     depois ao Mercante), há mais de 24 h;
+     depois ao Mercante), há mais de 24 h; e, desde 23/10/2026, os ciclos v2 — abertos OU concluídos — desembarcados
+     nos últimos 10 dias com escaneamento sem imagem, processados há mais de 6 h (REVISITA DE IMAGENS: a imagem
+     chega depois ao Mongo; ~70% dos escaneamentos sem imagem com mais de 3 dias estavam em ciclos já encerrados,
+     que o serviço não refazia). Esta usa até 1/4 do limite da revisita (o resto fica com os abertos e os sem CE);
+     desligada com `--sem-revisita-imagens` (e sem o Mongo);
   3. para cada lote de contêineres, numa transação: carrega TODOS os eventos dos últimos dias
      (`carga_ciclo`; recuando até o desembarque dos ciclos ainda abertos do lote, que podem passar disso), refaz
      a linha do tempo e os CEs (`heuristica_ciclo`) e grava (`gravacao_ciclo`) — o resultado depende só dos
@@ -36,6 +40,7 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
     virasana-venv/bin/python $SERVICO --homologacao --uma-vez            # uma volta, gravando
     virasana-venv/bin/python $SERVICO                                    # contínuo (supervisor)
     virasana-venv/bin/python $SERVICO --reprocessa 5000                  # etapa 6: pendentes antigos
+    virasana-venv/bin/python $SERVICO --completa-imagens 2026-09-01      # refaz os com escaneamento sem imagem
     virasana-venv/bin/python $SERVICO --refaz-desde 2026-09-01           # refaz uma vez (depois de mudar o núcleo)
     virasana-venv/bin/python $SERVICO --refaz-desde 2026-07-19 --refaz-operadores 7921303 4931303 3111401
                                                                          # cria os ciclos dos operadores novos
@@ -50,6 +55,10 @@ estação de trabalho, perdeu 24 de 41 partes numa queda de rede). Entram també
 os contêineres com desembarque no escopo e ainda SEM ciclo (ex.: desembarques no Ecoporto de antes do serviço).
 Com `--refaz-operadores` (20/10/2026), só os contêineres desembarcados NESSES operadores do escopo: ao ampliar o escopo,
 cria os ciclos do período sem refazer os de Santos.
+
+`--completa-imagens DATA [--refaz-ate DATA]` (23/10/2026): refaz UMA VEZ os contêineres dos ciclos v2 desembarcados no
+período com escaneamento sem imagem (fora os "escaneamento fora") — para os de antes da janela de 10 dias da revisita.
+Em partes, como o `--refaz-desde`.
 """
 import argparse
 import logging
@@ -69,7 +78,7 @@ from virasana.analytic_scripts.ciclo_de_vida.carga_ciclo import (  # noqa: E402
     DIAS_PORTOS, CargaCiclo, ConsultaSQL, filtro_desembarques, manifesto_vazio,
 )
 from virasana.analytic_scripts.ciclo_de_vida.gravacao_ciclo import (  # noqa: E402
-    CICLOS, MARCAS, PESAGENS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
+    CICLOS, ESCANEAMENTOS, MARCAS, PESAGENS, VERSAO, Gravador, ItemGravacao, linha_ciclo,
 )
 from virasana.analytic_scripts.ciclo_de_vida import pesagens_ciclo as pc  # noqa: E402
 from virasana.analytic_scripts.ciclo_de_vida.heuristica_ciclo import processa_conteiner  # noqa: E402
@@ -120,12 +129,14 @@ class Servico:
                  lote_eventos: int = 20000, lote_conteineres: int = 500, revisita_horas: float = 6,
                  revisita_sem_ce_horas: float = 24, revisita_limite: int = 2000, dias_sem_ce: int = 30,
                  dias_maximos_aberto: int = 400, relogio: Callable[[], datetime] = datetime.now,
-                 risco: bool = False, portos_dos_recintos: Optional[Dict[str, str]] = None):
+                 risco: bool = False, portos_dos_recintos: Optional[Dict[str, str]] = None,
+                 revisita_imagens: bool = True, dias_sem_imagem: int = 10):
         self.engine, self.mongo_db, self.simula = engine, mongo_db, simula
         self.dias_eventos, self.lote_eventos, self.lote_conteineres = dias_eventos, lote_eventos, lote_conteineres
         self.dias_maximos_aberto = dias_maximos_aberto
         self.revisita_horas, self.revisita_sem_ce_horas = revisita_horas, revisita_sem_ce_horas
         self.revisita_limite, self.dias_sem_ce = revisita_limite, dias_sem_ce
+        self.revisita_imagens, self.dias_sem_imagem = revisita_imagens, dias_sem_imagem
         self.relogio = relogio
         self.espera: Callable[[float], None] = time.sleep   # entre as tentativas de uma parte do refaz (testes: nada)
         self.etapa_risco = self._carrega_etapa_risco(engine, relogio) if risco and not simula else None
@@ -191,9 +202,14 @@ class Servico:
 
     # ---------------------------------------------------------------- revisita e reprocessamento
     def revisitar(self, conexao) -> Set[str]:
-        """Contêineres de ciclos v2 abertos (prazos) processados há mais de `revisita_horas`, e de ciclos
-        recentes sem CE (o CE chega depois ao Mercante; o vazio não tem CE) há mais de `revisita_sem_ce_horas`."""
+        """Contêineres de ciclos v2 abertos (prazos) processados há mais de `revisita_horas`, de ciclos
+        recentes sem CE (o CE chega depois ao Mercante; o vazio não tem CE) há mais de `revisita_sem_ce_horas` e de
+        ciclos recentes com escaneamento sem imagem (`sem_imagem`; até 1/4 do limite, o resto fica com os outros)."""
         agora = self.relogio()
+        sem_imagem = set()
+        if self.revisita_imagens:
+            sem_imagem = self.sem_imagem(conexao, agora - timedelta(days=self.dias_sem_imagem), agora,
+                                         agora - timedelta(hours=self.revisita_horas), self.revisita_limite // 4)
         abertos = and_(CICLOS.c.situacao == ldt.ABERTO,
                        CICLOS.c.processado_em < agora - timedelta(hours=self.revisita_horas))
         sem_ce = and_(CICLOS.c.numeroCEmercante.is_(None), or_(CICLOS.c.vazio.is_(None), CICLOS.c.vazio.is_(False)),
@@ -201,7 +217,29 @@ class Servico:
                       CICLOS.c.processado_em < agora - timedelta(hours=self.revisita_sem_ce_horas))
         consulta = (select(CICLOS.c.numeroConteiner, func.min(CICLOS.c.processado_em).label('processado'))
                     .where(CICLOS.c.versao_heuristica == VERSAO, or_(abertos, sem_ce))
-                    .group_by(CICLOS.c.numeroConteiner).order_by('processado').limit(self.revisita_limite))
+                    .group_by(CICLOS.c.numeroConteiner).order_by('processado')
+                    .limit(self.revisita_limite - len(sem_imagem)))
+        return sem_imagem | {c.strip() for c, _ in conexao.execute(consulta) if c}
+
+    @staticmethod
+    def sem_imagem(conexao, desde: datetime, ate: datetime, processado_antes: Optional[datetime] = None,
+                   limite: Optional[int] = None) -> Set[str]:
+        """Contêineres de ciclos v2 desembarcados no período com escaneamento sem imagem (fora os "escaneamento
+        fora", de passagem) e, se dado, processados antes de `processado_antes` — os processados há mais tempo
+        primeiro. Refazer o contêiner procura de novo no Mongo a imagem das inspeções que não a têm
+        (`Gravador._imagens`)."""
+        falta_imagem = (select(ESCANEAMENTOS.c.ID)
+                        .where(ESCANEAMENTOS.c.ciclo_de_vida_id == CICLOS.c.ID, ESCANEAMENTOS.c.imagem_id.is_(None),
+                               or_(ESCANEAMENTOS.c.fora.is_(None), ESCANEAMENTOS.c.fora.is_(False)))
+                        .exists())
+        consulta = (select(CICLOS.c.numeroConteiner, func.min(CICLOS.c.processado_em).label('processado'))
+                    .where(CICLOS.c.versao_heuristica == VERSAO, CICLOS.c.data_desembarque >= desde,
+                           CICLOS.c.data_desembarque < ate, falta_imagem)
+                    .group_by(CICLOS.c.numeroConteiner).order_by('processado'))
+        if processado_antes is not None:
+            consulta = consulta.where(CICLOS.c.processado_em < processado_antes)
+        if limite is not None:
+            consulta = consulta.limit(limite)
         return {c.strip() for c, _ in conexao.execute(consulta) if c}
 
     def pendentes_antigos(self, conexao, limite: int) -> Tuple[Set[str], Optional[datetime]]:
@@ -379,14 +417,19 @@ class Servico:
         return sorted(ultimo, key=lambda c: (ultimo[c], c), reverse=True)
 
     def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000,
-              operadores: Optional[Iterable[str]] = None) -> Counter:
+              operadores: Optional[Iterable[str]] = None, so_sem_imagem: bool = False) -> Counter:
         """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo). Uma parte que
         falha é repetida (a queda da conexão costuma passar); a que falhar em todas as tentativas fica de fora, e o
-        fim do log diz o período de desembarque delas e o comando para refazê-las."""
+        fim do log diz o período de desembarque delas e o comando para refazê-las. `so_sem_imagem`
+        (`--completa-imagens`): só os contêineres com escaneamento sem imagem (`sem_imagem`)."""
         ate = ate or self.relogio()
         with self.engine.connect() as conexao:
             conteineres = self.conteineres_do_periodo(conexao, desde, ate, operadores)
-        logger.info(f'refazer: {len(conteineres)} contêineres desembarcados de {desde:%Y-%m-%d} a {ate:%Y-%m-%d}')
+            if so_sem_imagem:
+                faltando = self.sem_imagem(conexao, desde, ate)
+                conteineres = [c for c in conteineres if c in faltando]
+        logger.info(f'refazer: {len(conteineres)} contêineres desembarcados de {desde:%Y-%m-%d} a {ate:%Y-%m-%d}'
+                    f'{" com escaneamento sem imagem" * so_sem_imagem}')
         estatisticas, falhas = Counter(), []
         for i in range(0, len(conteineres), parte):
             resultado = self._parte_do_refaz(conteineres[i:i + parte], desde, i // parte + 1)
@@ -481,6 +524,11 @@ def _argumentos(argv=None):
                         help='... até esta data (padrão: agora)')
     parser.add_argument('--refaz-operadores', nargs='+', metavar='CODIGO',
                         help='... só os desembarcados nesses operadores do escopo (ao ampliar o escopo)')
+    parser.add_argument('--completa-imagens', type=lambda v: datetime.strptime(v, '%Y-%m-%d'), metavar='AAAA-MM-DD',
+                        help='refaz uma vez os ciclos com escaneamento sem imagem desembarcados desde esta data '
+                             '(até --refaz-ate) e sai')
+    parser.add_argument('--sem-revisita-imagens', action='store_true',
+                        help='desliga a revisita dos ciclos recentes com escaneamento sem imagem')
     parser.add_argument('--sem-mongo', action='store_true', help='não procura as imagens no Mongo')
     parser.add_argument('--sem-risco', action='store_true',
                         help='desliga a etapa do risco histórico por CE (virasana/risco_historico/etapa.py)')
@@ -498,9 +546,11 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     engine = create_engine(uri_do_banco(args), pool_pre_ping=True)
     logger.info(f'Ciclo de Vida v2 — banco {engine.url.render_as_string(hide_password=True)}'
                 f'{" — SIMULAÇÃO" * args.simula}')
-    servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco)
-    if args.refaz_desde:
-        estatisticas = servico.refaz(args.refaz_desde, args.refaz_ate, operadores=args.refaz_operadores)
+    servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco,
+                      revisita_imagens=not args.sem_revisita_imagens and mongo_db is not None)
+    if args.refaz_desde or args.completa_imagens:
+        estatisticas = servico.refaz(args.refaz_desde or args.completa_imagens, args.refaz_ate,
+                                     operadores=args.refaz_operadores, so_sem_imagem=bool(args.completa_imagens))
         if estatisticas['partes com erro']:
             sys.exit(1)   # com partes não refeitas (o log diz quais e como refazê-las)
     elif args.reprocessa:

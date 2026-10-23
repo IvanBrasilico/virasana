@@ -40,14 +40,12 @@ usuários (em andamento) entram como itens novos.
    XMLs) chegam **vazios**; dados complementares do consignatário, observações e nome do embarcador com CNPJ se
    perdem. Os XMLs são apagados depois da carga: **cada dia sem a correção é dado perdido para sempre**. Afeta a
    Entregas por CNPJ e a Busca por texto. Precisa de `ALTER TABLE` (DBA). *Decisão: priorizar agora?*
-5. **Revisita de imagens** (proposta de 13/10/2026; usuário: "vamos implementar", 23/10 — plano para aprovação):
-   ~27% dos "sem imagem" têm a imagem chegando depois ao Mongo, e o serviço só procura a imagem ao refazer o
-   contêiner (não volta aos concluídos). O card do NAVI-I já se vira (imagem pelo contêiner e data, D2), mas o
-   ciclo gravado fica sem `imagem_id`: filtro "com imagem", completude e cobertura do health check erram.
-   Plano: na `revisitar` do serviço, um 3º grupo — contêineres de ciclos v2 com desembarque nos últimos 10 dias que
-   têm escaneamento sem imagem (`..._escaneamentos.imagem_id IS NULL`, não "fora") e foram processados há mais de 6 h
-   — dividindo o mesmo `revisita_limite`, com flag para desligar; e `--completa-imagens DESDE` para rodar à mão num
-   período. Medida: cobertura "escaneados com imagem" do health check.
+5. **Revisita de imagens** — feita no código (23/10/2026, plano aprovado), **falta publicar**: o serviço do ciclo
+   revisita os ciclos (inclusive concluídos) dos últimos 10 dias com escaneamento sem imagem (até 1/4 do limite da
+   revisita); `--completa-imagens DATA` para os anteriores. Detalhe no `CICLO_DE_VIDA.md` ("Imagens que faltam").
+   Publicar = pull + reiniciar o programa do ciclo no supervisor; depois, uma vez no servidor:
+   `servico_ciclo_de_vida.py --completa-imagens 2026-09-01`. Medida (acompanhamento de 23/10, antes): 9.757
+   escaneamentos sem imagem com mais de 3 dias, 7.025 em ciclos encerrados; com imagem por semana 82–91%.
 6. **Contagem assíncrona no NAVI-I** (proposta de 02/10/2026): a contagem com NCM leva 18–20 s e segura a 1ª página;
    no health check, mediana de 6,1 s e p95 de 10,5 s só na 1ª página. Mostrar os cards já e a contagem quando
    chegar. *Decisão: aprovar.*
@@ -67,21 +65,25 @@ usuários (em andamento) entram como itens novos.
     principal (atalho mantido por desempenho).
 15. **AJNA → NAVI no legado** (`layout.html` e ~29 templates do virasana, ~37 do bhadrasana2, textos históricos):
     só com novo pedido (layouts compartilhados: planejar e confirmar). Identificadores técnicos não mudam sem pedido.
-16. **Pendentes do loop antigo** (ciclos sem `versao_heuristica`, não concluídos): em 02/10 eram 91.397 (julho e
-    agosto). O health check não os mede (a seção 6 do acompanhamento não vira alerta). Diagnóstico a rodar no
-    servidor: `acompanha_ciclo_de_vida.py --saida acompanhamento.log` (seção 6). Se zerou, fechar; senão,
-    `servico_ciclo_de_vida.py --reprocessa 5000` em rodadas fora do pico até zerar (cada rodada loga os
-    "pendentes antigos restantes"). Desembarques de julho/agosto já passaram de 93 dias: o reprocessamento fecha
-    a maioria como concluído ou abandono.
+16. **Pendentes do loop antigo**: eram 91.397 em 02/10; o acompanhamento de 23/10 mostrou **21** (9 de julho, 11 de
+    agosto, 1 de setembro). Para fechar: `servico_ciclo_de_vida.py --reprocessa 100` uma vez no servidor (o log diz
+    os "pendentes antigos restantes"; se sobrar algum, é contêiner sem evento no período — aceitar).
+16b. **Achados do acompanhamento de 23/10 (20:12)**:
+    - alerta "inspeções da API Recintos: evento mais novo de 03:26" (17 h sem inspeção nova) — a marca d'água está
+      em dia (0 não lidos): a carga da API parou de trazer inspeções. Conferir se o health check do dia seguinte
+      acusa (componente API Recintos) e, se continuar, o extrator de inspeções;
+    - dos 104 abertos além de 93 dias sem Ficha de FMA, **90 são "saída duvidosa (CE de outra família) — revisar"**
+      de Suape (86) e Pecém (4): não são abandono, são ciclos que a heurística não fechou. Examinar 2 ou 3 com
+      `caso_ciclo.py` e decidir se viram caso do corpus;
+    - Pecém com 27% dos escaneamentos com imagem (crônico conhecido, P3).
 17. **Sinais da informação declarada (itens 16–18 de 22/10)** — histórico em
-    `virasana/analytic_scripts/declaracao/DIAGNOSTICO.md`; piloto SUSPENSO (`PLANO_PILOTO.md`). O candidato
-    (densidade acima da típica do NCM com cubagem em m³ inteiro e plausível: 1,18% dos CEs, positivas 10,4× o
-    controle) parece medir o jeito de declarar a cubagem (revisão do usuário: o peso confere com o produto e a
-    imagem). Falta: rodar a **6ª versão** (típico por NCM e tamanho; concentração por importador) e decidir — se a
-    força sumir ou vier de poucos importadores já cobertos pelo risco histórico, fechar como "não vale".
-    `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
-    declaracao6.log --csv declaracao6.csv --revisao revisao6.csv`.
-18. **Cubagem no card do NAVI-I** — feita no código (24/10/2026), falta publicar (pull + reiniciar o virasana web;
+    `virasana/analytic_scripts/declaracao/DIAGNOSTICO.md`; piloto SUSPENSO (`PLANO_PILOTO.md`). A **6ª rodada**
+    (23/10/2026) derrubou o candidato da cubagem: com o típico por tamanho, as positivas caem de 32 para 10 e as RVF
+    de 151 para 73, e metade das RVF que sobram é bagagem (NCM 9797, RVF de rotina); sem ela, densidade acima com
+    peso normal não separa (0,9×). Sobra o peso: "18a+ e 18b+" (0,61% dos CEs; positivas 7,2×, RVF 2,2×,
+    contrafação e contrabando com 3–4 casos). *Decisão: fechar 16–18, ou 7ª versão só do peso (sem bagagem, lista
+    de revisão de Santos).*
+18. **Cubagem no card do NAVI-I** — feita no código (23/10/2026), falta publicar (pull + reiniciar o virasana web;
     sem mudança de tabela). `navii/CONTEXTO.md`, item 23.
 
 ## P3 — estacionados (dependem de terceiros ou de decisão futura)
@@ -106,7 +108,7 @@ usuários (em andamento) entram como itens novos.
 ## Decisões em aberto (resumo)
 
 1. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
-2. Aprovar o plano da revisita de imagens (P1.5) e a contagem assíncrona (P1.6).
-3. Itens 16–18: fechar ou não depois da 6ª versão (P2.17).
+2. Aprovar a contagem assíncrona (P1.6).
+3. Itens 16–18: fechar, ou 7ª versão só do peso acima do típico (P2.17).
 4. Gravar o modo de exibição na coleta de uso (P2.11).
 5. Quando começar unidade/equipe do usuário (P2.9).

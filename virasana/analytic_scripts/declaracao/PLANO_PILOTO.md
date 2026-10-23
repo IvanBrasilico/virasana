@@ -1,13 +1,15 @@
 # Piloto do sinal "densidade acima da típica do NCM com cubagem estimada" — plano (rascunho para revisão)
 
-> **SUSPENSO (24/10/2026), pela revisão do usuário:** nos CEs de Santos da `revisao5.csv` (todos de 20'), o peso
+> **SUSPENSO (23/10/2026), pela revisão do usuário:** nos CEs de Santos da `revisao5.csv` (todos de 20'), o peso
 > confere com a pesagem e a imagem — a anomalia está na CUBAGEM declarada, não na mercadoria. O típico de
 > densidade mistura 20' e 40' (muitos 40' declaram a capacidade, 68/76 m³, como cubagem), e 16 dos 30 da lista são
 > de 20' (~17% dos contêineres). O sinal mede o jeito de declarar a cubagem; a associação com as fichas (10×) pode
 > ser o perfil de quem declara assim. O selo "carga mais pesada que a mercadoria" induziria a erro. Ver BACKLOG.md.
+> **6ª rodada (23/10/2026):** confirmado — com o típico por tamanho e sem a bagagem (NCM 9797), o candidato não
+> separa. Este plano não segue como está (ver `DIAGNOSTICO.md`).
 
-Itens 16–18 do `BACKLOG.md`. Passo 0 (diagnóstico, 5 rodadas em produção, 23–24/10/2026) concluído; este é o plano
-do piloto no NAVI-I. **Rascunho de 24/10/2026, aguardando a revisão do usuário** — nada aqui está aprovado.
+Itens 16–18 do `BACKLOG.md`. Passo 0 (diagnóstico, 5 rodadas em produção, 23/10/2026) concluído; este é o plano
+do piloto no NAVI-I. **Rascunho de 23/10/2026, aguardando a revisão do usuário** — nada aqui está aprovado.
 
 ## 1. O que se quer
 

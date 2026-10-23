@@ -294,7 +294,7 @@ Regras e limitações (importantes):
    galeria vários cards pequenos ficam à vista de uma vez; "Ver detalhes" conta como interação `detalhes`. Testes:
    `test_navii_visoes.py` (a tela); comportamento conferido no navegador com servidor de demonstração (imagens
    sintéticas 20'/40'), desktop e celular.
-23. **Cubagem declarada no card** (24/10/2026, observação do usuário na revisão dos sinais de declaração: "o card
+23. **Cubagem declarada no card** (23/10/2026, observação do usuário na revisão dos sinais de declaração: "o card
    geral e os cards de contêineres não exibem a cubagem informada"). Card do CE: "Cubagem declarada" ao lado do
    peso bruto total — a do CE (`Conhecimento.cubagem`); sem ela, a soma dos contêineres; as duas quando diferem.
    Contêiner: cubagem (`Item.cubagemM3`), ocupação (cubagem ÷ capacidade de referência do tipo, `capacidades` de

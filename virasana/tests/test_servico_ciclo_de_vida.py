@@ -249,6 +249,64 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual(self.ciclo('CTRB')['processado_em'], AGORA)
         self.assertEqual(self.ciclo('CTRC')['processado_em'], AGORA + timedelta(hours=12))
 
+    def _ctrb_escaneado_e_a_imagem_chega_depois(self):
+        """CTRB (concluído, entregue pelo Ecoporto): inspeção nova gravada sem imagem; a imagem chega depois ao
+        Mongo (+3 h da inspeção, a defasagem do Ecoporto)."""
+        with self.engine.begin() as c:
+            _insere(c, InspecaoNaoInvasiva, [_evento(302, 'CTRB', d(5, 12), ECO, vazio=False)])
+        self.servico.uma_volta(DESDE)
+        [esc] = self.escaneamentos('CTRB')
+        self.assertIsNone(esc['imagem_id'])
+        imagem = ObjectId()
+        self.mongo['fs.files'].insert_one({'_id': imagem, 'metadata': {'numeroinformado': 'CTRB',
+                                                                       'dataescaneamento': d(5, 15, 1)}})
+        return str(imagem)
+
+    def escaneamentos(self, conteiner):
+        return self.tabela(gc.ESCANEAMENTOS, gc.ESCANEAMENTOS.c.ciclo_de_vida_id == self.ciclo(conteiner)['ID'])
+
+    def test_revisita_de_imagens_completa_ciclo_concluido(self):
+        """Revisita de imagens (23/10/2026): o ciclo CONCLUÍDO com escaneamento sem imagem é refeito depois de 6 h e
+        ganha a imagem que chegou ao Mongo; só os desembarcados nos últimos `dias_sem_imagem` (o CTRB é de 15 dias
+        atrás) e só com a revisita ligada."""
+        imagem = self._ctrb_escaneado_e_a_imagem_chega_depois()
+        self.relogio.agora = AGORA + timedelta(hours=7)   # sem CE: ainda não (< 24 h)
+        self.servico.uma_volta(DESDE)                       # janela padrão de 10 dias: fica de fora
+        self.assertEqual(self.ciclo('CTRB')['processado_em'], AGORA)
+        sv.Servico(self.engine, self.mongo, relogio=self.relogio, dias_sem_imagem=30,
+                   revisita_imagens=False).uma_volta(DESDE)
+        self.assertEqual(self.ciclo('CTRB')['processado_em'], AGORA)
+        servico = sv.Servico(self.engine, self.mongo, relogio=self.relogio, dias_sem_imagem=30)
+        estatisticas, _ = servico.uma_volta(DESDE)
+        ciclo = self.ciclo('CTRB')
+        self.assertEqual((ciclo['processado_em'], ciclo['situacao']), (self.relogio.agora, ldt.CONCLUIDO))
+        self.assertEqual([e['imagem_id'] for e in self.escaneamentos('CTRB')], [imagem])
+        self.assertEqual(estatisticas['com imagem'], 1)
+        self.relogio.agora += timedelta(hours=7)           # já tem a imagem: não volta
+        with self.engine.connect() as c:
+            self.assertEqual(servico.sem_imagem(c, d(1), self.relogio.agora, self.relogio.agora), set())
+
+    def test_revisita_de_imagens_usa_um_quarto_do_limite(self):
+        self._ctrb_escaneado_e_a_imagem_chega_depois()
+        self.relogio.agora = AGORA + timedelta(hours=7)
+        servico = sv.Servico(self.engine, self.mongo, relogio=self.relogio, dias_sem_imagem=30, revisita_limite=4)
+        with self.engine.connect() as c:
+            self.assertEqual(servico.revisitar(c), {'CTRB', 'CTRA', 'CTRV', 'CTRC'})
+            servico.revisita_limite = 3   # 3 // 4 = 0: só os abertos
+            self.assertNotIn('CTRB', servico.revisitar(c))
+
+    def test_completa_imagens_de_um_periodo(self):
+        """--completa-imagens: refaz uma vez só os contêineres do período com escaneamento sem imagem."""
+        imagem = self._ctrb_escaneado_e_a_imagem_chega_depois()
+        estatisticas = self.servico.refaz(d(1), so_sem_imagem=True)
+        self.assertEqual(estatisticas['contêineres'], 1)
+        self.assertEqual([e['imagem_id'] for e in self.escaneamentos('CTRB')], [imagem])
+        self.assertEqual(self.servico.refaz(d(1), so_sem_imagem=True)['contêineres'], 0)
+
+    def test_argumentos_da_revisita_de_imagens(self):
+        args = sv._argumentos(['--completa-imagens', '2026-09-01', '--sem-revisita-imagens'])
+        self.assertEqual((args.completa_imagens, args.sem_revisita_imagens), (datetime(2026, 9, 1), True))
+
     def test_remocao_a_bordo_apaga_o_ciclo_do_novo_desembarque(self):
         """CTRV (no operador BTP desde 10/03): embarque e novo desembarque na BTP 6 h depois — o loop antigo já
         tinha criado uma linha para o novo desembarque (ID 500), que é apagada; o ciclo do 1º desembarque continua."""

@@ -25,13 +25,13 @@ amostras e, se for o caso, um piloto no NAVI-I.
      infração, com peso/volume da RVF fora de 0,8–1,2 do declarado; pesagens do ciclo de vida, por diagnóstico) e no
      controle da mesma época de cada referência;
   A. AMOSTRAS de CEs marcados (todos no --csv);
-  R. REVISÃO (3ª versão, 24/10/2026): CEs para o usuário olhar no NAVI-I (imagem, descrição) — no --revisao, com
+  R. REVISÃO (3ª versão, 23/10/2026): CEs para o usuário olhar no NAVI-I (imagem, descrição) — no --revisao, com
      colunas para a avaliação; e, na validação, as combinações do 18 (18+ = peso ou densidade acima; os dois; 18b+ com
-     cubagem em m³ inteiro ou com fração). 4ª versão (24/10/2026, depois da 3ª rodada: a força do 18b+ está toda na
+     cubagem em m³ inteiro ou com fração). 4ª versão (23/10/2026, depois da 3ª rodada: a força do 18b+ está toda na
      cubagem em m³ inteiro): a lista de revisão sai do 18b+ com cubagem redonda (desvios de 3 a 10, um CE por posição
-     do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação. 5ª versão (24/10/2026, depois
+     do NCM), e a cubagem redonda sozinha também é validada — o controle da combinação. 5ª versão (23/10/2026, depois
      da 4ª rodada: 1 m³ num 40' na lista): o 18b+ redondo dividido em cubagem plausível e simbólica (abaixo de 10% da
-     capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível. 6ª versão (24/10/2026, depois
+     capacidade); a simbólica sozinha validada; a lista de revisão só com a plausível. 6ª versão (23/10/2026, depois
      da revisão do usuário — o peso confere, a anomalia é a cubagem): típico da densidade por tamanho do contêiner;
      concentração do candidato por importador e empresa de navegação (na população e nos acertos das referências) e
      o tamanho dos marcados — poucos declarantes explicando muito = perfil de quem declara, não da carga;

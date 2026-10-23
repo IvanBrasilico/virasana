@@ -14,11 +14,11 @@ Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no 
   - 18, peso × volume × NCM, por DIREÇÃO: nos contêineres de UM NCM só, o PESO POR CONTÊINER (por tamanho, 18a) e a
     DENSIDADE (peso ÷ cubagem, 18b) acima (+) ou abaixo (-) do típico do NCM, aprendido da base em escala log (mediana
     e MAD), no nível mais específico (8, 6 ou 4 dígitos) com amostras suficientes. Na 1ª rodada só a densidade ACIMA
-    se separou nas referências; na 3ª (24/10/2026), só quando a cubagem é em m³ inteiro (estimada): densidade acima
+    se separou nas referências; na 3ª (23/10/2026), só quando a cubagem é em m³ inteiro (estimada): densidade acima
     com cubagem com fração não separa. Peso abaixo de 100 kg (em toneladas?) ou acima da carga máxima (o 16b) não
     entra no 18 — nem nos típicos: é erro de digitação. Cubagem SIMBÓLICA (abaixo de 10% da capacidade do tipo — 1 m³
     num 40', 4ª rodada) não é estimativa: o diagnóstico a separa. NCM fora dos capítulos 01 a 97 (9999) não é NCM.
-    6ª versão (24/10/2026, revisão do usuário: nos casos de Santos o peso confere com a pesagem e a imagem — a anomalia
+    6ª versão (23/10/2026, revisão do usuário: nos casos de Santos o peso confere com a pesagem e a imagem — a anomalia
     é a cubagem): o típico da DENSIDADE também por tamanho do contêiner — muitos 40' declaram a capacidade (68/76 m³)
     como cubagem, e quem declara o volume real num 20' parecia "denso".
 

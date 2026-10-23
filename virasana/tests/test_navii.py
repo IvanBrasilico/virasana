@@ -128,7 +128,7 @@ class TestBuscaItensNavii(unittest.TestCase):
         self.assertEqual(cont1['lacre'], 'LAC1')
         self.assertEqual(cont1['pesoBruto'], 1000.5)
         self.assertEqual(len(cont1['ncms']), 2)
-        # cubagem declarada (24/10/2026): ocupação pela capacidade do 20' dry (33,2 m³) e densidade
+        # cubagem declarada (23/10/2026): ocupação pela capacidade do 20' dry (33,2 m³) e densidade
         self.assertEqual((cont1['cubagem'], cont1['capacidade']), (16.6, 33.2))
         self.assertAlmostEqual(cont1['ocupacao'], 0.5)
         self.assertAlmostEqual(cont1['densidade'], 1000.5 / 16.6)

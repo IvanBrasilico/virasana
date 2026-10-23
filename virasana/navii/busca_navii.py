@@ -1098,7 +1098,7 @@ def _texto_para_float(valor: Optional[str]) -> Optional[float]:
 def _volume_do_conteiner(peso: Optional[float], cubagem: Optional[float], iso_code: Optional[str]) -> dict:
     """Cubagem declarada do contêiner (`Item.cubagemM3`), a capacidade de referência do tipo e a ocupação (cubagem ÷
     capacidade; `navii/referencias/tipos_conteiner.json`, `capacidades`) e a densidade (peso ÷ cubagem, kg/m³) —
-    pedido do usuário (24/10/2026): o card não mostrava a cubagem informada."""
+    pedido do usuário (23/10/2026): o card não mostrava a cubagem informada."""
     chave = regras_declaracao.chave_tipo(iso_code)
     return {
         'cubagem': cubagem,
@@ -1409,7 +1409,7 @@ def monta_card_navii(
         'previsaoAtracacao': _previsao_atracacao(data_prevista_atracacao, hoje),
         'terminalDescarregamento': {'codigo': terminal, 'nome': nomes_terminais.get(terminal)} if terminal else None,
         'pesoBrutoTotal': itens['pesoBrutoTotal'],
-        # cubagem declarada no CE (`Conhecimento.cubagem`) e a soma das dos contêineres (24/10/2026)
+        # cubagem declarada no CE (`Conhecimento.cubagem`) e a soma das dos contêineres (23/10/2026)
         'cubagemDeclarada': _texto_para_float(conhecimento.cubagem),
         'cubagemTotal': itens.get('cubagemTotal'),
         'qtdNcmsDistintos': itens['qtdNcmsDistintos'],
