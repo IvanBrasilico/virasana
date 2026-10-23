@@ -19,6 +19,9 @@ nova.
   pesagens P1–P3, imagem pelo contêiner e data — 20 a 22/10/2026.
 - Ciclo de vida fora de Santos (MultiRio, Suape, Pecém) e pesagens em produção — 21/10/2026.
 - Gate de qualidade: `qualidade_navii.py --alterados` e `tox -e navii` isolado — 22/10/2026.
+- **Health check diário v1** (`virasana/saude/saude_ajna.py`, seção abaixo) e **refaz robusto** — feitos no código em
+  23/10/2026 (aprovados pelo usuário, com as checagens da carga da API Recintos e das imagens no MongoDB que ele
+  pediu); falta publicar e pôr no cron.
 
 ## P0 — agora
 
@@ -29,10 +32,12 @@ nova.
    concluído sem a saída do seco"; 4 com as duas) estão entre 22/09 18:10 e 09/10 03:58 — exatamente as partes que falharam. Nada indica
    defeito do C6/C7/C8. Refazer **no servidor** (rede estável), em sequência, e auditar de novo — esperado: 0.
    Sobrando alguma, extrair com `caso_ciclo.py` e levar ao corpus.
-2. **Refaz robusto** (ajuste pequeno): repetir a parte que falha (reconectando, com espera crescente); no fim,
-   listar as partes com erro com o período de desembarque de cada uma e o comando para refazê-las; sair com código
-   diferente de zero se sobrar parte com erro. *Decisão: aprovar.*
-3. **Health check diário v1** (seção abaixo). *Decisão: aprovar o escopo e onde o resultado aparece.*
+2. ~~Refaz robusto~~ — feito (23/10): a parte que falha é repetida até 3 vezes (30 s e 2 min de espera,
+   reconectando); no fim, o log lista o período de desembarque de cada parte não refeita com o comando para
+   refazê-la, e o programa sai com código 1.
+3. **Health check v1: publicar e pôr no cron** (feito no código em 23/10). Depois de 1 a 2 semanas de relatórios,
+   calibrar os limiares (constantes no topo de cada módulo de `virasana/saude/`). *Decisão: onde o resultado aparece
+   além do log (e-mail do cron, aba "Saúde").*
 
 ## P1 — próximas semanas
 
@@ -109,34 +114,37 @@ sinal do risco histórico.
 - `tox.ini` do bhadrasana2 (instala o `ajna_commons` de 2019, que passa na frente do vivo).
 - Migração Flask/Python e da apresentação para o gov.br: só quando pedidas.
 
-## Health check (proposta v1)
+## Health check (v1, feito em 23/10/2026)
 
-Objetivo: **um relatório curto por dia** que diga OK / ATENÇÃO / FALHA por componente, reaproveitando o que já mede
-cada parte. Rodar no servidor por cron (ex.: 7 h), gravar em log; depois, se valer, uma aba "Saúde" no menu NAVII
-para quem administra.
+`virasana/saude/saude_ajna.py`: **um relatório curto por dia**, OK / ATENÇÃO / FALHA por componente, reaproveitando o
+que cada parte já mede. Só leitura; cada consulta SQL com limite de 120 s; uma verificação que quebra vira FALHA
+dela e as outras seguem. Sai com 0 (OK), 1 (atenção) ou 2 (falha) — o cron decide quem avisar. `--so` escolhe
+verificações; `--nucleo-desde AAAA-MM-DD` mede os ciclos não refeitos depois de uma troca do núcleo. Limiares
+provisórios (constantes no topo de cada módulo), a calibrar com as primeiras semanas.
 
-| Componente | Medida | Limite de alerta | Fonte |
+| Componente | Medida | Alerta | Módulo |
 |---|---|---|---|
-| Ciclo — serviço | idade das marcas d'água; fila de eventos; evento mais novo da API por tabela | > 30 min; > 20 mil; > 6 h | `acompanha_ciclo_de_vida.py` (existe) |
-| Ciclo — correção | violações das invariantes nos desembarques dos **últimos 2 dias** | > 0 | `audita_ciclos.py --dias 2` (existe; falta código de saída) |
-| Ciclo — refaz | ciclos do período processados **antes** da última troca do núcleo (não refeitos) | > 0 depois de um refaz | **nova** (pelo `processado_em`) |
-| Ciclo — cobertura | % com CE, % escaneamentos com imagem por recinto, abertos sem revisita, confiança baixa | queda > 10 p.p. sobre a semana anterior; > 12 h sem revisita | acompanhamento (existe; falta comparar com a semana anterior) |
-| Pesagens | % divergência e % digitação da pesagem principal por dia | salto > 2× a média de 7 dias | **nova** (contagem simples) |
-| Mercante | atraso da carga (CE mais novo carregado × agora) | > 6 h | **nova** (pelo ID, nunca varrer a tabela) |
-| Risco histórico | extração em dia, fila da pontuação, versão, faixas (~1% alto, ~4% médio) | fila > 0 por 2 dias; faixa fora de 0,5–2× | `risco_historico/lotes.py --situacao` (existe) |
-| Busca por texto | defasagem do índice (maior CE indexado × Mercante), nº de documentos, Meilisearch no ar | > 1 dia; serviço fora | `navii/indexador_texto.py --situacao` (existe) |
-| NAVI-I web | tempo de resposta p50/p95 por dia, % de pesquisas lentas (≥ 10 s), erros | p95 > 10 s; lentas > 5% | **nova** (agrega os tempos que a coleta de uso já grava no Mongo) |
-| Fichas | última Ficha de FMA criada pelo `fma_update.py` | > 2 dias úteis | **nova** (consulta simples) |
+| Mercante | CE e item mais novos carregados (pela chave primária) | > 6 h atenção; > 24 h falha | `fontes.py` |
+| API Recintos | por tipo de evento: posição do extrator (ponteiro ou evento mais novo); por recinto: últimas 24 h × as **mesmas 24 h da semana anterior**; rejeições da carga | extrator > 6 h: falha; recinto ativo (≥ 50) com < 10%: atenção (com o último evento e o ponteiro dele); queda geral < 50% sem recinto que a explique; rejeições ≥ 100 e > 3× | `fontes.py` |
+| Imagens (MongoDB) | imagem mais nova (`uploadDate`, UTC); por recinto: últimas 24 h × mesmas 24 h da semana anterior; atraso (chegada − escaneamento); ponteiro '99' do extrator | > 6 h: falha; recinto ativo (≥ 20) com < 10%; queda geral < 50%; atraso mediano > 48 h | `imagens.py` |
+| Ciclo — serviço | alertas do acompanhamento (14 dias) | "serviço parado"/sem marcas: falha; outros: atenção | `ciclo.py` |
+| Ciclo — invariantes | `audita_ciclos.Auditoria` nos desembarques das últimas 48 h | > 0 | `ciclo.py` |
+| Ciclo — refaz | ciclos dos últimos 30 dias processados antes de `--nucleo-desde` | > 0 (com o comando do refaz) | `ciclo.py` |
+| Ciclo — cobertura | % com CE e % dos escaneados com imagem, desembarques de 9 a 2 dias atrás × a semana anterior | queda > 10 pontos | `ciclo.py` |
+| Pesagens | % possível fraude e % digitação da pesagem principal, 7 dias × 21 anteriores | > 2× (com ≥ 20 pesagens) | `ciclo.py` |
+| Risco histórico | marca da extração, IDs do Mercante por ler, fila da pontuação, faixas | marca > 6 h; > 100 mil IDs; fila > 50 mil | `aplicacoes.py` |
+| Busca por texto | Meilisearch no ar; IDs do Mercante por indexar (precisa de `NAVII_MEILI_CHAVE_ESCRITA`) | fora: falha; > 20 mil: atenção; sem chave: não medido | `aplicacoes.py` |
+| NAVI-I | tempo no servidor da 1ª página das pesquisas de 24 h (a coleta de uso grava) | p95 > 10 s ou > 5% lentas (com ≥ 20 pesquisas) | `aplicacoes.py` |
+| Fichas de FMA | Ficha de FMA mais nova (`fma_update.py` do Fichas) | > 3 dias | `aplicacoes.py` |
 
-**Ajustes necessários para o health check funcionar**: refaz robusto (P0.2); `audita_ciclos.py` com código de saída
-e modo rápido de 2 dias; medida "não refeitos"; comparação semana a semana no acompanhamento; agregação dos tempos
-do NAVI-I; um script `saude_ajna.py` que chama os relatórios existentes (cada parte com o próprio limite de tempo,
-uma falha não derruba as outras) e escreve o resumo.
+Próximos passos possíveis: cruzar, por recinto, inspeções transmitidas × imagens recebidas (precisa do de-para do
+`metadata.recinto` para o código do recinto); erros 5xx do NAVI-I (log do gunicorn); espaço em disco e programas do
+supervisor; aba "Saúde" no menu NAVII lendo o último relatório.
 
 ## Decisões em aberto (resumo)
 
 1. Refazer agora no servidor as partes que falharam (P0.1).
-2. Aprovar o refaz robusto (P0.2) e o escopo do health check v1 (P0.3) — inclusive onde aparece (log, e-mail, aba).
+2. Onde o health check aparece além do log diário: e-mail do cron, aba "Saúde" (P0.3).
 3. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
 4. Aprovar a revisita de imagens (P1.5) e a contagem assíncrona (P1.6), propostas desde 13/10 e 02/10.
 5. Gravar o modo de exibição na coleta de uso (P2.11).

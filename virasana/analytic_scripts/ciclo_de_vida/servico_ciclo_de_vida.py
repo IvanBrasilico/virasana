@@ -43,7 +43,10 @@ Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_com
 `--refaz-desde DATA [--refaz-ate DATA]` (15/10/2026): refaz UMA VEZ os ciclos — abertos E concluídos — dos contêineres
 desembarcados no período (o serviço contínuo só refaz o que tem evento novo ou está aberto; depois de uma mudança do
 núcleo, os concluídos ficariam com o resultado antigo). Os mais recentes primeiro, em partes, com o progresso no log;
-uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo) vai ao log e as outras seguem. Entram também
+uma parte que falhe (ex.: o serviço gravando o mesmo ciclo ao mesmo tempo, queda da conexão) é repetida até 3 vezes; a
+que falhar em todas vai ao log e as outras seguem — no fim, o log lista o período de desembarque de cada parte não
+refeita com o comando para refazê-la, e o programa sai com código 1. Rodar NO SERVIDOR (23/10/2026: rodado de uma
+estação de trabalho, perdeu 24 de 41 partes numa queda de rede). Entram também
 os contêineres com desembarque no escopo e ainda SEM ciclo (ex.: desembarques no Ecoporto de antes do serviço).
 Com `--refaz-operadores` (20/10/2026), só os contêineres desembarcados NESSES operadores do escopo: ao ampliar o escopo,
 cria os ciclos do período sem refazer os de Santos.
@@ -76,6 +79,10 @@ logger = logging.getLogger('ciclo_de_vida_v2')
 DIAS_DIVISOES = 7          # divisão das balanças: pesagens dos últimos N dias ...
 HORAS_DIVISOES = 24        # ... recalculada a cada N horas
 HORAS_PORTOS = 24          # porto de cada recinto (`CargaCiclo.portos_dos_recintos`): recalculado a cada N horas
+# refaz: uma parte que falha é repetida (23/10/2026: o refaz de 22/10, rodado da estação de trabalho, perdeu 24 de 41
+# partes numa queda de rede); espera em segundos antes da 2ª e da 3ª tentativa
+TENTATIVAS_DA_PARTE = 3
+ESPERA_ENTRE_TENTATIVAS = (30, 120)
 
 # Eventos novos de cada tabela (o SQL é fixo; marca e lote vão como parâmetro)
 EVENTOS_NOVOS = {
@@ -120,6 +127,7 @@ class Servico:
         self.revisita_horas, self.revisita_sem_ce_horas = revisita_horas, revisita_sem_ce_horas
         self.revisita_limite, self.dias_sem_ce = revisita_limite, dias_sem_ce
         self.relogio = relogio
+        self.espera: Callable[[float], None] = time.sleep   # entre as tentativas de uma parte do refaz (testes: nada)
         self.etapa_risco = self._carrega_etapa_risco(engine, relogio) if risco and not simula else None
         self.com_pesagens = inspect(engine).has_table(PESAGENS.name)
         self._divisoes: Tuple[Optional[datetime], Dict[str, int]] = (None, {})
@@ -367,25 +375,60 @@ class Servico:
             conteiner, data = (conteiner or '').strip(), _data(data)
             if conteiner and data and (conteiner not in ultimo or data > ultimo[conteiner]):
                 ultimo[conteiner] = data
+        self._desembarques_do_periodo = ultimo   # o refaz diz o período das partes que falharem
         return sorted(ultimo, key=lambda c: (ultimo[c], c), reverse=True)
 
     def refaz(self, desde: datetime, ate: Optional[datetime] = None, parte: int = 5000,
               operadores: Optional[Iterable[str]] = None) -> Counter:
-        """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo)."""
+        """Refaz uma vez os ciclos dos contêineres desembarcados no período (ver a docstring do módulo). Uma parte que
+        falha é repetida (a queda da conexão costuma passar); a que falhar em todas as tentativas fica de fora, e o
+        fim do log diz o período de desembarque delas e o comando para refazê-las."""
         ate = ate or self.relogio()
         with self.engine.connect() as conexao:
             conteineres = self.conteineres_do_periodo(conexao, desde, ate, operadores)
         logger.info(f'refazer: {len(conteineres)} contêineres desembarcados de {desde:%Y-%m-%d} a {ate:%Y-%m-%d}')
-        estatisticas = Counter()
+        estatisticas, falhas = Counter(), []
         for i in range(0, len(conteineres), parte):
-            try:
-                estatisticas.update(self.processa(conteineres[i:i + parte], desde=desde))
-            except Exception:  # noqa: uma parte com erro não para as outras (refazer de novo depois resolve)
-                logger.exception(f'refazer: erro na parte {i // parte + 1} — segue com as demais')
+            resultado = self._parte_do_refaz(conteineres[i:i + parte], desde, i // parte + 1)
+            if resultado is None:
                 estatisticas['partes com erro'] += 1
+                falhas.append(conteineres[i:i + parte])
+            else:
+                estatisticas.update(resultado)
             logger.info(f'refazer: {min(i + parte, len(conteineres))} de {len(conteineres)} contêineres')
         logger.info(f'refazer{" (SIMULAÇÃO)" * self.simula}: {dict(estatisticas)}')
+        for linha in self._resumo_das_falhas(falhas, operadores):
+            logger.error(linha)
         return estatisticas
+
+    def _parte_do_refaz(self, conteineres: List[str], desde: datetime, numero: int) -> Optional[Counter]:
+        """Processa uma parte com até TENTATIVAS_DA_PARTE tentativas; None se todas falharem."""
+        for tentativa in range(1, TENTATIVAS_DA_PARTE + 1):
+            try:
+                return self.processa(conteineres, desde=desde)
+            except Exception:  # noqa: uma parte com erro não para as outras (refazer de novo depois resolve)
+                logger.exception(f'refazer: erro na parte {numero} (tentativa {tentativa} de {TENTATIVAS_DA_PARTE})')
+                if tentativa < TENTATIVAS_DA_PARTE:
+                    self.espera(ESPERA_ENTRE_TENTATIVAS[tentativa - 1])
+                    self.engine.dispose()   # descarta as conexões do pool (a queda deixa conexões mortas)
+        logger.error(f'refazer: parte {numero} desistida — segue com as demais')
+        return None
+
+    def _resumo_das_falhas(self, falhas: List[List[str]], operadores: Optional[Iterable[str]]) -> List[str]:
+        """Linhas finais do log: o período de desembarque de cada parte que falhou e o comando para refazê-la."""
+        if not falhas:
+            return []
+        datas = getattr(self, '_desembarques_do_periodo', {})
+        linhas = [f'refazer: {len(falhas)} parte(s) NÃO refeita(s) — refaça cada período abaixo (no servidor):']
+        for parte in falhas:
+            dias = [datas[c] for c in parte if c in datas]
+            if not dias:
+                continue
+            comando = (f'--refaz-desde {min(dias):%Y-%m-%d} --refaz-ate {max(dias) + timedelta(days=1):%Y-%m-%d}'
+                       + (f' --refaz-operadores {" ".join(operadores)}' if operadores else ''))
+            linhas.append(f'  desembarques de {min(dias):%Y-%m-%d %H:%M} a {max(dias):%Y-%m-%d %H:%M} '
+                          f'({len(parte)} contêineres): {comando}')
+        return linhas
 
     def reprocessa(self, limite: int) -> Counter:
         """Etapa 6: reprocessa (v2) os contêineres de ciclos pendentes do loop antigo, os mais recentes primeiro."""
@@ -457,7 +500,9 @@ def main(argv=None):  # pragma: no cover - depende do banco real
                 f'{" — SIMULAÇÃO" * args.simula}')
     servico = Servico(engine, mongo_db, simula=args.simula, risco=not args.sem_risco)
     if args.refaz_desde:
-        servico.refaz(args.refaz_desde, args.refaz_ate, operadores=args.refaz_operadores)
+        estatisticas = servico.refaz(args.refaz_desde, args.refaz_ate, operadores=args.refaz_operadores)
+        if estatisticas['partes com erro']:
+            sys.exit(1)   # com partes não refeitas (o log diz quais e como refazê-las)
     elif args.reprocessa:
         servico.reprocessa(args.reprocessa)
     elif args.uma_vez:

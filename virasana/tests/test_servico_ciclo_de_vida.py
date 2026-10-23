@@ -350,11 +350,33 @@ class TestVoltasSeguintes(ServicoTestCase):
         self.assertEqual(self.tabela(gc.CICLOS, gc.CICLOS.c.numeroConteiner == 'CTRX'), [])
 
     def test_refaz_segue_quando_uma_parte_falha(self):
+        """A parte que falha nas 3 tentativas fica de fora; a outra segue. O fim do log diz o período de desembarque
+        da parte não refeita e o comando para refazê-la (23/10/2026: queda de rede perdeu 24 de 41 partes)."""
         from unittest import mock
-        with mock.patch.object(self.servico, 'processa', side_effect=[RuntimeError('chave duplicada'), Counter()]) \
-                as processa, self.assertLogs('ciclo_de_vida_v2', 'ERROR'):
+        esperas = []
+        self.servico.espera = esperas.append
+        erro = RuntimeError('chave duplicada')
+        with mock.patch.object(self.servico, 'processa', side_effect=[erro, erro, erro, Counter()]) as processa, \
+                self.assertLogs('ciclo_de_vida_v2', 'ERROR') as log:
             estatisticas = self.servico.refaz(d(1), d(10), parte=1)
-        self.assertEqual((estatisticas['partes com erro'], processa.call_count), (1, 2))
+        self.assertEqual((estatisticas['partes com erro'], processa.call_count), (1, 4))
+        self.assertEqual(esperas, list(sv.ESPERA_ENTRE_TENTATIVAS))
+        resumo = '\n'.join(log.output)
+        self.assertIn('1 parte(s) NÃO refeita(s)', resumo)
+        # a parte 1 é o contêiner de desembarque mais recente (CTRB), com o período e o comando
+        data = self.servico._desembarques_do_periodo['CTRB']
+        self.assertIn(f'--refaz-desde {data:%Y-%m-%d} --refaz-ate {data + timedelta(days=1):%Y-%m-%d}', resumo)
+
+    def test_refaz_repete_a_parte_ate_dar_certo(self):
+        """Queda passageira da conexão: a 2ª tentativa refaz a parte; nada fica de fora."""
+        from unittest import mock
+        self.servico.espera = lambda segundos: None
+        with mock.patch.object(self.servico, 'processa',
+                               side_effect=[RuntimeError('MySQL server has gone away'), Counter({'contêineres': 1}),
+                                            Counter({'contêineres': 1})]) as processa, \
+                self.assertLogs('ciclo_de_vida_v2', 'ERROR'):
+            estatisticas = self.servico.refaz(d(1), d(10), parte=1)
+        self.assertEqual((estatisticas['partes com erro'], estatisticas['contêineres'], processa.call_count), (0, 2, 3))
 
     def test_reprocessa_pendente_antigo(self):
         estatisticas = self.servico.reprocessa(10)

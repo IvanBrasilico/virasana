@@ -15,6 +15,9 @@ família de 30 dias de uma vez, em tempo quadrático — mais de 1 h parada, e o
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons):
     A=virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py
     virasana-venv/bin/python $A --dias 7 --saida auditoria_ciclos.log --csv auditoria_ciclos.csv
+
+Sai com código 1 quando há violação (0 sem nenhuma). O health check (`virasana/saude/saude_ajna.py`) audita os
+desembarques dos últimos 2 dias com a mesma classe.
 """
 import argparse
 import csv
@@ -176,6 +179,7 @@ def main(argv=None):  # pragma: no cover - depende do banco real
     finally:
         if arquivo:
             arquivo.close()
+    sys.exit(1 if achados else 0)   # cron e health check: violação = código 1
 
 
 if __name__ == '__main__':  # pragma: no cover

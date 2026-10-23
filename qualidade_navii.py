@@ -42,6 +42,7 @@ MODULOS = [
     'virasana/apreensoes',
     'virasana/risco_historico',
     'virasana/completude',
+    'virasana/saude',
     'virasana/analytic_scripts/dados_transporte_apreensoes.py',
     'virasana/analytic_scripts/dados_risco_perdimentos.py',
     'virasana/analytic_scripts/diagnostico_risco_perdimentos.py',
@@ -144,6 +145,8 @@ TESTES = [
     'virasana/tests/test_audita_ciclos.py',
     'virasana/tests/test_qualidade_navii.py',
     'virasana/tests/test_navii_visoes.py',
+    'virasana/tests/test_saude_fontes.py',
+    'virasana/tests/test_saude_ciclo.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',

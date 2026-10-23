@@ -1547,3 +1547,9 @@ os desembarques de 22/09 a ~09/10. A 2ª auditoria (`auditoria_ciclos2.log`, 204
 que falharam; nenhuma depois. Refazer essa janela no servidor e auditar de novo (esperado: 0). Robustez do refaz
 (repetir a parte, listar as que falharam com o comando para refazer) e health check: `BACKLOG.md` (raiz do virasana).
 
+**Refaz robusto e health check (23/10/2026)**: uma parte do refaz que falha é repetida até 3 vezes (30 s e 2 min de
+espera, reconectando); no fim, o log lista o período de desembarque de cada parte não refeita e o comando para
+refazê-la, e o programa sai com código 1 (`audita_ciclos.py` também sai com 1 quando há violação). O health check
+diário (`virasana/saude/saude_ajna.py`, ver `BACKLOG.md`) acompanha o serviço (alertas deste acompanhamento), as
+invariantes dos desembarques das últimas 48 h, a cobertura semana a semana, as pesagens e — com `--nucleo-desde` — os
+ciclos ainda não refeitos depois de uma troca do núcleo.
