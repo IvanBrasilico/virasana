@@ -95,10 +95,31 @@ nova.
 
 ### Ideias de sinais de risco — informação declarada inventada (pedido do usuário, 22/10/2026)
 
-Só registradas. Antes de implementar, cada uma precisa de um **diagnóstico nos dados** (como os F0 dos outros
-trabalhos): preenchimento real dos campos, distribuição, quantos CEs seriam marcados e se os marcados batem com as
-fichas positivas do risco histórico. Se valerem, viram selo/filtro no NAVI-I (como o diagnóstico das pesagens) e/ou
-sinal do risco histórico.
+Antes de implementar, cada uma precisa de um **diagnóstico nos dados** (como os F0 dos outros trabalhos):
+preenchimento real dos campos, distribuição, quantos CEs seriam marcados e se os marcados batem com as fichas positivas
+do risco histórico. Se valerem, viram selo/filtro no NAVI-I (como o diagnóstico das pesagens) e/ou sinal do risco
+histórico.
+
+**Passo 0 (plano aprovado pelo usuário em 23/10/2026) — escrito, falta rodar no servidor.**
+`virasana/analytic_scripts/declaracao/`: `regras_declaracao.py` (regras puras) e `diagnostico_declaracao.py` (só
+leitura; seções 0, 1, 16, 17, 18, V, A). Decisões do plano:
+- um script com as três seções, uma rodada no servidor; janela de **30 dias** (pela janela de ID) para 16 e 17 e, se o
+  tempo estimado na seção 1 couber, outra de **90 dias só com o 18** (mais amostras por NCM);
+- unidade dos 16 e 18: o **contêiner cheio (FCL)** na família master/filhote (peso e cubagem pela regra das pesagens);
+  uso parcial fica de fora. No 17, só **BL e MBL** (o número do HBL é do agente);
+- **referências** para validar: fichas positivas do risco histórico, RVFs (todas, por infração encontrada, peso e
+  volume da RVF × declarado) e pesagens do ciclo de vida (por diagnóstico). O usuário escolhe, pela lista de
+  infrações do log, quais contam como "declaração falsa";
+- tabelas de referência: capacidade e carga máxima por tipo em `navii/referencias/tipos_conteiner.json`
+  (`capacidades`, de páginas públicas das companhias — conferir antes de virar regra); prefixo × empresa aprendido
+  da base, o usuário confere os maiores;
+- **critério de "vale"** (propostas): dado utilizável em 70–80%+ dos contêineres/CEs; marcação entre 0,5% e 5%;
+  taxa nas referências ≥ 2× a da população, olhando as contagens; amostra de 20–30 marcados com o motivo para o
+  usuário olhar no NAVI-I. Limiares iniciais em `regras_declaracao.py` (calibrar com o log).
+
+Rodar (raiz do virasana, no servidor):
+`virasana-venv/bin/python virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao.log
+--csv declaracao.csv`; depois, se couber, `--dias 90 --secoes 18 --saida declaracao_18.log`.
 
 16. **Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

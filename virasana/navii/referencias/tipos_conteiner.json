@@ -85,5 +85,17 @@
     "TN": "T",
     "BK": "B",
     "VH": "V"
+  },
+  "capacidades": {
+    "_fonte": "Capacidade interna (m³) e carga máxima (payload, kg) por tamanho e grupo — chave = 2 primeiras posições do código ISO + grupo (22G = 20' dry). Exemplos publicados pelas companhias (Hapag-Lloyd, páginas 'cargo fleet'; Maersk, FAQ 'cargo weight limit'), lidos pelo resumo da busca em 23/10/2026 (as páginas recusam leitura automática): variam por fabricante e devem ser conferidos antes de virar regra de produção. Plataforma (flat rack) não tem volume. Tipo sem fonte fica de fora (nada inventado). Usada só pelo diagnóstico dos sinais de declaração (analytic_scripts/declaracao).",
+    "22G": {"m3": 33.2, "carga_maxima_kg": 28300, "fonte": "Maersk"},
+    "42G": {"m3": 67.7, "carga_maxima_kg": 28750, "fonte": "Hapag-Lloyd"},
+    "45G": {"m3": 76.3, "carga_maxima_kg": 28600, "fonte": "Hapag-Lloyd"},
+    "L5G": {"m3": 86.0, "carga_maxima_kg": 27700, "fonte": "Hapag-Lloyd"},
+    "22R": {"m3": 28.3, "carga_maxima_kg": 27770, "fonte": "Maersk"},
+    "45R": {"m3": 67.7, "carga_maxima_kg": 29580, "fonte": "Hapag-Lloyd"},
+    "42U": {"m3": 66.8, "carga_maxima_kg": 28450, "fonte": "Hapag-Lloyd"},
+    "22P": {"m3": null, "carga_maxima_kg": 42100, "fonte": "Hapag-Lloyd"},
+    "45P": {"m3": null, "carga_maxima_kg": 49100, "fonte": "Hapag-Lloyd"}
   }
 }

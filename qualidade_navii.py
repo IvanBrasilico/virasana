@@ -51,6 +51,7 @@ MODULOS = [
     'virasana/analytic_scripts/diagnostico_coleta_uso.py',
     'virasana/analytic_scripts/diagnostico_texto_navii.py',
     'virasana/analytic_scripts/diagnostico_risco_ce.py',
+    'virasana/analytic_scripts/declaracao',
     'virasana/analytic_scripts/entregas_cnpj.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ciclo_de_vida.py',
     'virasana/analytic_scripts/ciclo_de_vida/diagnostico_ces_ciclo_de_vida.py',
@@ -149,6 +150,8 @@ TESTES = [
     'virasana/tests/test_saude_ciclo.py',
     'virasana/tests/test_saude_historico.py',
     'virasana/tests/test_saude_tela.py',
+    'virasana/tests/test_regras_declaracao.py',
+    'virasana/tests/test_diagnostico_declaracao.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',
