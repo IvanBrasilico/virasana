@@ -54,6 +54,7 @@ Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados vi
 - `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
 - `virasana/forms/`, `virasana/exportacao/`, `virasana/analises/` — WTForms, exportação de dados, análises pontuais.
 - `virasana/tests/` — pytest (alguns arquivos são scripts de laboratório/exploração, não testes automatizados formais — ex.: `cargalab.py`, `xmllab.py`, `image_search_tester.py`).
+- `navi_etls/` (raiz do repositório, **fora** do pacote `virasana`) — **NAVI-ETL** (24/10/2026, em planejamento, F0): aplicação nova e separada que vai receber as entradas de API (API Recintos, imagens, DUE, CNPJ, DTA) e o `virasana_periodic`, **copiados** — o código atual não muda. Antes de mexer, ler `navi_etls/PLANO.md`, `INVENTARIO.md` e `AMOSTRAS.md`. O pacote novo não importa `virasana`, `bhadrasana`, `ajna_commons` nem `ajnaapi`.
 
 ## Produção: prefixo `/virasana` atrás de proxy (obrigatório para código novo)
 

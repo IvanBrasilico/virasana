@@ -1,144 +1,175 @@
-# NAVI-ETL — plano (rascunho para revisão, 24/10/2026)
+# NAVI-ETL — plano (para a equipe, 24/10/2026)
 
-Pedido do usuário (24/10/2026): tirar do bhadrasana2 e do virasana as **entradas de API** que carregam as bases da
-DUE, da API Recintos e das imagens no MongoDB, e o `virasana_periodic` (o único ETL de PULL), para uma aplicação
-nova e separada em `navi_etls/` (raiz do repositório virasana), com estrutura, documentação, qualidade e CI/CD
-próprios; depois, modernizar (Python 3.14, FastAPI, driver MySQL melhor). **Copiar, não mover: nada do código
-atual muda.** Nada aqui está aprovado.
+Três documentos: este (objetivo, decisões, fases), **`INVENTARIO.md`** (endpoints e arquivos — **para a equipe
+confirmar**) e **`AMOSTRAS.md`** (coleta, anonimização, gabaritos, sombra, estatísticas, inventário do ambiente).
 
-## 1. O que entra (mapa do código atual)
+## 1. Objetivo e princípios
 
-### Entradas (push): quem chama, rota, o que grava
+Tirar as **entradas de dados** do bhadrasana2 e do virasana — as rotas que recebem a API Recintos, as imagens, a
+DUE, a DTA e os CNPJs — e o **`virasana_periodic`** (o único ETL de PULL, que baixa o Mercante do Aniita) para uma
+aplicação nova e separada, `navi_etls/`, na raiz do repositório virasana; modernizá-la; e só então cortar a
+produção para ela.
 
-| Base | Rota (hoje) | Quem chama | Grava em | Código |
-|---|---|---|---|---|
-| API Recintos | `POST /bhadrasana2/upload_arquivo_json_api/api_json` | scripts do DataLake (JSON) | `apirecintos_acessosveiculo`, `_pesagensveiculo`, `_embarquedesembarque`, `_inspecoesnaoinvasivas`, `_registros_rejeitados` | bhadrasana2 `routes/apirecintos.py` |
-| API Recintos | `POST /bhadrasana2/upload_arquivo_json_api/api` (arquivo .json/.zip) | idem | idem | idem |
-| API Recintos | `GET /bhadrasana2/api_recintos/maisrecentes` | DataLake (de onde continuar) | — (lê eventos e o controle) | idem |
-| API Recintos | `GET /bhadrasana2/api_recintos/imagens_maisrecentes` | DataLake (imagens) | — (lê `fs.files` e o controle, tipo `99`) | idem |
-| API Recintos | `POST /bhadrasana2/api_recintos/atualiza_ponteiro` | DataLake | `apirecintos_controle_extracao` | idem |
-| DUE | `GET /virasana/integracao/lista_ctrs_sem_due`, `lista_ctrs_com_due`, `lista_dues_sem_detalhes` | ContÁgil (passo 1) | — (lê AcessoVeiculo, InspecaoNaoInvasiva, `fs.files`) | virasana `routes/integracao_app.py` |
-| DUE | `POST /virasana/integracao/upload_dues` | ContÁgil (passo 3) | `pucomex_due`, `pucomex_due_itens`, `pucomex_due_conteiner` | idem |
-| DUE | `POST /virasana/integracao/atualiza_due_acessoveiculo_e_mongo` | ContÁgil | `apirecintos_acessosveiculo` (DUE) e `fs.files.metadata` | idem |
-| DUE | `POST /virasana/integracao/insere_cnpjs` | ContÁgil | `laudo_empresas` | idem |
-| DTA | `POST /virasana/integracao/upload_dados_dta` | ContÁgil | `navii_dtas` | idem |
-| Imagens | `POST /virasana/api/uploadbson` (multipart, campo `file`) | Avatar (`avatar/utils/dir_monitor.py`) | GridFS (`fs.files`, `fs.chunks`) | virasana `views.py` + `workers/tasks.py` |
+- **Copiar, não mover**: nada do código atual muda. As rotas antigas continuam no ar até um pedido de remoção.
+- **Mesmos contratos até o corte** (caminho, corpo, resposta, códigos HTTP): quem chama só troca a URL base e passa
+  a mandar a chave. Remodelar contrato é da F5 em diante.
+- **Mesmas tabelas e coleções**: a aplicação nova não cria nem altera tabela.
+- **Independente**: o pacote não importa `virasana`, `bhadrasana`, `ajna_commons` nem `ajnaapi` (o gate confere).
+- **Tudo verificado por um corpus** de amostras reais anonimizadas: gabaritos do código atual, testes de não
+  regressão e sombras comparando versões.
+- **Versões oficiais da distribuição**, descobertas por um inventário das máquinas antes de escolher.
+- Padrão do NAVI-I para documentação (`CONTEXTO.md`, manual no ajna_docs) e qualidade (gate com pytest, flake8,
+  bandit e radon; `tox`; sem runner no GitLab).
 
-### O PULL: `virasana_periodic`
+## 2. Escopo (detalhe em `INVENTARIO.md`)
 
-`supervisor_virasana_periodic.conf` → `virasana/scripts/periodic_updates.py --daemon`: a cada ~5 min, só estes
-passos (o resto dos imports está morto):
+| Fonte | Rotas | Quem chama |
+|---|---|---|
+| API Recintos — eventos | E1–E5 (bhadrasana2: `upload_arquivo_json_api/api_json` e `/api`, `api_recintos/maisrecentes`, `imagens_maisrecentes`, `atualiza_ponteiro`) | ContÁgil (DataLake) |
+| API Recintos — imagens | E6 (virasana: `api/inspecaonaoinvasiva`) | ContÁgil (DataLake) |
+| Avatar | E7 (virasana: `api/uploadbson`) | Avatar |
+| DUE, CNPJ, DTA | E8–E14 (virasana: `integracao/...`) | ContÁgil |
+| Mercante (PULL) | P1 (`virasana_periodic`, sem o `acertos_sql`) | supervisor |
 
-1. `xmli.dados_xml_grava_fsfiles` — XML dos escâneres para `fs.files.metadata.xml`;
-2. `processa_xml_mercante.get_arquivos_novos` — **baixa** os XML do Mercante da API do Aniita
-   (`http://10.61.8.187:3002`, endereço fixo no código);
-3. `processa_xml_mercante.xml_para_mercante` e `resume_mercante.mercante_resumo` — tabelas do Mercante e os
-   `*resumo` (as que o NAVI-I lê);
-4. `mercante_fsfiles.update_mercante_fsfiles_dias` — Mercante para `fs.files.metadata` (10 dias);
-5. `acertos_sql.update` — **não é ETL**: uma correção do Fichas (insere `ovr_eventos` de RVF sem evento).
+Também vai, como **referência** (não roda em produção), o código de quem gera o que chega: a parte do Avatar que
+monta e envia o BSON, os scripts do ContÁgil (a equipe fornece; são Jython 2.7) e os scripts de envio manual do
+virasana — em `navi_etls/fontes/`, cada um com a origem registrada.
 
-### Dependências a copiar junto (~6,5 mil linhas; ~5 mil usadas)
+## 3. Decisões (usuário, 24/10/2026)
 
-- **API Recintos** (bhadrasana2): `models/apirecintos.py` (955: eventos, validação, rejeições, controle,
-  `processa_json`, `persiste_df`), `models/apirecintos_normalizacao.py` (149), de `models/__init__.py` só `Base`,
-  `BaseRastreavel`, `BaseDumpable`; de `models/ovr.py` só `Recinto`; de `views.py` só `valid_file`.
-- **DUE/DTA/CNPJ** (virasana): `integracao/due/due_manager.py` (1.086; os endpoints usam ~700), `due_alchemy.py`
-  (105), `integracao/dta/dta_manager.py` (429); do bhadrasana2 `models/laudo.py` só `Empresa` e `get_empresa` (o
-  arquivo inteiro puxa `virasana.integracao.bagagens`).
-- **Imagens**: `trata_bson` (24) e, do ajna_commons, `models/bsonimage.py` (255).
-- **Periódico**: `periodic_updates.py` (149), `integracao/xmli.py` (300), `integracao/mercante/`
-  `processa_xml_mercante.py` (192), `mercante.py` (300), `mercantealchemy.py` (522), `resume_mercante.py` (163),
-  `mercante_fsfiles.py` (158), `mercante_marshmallow.py` (156), `integracao/acertos_sql.py` (65).
-- **Comum** (ajna_commons): `flask/log.py` (90), `utils/sanitiza.py` (89) e, de `flask/conf.py`, só as variáveis de
-  ambiente (`SQL_URI`, `MONGODB_URI`/`DATABASE`) — sem o `SECRET` gravado no diretório, o `dominate` e o redis.
-
-**Fora**: as telas (`/upload_arquivo_json_api` com formulário — usa uma `session` indefinida e falha sempre;
-`/uploadbson`), `/dues/update` (desativado, responde 404), `/grid_data` e os `*_bulk` da exportação (telas), e as
-funções de tela do `due_manager` (`due_summary`, `DueView`...).
-
-### Testes que existem
-
-Só a API Recintos tem testes aproveitáveis (bhadrasana2: `test_apirecintos_normalizacao.py`,
-`test_apirecintos_rejeicao.py`, `test_api_recintos_json.py` — este acessa a rede ao ser importado) e, no
-ajna_commons, `bsonimage_test.py` e `sanitizar_test.py`. DUE, DTA, CNPJ, `uploadbson` e o periódico **não têm
-teste**: os de caracterização são escritos na cópia (F1).
-
-## 2. Achados (no código atual — não se corrige lá; na cópia, na F3)
-
-- **API Recintos, `persiste_df`**: um erro 1062 (chave duplicada) no commit desfaz o **lote inteiro** e o endpoint
-  responde sucesso — os eventos novos daquele lote se perdem sem aviso; uma consulta por evento (`is_duplicate`);
-  log de ERROR por evento de AcessoVeiculo ("Forçando a barra...").
-- `maisrecentes`: `GROUP BY MAX` nas tabelas de eventos inteiras a cada chamada, com sorteio dos recintos parados.
-  `imagens_maisrecentes`: agregação no `fs.files` desde 01/01/2026 a cada chamada e uma consulta de recinto por linha.
-- **DUE e periódico chamam o próprio virasana por HTTP** (`POST /virasana/grid_data`, `verify=False`) para ler o
-  `fs.files` — a cópia dependeria do virasana web no ar. O `/grid_data` aceita consulta arbitrária ao `fs.files` sem
-  login (fica no virasana; fora deste escopo).
-- **Nenhuma entrada tem autenticação** (os `@login_required` estão comentados; CSRF desligado).
-- `/api/uploadbson` com `todir=True` está quebrado (`open(..., 'b')`); o Avatar não usa. O Avatar **apaga o BSON na
-  origem** quando recebe `success`: a rota nova só pode responder `success` depois de gravar (como hoje).
-- Mercante: `notify`/`cnpjNotify` chegam vazios (P1.4 do `BACKLOG.md`, dado perdido todo dia) — a cópia do parser
-  é o lugar natural da correção, quando pedida.
-
-## 3. Estrutura proposta
-
-```
-navi_etls/                      raiz no repositório virasana
-  CONTEXTO.md                   (este plano vira o contexto, no padrão do NAVI-I)
-  pyproject.toml                pacote próprio, versões fixadas (lock)
-  qualidade_etls.py, tox.ini    gate no padrão do qualidade_navii.py (pytest, flake8, bandit, radon)
-  wsgi_etls.py                  prefixo /navi_etls atrás do Apache
-  supervisor_navi_etls.conf, supervisor_navi_etls_periodico.conf
-  src/navi_etls/
-    app.py, config.py, db.py, log.py, sanitiza.py
-    apirecintos/  rotas, modelos, normalizacao, ingestao
-    due/          rotas (integracao/*), due_manager (só o usado), due_alchemy, empresa
-    dta/          dta_manager
-    imagens/      rota uploadbson, bsonimage
-    periodico/    servico (o laço do virasana_periodic), xmli, mercante/, acertos_sql
-  tests/          caracterização, contrato (amostras reais em tests/dados, anonimizando CPF, CNPJ e nomes)
-```
-
-Regras: **as mesmas rotas e contratos** (payload, resposta, códigos HTTP) — quem chama só troca a URL base; **as
-mesmas tabelas e coleções** (sem `create_all`, nenhuma DDL nova); o pacote **não importa** `virasana`,
-`bhadrasana`, `ajna_commons` nem `ajnaapi` (o gate confere). Documentação: `CONTEXTO.md` aqui e, no ajna_docs
-(`docs2.0`), uma página técnica "Integrações (NAVI-ETL)" com rotas, contratos e operação.
+| # | Assunto | Decisão |
+|---|---|---|
+| 1 | Escopo | DTA e CNPJs entram, com os GET de apoio; telas e rotas desativadas ficam fora |
+| 2 | `acertos_sql` (no periódico) | **Não** vai: compensa um bug do Fichas que está sendo corrigido |
+| 3 | `/grid_data` chamado por HTTP | Vira a mesma consulta direto no Mongo, já na cópia |
+| 4 | Autenticação | Chave por chamador, obrigatória a partir do corte |
+| 5 | Corte | Um só, depois da modernização, validado por gabaritos e sombra |
+| 6 | Versões | Inventário da estação e do servidor primeiro; as mais novas **oficiais da distribuição**, nada instalado "por fora" |
+| 7 | CI/CD | Modelo do NAVI-I (o GitLab não tem runner) |
+| 8 | Apache | O usuário altera |
+| — | Sombra | Por **amostras coletadas e anonimizadas** no repositório, não por tráfego duplicado |
+| — | Contratos | Iguais até a F4; remodelar, se valer a pena, na F5 em diante |
 
 ## 4. Fases
 
-| Fase | Entrega | Produção? |
+### F0 — Preparação (nenhum código de produção)
+
+| Tarefa | Entrega | Quem |
 |---|---|---|
-| F0 | Este mapa; contratos de cada rota tirados do código; amostras reais de payload (anonimizadas) como dados de teste | não |
-| F1 | **Cópia fiel** das entradas e do periódico, com imports refeitos e só as adaptações listadas (config e log próprios, `Recinto`/`Empresa` mínimos, `/grid_data` por HTTP trocado pela mesma consulta direta ao Mongo, imports mortos fora); testes de caracterização e de **equivalência** (no venv do virasana, Python 3.9: a mesma entrada na função original e na cópia dá as mesmas linhas, em SQLite e mongomock) | não |
-| F2 | Estrutura: app Flask só com essas rotas, gate, tox, CI (decisão 7), supervisor, wsgi, rota de saúde; implantação em **homologação** (`*_HOM`, prefixo próprio) para validar Apache, supervisor e prefixo | homologação |
-| F3 | Modernização: Python 3.14, FastAPI com os contratos em pydantic, SQLAlchemy 2, driver MySQL por medição (mysqlclient, PyMySQL, asyncmy, conector MariaDB), pymongo 4 (API assíncrona), uvicorn; correções da seção 2 (1062 com `INSERT ... ON DUPLICATE KEY`/`IGNORE`, sem consulta por evento, ponteiros pela tabela de controle) — os testes de contrato da F1 continuam passando | homologação |
-| F4 | **Corte** por fonte, depois de uma **sombra** em homologação (o mesmo envio no antigo e no novo, ou o reenvio das mesmas janelas; comparação das tabelas, como a sombra do ciclo de vida): Avatar, DataLake (API Recintos), ContÁgil (DUE/DTA/CNPJ) e o periódico — este com o antigo **parado antes** (os dois juntos baixariam e gravariam os mesmos XML). Voltar = trocar a URL de volta. O código antigo fica até pedido de remoção | sim |
+| F0.1 Inventário do ambiente | `diagnosticos/inventario_ambiente.py` (**pronto**, 24/10) rodado na estação e no servidor → `ambiente/*.md`; escolha das versões | rodar e escolher: usuário |
+| F0.2 Confirmação do inventário | `INVENTARIO.md` revisado: scripts do ContÁgil e outros chamadores, Avatar em uso, envio manual | equipe |
+| F0.3 Fontes de referência | `fontes/avatar/`, `fontes/contagil/`, `fontes/virasana/`, com `ORIGEM.md` | equipe fornece o ContÁgil; desenvolvimento copia |
+| F0.4 Estatísticas de volume | `diagnosticos/volumes.py` (**pronto**, 24/10) → volumes por dia, lotes, imagens por origem, espaço (RAW × resumo); metas da F3 e números das melhorias da seção 7 | rodar: usuário |
+| F0.5 Contratos | `CONTRATOS.md`: por rota, o corpo, a resposta, os códigos, o que grava e o que acontece no reenvio — tirados do código e conferidos nas amostras | desenvolvimento; equipe revisa |
+| F0.6 Corpus | coleta (originais fora do repositório) → `anonimiza.py` → `confere_anonimizacao.py` → `amostras/` + `MANIFESTO.md` | coleta: equipe e usuário; ferramentas: desenvolvimento |
+| F0.7 Gabaritos | o código **atual** sobre o corpus, em bases vazias → `tests/esperado/` | desenvolvimento |
 
-Difere do pedido em dois pontos, para revisar: a cópia do periódico entra junto na F1 (as dependências se cruzam:
-`fs.files`, Mercante) e o corte em produção é **um só**, depois da modernização — a cópia Flask é validada pelos
-testes de equivalência e em homologação, sem um primeiro corte que seria refeito na F3.
+Pronto quando: inventário confirmado, versões escolhidas, corpus no repositório com a conferência passando e
+gabaritos gerados.
 
-## 5. Decisões (com a recomendação)
+### F1 — Cópia fiel (Flask, com o Python e as bibliotecas de hoje)
 
-1. **Escopo**: incluir DTA e CNPJs (estão no mesmo fluxo do ContÁgil) e os GET de apoio; deixar de fora as telas,
-   `/dues/update`, `/grid_data` e a exportação. *Recomendo assim.*
-2. **`acertos_sql`** (correção do Fichas que roda no periódico): copiar com uma opção para desligar — senão ela
-   para quando o periódico antigo for desligado. *Recomendo copiar e documentar como "não é ETL".*
-3. **`/grid_data` por HTTP** → a mesma consulta direto no Mongo já na F1. *Recomendo.*
-4. **Autenticação**: hoje nenhuma. Chave por chamador (cabeçalho), obrigatória a partir do corte — quem chama
-   já troca a URL nessa hora. *Recomendo; na F2 atrás de uma opção.*
-5. **Corte único depois da modernização, com sombra** (acima) ou um corte da cópia Flask e outro depois. *Recomendo
-   o único.*
-6. **Python 3.14 no servidor**: como instalar (pacote do sistema, compilado, ou `uv` com Python próprio) — depende
-   do sistema operacional e do acesso ao PyPI (proxy, espelho). *Recomendo `uv` (instala o Python e trava as
-   versões), se houver acesso.*
-7. **CI/CD**: o GitLab interno (`desenvolvimento-interno-catalogo`) tem runner? Se tiver, `.gitlab-ci.yml` na raiz
-   do repositório rodando só quando `navi_etls/**` muda; se não, o gate local e o `tox` no servidor, como no NAVI-I.
-8. **Apache e porta**: prefixo `/navi_etls` (e `/navi_etls_hom`) e uma porta nova — quem altera o Apache?
+Os arquivos do `INVENTARIO.md` (seção 2), com só as adaptações listadas lá; testes copiados; testes de contrato e
+de gabarito sobre o corpus (SQLite e mongomock); teste de independência (nenhum import proibido).
+Pronto quando: gate passando e gabaritos reproduzidos.
 
-## 6. Perguntas (o que não está no código)
+### F2 — Estrutura e homologação
 
-- Onde estão os scripts que chamam (DataLake para a API Recintos; ContÁgil para DUE/DTA/CNPJ)? Você consegue trocar
-  a URL e, para a sombra, mandar o mesmo envio para os dois?
-- As imagens da API Recintos (ponteiro `99`) entram no Mongo por qual caminho — pelo `/api/uploadbson` ou direto?
-- Volume típico (eventos por dia e tamanho dos lotes; BSON por dia) — para as metas de desempenho da F3 (dá para
-  medir no banco, se preferir).
+Aplicação Flask só com essas rotas; prefixo `/navi_etls` (e `/navi_etls_hom`) e porta nova — o usuário altera o
+Apache; supervisor para a web e para o periódico; gate `qualidade_etls.py` e `tox` no modelo do NAVI-I;
+`CONTEXTO.md`; página técnica "Integrações (NAVI-ETL)" no ajna_docs (`docs2.0`); rota de saúde e a verificação no
+`saude_navi`; a chave por chamador atrás de uma opção; implantação em homologação e **sombra** com o corpus.
+Pronto quando: sombra sem diferença em homologação.
+
+### F3 — Modernização (versões da F0.1)
+
+Python mais novo oficial da distribuição, FastAPI com os contratos em pydantic, SQLAlchemy 2, driver MySQL
+escolhido por medição (mysqlclient, PyMySQL, asyncmy, conector MariaDB — o que a distribuição suportar), pymongo,
+servidor ASGI. Correções da seção 6 e, se aprovadas, as melhorias da seção 7, **com os mesmos contratos**. Pronto quando: gabaritos (as mudanças de propósito
+explicadas), sombra e metas de desempenho da F0.4.
+
+### F4 — Corte em produção (uma vez, fonte por fonte)
+
+Ordem proposta, do mais simples ao mais delicado: (1) Avatar (E7); (2) imagens da API Recintos (E4–E6); (3)
+eventos da API Recintos (E1–E3, E5); (4) ContÁgil — DUE, CNPJ, DTA (E8–E14); (5) o periódico, com o antigo
+**parado antes** (os dois juntos baixariam e gravariam os mesmos XML). Em cada fonte: chave configurada, URL trocada,
+acompanhamento pelo health check por 24 a 48 h; voltar é trocar a URL de volta. Desligar o `virasana_periodic`
+também desliga o `acertos_sql`: a correção do Fichas precisa estar em produção antes do passo 5.
+
+### F5 em diante — Remodelagem (por pedido)
+
+Contratos novos onde valer a pena (gravação registro a registro, ponteiro único por fonte, imagem sem duplicata...),
+sempre com o corpus e os gabaritos. A correção do parser do Mercante (`notify`/`cnpjNotify` vazios, P1.4 do
+`BACKLOG.md`) não muda contrato e pode entrar antes, se pedida — é dado perdido todo dia.
+
+## 5. Quem faz o quê
+
+- **Equipe e usuário**: os scripts do ContÁgil (fornecer, a opção "só salvar" para a coleta, URL e chave no corte);
+  BSON de um Avatar em uso; rodar o inventário, as estatísticas e as coletas na estação e no servidor; guardar a
+  chave da anonimização; revisar o texto livre marcado pela ferramenta; Apache e supervisor na implantação.
+- **Desenvolvimento**: a cópia, os testes, as ferramentas (inventário, estatísticas, coleta, anonimização,
+  conferência, gabarito, sombra), a documentação e o roteiro de cada implantação.
+
+## 6. Achados no código atual (não se corrigem lá; na cópia, F3)
+
+- **API Recintos, `persiste_df`**: um erro 1062 (chave duplicada) no commit desfaz o **lote inteiro** e a rota
+  responde sucesso — os eventos novos do lote se perdem sem aviso; uma consulta por evento (`is_duplicate`); log de
+  ERROR por evento de acesso ("Forçando a barra...").
+- `maisrecentes`: `GROUP BY MAX` nas tabelas de eventos inteiras a cada chamada, com sorteio dos recintos parados;
+  `imagens_maisrecentes`: agregação no `fs.files` desde 01/01/2026 a cada chamada e uma consulta por recinto.
+- **E6**: o reenvio do mesmo evento grava a imagem de novo (sem conferência de duplicata); recinto fora de
+  `ovr_recintos` vira `RECINTO_NAO_ENCONTRADO` na unidade ALFSTS; erro devolve a mensagem interna.
+- **E2 e E1 têm formatos diferentes** (`partes_resultado` objeto num, lista no outro).
+- **E7**: com `todir=True` está quebrado (`open(..., 'b')`); o Avatar não usa. O Avatar **apaga o BSON na origem**
+  quando recebe `success`: a rota só pode responder `success` depois de gravar (como hoje) — teste de contrato.
+- **DUE e periódico chamam o próprio virasana por HTTP** (`/grid_data`, `verify=False`); o `/grid_data` aceita
+  consulta arbitrária ao `fs.files` sem login (fica no virasana; fora deste escopo).
+- **Nenhuma entrada tem autenticação**; o endereço do Aniita está fixo no código.
+
+## 7. Melhorias anotadas (não mudam contrato; fase a decidir)
+
+### 7.1 O XML do escâner lido na hora do BSON (dispensa o passo `dados_xml_grava_fsfiles`)
+
+- **Hoje**: o E7 grava no GridFS os pares imagem + XML que o Avatar monta no mesmo BSON (mesmo `metadata`). Depois,
+  a cada ~5 min, o periódico (`xmli.dados_xml_grava_fsfiles`) procura até 10.000 imagens **sem `metadata.xml`**
+  escaneadas nos últimos 5 dias, acha o XML pelo contêiner (upload em ±1 h) ou pelo nome do arquivo, decodifica
+  (chardet e mais cinco codificações) e grava `metadata.xml`. As imagens da API Recintos (E6) **nunca têm XML**:
+  voltam à busca em todas as voltas, por 5 dias.
+- **Proposta**: no E7, o par já está no `BsonImageList` — ler o XML com o **mesmo** `xml_todict` e gravar a imagem
+  já com `metadata.xml`. O passo do periódico fica como rede de segurança (par em BSON separado, XML ilegível)
+  enquanto se mede; com a medida em zero, sai. A imagem do E6 deixa de ser candidata.
+- **Cuidados**: o dicionário gravado tem de ser idêntico (o gabarito confere o `fs.files` final); o casamento
+  imagem ↔ XML dentro do BSON pelas mesmas regras de hoje; o custo passa para a recepção (medir nos BSON grandes).
+- **Medida** (`diagnosticos/volumes.py`, seção I): % das imagens do Avatar com XML por dia; candidatas do passo
+  por origem a cada volta.
+
+### 7.2 O Mercante num passo só (sem as tabelas RAW)
+
+- **Hoje**: dois passos. `processa_xml_mercante` grava cada nó do XML numa tabela **RAW** (colunas texto, só
+  acrescenta: `conhecimentosEmbarque`, `manifestosCarga`, `itensCarga`, `NCMItemCarga`, `ConteinerVazio`,
+  `EscalaManifesto`, `exclusoesEscala`, `escala`). Depois `resume_mercante` lê da RAW o que passou do
+  `controleresumo` e aplica nas `*resumo` — num lote, primeiro todas as inclusões, depois as atualizações, depois as
+  exclusões, com uma consulta por linha. As RAW crescem sem limite.
+- **Proposta**: ler o XML, converter os tipos e aplicar I/A/E direto nas `*resumo`, **na ordem do arquivo**, em lote
+  (gravação pela chave natural). As RAW e o `controleresumo` deixam de ser necessários.
+- **O que se perde**: as RAW são hoje o **único histórico** dos movimentos (os XML são apagados depois da carga).
+  Alternativa barata: guardar o XML original **compactado** (arquivo ou GridFS, por um prazo a definir) — permite
+  reprocessar, inclusive depois da correção do parser (`notify`, P1.4 do `BACKLOG.md`).
+- **Cuidados**: confirmar com a equipe quem mais lê as RAW (no código, só o resumo; pode haver consultas avulsas ou
+  extrações); as RAW que existem ficam (apagar é decisão do usuário e do DBA, depois); o gabarito e a sombra
+  comparam as `*resumo` (diferença só onde a ordem do arquivo mudar o resultado, e explicada).
+- **Medida** (`volumes.py`, seções E e M): MB das RAW × `*resumo`; linhas RAW por dia e por movimento (% de
+  atualização e exclusão); o que falta resumir.
+
+*Recomendação*: as duas na **F3** (não mudam contrato e simplificam justo o código que seria modernizado), cada uma
+com a sua sombra; a decisão sai depois dos números do `volumes.py`.
+
+## 8. Riscos e cuidados
+
+- Dois periódicos ao mesmo tempo: nunca (passo 5 da F4).
+- Modelos copiados conferidos contra o `SHOW CREATE TABLE` da produção (teste), para a cópia não divergir da tabela.
+- Cópias de referência (Avatar, ContÁgil) envelhecem: `ORIGEM.md` com o commit ou a data; reconferir quando a fonte
+  mudar.
+- Dados reais: originais e chave da anonimização fora do repositório; conferência automática antes de cada commit
+  de amostra.
+- Se a distribuição não oferecer o Python 3.14, o alvo é a versão mais nova que ela oferece.

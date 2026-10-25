@@ -80,6 +80,7 @@ MODULOS = [
     'virasana/analytic_scripts/ciclo_de_vida/invariantes_ciclo.py',
     'virasana/analytic_scripts/ciclo_de_vida/audita_ciclos.py',
     'virasana/navii/pesagem_navii.py',
+    'navi_etls/diagnosticos',            # NAVI-ETL, F0 (até o gate próprio da F2)
 ]
 
 TESTES = [
@@ -152,6 +153,8 @@ TESTES = [
     'virasana/tests/test_saude_tela.py',
     'virasana/tests/test_regras_declaracao.py',
     'virasana/tests/test_diagnostico_declaracao.py',
+    'navi_etls/tests/test_etl_volumes.py',
+    'navi_etls/tests/test_etl_inventario_ambiente.py',
 ]
 
 FLAKE8 = ['--max-line-length', '120', '--max-complexity', '10',

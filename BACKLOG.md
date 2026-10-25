@@ -51,6 +51,16 @@ usuários (em andamento) entram como itens novos.
 6. **Contagem assíncrona no NAVI-I** (proposta de 02/10/2026): a contagem com NCM leva 18–20 s e segura a 1ª página;
    no health check, mediana de 6,1 s e p95 de 10,5 s só na 1ª página. Mostrar os cards já e a contagem quando
    chegar. *Decisão: aprovar.*
+7. **NAVI-ETL** (pedido do usuário, 24/10/2026): copiar as entradas de API (API Recintos, imagens, DUE, CNPJ, DTA) e
+   o `virasana_periodic` para `navi_etls/`, aplicação nova e separada; modernizar; um corte só. Plano, decisões e
+   fases em `navi_etls/PLANO.md`; endpoints e arquivos em `navi_etls/INVENTARIO.md` (**a equipe confirma**);
+   corpus, anonimização, sombra e estatísticas em `navi_etls/AMOSTRAS.md`. Próximo: F0 — **inventário do
+   ambiente** (versões do Windows de desenvolvimento e do servidor: sistema, Python oferecido pela distribuição,
+   MariaDB, Mongo, Apache, bibliotecas; só versões oficiais da distribuição), estatísticas de volume (os dois
+   diagnósticos prontos em `navi_etls/diagnosticos/`, falta rodar na estação e no servidor), scripts do ContÁgil (a
+   equipe fornece) e coleta das amostras. Melhorias anotadas (`PLANO.md`, seção 7): XML do escâner lido na hora do
+   BSON; Mercante num passo só, sem as tabelas RAW. Depende: a correção do Fichas que dispensa o `acertos_sql`
+   antes de desligar o `virasana_periodic`.
 
 ## P2 — depois
 
@@ -110,6 +120,7 @@ usuários (em andamento) entram como itens novos.
 
 1. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
 2. Aprovar a contagem assíncrona (P1.6).
+2b. NAVI-ETL: a equipe confirma o `navi_etls/INVENTARIO.md`; escolher as versões depois do inventário do ambiente (P1.7).
 3. Quando diagnosticar a qualidade das pesagens por recinto (P2.17).
 4. Gravar o modo de exibição na coleta de uso (P2.11).
 5. Quando começar unidade/equipe do usuário (P2.9).
