@@ -1,4 +1,4 @@
-# Backlog — NAVI-I, ciclo de vida, risco e busca (atualizado em 23/10/2026)
+# Backlog — NAVI-I, ciclo de vida, risco e busca (atualizado em 24/10/2026)
 
 Junta as pendências que estavam espalhadas: `virasana/navii/CONTEXTO.md` ("Pendências" e "Próximos passos"),
 `virasana/analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md`, `virasana/risco_historico/CONTEXTO.md`,
@@ -75,17 +75,19 @@ usuários (em andamento) entram como itens novos.
       de Suape (86) e Pecém (4): não são abandono, são ciclos que a heurística não fechou. Examinar 2 ou 3 com
       `caso_ciclo.py` e decidir se viram caso do corpus;
     - Pecém com 27% dos escaneamentos com imagem (crônico conhecido, P3).
-17. **Sinais da informação declarada (itens 16–18 de 22/10)** — histórico em
-    `virasana/analytic_scripts/declaracao/DIAGNOSTICO.md`. A **6ª rodada** (23/10/2026) derrubou o candidato da
-    cubagem (era a mistura de tamanhos e a bagagem, NCM 9797); sobra o peso: "18a+ e 18b+" (0,61% dos CEs;
-    positivas 7,2×, RVF 2,2×, contrafação e contrabando com 3–4 casos). O usuário seguiu com o piloto: plano
-    reescrito para o peso (`PLANO_PILOTO.md`, selo "carga pesada para a mercadoria declarada"). Falta: rodar a
-    **7ª versão** (P0: sem bagagem, por capítulo, lista de revisão com pesagem primeiro) e revisar a `revisao7.csv`;
-    *decisão: aprovar o plano (8 decisões)*. `virasana-venv/Scripts/python.exe
-    virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida declaracao7.log --csv declaracao7.csv
-    --revisao revisao7.csv`.
+17. **Qualidade das pesagens por recinto** (achado do usuário, 24/10/2026, na revisão dos sinais de declaração):
+    MULTILOG, ECOPORTO e outros com muita variação na pesagem e quase sem pesar a tara do conjunto; suspeita de
+    pesagem da tara transmitida com o `numeroConteiner` da viagem (par pesagem × declarado falso). Afeta o
+    diagnóstico da pesagem no NAVI-I e qualquer uso da pesagem como verdade. Diagnóstico por recinto e cobrança
+    (sem exceção por recinto no código). Detalhe em `analytic_scripts/declaracao/CONTEXTO.md` (seção 3).
+    *Decisão: quando diagnosticar.*
 
 ## P3 — estacionados (dependem de terceiros ou de decisão futura)
+
+- **Sinais da informação declarada (itens 16–18) — ADIADO em 24/10/2026** (revisão do usuário: os selecionados
+  eram coerentes na imagem e na pesagem). Voltar do começo no futuro, sem as Fichas como rótulo positivo; ideia do
+  usuário: rede neural que estime peso e volume do contêiner pela imagem, gravados no banco (há o modelo `peso` do
+  AJNA-PADMA no legado). Lições, dados e ideias: `virasana/analytic_scripts/declaracao/CONTEXTO.md`.
 
 - ICTSI com D/E trocados: a destroca está pronta e **desligada** — o recinto corrige o envio.
 - Escâneres sem imagem no Mongo (9101602, 9981403, 9801303, 0301304) e Itaguaí sem acesso/pesagem: integração.
@@ -108,6 +110,6 @@ usuários (em andamento) entram como itens novos.
 
 1. Priorizar o parser do Mercante já (P1.4): é a única perda irreversível da lista.
 2. Aprovar a contagem assíncrona (P1.6).
-3. Itens 16–18: aprovar o plano do piloto do peso, depois da 7ª rodada e da revisão (P2.17).
+3. Quando diagnosticar a qualidade das pesagens por recinto (P2.17).
 4. Gravar o modo de exibição na coleta de uso (P2.11).
 5. Quando começar unidade/equipe do usuário (P2.9).

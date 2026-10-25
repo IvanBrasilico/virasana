@@ -1,5 +1,10 @@
 # Sinais de risco da informação declarada (itens 16–18) — histórico do diagnóstico
 
+> **ADIADO (postponed) em 24/10/2026, decisão do usuário** — revisão da 7ª rodada: imagem e pesagem dos selecionados
+> coerentes com o declarado. Voltar do começo no futuro. **Lições de método, o que se aprendeu dos dados e as ideias
+> para a retomada (rede neural de peso e volume pela imagem, exemplos dos cursos de Aduana): `CONTEXTO.md`.** Este
+> arquivo fica como o histórico rodada a rodada.
+
 Saiu do `BACKLOG.md` na limpeza de 23/10/2026 (lá fica só o estado e a decisão que falta). Pedido do usuário de
 22/10/2026; plano do piloto (suspenso) em `PLANO_PILOTO.md`.
 
@@ -102,19 +107,44 @@ NÃO se sustenta.** Típico da densidade por NCM E tamanho do contêiner (como o
 declarar). Sobra uma hipótese, que não depende da cubagem: **carga pesada demais para a mercadoria declarada**
 (18a+ com 18b+). Decisão do usuário (23/10/2026): **seguir com o piloto** — dela.
 
-**7ª versão (23/10/2026), falta rodar** — o P0 do piloto: bagagem (NCM 9797) fora do 18; candidato "18a+ e 18b+";
-concentração também por capítulo do NCM (máquinas e veículos, 84 e 87, eram ~60% dos marcados sem acertar) e pelas
-infrações de contrafação e contrabando; lista de revisão do candidato, um CE por posição, **os com pesagem primeiro**
-(coluna `pesagem`) — o usuário confere o peso na balança e olha a imagem: a carga parece a declarada?
+**7ª rodada (23/10/2026 — `declaracao7.log`, `declaracao7.csv`, `revisao7.csv`) — a força do peso se mantém sem a
+bagagem.** Bagagem (NCM 9797) fora do 18; candidato "18a+ e 18b+"; concentração por capítulo; lista de revisão com
+os CEs com pesagem primeiro.
+
+- **A bagagem era 1/3 das referências:** sem ela, as fichas positivas avaliáveis caem de 146 para 91 e as RVF de
+  1.840 para 1.260.
+- **Candidato:** 959 CEs (0,61%); positivas 6/91 (**11,4×** o controle), RVF 20/1.260 (**2,9×**), contrafação 3/37
+  (18,6×), contrabando 4/35 (20,0×), falsa declaração 2/16 (11,1×). Pesagem: 1,93% dos "divergência" contra 0,29%
+  dos "coerente" — parte pode ser peso declarado errado.
+- **Máquinas e veículos (84 e 87) são ruído:** 571 dos 959 marcados, 1 acerto de RVF, 0 positivas (abaixo do
+  controle). **Sem eles** (análise do CSV): 388 CEs (**0,25%**, ~13/dia), com todos os acertos de positivas (6),
+  contrafação (3) e contrabando (4) e 19 das 20 RVF — ~5× o controle nas RVF (15 dos 28 controles marcados ficam).
+  Acertos de eletrônicos (85), calçados (64), vidro (70) e do 96.
+- **Concentração:** 254 importadores, os 10 maiores com 48,7% (um com 82 CEs, 52% dos dele; outro com 28, 72%):
+  embarques inteiros. Os acertos vêm de importadores diferentes (positivas: 3; RVF: 12) — e muitos de CEs sem CNPJ
+  ou CPF do consignatário (positivas 4 de 6, RVF 9 de 20, contra 25% dos marcados): outro fator, a olhar à parte.
+  94% dos marcados são de 40'.
+- **Defeito (meu):** o candidato era por CE — em 38 CEs da janela, um contêiner com o peso acima e outro com a
+  densidade acima; na `revisao7.csv`, as linhas 8703 e 6910 misturam contêineres (vale o contêiner e o motivo do
+  18a+).
+
+**8ª versão (23/10/2026), a rodar quando der** (não bloqueia o P1): candidato por CONTÊINER (peso e densidade acima
+no mesmo contêiner; a revisão leva o contêiner e os motivos dele); validação também do candidato sem 84 e 87 — os
+números exatos da regra proposta e a linha de base da carga do P1.
 `virasana-venv/Scripts/python.exe virasana/analytic_scripts/declaracao/diagnostico_declaracao.py --saida
-declaracao7.log --csv declaracao7.csv --revisao revisao7.csv`.
+declaracao8.log --csv declaracao8.csv --revisao revisao8.csv`.
 
 **Cubagem no card do NAVI-I — publicada (23/10/2026, pedido do usuário):** cubagem declarada
 do CE e de cada contêiner, com ocupação e densidade (`navii/CONTEXTO.md`, item 23).
 
 **Plano do piloto (reescrito em 23/10/2026 para o PESO, para aprovação):** `virasana/analytic_scripts/declaracao/PLANO_PILOTO.md` — selo "carga pesada para a mercadoria declarada — em observação"; módulo `virasana/declaracao/` no caminho do risco histórico (tabelas novas que guardam as medidas, etapa no serviço do ciclo, selo e filtro no NAVI-I, medição pela coleta de uso), fases P0–P4 e 8 decisões. A 1ª versão (cubagem) foi suspensa e derrubada pela 6ª rodada.
 
-**Próximo passo:** o usuário roda a 7ª versão e revisa a `revisao7.csv`; aprova (ou não) o plano e as decisões.
+**Revisão do usuário da 7ª rodada (24/10/2026) — ADIADO:** as seleções não fazem sentido; na imagem e na pesagem, os
+contêineres são coerentes com o declarado. Diagnóstico do usuário: o pipeline não separou sinal de ruído; usar as
+Fichas como rótulo positivo foi provavelmente um erro (não foram escolhidas por análise de peso nem de inconsistência
+no BL; a maioria não era falsa declaração). A própria pesagem tem problemas de qualidade (MULTILOG, ECOPORTO e outros:
+muita variação, quase sem tara do conjunto; talvez a pesagem da tara venha com o contêiner da viagem). Voltar do
+começo no futuro — ideias e lições em `CONTEXTO.md`. A 8ª versão do código fica pronta, sem rodar.
 
 - **16. Tipo do contêiner × cubagem × carga × embalagem declaradas.** Inconsistência entre o que o contêiner comporta e
     o que foi declarado (ex.: cubagem acima da capacidade do 20', embalagem que não combina com a mercadoria ou com o

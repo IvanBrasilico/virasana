@@ -2,7 +2,8 @@
 """
 SINAIS DE DECLARAÇÃO INVENTADA no Mercante — regras PURAS, sem banco (itens 16, 17 e 18 do `BACKLOG.md`; plano
 aprovado pelo usuário em 23/10/2026: o passo 0 é o diagnóstico nos dados, `diagnostico_declaracao.py`). Se um sinal
-valer, estas mesmas regras servem depois ao NAVI-I e/ou ao risco histórico.
+valer, estas mesmas regras servem depois ao NAVI-I e/ou ao risco histórico. ADIADO em 24/10/2026 (decisão do
+usuário): nenhum sinal se confirmou na revisão com imagem e pesagem — ver o `CONTEXTO.md` desta pasta.
 
 Sinais em teste (1ª rodada em produção, 23/10/2026; decisões do usuário no mesmo dia):
   - 16e, CUBAGEM COPIADA: no CE, 2+ contêineres cheios com a mesma mercadoria (o mesmo conjunto de NCMs) e a MESMA

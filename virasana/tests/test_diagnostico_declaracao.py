@@ -12,7 +12,9 @@ Janela: CEs criados de 23/09 a 23/10/2026 (pela janela de ID). Limiares reduzido
     infração "Falsa declaração" e peso da RVF 3× o declarado, e RVF no NORU 0; pesagem "divergencia" no PESA;
   - controle da mesma época com deslocamentos (+1, +2): P0 (ID 3) -> NORU 0 (é referência: fica fora) e NORU 1;
     PESA (ID 80) -> REPE e ZZZU;
-  - SIMB: 1 m³ num 20' (cubagem simbólica: 18b+ redondo); BAGA (o último): bagagem, NCM 9797, 25 t (fora do 18);
+  - SIMB: 1 m³ num 20' (cubagem simbólica: 18b+ redondo); BAGA: bagagem, NCM 9797, 25 t (fora do 18);
+  - DOIS (o último): dois contêineres do 8471 — um pesado (16 t em 32 m³: só 18a+) e outro denso (10 t em 10 m³: só
+    18b+); o CE tem os dois sinais, mas nenhum contêiner tem os dois: fora do candidato (8ª versão);
   - lista de revisão (7ª versão): o candidato "18a+ e 18b+", um por posição, os com pesagem primeiro — PESA (8471,
     pesagem "divergencia") e a cadeia M3 (6109: 22 t × 12 t da HAP).
 """
@@ -110,6 +112,8 @@ def monta(engine):
         b.ce(ce(209), dia, maquina('PEZU0000001', peso='35000.000'))                                  # PEZO
         b.ce(ce(210), dia, maquina('SIMU0000001', cubagem='1.000'))                                   # SIMB
         b.ce(ce(211), dia, [('BAGU0000001', '22G1', '25000.000', '25.000', ['97970000'], 'false')])   # BAGA
+        b.ce(ce(212), dia, maquina('DOIU0000001', peso='16000.000', cubagem='32.000')
+             + maquina('DOIU0000002', peso='10000.000', cubagem='10.000'))                           # DOIS
         con.execute(text('INSERT INTO ovr_ovrs (id, numero, datahora, tipooperacao, numeroCEmercante) VALUES '
                          f"(1, '1', '2026-10-10', 1, '{ce(201)}'), (2, '2', '2025-01-10', 1, '{ce(902)}')"))
         con.execute(text('INSERT INTO ovr_resultados (id, ovr_id, tipo_resultado) VALUES (1, 1, 2), (2, 2, 6)'))
@@ -142,7 +146,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_populacao_pela_janela_de_id_sem_exportacao_e_com_as_familias(self):
         self.assertTrue(self.ok)
         self.assertEqual(self.diag.janela[0], 4)                          # os 3 de agosto ficam antes
-        self.assertEqual(len(self.diag.populacao), 75 + 11)               # sem a exportação
+        self.assertEqual(len(self.diag.populacao), 75 + 12)               # sem a exportação
         self.assertNotIn(ce(208), self.diag.ces)
         self.assertIn(ce(900), self.diag.ces)                             # master fora da janela, lido pela família
         por_conteiner = {c.conteiner: c for c in self.diag.conteineres}
@@ -158,7 +162,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
         self.assertEqual(self.marcados(rd.CARGA_MAXIMA), {ce(209)})
         self.assertNotIn(ce(209), self.marcados('18a+') | self.marcados('18b+'))   # peso impossível: fora do 18
         self.assertEqual(self.marcados(rd.CUBAGEM_REPETIDA), {ce(202)})
-        self.assertEqual(self.diag.avaliaveis[rd.CUBAGEM_REPETIDA], {ce(202)})
+        self.assertEqual(self.diag.avaliaveis[rd.CUBAGEM_REPETIDA], {ce(202), ce(212)})   # DOIS: cubagens diferentes
         self.assertEqual(self.marcados(rd.PREFIXO), {ce(203)})
         self.assertIn(ce(201), self.marcados('18a+'))
         self.assertIn(ce(201), self.marcados('18b+'))
@@ -187,13 +191,15 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
     def test_combinacoes_do_18(self):
         derivados = {codigo: ces for codigo, _, ces in self.diag._derivados()}
         self.assertEqual(derivados['18b+ com fração'], {ce(201)})                  # 25,5 m³
-        self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901), ce(210)})   # 28 m³ e o SIMB
+        self.assertEqual(derivados['18b+ redonda'], {ce(205), ce(206), ce(901), ce(210), ce(212)})   # SIMB, DOIS
         self.assertTrue({ce(201), ce(204)} <= derivados['18+'])                    # F1: só o peso (20 t × 12 t)
         self.assertEqual(derivados['18a+ e 18b+'], {ce(201), ce(205), ce(206), ce(901)})
+        self.assertTrue({ce(212)} <= self.marcados('18a+') & self.marcados('18b+'))   # DOIS: cada sinal num contêiner
+        self.assertEqual(derivados['18a+ e 18b+ sem 84/87'], {ce(205), ce(206), ce(901)})   # PESA é 8471
         self.assertTrue({ce(0), ce(205), ce(206)} <= derivados['18 cubagem redonda'])   # 25 e 28 m³
         self.assertNotIn(ce(201), derivados['18 cubagem redonda'])                   # 25,5 m³
         self.assertEqual(derivados['18b+ redonda simbólica'], {ce(210)})             # 1 m³ num 20'
-        self.assertEqual(derivados['18b+ redonda plausível'], {ce(205), ce(206), ce(901)})
+        self.assertEqual(derivados['18b+ redonda plausível'], {ce(205), ce(206), ce(901), ce(212)})
         self.assertEqual(derivados['18 cubagem simbólica'], {ce(210)})
 
     def test_combinacoes_tem_os_avaliaveis_do_18(self):
@@ -245,6 +251,7 @@ class TestDiagnosticoDeclaracao(unittest.TestCase):
                        '18+ — peso OU densidade acima', '18b+ com fração — densidade acima', 'os dois',
                        '18 cubagem redonda — cubagem em m³ inteiro, sem olhar a densidade',
                        '18b+ redonda plausível — densidade acima', '... simbólica (abaixo de 10%)',
+                       '18a+ e 18b+ sem 84/87 — o candidato fora das máquinas', '... no mesmo contêiner (o candidato)',
                        'R. REVISÃO'):
             with self.subTest(trecho=trecho):
                 self.assertIn(trecho, self.log)

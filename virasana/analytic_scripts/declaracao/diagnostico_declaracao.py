@@ -3,6 +3,9 @@
 DIAGNÓSTICO DOS SINAIS DE DECLARAÇÃO INVENTADA (itens 16, 17 e 18 do `BACKLOG.md`) — passo 0 do plano aprovado pelo
 usuário em 23/10/2026. Somente leitura. Regras em `regras_declaracao.py`.
 
+ADIADO em 24/10/2026 (decisão do usuário): antes de retomar, ler o `CONTEXTO.md` desta pasta — as Fichas não servem
+de rótulo positivo e o método precisa recomeçar. A 8ª versão abaixo está pronta e testada, mas não foi rodada.
+
 2ª versão (23/10/2026, depois da 1ª rodada em produção): sinal novo 16e (cubagem copiada, pedido do usuário); 18 por
 direção; 17a só em empresa de prefixo dominante; 16a/16b só como qualidade do dado; fora os pares raros e a cidade no
 BL. E o CONTROLE DA MESMA ÉPOCA: na 1ª rodada todo acerto nas fichas e RVFs veio de CEs antigos (2021, sobretudo),
@@ -39,7 +42,10 @@ amostras e, se for o caso, um piloto no NAVI-I.
      de declarar; o usuário seguiu com o piloto do PESO): bagagem (NCM 9797) fora do 18; o candidato passa a ser
      "18a+ e 18b+" (carga pesada demais para a mercadoria declarada); a lista de revisão sai dele, com os CEs com
      pesagem primeiro (o usuário confere o peso na balança e olha a imagem) e a coluna da pesagem; a concentração
-     ganha o capítulo do NCM e as infrações de contrafação e contrabando;
+     ganha o capítulo do NCM e as infrações de contrafação e contrabando. 8ª versão (23/10/2026, depois da 7ª
+     rodada): o candidato por CONTÊINER — peso e densidade acima no mesmo contêiner (na 7ª era por CE: 38 CEs da
+     janela tinham um sinal num contêiner e o outro noutro, e a revisão misturava os dois); e a validação do
+     candidato sem os capítulos 84 e 87 (máquinas e veículos: 571 dos 959 marcados na 7ª, 1 acerto de RVF);
   C. as consultas mais lentas.
 
 Uso (na raiz do repositório virasana, com as variáveis de ambiente do ajna_commons; da estação de trabalho também —
@@ -119,6 +125,7 @@ CAMPOS_NCM = ('ce', 'conteiner', 'ncm', 'embalagem', 'volumes')
 
 LinhaCE = namedtuple('LinhaCE', 'id master tipo_bl empresa numero cubagem importador')
 CANDIDATO = '18a+ e 18b+'         # 7ª versão: carga pesada demais para a mercadoria declarada
+CAPITULOS_HETEROGENEOS = ('84', '87')   # máquinas e veículos: muitos marcados e quase nenhum acerto (7ª rodada)
 CONCENTRACAO_N = 10               # os maiores na tabela de concentração
 CAPITULOS_N = 15                  # capítulos do NCM na tabela de concentração
 REFERENCIAS_DA_CONCENTRACAO = ('fichas positivas', 'RVF: todas', 'RVF com a infração "Contrafação"',
@@ -218,6 +225,7 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.marcas: Dict[str, Dict[str, Tuple[str, str]]] = defaultdict(dict)
         self.avaliaveis: Dict[str, Set[str]] = defaultdict(set)
         self.info_18: Dict[str, dict] = {}       # CE marcado no 18a+ / 18b+ -> o contêiner e os desvios (revisão)
+        self.peso_e_densidade: Set[str] = set()  # CEs com um contêiner marcado nos DOIS (o candidato, 8ª versão)
         self.redondas: Set[str] = set()          # CEs com contêiner avaliável no 18 de cubagem em m³ inteiro
         self.simbolicas: Set[str] = set()        # ... de cubagem simbólica (abaixo de 10% da capacidade)
 
@@ -481,17 +489,25 @@ class DiagnosticoDeclaracao(Diagnostico):
             self._marca(sinal, c.ces, c.conteiner, motivo)
 
     def _guarda_18(self, c: rd.Conteiner, sinais: List[Tuple[str, str]]):
-        """O contêiner e os desvios dos CEs marcados acima do típico (18a+ / 18b+): a lista de revisão e a divisão do
-        18b+ pela cubagem."""
-        if not any(sinal in ACIMA for sinal, _ in sinais):
+        """O contêiner, os desvios e os motivos DELE nos CEs marcados acima do típico (18a+ / 18b+): a lista de revisão
+        e a divisão do 18b+ pela cubagem. O contêiner marcado nos dois sinais é o que fica (8ª versão: na 7ª, o
+        candidato era por CE, e a revisão misturava contêineres de um CE com vários)."""
+        acima = {sinal: motivo for sinal, motivo in sinais if sinal in ACIMA}
+        if not acima:
             return
         achados = rd.desvios_ncm(c, self.tipicos)
         info = {'conteiner': c.conteiner, 'ncm': c.ncm_unico, 'tipo': c.tipo, 'peso': c.peso, 'cubagem': c.cubagem,
                 'redonda': rd.cubagem_redonda(c.cubagem), 'simbolica': rd.cubagem_simbolica(c.cubagem, c.chave),
                 'z_peso': achados.get(rd.PESO_NCM, (None, None, None))[2],
-                'z_densidade': achados.get(rd.DENSIDADE_NCM, (None, None, None))[2]}
+                'z_densidade': achados.get(rd.DENSIDADE_NCM, (None, None, None))[2], 'motivos': acima}
+        os_dois = len(acima) == len(ACIMA)
         for ce in c.ces:
-            self.info_18.setdefault(ce, info)
+            if os_dois and ce not in self.peso_e_densidade:
+                self.info_18[ce] = info
+            else:
+                self.info_18.setdefault(ce, info)
+        if os_dois:
+            self.peso_e_densidade.update(c.ces)
 
     def calcula_marcas(self):
         for c in self.conteineres:
@@ -772,8 +788,10 @@ class DiagnosticoDeclaracao(Diagnostico):
         self._tamanhos(marcados)
         self._capitulos(candidato)
 
-    def _acima(self, ce: str) -> List[str]:
-        return [sinal for sinal in ACIMA if ce in self.marcas[sinal]]
+    @staticmethod
+    def _acima(info: dict) -> List[str]:
+        """Os sinais acima do típico do contêiner guardado para o CE (`info_18`)."""
+        return [sinal for sinal in ACIMA if sinal in info['motivos']]
 
     def _derivados(self) -> List[Tuple[str, str, Set[str]]]:
         """(código, descrição, CEs marcados) das combinações do 18 que a validação também mede."""
@@ -784,8 +802,10 @@ class DiagnosticoDeclaracao(Diagnostico):
         simbolica = {ce for ce in redonda if self.info_18[ce]['simbolica']}
         # o código começa com '18': é ele que escolhe os avaliáveis (base_do_sinal)
         return [('18+', 'peso OU densidade acima do típico do NCM', peso | densidade),
-                ('18a+ e 18b+', 'peso E densidade acima do típico do NCM (candidato ao piloto, 7ª versão)',
-                 peso & densidade),
+                ('18a+ e 18b+', 'peso E densidade acima do típico do NCM no MESMO contêiner (candidato ao piloto)',
+                 set(self.peso_e_densidade)),
+                ('18a+ e 18b+ sem 84/87', 'o candidato fora das máquinas (84) e dos veículos (87)',
+                 {ce for ce in self.peso_e_densidade if self.info_18[ce]['ncm'][:2] not in CAPITULOS_HETEROGENEOS}),
                 ('18b+ redonda', 'densidade acima, cubagem em m³ inteiro (estimada)', redonda),
                 ('18b+ redonda plausível', 'densidade acima, cubagem em m³ inteiro e de 10%+ da capacidade '
                  '(o candidato da 5ª rodada)', redonda - simbolica),
@@ -802,7 +822,9 @@ class DiagnosticoDeclaracao(Diagnostico):
         self.escreve()
         self.tabela(['CEs da população marcados acima do típico', 'quantidade'], [
             ('só peso (18a+)', len(peso - densidade)), ('só densidade (18b+)', len(densidade - peso)),
-            ('os dois', len(peso & densidade)), ('algum (18+)', len(peso | densidade)),
+            ('os dois', len(peso & densidade)),
+            ('   ... no mesmo contêiner (o candidato)', len(derivados['18a+ e 18b+'])),
+            ('algum (18+)', len(peso | densidade)),
             ('18b+ com cubagem em m³ inteiro', len(derivados['18b+ redonda'])),
             ('   ... plausível (10%+ da capacidade)', len(derivados['18b+ redonda plausível'])),
             ('   ... simbólica (abaixo de 10%)', len(derivados['18b+ redonda simbólica'])),
@@ -901,7 +923,7 @@ class DiagnosticoDeclaracao(Diagnostico):
                     'motivo e colunas para a avaliação)')
         self.tabela(['CE', 'contêiner', 'NCM', 'tipo', 'peso (kg)', 'cubagem (m³)', 'pesagem', 'sinais'],
                     [(ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
-                      rd.br(info['cubagem'], 1), self._pesagem(ce), ' '.join(self._acima(ce)))
+                      rd.br(info['cubagem'], 1), self._pesagem(ce), ' '.join(self._acima(info)))
                      for ce, info in self.candidatos_revisao()])
 
     def grava_revisao(self, caminho: str):
@@ -910,11 +932,11 @@ class DiagnosticoDeclaracao(Diagnostico):
             escritor = csv.writer(arquivo, delimiter=';')
             escritor.writerow(COLUNAS_REVISAO)
             for ce, info in self.candidatos_revisao():
-                sinais = self._acima(ce)
+                sinais = self._acima(info)
                 escritor.writerow([ce, info['conteiner'], info['ncm'], info['tipo'] or '', rd.br(info['peso']),
                                    rd.br(info['cubagem'], 1), self._pesagem(ce), ' '.join(sinais),
                                    rd.br(info['z_peso'], 1),
-                                   rd.br(info['z_densidade'], 1), ' | '.join(self.marcas[s][ce][1] for s in sinais),
+                                   rd.br(info['z_densidade'], 1), ' | '.join(info['motivos'][s] for s in sinais),
                                    '', ''])
 
     def grava_csv(self, caminho: str):
