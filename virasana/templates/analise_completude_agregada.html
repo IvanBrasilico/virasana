@@ -1,0 +1,117 @@
+{% extends "layout.html" %} {% block content %} {{super()}}
+<div id="main" class="container-fluid">
+    <div id="top" class="row col-sm-12">
+        <h3>Análise de completude de escaneamentos — recintos secos</h3>
+        <div class="form-group">
+            <form method="GET" id="filtrocompletude" action="{{ url_for('analise_completude_recintos_secos') }}">
+                <div class="row">
+                    <div class="col-sm-2"><label for="datainicio">Data Início</label></div>
+                    <div class="col-sm-2"><label for="datafim">Data Fim</label></div>
+                    <div class="col-sm-8"></div>
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <div class="col-sm-2">{{ oform.datainicio(class='form-control') }}</div>
+                        <div class="col-sm-2">{{ oform.datafim(class='form-control') }}</div>
+                        <div class="col-sm-8"></div>
+                    </div>
+                </div>
+                <div class="row">
+                    &nbsp;<br>
+                    <div class="col-sm-2">
+                        <button class="btn btn-default btn-info form-control" type="submit">Pesquisar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="resultados" class="row col-sm-12 table">
+        <table class="inlineTable table table-bordered table-hover table-responsive sortable">
+            <thead>
+                <tr>
+                    <th data-sort="text">Código</th>
+                    <th data-sort="text">Recinto</th>
+                    <th data-sort="numeric">Total de entradas</th>
+                    <th data-sort="numeric">Sem escaneamento</th>
+                    <th data-sort="numeric">Sem imagem</th>
+                    <th data-sort="numeric">% sem escaneamento</th>
+                    <th data-sort="numeric">Total de saídas</th>
+                    <th data-sort="numeric">Saídas sem escaneamento</th>
+                    <th data-sort="numeric">% saídas sem escaneamento</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in resultados %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('analise_completude_recintos_secos_detalhe', cod_recinto=item.codigo_recinto, datainicio=data_inicio.isoformat(), datafim=data_fim.isoformat()) }}">
+                            {{ item.codigo_recinto }}
+                        </a>
+                    </td>
+                    <td>{{ item.nome_recinto }}</td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.sem_escaneamento }}</td>
+                    <td>{{ item.sem_imagem }}</td>
+                    <td data-sort-value="{{ item.pct_sem_escaneamento }}">{{ '%.1f'|format(item.pct_sem_escaneamento * 100) }}%</td>
+                    <td>{{ item.total_saidas }}</td>
+                    <td>{{ item.saidas_sem_escaneamento }}</td>
+                    <td data-sort-value="{{ item.pct_saidas_sem_escaneamento }}">{{ '%.1f'|format(item.pct_saidas_sem_escaneamento * 100) }}%</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9">Nenhum resultado no período selecionado.</td></tr>
+                {% endfor %}
+            </tbody>
+                        <tfoot>
+                <tr class="active">
+                    <td colspan="2"><strong>TOTAL</strong></td>
+                    <td><strong>{{ totais.total }}</strong></td>
+                    <td><strong>{{ totais.sem_escaneamento }}</strong></td>
+                    <td><strong>{{ totais.sem_imagem }}</strong></td>
+                    <td><strong>{{ '%.1f'|format(totais.pct_sem_escaneamento * 100) }}%</strong></td>
+                    <td><strong>{{ totais.total_saidas }}</strong></td>
+                    <td><strong>{{ totais.saidas_sem_escaneamento }}</strong></td>
+                    <td><strong>{{ '%.1f'|format(totais.pct_saidas_sem_escaneamento * 100) }}%</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2026
+    </div>
+</div>
+{% endblock %} {% block scripts %} {{super()}}
+<script>
+function ordenarTabela(tabela, indiceColuna, numerico) {
+    const tbody = tabela.querySelector('tbody');
+    const linhas = Array.from(tbody.querySelectorAll('tr'));
+    const asc = !(tabela.dataset.sortCol == indiceColuna && tabela.dataset.sortDir === 'asc');
+    linhas.sort((a, b) => {
+        const celA = a.children[indiceColuna];
+        const celB = b.children[indiceColuna];
+        let valA = celA.dataset.sortValue !== undefined ? celA.dataset.sortValue : celA.innerText.trim();
+        let valB = celB.dataset.sortValue !== undefined ? celB.dataset.sortValue : celB.innerText.trim();
+        if (numerico) {
+            valA = parseFloat(valA) || 0;
+            valB = parseFloat(valB) || 0;
+            return asc ? valA - valB : valB - valA;
+        }
+        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+    linhas.forEach(linha => tbody.appendChild(linha));
+    tabela.dataset.sortCol = indiceColuna;
+    tabela.dataset.sortDir = asc ? 'asc' : 'desc';
+}
+
+document.querySelectorAll('table.sortable th[data-sort]').forEach((th) => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', () => {
+        const tabela = th.closest('table');
+        const indiceColuna = Array.from(th.parentNode.children).indexOf(th);
+        const numerico = th.dataset.sort === 'numeric';
+        ordenarTabela(tabela, indiceColuna, numerico);
+    });
+});
+</script>
+{% endblock %}

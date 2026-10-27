@@ -1,0 +1,7 @@
+{
+  "_fonte": "Mercante — Conhecimento.tipoTrafego (TIPOS_TRAFEGO em virasana/integracao/mercante/mercantealchemy.py; tabela Enumerado). O NAVI-I nunca mostra a exportação (7), por isso ela não está no filtro. _ordem é a ordem das opções na tela (23/10/2026).",
+  "_ordem": ["5", "3", "9"],
+  "5": {"nome": "Importação", "descricao": "longo curso"},
+  "3": {"nome": "Cabotagem", "descricao": "entre portos brasileiros"},
+  "9": {"nome": "Passagem", "descricao": "carga de passagem pelo porto"}
+}

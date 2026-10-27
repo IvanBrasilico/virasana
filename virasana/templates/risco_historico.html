@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Risco histórico das Fichas</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    {% include 'risco_historico_estilo.html' %}
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">HISTÓRICO</span> Risco histórico das Fichas</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            O que as Fichas com resultado (apreensão, perdimento...) têm em comum: importadores, embarcadores,
+            rotas, NCMs, marcas, CNPJs e CPFs citados. Cada tabela mostra em quantas fichas cada valor aparece —
+            candidatos a filtros de risco para os CEs que chegam.
+        </p>
+    </div>
+    {% with aba = 'fichas' %}{% include 'risco_historico_abas.html' %}{% endwith %}
+
+    <form class="painel" method="get" action="{{ url_for('risco_historico.index') }}">
+        <input type="hidden" name="pesquisar" value="1" />
+        <div class="form-linha">
+            <div class="br-input">
+                <label for="inicio">Fichas de</label>
+                <input id="inicio" name="inicio" type="date" value="{{ p.inicio or '' }}" />
+            </div>
+            <div class="br-input">
+                <label for="fim">até</label>
+                <input id="fim" name="fim" type="date" value="{{ p.fim or '' }}" />
+            </div>
+            <div class="br-input">
+                <label for="minimo">Mínimo de fichas</label>
+                <input id="minimo" name="minimo" type="number" min="1" max="100" value="{{ p.minimo }}" />
+            </div>
+            <div class="grupo-tipos">
+                <span class="rotulo">Resultados</span>
+                <div class="opcoes">
+                    {% for codigo, nome in tipos_resultado.items() %}
+                    <label class="opcao"><input type="checkbox" name="tipos" value="{{ codigo }}"
+                        {% if codigo in p.tipos %}checked{% endif %} /> {{ nome }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <label class="opcao"><input type="checkbox" name="exportacao" value="1"
+                {% if p.exportacao %}checked{% endif %} /> Incluir fichas de exportação</label>
+            <div class="botoes">
+                <button class="br-button primary" type="submit">
+                    <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
+                </button>
+                {% if resumo %}
+                <a class="br-button secondary"
+                   href="{{ url_for('risco_historico.planilha', inicio=p.inicio, fim=p.fim, tipos=p.tipos | list,
+                                    minimo=p.minimo, exportacao=1 if p.exportacao else None) }}">
+                    <i class="fas fa-file-excel mr-1" aria-hidden="true"></i> Exportar planilha
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <p class="dica">Sem datas = todo o histórico. As tabelas mostram os valores presentes em pelo menos
+            o mínimo de fichas; a planilha traz todos os valores e uma linha por ficha.</p>
+        {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
+            <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
+    </form>
+
+    {% if resumo %}
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resumo.fichas }}</strong>fichas</div>
+            <div class="item"><strong>{{ resumo.perdimentos }}</strong>com perdimento</div>
+            <div class="item"><strong>{{ resumo.apreensoes }}</strong>com apreensão</div>
+            <div class="item"><strong>{{ '{:,.2f}'.format(resumo.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>valor (R$)</div>
+            <div class="item"><strong>{{ resumo.ces_no_mercante }} / {{ resumo.ces }}</strong>CEs encontrados no Mercante</div>
+            {% if resumo.descartadas_exportacao %}
+            <div class="item"><strong>{{ resumo.descartadas_exportacao }}</strong>fichas de exportação fora</div>
+            {% endif %}
+        </div>
+        <p class="dica"><span class="selo">identidade</span> importador, embarcador, documentos citados e marcas —
+            os candidatos mais fortes a filtro. As demais dimensões (rota, porto, NCM) são frequentes por natureza:
+            servem de contexto ou combinadas (ex.: país + NCM).</p>
+    </div>
+
+    {% for chave, rotulo, identidade in dimensoes %}
+    {% set linhas = tabelas[chave] %}
+    {% set relevantes = linhas | selectattr('qtd_fichas', 'ge', p.minimo) | list %}
+    <details class="dimensao" {% if identidade and relevantes %}open{% endif %}>
+        <summary>{{ rotulo }}
+            <span class="selo {{ '' if identidade else 'contexto' }}">{{ 'identidade' if identidade else 'contexto' }}</span>
+            <span class="contagem">{{ relevantes | length }} em {{ p.minimo }}+ fichas · {{ linhas | length }} valores</span>
+        </summary>
+        <div class="conteudo-dimensao">
+            {% if relevantes %}
+            <div class="tabela-rolavel">
+                <table class="dados">
+                    <thead>
+                        <tr><th>Valor</th><th>Descrição</th><th>Fichas</th><th>Perdimentos</th><th>Apreensões</th>
+                            <th>Valor (R$)</th><th>Período</th><th>Fichas (mais recentes)</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for linha in relevantes[:linhas_por_dimensao] %}
+                        <tr>
+                            <td class="mono">{{ linha.valor }}</td>
+                            <td class="descricao">{{ linha.descricao }}</td>
+                            <td class="numero">{{ linha.qtd_fichas }}</td>
+                            <td class="numero">{{ linha.perdimentos }}</td>
+                            <td class="numero">{{ linha.apreensoes }}</td>
+                            <td class="numero">{{ '{:,.2f}'.format(linha.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="mono">{{ linha.primeira.strftime('%m/%Y') if linha.primeira else '' }}
+                                {% if linha.ultima and linha.ultima != linha.primeira %}– {{ linha.ultima.strftime('%m/%Y') }}{% endif %}</td>
+                            <td class="fichas">{% for ficha in linha.fichas[:fichas_por_linha] %}<a
+                                href="/bhadrasana2/ovr?id={{ ficha }}" target="_blank">{{ ficha }}</a>{% endfor %}
+                                {% if linha.fichas | length > fichas_por_linha %}…{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if relevantes | length > linhas_por_dimensao %}
+            <p class="aviso">Exibindo os {{ linhas_por_dimensao }} primeiros valores. A planilha traz todos.</p>
+            {% endif %}
+            {% else %}
+            <p class="vazio">Nenhum valor em {{ p.minimo }} ou mais fichas.</p>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+    <p class="aviso"><i class="fas fa-user-shield" aria-hidden="true"></i>
+        Contém CNPJs e CPFs: use e compartilhe conforme as regras de sigilo fiscal e a LGPD.</p>
+    {% endif %}
+</div>
+</body>
+</html>

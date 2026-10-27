@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Extrato do CE{% if numero %} {{ numero }}{% endif %} — NAVI-I</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .pagina { max-width: 1280px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+        .mono { font-family: monospace; }
+        .barra { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: center; justify-content: space-between; }
+        .voltar { font-size: .8125rem; }
+        .busca-ce { display: flex; gap: .5rem; align-items: center; }
+        .busca-ce input { width: 13rem; padding: .375rem .5rem; border: 1px solid #888; border-radius: 4px; font-family: monospace; }
+        .marca { background: #1351B4; color: #fff; font-size: .75rem; font-weight: 700; letter-spacing: .04em;
+                 padding: .25rem .625rem; border-radius: 4px; }
+        h1.titulo { font-size: 1.625rem; font-weight: 700; margin: .75rem 0 .25rem; display: flex; flex-wrap: wrap;
+                    align-items: center; gap: .5rem .75rem; }
+        .subtitulo { color: #555; font-size: .875rem; }
+        .etiquetas { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .375rem; margin: .5rem 0 0; }
+        .etq { font-size: .6875rem; font-weight: 700; padding: .1875rem .5625rem; border-radius: 999px;
+               text-transform: uppercase; letter-spacing: .02em; background: #F0F0F0; color: #333; text-decoration: none; }
+        a.etq:hover { filter: brightness(.95); }
+        .etq.master { background: #FFF4E5; color: #A15C00; }
+        .etq.filhote { background: #E8F0FB; color: #1351B4; }
+        .etq.ficha { background: #FDE0DC; color: #B00020; }
+        .etq.fma { background: #F3E5F5; color: #6A1B9A; }
+        .etq.dta { background: #E0F2F1; color: #00695C; }
+        .etq.risco-alto { background: #FDE0DC; color: #B00020; }
+        .etq.risco-medio { background: #FFF1D6; color: #8A5300; }
+        .etq.risco-baixo { background: #E8EEF9; color: #0C326F; }
+        .etq.corad-1 { background: #FDE0DC; color: #B00020; }
+        .etq.corad-2 { background: #FFF1D6; color: #8A5300; }
+        .etq.corad-3, .etq.corad-4 { background: #E8F5E9; color: #1B5E20; }
+        .etq.oog { background: #FFF4E5; color: #A15C00; }
+        .painel { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+                  padding: 1.25rem; margin: 1rem 0; }
+        .painel h2 { font-size: 1.0625rem; font-weight: 700; margin: 0 0 .75rem; display: flex; gap: .5rem; align-items: baseline; }
+        .painel h2 .contagem { font-weight: 400; color: #666; font-size: .8125rem; }
+        .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .875rem 1.5rem; }
+        .rotulo { display: block; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; color: #777;
+                  font-weight: 600; margin-bottom: .125rem; }
+        .valor { font-size: .9375rem; color: #1c1c1c; }
+        .valor .secundario, .secundario { display: block; font-size: .75rem; color: #777; }
+        .descricao-merc { margin: 1rem 0 0; padding: .75rem 1rem; background: #FAFBFC; border-left: 3px solid #1351B4;
+                          font-size: .875rem; color: #333; white-space: pre-wrap; }
+        .resumo { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; font-size: .875rem; color: #555; }
+        .resumo strong { color: #1c1c1c; font-size: 1.125rem; margin-right: .25rem; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th { text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; color: #666;
+                         border-bottom: 2px solid #E6E6E6; padding: .375rem .5rem; white-space: nowrap; }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .375rem .5rem; vertical-align: top; }
+        table.dados td.num { text-align: right; white-space: nowrap; }
+        table.dados tfoot td { font-weight: 700; border-bottom: none; }
+        .rolavel { overflow-x: auto; }
+        .nota { font-size: .75rem; color: #777; margin-top: .5rem; }
+        .bloco-dta { border: 1px solid #E6E6E6; border-radius: 6px; padding: .75rem 1rem; margin-bottom: .75rem; }
+        .dta-cabecalho { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; margin-bottom: .5rem; }
+        .dta-cabecalho .numero { font-family: monospace; font-weight: 700; font-size: 1rem; }
+        details summary { cursor: pointer; font-size: .8125rem; color: #1351B4; }
+        .fichas a { margin-right: .5rem; font-size: .8125rem; }
+        /* ---- contêineres ---- */
+        .conteiner { display: grid; grid-template-columns: minmax(16rem, 26rem) 1fr; gap: 1.25rem; }
+        @media (max-width: 900px) { .conteiner { grid-template-columns: 1fr; } }
+        .imagens { display: flex; flex-direction: column; gap: .5rem; }
+        .imagem-principal { width: 100%; border-radius: 6px; background: #1c1c1c; display: block; min-height: 10rem; object-fit: contain; }
+        .sem-imagem { background: #1c1c1c; color: #bbb; border-radius: 6px; min-height: 12rem; display: flex;
+                      align-items: center; justify-content: center; font-size: .8125rem; text-transform: uppercase; letter-spacing: .04em; }
+        .miniaturas { display: flex; flex-wrap: wrap; gap: .375rem; }
+        .miniaturas img { width: 5.5rem; height: 3.5rem; object-fit: cover; border-radius: 4px; border: 1px solid #DDD; }
+        .cabecalho-conteiner { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: baseline; margin-bottom: .75rem; }
+        .cabecalho-conteiner h3 { font-family: monospace; font-size: 1.375rem; margin: 0; }
+        .estagio { font-size: .75rem; font-weight: 700; padding: .1875rem .625rem; border-radius: 999px; background: #E8EEF9; color: #0C326F; }
+        .estagio.sem-ciclo { background: #F3F3F3; color: #777; }
+        .estagio.entregue { background: #E8F5E9; color: #1B5E20; }
+        .linha-tempo { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
+        .etapa { border-top: 3px solid #D0D0D0; padding-top: .375rem; font-size: .75rem; color: #555; }
+        .etapa.feita { border-top-color: #1351B4; }
+        .etapa strong { display: block; font-size: .6875rem; text-transform: uppercase; letter-spacing: .03em; color: #333; }
+        .secao-conteiner { margin-top: 1rem; }
+        .secao-conteiner h4 { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #555; margin: 0 0 .375rem; }
+        .fora { color: #A15C00; font-weight: 600; }
+        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+        .aviso { color: #A15C00; font-size: .8125rem; }
+        .ncm { font-size: .8125rem; margin: .125rem 0; }
+        .ncm .codigo { font-family: monospace; font-weight: 700; color: #0C326F; margin-right: .375rem; }
+    </style>
+</head>
+<body>
+{% macro data(valor, hora=True) -%}
+{%- if not valor -%}—{%- elif valor is string -%}{{ valor[8:10] }}/{{ valor[5:7] }}/{{ valor[0:4] }}{%- else -%}{{ valor.strftime('%d/%m/%Y %H:%M' if hora else '%d/%m/%Y') }}{%- endif -%}
+{%- endmacro %}
+{% macro num(valor, casas=0) -%}
+{{ ('{:,.' ~ casas ~ 'f}').format(valor or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+{%- endmacro %}
+{% macro link_extrato(numero) -%}
+<a class="mono" href="{{ extrato_url }}?CE={{ numero }}" title="Extrato deste CE">{{ numero }}</a>
+{%- endmacro %}
+{% macro empresa(codigo, nome) -%}
+<span class="valor">{{ nome or codigo or '—' }}{% if nome and codigo %}<span class="secundario mono">{{ codigo }}</span>{% endif %}</span>
+{%- endmacro %}
+<div class="pagina">
+
+    <div class="barra">
+        <a class="voltar" href="{{ navii_url }}"><i class="fas fa-arrow-left" aria-hidden="true"></i> NAVI-I — análise de risco</a>
+        <form class="busca-ce" method="get" action="{{ extrato_url }}">
+            <label for="ce" class="rotulo mb-0">Outro CE</label>
+            <input id="ce" name="CE" type="text" inputmode="numeric" placeholder="número do CE" value="{{ numero }}" />
+            <button class="br-button primary small" type="submit">Abrir</button>
+        </form>
+    </div>
+
+    {% if not dados %}
+    <div class="painel">
+        {% if numero %}<p class="mb-0">CE <span class="mono">{{ numero }}</span> não encontrado no Mercante.</p>
+        {% else %}<p class="mb-0">Informe o número do CE para ver o extrato.</p>{% endif %}
+    </div>
+    {% else %}
+    {% set ce = dados.ce %}
+
+    <h1 class="titulo"><span class="marca">EXTRATO DO CE</span> <span class="mono">{{ ce.numeroCEmercante }}</span></h1>
+    <div class="subtitulo">
+        Conhecimento {{ ce.numConhecimento or 's/n' }}
+        {% if ce.tipoBL %} · {{ ce.tipoBL }}{% if ce.tipoBLDescricao %} — {{ ce.tipoBLDescricao }}{% endif %}{% endif %}
+        {% if ce.tipoTrafego %} · {{ ce.tipoTrafego }}{% endif %}
+    </div>
+    <div class="etiquetas">
+        {% if ce.numeroCEMaster %}<a class="etq master" href="{{ extrato_url }}?CE={{ ce.numeroCEMaster }}" title="Extrato do master">Master {{ ce.numeroCEMaster }}</a>{% endif %}
+        {% for filhote in ce.filhotes %}<a class="etq filhote" href="{{ extrato_url }}?CE={{ filhote }}" title="Extrato do filhote">Filhote {{ filhote }}</a>{% endfor %}
+        {% if ce.risco and ce.risco.faixa %}<span class="etq risco-{{ ce.risco.faixa }}" title="Risco histórico por CE">Risco histórico {{ ce.risco.rotuloFaixa }}{% if ce.risco.pontos %} · {{ num(ce.risco.pontos, 1) }}{% endif %}</span>{% endif %}
+        {% if ce.corad %}<span class="etq corad-{{ ce.corad.classe or 0 }}" title="Matriz de risco CORAD do importador">CORAD {{ ce.corad.rotulo }}</span>{% endif %}
+        {% for dta in ce.dtas %}<span class="etq dta" title="Declaração de trânsito">DTA {{ dta.numero }}</span>{% endfor %}
+        {% for ficha in ce.fichasOvr if ficha.aberta and not ficha.abandono %}{% if loop.first %}<span class="etq ficha">Ficha OVR aberta</span>{% endif %}{% endfor %}
+        {% for ficha in ce.fichasOvr if ficha.abandono %}{% if loop.first %}<span class="etq fma">FMA (abandono)</span>{% endif %}{% endfor %}
+    </div>
+
+    <section class="painel" aria-labelledby="t-carga">
+        <h2 id="t-carga">Carga</h2>
+        <div class="grade">
+            <div><span class="rotulo">Embarcador</span>{{ empresa(ce.embarcador, ce.nomeEmbarcador) }}</div>
+            <div><span class="rotulo">Consignatário</span>{{ empresa(ce.consignatario, ce.nomeConsignatario) }}
+                {% if ce.corad %}<span class="secundario">CORAD: {{ ce.corad.rotulo }}</span>{% endif %}</div>
+            <div><span class="rotulo">Rota</span><span class="valor">{{ ce.portoOrigemCarga or '—' }} → {{ ce.portoDestFinal or '—' }}
+                <span class="secundario">{{ ce.nomePortoOrigemCarga or '' }}{% if ce.nomePortoDestFinal %} → {{ ce.nomePortoDestFinal }}{% endif %}</span></span></div>
+            {% if ce.manifesto %}
+            <div><span class="rotulo">Manifesto</span><span class="valor mono">{{ ce.manifesto.numero }}
+                <span class="secundario">{% if ce.manifesto.numeroViagem %}viagem {{ ce.manifesto.numeroViagem }} · {% endif %}{{ ce.manifesto.portoCarregamento or '' }} → {{ ce.manifesto.portoDescarregamento or '' }}</span></span></div>
+            {% if ce.manifesto.portoCarregamento and ce.portoOrigemCarga and ce.manifesto.portoCarregamento != ce.portoOrigemCarga %}
+            <div><span class="rotulo">Baldeação</span><span class="valor">{{ ce.manifesto.portoCarregamento }}
+                <span class="secundario">{{ ce.manifesto.nomePortoCarregamento or '' }}</span></span></div>
+            {% endif %}
+            {% endif %}
+            <div><span class="rotulo">Navio</span><span class="valor">{{ ce.nomeEmbarcacao or '—' }}
+                {% if ce.embarcacao %}<span class="secundario">IMO {{ ce.embarcacao }}</span>{% endif %}</span></div>
+            <div><span class="rotulo">Atracação prevista</span><span class="valor">{{ data(ce.dataPrevistaAtracacao) }}
+                {% if ce.portoAtracacaoPrevista %}<span class="secundario">escala em {{ ce.portoAtracacaoPrevista }}</span>{% endif %}</span></div>
+            {% if ce.terminalDescarregamento %}
+            <div><span class="rotulo">Terminal de descarregamento</span><span class="valor">{{ ce.terminalDescarregamento.nome or ce.terminalDescarregamento.codigo }}</span></div>
+            {% endif %}
+            <div><span class="rotulo">Peso bruto total</span><span class="valor">{% if ce.pesoBrutoTotal %}{{ num(ce.pesoBrutoTotal) }} kg{% else %}—{% endif %}</span></div>
+            <div><span class="rotulo">NCMs distintos</span><span class="valor">{{ ce.qtdNcmsDistintos or 0 }}</span></div>
+        </div>
+        {% if ce.descricaoMercadoria %}<p class="descricao-merc">{{ ce.descricaoMercadoria }}</p>{% endif %}
+        {% if dados.exportacao %}<p class="aviso mt-2 mb-0">CE de exportação: o NAVI-I não lista os contêineres dele.</p>{% endif %}
+    </section>
+
+    <section class="painel" aria-labelledby="t-escalas">
+        <h2 id="t-escalas">Escalas do manifesto <span class="contagem">{{ ce.escalas | length }}</span></h2>
+        {% if ce.escalas %}
+        <div class="rolavel"><table class="dados">
+            <thead><tr><th>Escala</th><th>Porto</th><th>Atracação prevista</th><th>Atracação efetiva</th><th>Navio</th></tr></thead>
+            <tbody>
+            {% for e in ce.escalas %}
+            <tr><td class="mono">{{ e.escala }}</td><td>{{ e.porto or '—' }}</td><td>{{ data(e.prevista) }}</td>
+                <td>{{ data(e.efetiva) }}</td><td class="mono">{{ e.embarcacao or '—' }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        <p class="nota">O ciclo de vida usa a atracação prevista das escalas em Santos (BRSSZ) para escolher o CE de
+            cada desembarque.</p>
+        {% else %}<p class="vazio mb-0">Nenhuma escala no Mercante para o manifesto deste CE.</p>{% endif %}
+    </section>
+
+    {% set resumo = dados.resumo %}
+    <section class="painel" aria-label="Resumo dos contêineres">
+        <div class="resumo">
+            <span><strong>{{ resumo.declarados }}</strong>contêiner(es) declarado(s)</span>
+            <span><strong>{{ resumo.escaneados }}</strong>com imagem de escaneamento</span>
+            {% for rotulo, quantidade in resumo.estagios %}<span><strong>{{ quantidade }}</strong>{{ rotulo }}</span>{% endfor %}
+        </div>
+    </section>
+
+    {% if ce.risco and ce.risco.parcelas %}
+    <section class="painel" aria-labelledby="t-risco">
+        <h2 id="t-risco">Risco histórico <span class="contagem">{{ ce.risco.rotuloFaixa }} — {{ num(ce.risco.pontos, 2) }} pontos</span></h2>
+        <div class="rolavel"><table class="dados">
+            <thead><tr><th>Sinal</th><th>Valor</th><th class="num">Fichas</th><th class="num">% dos CEs</th><th class="num">× média</th><th class="num">Peso</th><th>Fichas (mais recentes)</th></tr></thead>
+            <tbody>
+            {% for p in ce.risco.parcelas %}
+            <tr><td>{{ p.dimensao }}</td><td><span class="mono">{{ p.valor }}</span>{% if p.descricao %}<span class="secundario">{{ p.descricao }}</span>{% endif %}</td>
+                <td class="num">{{ p.fichas }}</td><td class="num">{{ num(p.pct, 3) }}%</td><td class="num">{{ num(p.vezes, 1) }}×</td>
+                <td class="num">{{ num(p.peso, 2) }}</td>
+                <td class="fichas">{% for f in p.fichas_links %}<a class="mono" href="{{ f.url }}" target="_blank" rel="noopener">{{ f.id }}</a>{% endfor %}</td></tr>
+            {% endfor %}
+            </tbody>
+            <tfoot><tr><td colspan="5">Total (soma das parcelas)</td><td class="num">{{ num(ce.risco.pontos, 2) }}</td><td></td></tr></tfoot>
+        </table></div>
+        <p class="nota">Parâmetros da versão {{ ce.risco.versao }}. Peso = logaritmo de "vezes a média".
+            {% if risco_parametros_url %}<a href="{{ risco_parametros_url }}" target="_blank" rel="noopener">Ver todos os parâmetros</a>.{% endif %}</p>
+    </section>
+    {% endif %}
+
+    {% if ce.dtas %}
+    <section class="painel" aria-labelledby="t-dta">
+        <h2 id="t-dta">Declaração de trânsito (DTA) <span class="contagem">{{ ce.dtas | length }}</span></h2>
+        {% for dta in ce.dtas %}
+        <div class="bloco-dta">
+            <div class="dta-cabecalho"><span class="numero">DTA {{ dta.numero }}</span><span>{{ dta.tipo or '' }}</span>
+                <span class="etq {{ '' if dta.concluido else 'dta' }}">{{ 'Trânsito concluído' if dta.concluido else 'Em trânsito' }}</span></div>
+            <div class="grade">
+                <div><span class="rotulo">Registro</span><span class="valor">{{ data(dta.registro) }}</span></div>
+                <div><span class="rotulo">Desembaraço</span><span class="valor">{{ data(dta.desembaraco) }}</span></div>
+                <div><span class="rotulo">Previsão de chegada</span><span class="valor">{{ data(dta.previsaoChegada) }}</span></div>
+                <div><span class="rotulo">Transportador</span>{{ empresa(dta.cnpjTransportador, dta.transportador) }}</div>
+                <div><span class="rotulo">Valor declarado</span><span class="valor">{% if dta.valor is not none %}{{ dta.moeda or '' }} {{ num(dta.valor, 2) }}{% else %}—{% endif %}</span></div>
+            </div>
+            {% if dta.descricao %}<details class="mt-2"><summary>Descrição da mercadoria na DTA</summary><p class="descricao-merc">{{ dta.descricao }}</p></details>{% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if ce.fichasOvr %}
+    <section class="painel fichas" aria-labelledby="t-fichas">
+        <h2 id="t-fichas">Fichas OVR <span class="contagem">{{ ce.fichasOvr | length }}</span></h2>
+        {% for f in ce.fichasOvr %}<a href="{{ f.url }}" target="_blank" rel="noopener" title="{{ 'FMA' if f.abandono else 'Ficha' }} {{ f.numero }} · {{ f.tipo or '' }} · {{ f.via }} — abre no Fichas (nova aba)">Ficha {{ f.id }}{{ ' · FMA' if f.abandono }} · {{ f.fase or '' }}</a>{% endfor %}
+    </section>
+    {% endif %}
+
+    <h2 class="mt-4" id="conteineres" style="font-size:1.25rem">Contêineres <span class="subtitulo">({{ dados.conteineres | length }})</span></h2>
+    {% if not dados.conteineres %}<div class="painel"><p class="vazio mb-0">Nenhum contêiner declarado para este CE (carga solta ou granel, ou CE de exportação).</p></div>{% endif %}
+    {% if dados.conteineres | length >= dados.limite %}<p class="aviso">Mostrando os {{ dados.limite }} primeiros contêineres.</p>{% endif %}
+
+    {% for c in dados.conteineres %}
+    <section class="painel" aria-label="Contêiner {{ c.numeroConteiner }}">
+        <div class="cabecalho-conteiner">
+            <h3>{{ c.numeroConteiner or '—' }}</h3>
+            {% if c.tipoConteiner %}<span class="etq" title="{{ c.tipoConteiner.descricao }}">{{ c.tipoConteiner.codigo }} · {{ c.tipoConteiner.curta }}</span>{% elif c.isoCode %}<span class="etq">{{ c.isoCode }}</span>{% endif %}
+            {% if c.tipoConteiner and c.tipoConteiner.oog %}<span class="etq oog">Potencial OOG</span>{% endif %}
+            {% if not c.cicloDeVidaLocalizado %}<span class="estagio sem-ciclo">Sem ciclo de vida</span>
+            {% elif c.estagio %}<span class="estagio {{ 'entregue' if c.concluido else '' }}" title="{{ c.estagio.descricao }}">{{ c.estagio.rotulo }}</span>{% endif %}
+            {% if c.cicloPorCE %}<span class="secundario">ciclo de vida pelo CE {{ link_extrato(c.cicloPorCE) }}</span>{% endif %}
+        </div>
+        <div class="conteiner">
+            <div class="imagens">
+                {% if c.imagens_ids %}
+                <a href="{{ imagem_cheia_template | replace('imagem_id', c.imagens_ids[0]) }}" target="_blank" rel="noopener" title="Imagem completa (nova aba)">
+                    <img class="imagem-principal" src="{{ imagem_url_template | replace('imagem_id', c.imagens_ids[0]) }}" alt="Imagem de escaneamento do contêiner {{ c.numeroConteiner }}" loading="lazy" /></a>
+                {% if c.imagens_ids | length > 1 %}<div class="miniaturas">
+                    {% for id in c.imagens_ids[1:] %}<a href="{{ imagem_cheia_template | replace('imagem_id', id) }}" target="_blank" rel="noopener"><img src="{{ imagem_url_template | replace('imagem_id', id) }}" alt="Outra imagem do contêiner" loading="lazy" /></a>{% endfor %}
+                </div>{% endif %}
+                {% else %}<div class="sem-imagem">Sem imagem de escaneamento</div>{% endif %}
+                {% if c.declarado %}
+                <div class="secao-conteiner">
+                    <h4>Declarado no Mercante</h4>
+                    <div class="ncm">Peso bruto {% if c.declarado.pesoBruto %}{{ num(c.declarado.pesoBruto) }} kg{% else %}—{% endif %}
+                        {% if c.declarado.tara %} · tara {{ num(c.declarado.tara) }} kg{% endif %}{% if c.declarado.lacre %} · lacre {{ c.declarado.lacre }}{% endif %}</div>
+                    {% for n in c.declarado.ncms %}<div class="ncm"><span class="codigo">{{ n.identificacaoNCM }}</span>{{ n.descricaoPosicao or '' }}
+                        {% if n.descritivo %}<span class="secundario">Declarado: {{ n.descritivo }}</span>{% endif %}</div>{% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div>
+                {% set t = c.linhaDoTempo %}
+                <h4 class="rotulo">Ciclo de vida</h4>
+                <div class="linha-tempo">
+                    {% for chave, rotulo in [('desembarque', 'Desembarque'), ('saida', 'Saída do cais'), ('entradaRecintoSeco', 'Entrada no recinto seco'), ('saidaRecintoSeco', 'Saída do recinto seco'), ('embarque', 'Embarque')] %}
+                    {% set etapa = t[chave] if t and chave in t else none %}
+                    {% if chave != 'embarque' or (etapa and etapa.data) %}
+                    <div class="etapa {{ 'feita' if etapa and etapa.data else '' }}"><strong>{{ rotulo }}</strong>{{ data(etapa.data if etapa else none) }}
+                        {% if etapa and etapa.data and (etapa.nomeRecinto or etapa.recinto) %}<span class="secundario">{{ etapa.nomeRecinto or etapa.recinto }}</span>{% endif %}
+                        {% if etapa and etapa.implicita %}<span class="secundario">deduzida ({{ {'inspecao': 'inspeção', 'pesagem': 'pesagem'}.get(etapa.implicita, etapa.implicita) }})</span>{% endif %}</div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% if c.motivo %}<p class="nota mt-0">{{ c.motivo }}</p>{% endif %}
+
+                <div class="secao-conteiner">
+                    <h4>Escaneamentos (ciclo de vida)</h4>
+                    {% if c.escaneamentos %}<ul class="mb-0">{% for e in c.escaneamentos %}
+                        <li class="ncm">{{ data(e.data) }} · {{ e.nomeRecinto or e.recinto or 'recinto não informado' }}
+                            {% if e.confianca %} · confiança {{ {'alta': 'alta', 'media': 'média', 'baixa': 'baixa'}.get(e.confianca, e.confianca) }}{% endif %}{% if e.fora %} · <span class="fora">fora</span>{% endif %}
+                            {% if not e.temImagem %} · sem imagem{% endif %}</li>{% endfor %}</ul>
+                    {% else %}<p class="vazio mb-0">Nenhum escaneamento ligado ao ciclo de vida.</p>{% endif %}
+                </div>
+
+                <div class="secao-conteiner">
+                    <h4>Eventos da API Recintos
+                        {% if c.janelaEventos %}<span class="secundario" style="display:inline; text-transform:none; letter-spacing:0">— de {{ data(c.janelaEventos[0], false) }} a {{ data(c.janelaEventos[1], false) }}</span>{% endif %}</h4>
+                    {% if c.eventosApi %}
+                    <div class="rolavel"><table class="dados">
+                        <thead><tr><th>Data/hora</th><th>Evento</th><th>Recinto</th><th>Detalhe</th></tr></thead>
+                        <tbody>{% for e in c.eventosApi %}
+                            <tr><td class="mono">{{ data(e.data) }}</td><td>{{ e.tipo }}</td><td>{{ e.nomeRecinto or e.recinto or '—' }}</td><td>{{ e.detalhe }}</td></tr>
+                        {% endfor %}</tbody>
+                    </table></div>
+                    {% elif c.janelaEventos %}<p class="vazio mb-0">Nenhum evento da API Recintos no período.</p>
+                    {% else %}<p class="vazio mb-0">Sem desembarque nem atracação prevista: não há período para buscar os eventos.</p>{% endif %}
+                </div>
+
+                {% set fichas_conteiner = c.fichasOvr | selectattr('via', 'equalto', 'contêiner') | list %}
+                {% if fichas_conteiner %}<div class="secao-conteiner fichas"><h4>Fichas pelo contêiner (RVF)</h4>
+                    {% for f in fichas_conteiner %}<a href="{{ f.url }}" target="_blank" rel="noopener" title="{{ 'FMA' if f.abandono else 'Ficha' }} {{ f.numero }} · {{ f.tipo or '' }}">Ficha {{ f.id }}{{ ' · FMA' if f.abandono }} · {{ f.fase or '' }}</a>{% endfor %}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+    {% endfor %}
+
+    <p class="nota"><a href="{{ navii_url }}?ce={{ ce.numeroCEmercante }}&amp;tipo_janela=efetiva">Ver os cards deste CE na tela de análise de risco</a>
+        · Contém CNPJs e dados de pessoas: use conforme as regras de sigilo fiscal e a LGPD.</p>
+    {% endif %}
+</div>
+</body>
+</html>

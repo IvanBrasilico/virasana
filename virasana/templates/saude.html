@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="{% if csrf_token is defined %}{{ csrf_token() }}{% endif %}" />
+    <title>Saúde do sistema — NAVI</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .pagina { max-width: 1280px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+        .voltar { font-size: .8125rem; }
+        h1.titulo { font-size: 1.625rem; font-weight: 700; margin: .5rem 0 .25rem; display: flex; align-items: center;
+                    gap: .625rem; flex-wrap: wrap; }
+        .marca { background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700; letter-spacing: .04em;
+                 padding: .25rem .625rem; border-radius: 4px; }
+        .subtitulo { color: #555; font-size: .875rem; max-width: 62rem; }
+        .restrito { background: #fff; border: 1px solid #E6E6E6; border-left: 4px solid #1351B4; border-radius: 8px;
+                    padding: 1rem 1.25rem; margin-top: 1.5rem; }
+
+        /* estados: cor + ícone + texto (nunca só a cor) */
+        .e-OK { --cor: #168821; --fundo: #E3F5E1; }
+        .e-ATENCAO { --cor: #8C6800; --fundo: #FFF5C2; }
+        .e-FALHA { --cor: #B51A04; --fundo: #FDE0DB; }
+        .e-NAO_MEDIDO { --cor: #555; --fundo: #EDEDED; }
+        .selo-estado { display: inline-flex; align-items: center; gap: .375rem; color: var(--cor);
+                       background: var(--fundo); font-weight: 700; border-radius: 999px; padding: .1875rem .75rem;
+                       font-size: .8125rem; white-space: nowrap; }
+
+        /* barra do topo: estado geral, rodadas, serviço e "Rodar agora" */
+        .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; background: #fff;
+                 border: 1px solid #E6E6E6; border-radius: 8px; padding: 1rem 1.25rem; margin-top: 1rem; }
+        .barra .geral { display: flex; align-items: center; gap: .75rem; }
+        .barra .geral .selo-estado { font-size: 1.125rem; padding: .375rem 1rem; }
+        .barra .info { display: flex; flex-direction: column; gap: .125rem; font-size: .8125rem; color: #444;
+                       flex: 1 1 22rem; }
+        .barra .info strong { color: #1c1c1c; }
+        .barra .servico-parado { color: #B51A04; font-weight: 700; }
+        .barra .acoes { display: flex; flex-direction: column; align-items: flex-end; gap: .25rem; }
+        .barra .acoes .aviso { font-size: .75rem; color: #555; max-width: 18rem; text-align: right; }
+
+        /* painel: um bloco por componente, sempre na mesma ordem */
+        h2.secao { font-size: 1.125rem; font-weight: 700; margin: 1.75rem 0 .75rem; }
+        /* align-items: o bloco aberto cresce sozinho (sem esticar os vizinhos da linha) */
+        .painel { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: .875rem;
+                  align-items: start; }
+        .componente { background: #fff; border: 1px solid #E6E6E6; border-left: 5px solid var(--cor); border-radius: 8px;
+                      padding: .875rem 1rem; display: flex; flex-direction: column; gap: .5rem; }
+        .componente .topo { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+        .componente h3 { font-size: .9375rem; font-weight: 700; margin: 0; }
+        .componente .desde { font-size: .6875rem; color: #555; }
+        .componente .resumo { font-size: .8125rem; color: #333; line-height: 1.4; overflow-wrap: anywhere; }
+        .faixa { display: flex; gap: 3px; align-items: center; }
+        .faixa .rotulo-faixa { font-size: .6875rem; color: #777; margin-right: .375rem; }
+        .faixa button { width: 1rem; height: 1rem; border-radius: 3px; border: 0; padding: 0; cursor: pointer;
+                        background: var(--cor); opacity: .85; }
+        .faixa button:hover, .faixa button:focus-visible { opacity: 1; outline: 2px solid #1351B4; outline-offset: 1px; }
+        .btn-detalhes { align-self: flex-start; background: none; border: 0; color: #1351B4; font-weight: 600;
+                        font-size: .8125rem; padding: 0; cursor: pointer; }
+        .btn-detalhes:focus-visible { outline: 2px solid #1351B4; outline-offset: 2px; }
+        .achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .375rem; }
+        .achados li { font-size: .8125rem; line-height: 1.4; padding: .375rem .5rem; background: #FAFBFC;
+                      border-radius: 4px; overflow-wrap: anywhere; }
+        .marca-achado { display: inline-block; font-size: .625rem; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: .03em; border-radius: 3px; padding: .0625rem .375rem; margin-right: .375rem; }
+        .marca-achado.novo { background: #1351B4; color: #fff; }
+        .marca-achado.antigo { background: #E6E6E6; color: #444; }
+        .vazio { background: #fff; border: 2px dashed #DDDEE0; border-radius: 8px; padding: 2rem 1.25rem; text-align: center;
+                 color: #555; }
+
+        /* histórico das rodadas */
+        table.rodadas { width: 100%; border-collapse: collapse; background: #fff; font-size: .8125rem;
+                        border: 1px solid #E6E6E6; }
+        table.rodadas th, table.rodadas td { padding: .5rem .75rem; border-bottom: 1px solid #F0F0F0; text-align: left; }
+        table.rodadas th { background: #F3F5F7; font-weight: 700; color: #333; }
+        table.rodadas td.num { text-align: right; }
+        .mais { margin-top: .75rem; }
+        .estado-carga { color: #555; font-size: .875rem; margin: .75rem 0; }
+
+        /* detalhe de uma rodada */
+        dialog.rodada { width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 3rem); border: 0;
+                        border-radius: 8px; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+        dialog.rodada::backdrop { background: rgba(0,0,0,.45); }
+        dialog.rodada .cabecalho { display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+                                   padding: .875rem 1.25rem; border-bottom: 1px solid #E6E6E6; position: sticky; top: 0;
+                                   background: #fff; }
+        dialog.rodada .corpo { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: .75rem; }
+        dialog.rodada h2 { font-size: 1.0625rem; margin: 0; }
+        @media (max-width: 40em) {
+            .pagina { padding: .75rem 1rem 2rem; }
+            .barra .acoes { align-items: stretch; width: 100%; }
+            .barra .acoes .aviso { text-align: left; }
+            table.rodadas th:nth-child(3), table.rodadas td:nth-child(3) { display: none; }
+        }
+    </style>
+</head>
+<body>
+<div class="pagina">
+    <a class="voltar" href="{{ navii_url }}"><i class="fas fa-arrow-left" aria-hidden="true"></i> NAVII</a>
+    <h1 class="titulo"><span class="marca">NAVI</span> Saúde do sistema</h1>
+    <p class="subtitulo">Health check das cargas de dados e dos serviços do NAVI (Mercante, API Recintos, imagens, ciclo
+        de vida, risco histórico, busca por texto, NAVI-I e Fichas de FMA).
+        {% if not restrito %}Uma rodada por dia às {{ hora_agendada }} h e as pedidas aqui; histórico de
+        {{ retencao_dias }} dias.{% endif %}</p>
+
+    {% if restrito %}
+    <div class="restrito" role="alert">
+        <strong>Acesso restrito ao perfil Supervisor do Fichas.</strong>
+        Peça o perfil ao administrador do Fichas se precisar acompanhar a saúde do sistema.
+    </div>
+    {% else %}
+    <div class="barra" id="barra" aria-live="polite">
+        <div class="geral" id="geral"><span class="estado-carga">Carregando…</span></div>
+        <div class="info" id="info"></div>
+        <div class="acoes">
+            <button type="button" class="br-button primary" id="btn-rodar">
+                <i class="fas fa-play" aria-hidden="true"></i> Rodar agora
+            </button>
+            <span class="aviso" id="aviso-rodar"></span>
+        </div>
+    </div>
+
+    <h2 class="secao" id="titulo-painel">Componentes</h2>
+    <div class="painel" id="painel" aria-labelledby="titulo-painel"></div>
+
+    <h2 class="secao" id="titulo-historico">Rodadas</h2>
+    <div id="historico"></div>
+    <button type="button" class="br-button secondary small mais" id="btn-mais" hidden>Carregar mais</button>
+
+    <dialog class="rodada" id="dialogo" aria-labelledby="dialogo-titulo">
+        <div class="cabecalho">
+            <h2 id="dialogo-titulo">Rodada</h2>
+            <button type="button" class="br-button circle small" id="dialogo-fechar" aria-label="Fechar">
+                <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div class="corpo" id="dialogo-corpo"></div>
+    </dialog>
+    {% endif %}
+</div>
+
+{% if not restrito %}
+<script>
+(function () {
+    'use strict';
+    var PAINEL_URL = {{ painel_url | tojson }};
+    var RODADAS_URL = {{ rodadas_url | tojson }};
+    var RODADA_URL = {{ rodada_url | tojson }};
+    var RODAR_URL = {{ rodar_url | tojson }};
+    var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+    var INTERVALO_MS = {{ (intervalo * 1000) | int | tojson }};   // a página acompanha o ritmo do serviço
+    var INTERVALO_PEDIDO_MS = 5000;                               // com pedido em aberto, mais depressa
+    var ESTADOS = {
+        'OK': { classe: 'e-OK', icone: 'fa-circle-check', texto: 'OK' },
+        'ATENÇÃO': { classe: 'e-ATENCAO', icone: 'fa-triangle-exclamation', texto: 'Atenção' },
+        'FALHA': { classe: 'e-FALHA', icone: 'fa-circle-xmark', texto: 'Falha' },
+        'NÃO MEDIDO': { classe: 'e-NAO_MEDIDO', icone: 'fa-circle-minus', texto: 'Não medido' }
+    };
+    var ORIGENS = { agenda: 'agendada', tela: 'pedida na tela', manual: 'manual (linha de comando)' };
+    var el = {
+        geral: document.getElementById('geral'), info: document.getElementById('info'),
+        painel: document.getElementById('painel'), historico: document.getElementById('historico'),
+        rodar: document.getElementById('btn-rodar'), aviso: document.getElementById('aviso-rodar'),
+        mais: document.getElementById('btn-mais'), dialogo: document.getElementById('dialogo'),
+        dialogoTitulo: document.getElementById('dialogo-titulo'), dialogoCorpo: document.getElementById('dialogo-corpo')
+    };
+    var estado = { espera: null, ultimaId: null, rodadas: [], fimDasRodadas: false, abertos: {} };
+
+    function escapeHtml(texto) {
+        return String(texto === null || texto === undefined ? '' : texto).replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function doisDigitos(n) { return (n < 10 ? '0' : '') + n; }
+
+    function dataHora(iso) {
+        if (!iso) { return '—'; }
+        var d = new Date(iso);
+        return doisDigitos(d.getDate()) + '/' + doisDigitos(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' +
+            doisDigitos(d.getHours()) + ':' + doisDigitos(d.getMinutes());
+    }
+
+    function diaMes(iso) {
+        var d = new Date(iso);
+        return doisDigitos(d.getDate()) + '/' + doisDigitos(d.getMonth() + 1);
+    }
+
+    function haQuanto(iso, agoraIso) {
+        if (!iso) { return 'nunca'; }
+        var minutos = (new Date(agoraIso) - new Date(iso)) / 60000;
+        if (minutos < 1) { return 'há menos de 1 min'; }
+        if (minutos < 120) { return 'há ' + Math.round(minutos) + ' min'; }
+        if (minutos < 2880) { return 'há ' + Math.round(minutos / 60) + ' h'; }
+        return 'há ' + Math.round(minutos / 1440) + ' dias';
+    }
+
+    function duracao(segundos) {
+        if (segundos === null || segundos === undefined) { return '—'; }
+        return segundos >= 90 ? Math.round(segundos / 60) + ' min' : String(segundos).replace('.', ',') + ' s';
+    }
+
+    function seloEstado(codigo) {
+        var e = ESTADOS[codigo] || ESTADOS['NÃO MEDIDO'];
+        return '<span class="selo-estado ' + e.classe + '"><i class="fas ' + e.icone + '" aria-hidden="true"></i>' +
+            escapeHtml(e.texto) + '</span>';
+    }
+
+    function classeEstado(codigo) { return (ESTADOS[codigo] || ESTADOS['NÃO MEDIDO']).classe; }
+
+    function pede(url, opcoes) {
+        return fetch(url, opcoes).then(function (resposta) {
+            return resposta.json().catch(function () { return {}; }).then(function (dados) {
+                if (!resposta.ok) { throw new Error(dados.erro || ('Erro ' + resposta.status)); }
+                return dados;
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------ topo
+    function renderizaTopo(painel) {
+        var ultima = painel.ultima;
+        el.geral.innerHTML = ultima ? seloEstado(ultima.geral) : '<span class="estado-carga">Sem rodadas</span>';
+        var servico = painel.servico;
+        var linhas = [];
+        if (ultima) {
+            linhas.push('<span>Última rodada: <strong>' + dataHora(ultima.inicio) + '</strong> · ' +
+                escapeHtml(ORIGENS[ultima.origem] || ultima.origem) +
+                (ultima.usuario ? ' por ' + escapeHtml(ultima.usuario) : '') + ' · ' +
+                duracao(ultima.segundos) + '</span>');
+        }
+        linhas.push('<span>Próxima agendada: <strong>' + (servico.proxima ? dataHora(servico.proxima) : '—') +
+            '</strong></span>');
+        linhas.push(servico.parado
+            ? '<span class="servico-parado"><i class="fas fa-circle-xmark" aria-hidden="true"></i> Serviço do ' +
+              'health check sem sinal (' + haQuanto(servico.visto_em, painel.agora) + ') — conferir o programa ' +
+              'saude_navi no supervisor</span>'
+            : '<span>Serviço do health check ativo (visto ' + haQuanto(servico.visto_em, painel.agora) + ')</span>');
+        el.info.innerHTML = linhas.join('');
+        renderizaPedido(painel);
+    }
+
+    function renderizaPedido(painel) {
+        var pedido = painel.pedido, rodando = painel.servico.rodando_desde;
+        el.rodar.disabled = !!pedido || !!rodando;
+        if (rodando) {
+            el.aviso.textContent = 'Rodando desde ' + dataHora(rodando) + '… (leva alguns minutos)';
+        } else if (pedido) {
+            el.aviso.textContent = 'Pedida por ' + (pedido.usuario || '—') + ' às ' + dataHora(pedido.pedido_em) +
+                ' — o serviço começa em até 1 min.';
+        } else {
+            el.aviso.textContent = '';
+        }
+    }
+
+    // ------------------------------------------------------------------ painel
+    function marcaDoAchado(achado) {
+        return achado.novo ? '<span class="marca-achado novo">novo</span>'
+            : '<span class="marca-achado antigo">desde ' + diaMes(achado.desde) + '</span>';
+    }
+
+    function listaAchados(detalhes) {
+        return '<ul class="achados">' + detalhes.map(function (achado) {
+            return '<li>' + marcaDoAchado(achado) + escapeHtml(achado.texto) + '</li>';
+        }).join('') + '</ul>';
+    }
+
+    function faixaDoComponente(faixa) {
+        if (!faixa || !faixa.length) { return ''; }
+        return '<div class="faixa"><span class="rotulo-faixa">Últimas ' + faixa.length + ':</span>' +
+            faixa.map(function (r) {
+                var rotulo = dataHora(r.inicio) + ' — ' + (ESTADOS[r.estado] || ESTADOS['NÃO MEDIDO']).texto;
+                return '<button type="button" class="' + classeEstado(r.estado) + '" data-rodada="' +
+                    escapeHtml(r.id) + '" title="' + escapeHtml(rotulo) + '" aria-label="Rodada de ' +
+                    escapeHtml(rotulo) + '"></button>';
+            }).join('') + '</div>';
+    }
+
+    function blocoDoComponente(resultado, faixa, id) {
+        var aberto = !!estado.abertos[resultado.componente];
+        var n = resultado.detalhes.length;
+        return '<article class="componente ' + classeEstado(resultado.estado) + '">' +
+            '<div class="topo"><h3>' + escapeHtml(resultado.componente) + '</h3>' + seloEstado(resultado.estado) + '</div>' +
+            (resultado.estado !== 'OK' && resultado.estado_desde
+                ? '<span class="desde">nesse estado desde ' + dataHora(resultado.estado_desde) + '</span>' : '') +
+            '<div class="resumo">' + escapeHtml(resultado.resumo) + '</div>' +
+            faixaDoComponente(faixa) +
+            (n ? '<button type="button" class="btn-detalhes" data-componente="' + escapeHtml(resultado.componente) +
+                 '" aria-expanded="' + aberto + '" aria-controls="achados-' + id + '">' +
+                 (aberto ? 'Ocultar' : 'Ver') + ' ' + n + (n > 1 ? ' achados' : ' achado') + '</button>' +
+                 '<div id="achados-' + id + '"' + (aberto ? '' : ' hidden') + '>' + listaAchados(resultado.detalhes) +
+                 '</div>' : '') +
+            '</article>';
+    }
+
+    function renderizaPainel(painel) {
+        renderizaTopo(painel);
+        if (!painel.ultima) {
+            el.painel.innerHTML = '<div class="vazio">Nenhuma rodada ainda. A primeira roda às {{ hora_agendada }} h ' +
+                'ou com "Rodar agora".</div>';
+            return;
+        }
+        el.painel.innerHTML = painel.ultima.resultados.map(function (resultado, i) {
+            return blocoDoComponente(resultado, painel.faixas[resultado.componente], i);
+        }).join('');
+        if (estado.ultimaId && estado.ultimaId !== painel.ultima.id) { recarregaHistorico(); }
+        estado.ultimaId = painel.ultima.id;
+    }
+
+    function atualiza() {
+        clearTimeout(estado.espera);
+        pede(PAINEL_URL).then(function (painel) {
+            renderizaPainel(painel);
+            var depressa = painel.pedido || painel.servico.rodando_desde;
+            estado.espera = setTimeout(atualiza, depressa ? INTERVALO_PEDIDO_MS : INTERVALO_MS);
+        }).catch(function (erro) {
+            el.geral.innerHTML = '<span class="estado-carga">Falha ao carregar: ' + escapeHtml(erro.message) + '</span>';
+            estado.espera = setTimeout(atualiza, INTERVALO_MS);
+        });
+    }
+
+    // ------------------------------------------------------------------ histórico das rodadas
+    function linhaDaRodada(r) {
+        return '<tr><td>' + dataHora(r.inicio) + '</td><td>' + escapeHtml(ORIGENS[r.origem] || r.origem) + '</td>' +
+            '<td>' + escapeHtml(r.usuario || '—') + '</td><td>' + seloEstado(r.geral) + '</td>' +
+            '<td class="num">' + duracao(r.segundos) + '</td>' +
+            '<td><button type="button" class="br-button secondary small" data-rodada="' + escapeHtml(r.id) +
+            '">Ver</button></td></tr>';
+    }
+
+    function renderizaHistorico() {
+        if (!estado.rodadas.length) {
+            el.historico.innerHTML = '<p class="estado-carga">Nenhuma rodada no histórico.</p>';
+            el.mais.hidden = true;
+            return;
+        }
+        el.historico.innerHTML = '<table class="rodadas"><caption class="sr-only">Rodadas do health check, da mais ' +
+            'nova para a mais antiga</caption><thead><tr><th scope="col">Início</th><th scope="col">Origem</th>' +
+            '<th scope="col">Pedida por</th><th scope="col">Estado</th><th scope="col">Duração</th>' +
+            '<th scope="col"><span class="sr-only">Ações</span></th></tr></thead><tbody>' +
+            estado.rodadas.map(linhaDaRodada).join('') + '</tbody></table>';
+        el.mais.hidden = estado.fimDasRodadas;
+    }
+
+    function carregaRodadas(antes) {
+        var url = RODADAS_URL + (antes ? '?' + new URLSearchParams({ antes: antes }).toString() : '');
+        return pede(url).then(function (dados) {
+            estado.rodadas = antes ? estado.rodadas.concat(dados.rodadas) : dados.rodadas;
+            estado.fimDasRodadas = dados.rodadas.length < dados.limite;
+            renderizaHistorico();
+        }).catch(function (erro) {
+            el.historico.innerHTML = '<p class="estado-carga">Falha ao carregar: ' + escapeHtml(erro.message) + '</p>';
+        });
+    }
+
+    function recarregaHistorico() { carregaRodadas(null); }
+
+    // ------------------------------------------------------------------ uma rodada (diálogo)
+    function abreRodada(id) {
+        el.dialogoTitulo.textContent = 'Rodada';
+        el.dialogoCorpo.innerHTML = '<p class="estado-carga">Carregando…</p>';
+        el.dialogo.showModal();
+        pede(RODADA_URL.replace('ID_DA_RODADA', encodeURIComponent(id))).then(function (rodada) {
+            el.dialogoTitulo.textContent = 'Rodada de ' + dataHora(rodada.inicio) + ' (' +
+                (ORIGENS[rodada.origem] || rodada.origem) + (rodada.usuario ? ' por ' + rodada.usuario : '') + ')';
+            el.dialogoCorpo.innerHTML = '<div>' + seloEstado(rodada.geral) + ' · ' + duracao(rodada.segundos) +
+                '</div>' + rodada.resultados.map(function (resultado) {
+                    return '<article class="componente ' + classeEstado(resultado.estado) + '"><div class="topo"><h3>' +
+                        escapeHtml(resultado.componente) + '</h3>' + seloEstado(resultado.estado) + '</div>' +
+                        '<div class="resumo">' + escapeHtml(resultado.resumo) + '</div>' +
+                        (resultado.detalhes.length ? listaAchados(resultado.detalhes) : '') + '</article>';
+                }).join('');
+        }).catch(function (erro) {
+            el.dialogoCorpo.innerHTML = '<p class="estado-carga">Falha ao carregar: ' + escapeHtml(erro.message) + '</p>';
+        });
+    }
+
+    // ------------------------------------------------------------------ ações
+    el.rodar.addEventListener('click', function () {
+        el.rodar.disabled = true;
+        el.aviso.textContent = 'Pedindo…';
+        pede(RODAR_URL, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } }).then(function () {
+            atualiza();
+        }).catch(function (erro) {
+            el.rodar.disabled = false;
+            el.aviso.textContent = 'Não foi possível pedir: ' + erro.message;
+        });
+    });
+
+    el.painel.addEventListener('click', function (e) {
+        var rodada = e.target.closest('button[data-rodada]');
+        if (rodada) { abreRodada(rodada.dataset.rodada); return; }
+        var botao = e.target.closest('button.btn-detalhes');
+        if (!botao) { return; }
+        var componente = botao.dataset.componente;
+        estado.abertos[componente] = !estado.abertos[componente];
+        var lista = document.getElementById(botao.getAttribute('aria-controls'));
+        lista.hidden = !estado.abertos[componente];
+        botao.setAttribute('aria-expanded', String(estado.abertos[componente]));
+        botao.textContent = botao.textContent.replace(/^(Ver|Ocultar)/, estado.abertos[componente] ? 'Ocultar' : 'Ver');
+    });
+
+    el.historico.addEventListener('click', function (e) {
+        var botao = e.target.closest('button[data-rodada]');
+        if (botao) { abreRodada(botao.dataset.rodada); }
+    });
+
+    el.mais.addEventListener('click', function () {
+        var ultima = estado.rodadas[estado.rodadas.length - 1];
+        if (ultima) { carregaRodadas(ultima.inicio); }
+    });
+
+    document.getElementById('dialogo-fechar').addEventListener('click', function () { el.dialogo.close(); });
+    el.dialogo.addEventListener('click', function (e) { if (e.target === el.dialogo) { el.dialogo.close(); } });
+
+    atualiza();
+    recarregaHistorico();
+})();
+</script>
+{% endif %}
+</body>
+</html>

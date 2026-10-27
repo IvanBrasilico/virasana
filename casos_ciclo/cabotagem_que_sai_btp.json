@@ -1,0 +1,2763 @@
+{
+ "meta": {
+  "ces": [],
+  "conteineres": [
+   "CAAU6628668",
+   "MRSU4528707"
+  ],
+  "desde": "2026-08-01T00:00:00",
+  "agora": "2026-10-22T10:07:36.182519"
+ },
+ "tabelas": {
+  "conhecimentosresumo": [
+   {
+    "numeroCEmercante": "072603337213440",
+    "numeroCEMaster": "",
+    "tipoTrafego": "3",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "0726301879247",
+    "portoOrigemCarga": "BRSSZ",
+    "portoDestFinal": "BRSUA",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2026-10-10",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "numConhecimento": "SVM879HA"
+   },
+   {
+    "numeroCEmercante": "072603337213520",
+    "numeroCEMaster": "",
+    "tipoTrafego": "3",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "0726301879247",
+    "portoOrigemCarga": "BRSSZ",
+    "portoDestFinal": "BRSUA",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2026-10-10",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "numConhecimento": "SVM879HB"
+   },
+   {
+    "numeroCEmercante": "152205118707169",
+    "numeroCEMaster": "",
+    "tipoTrafego": "5",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "1522500834014",
+    "portoOrigemCarga": "BEANR",
+    "portoDestFinal": "BRSSZ",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2022-05-10",
+    "codigoTerminalCarregamento": "",
+    "numConhecimento": "SUDUA2VWD001620A"
+   },
+   {
+    "numeroCEmercante": "152207166989820",
+    "numeroCEMaster": "",
+    "tipoTrafego": "7",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "1522701167090",
+    "portoOrigemCarga": "BRSSZ",
+    "portoDestFinal": "USJAX",
+    "paisDestinoFinalMercante": "US",
+    "dataEmissao": "2022-07-11",
+    "codigoTerminalCarregamento": "BRSSZ016",
+    "numConhecimento": "SUDU62SSZ042603X"
+   },
+   {
+    "numeroCEmercante": "172505168150275",
+    "numeroCEMaster": "",
+    "tipoTrafego": "5",
+    "tipoBLConhecimento": "11",
+    "manifestoCE": "1525501007132",
+    "portoOrigemCarga": "CNSHK",
+    "portoDestFinal": "BRIOA",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2025-05-05",
+    "codigoTerminalCarregamento": "",
+    "numConhecimento": "252271281"
+   },
+   {
+    "numeroCEmercante": "172505169550820",
+    "numeroCEMaster": "172505168150275",
+    "tipoTrafego": "5",
+    "tipoBLConhecimento": "12",
+    "manifestoCE": "1525501007132",
+    "portoOrigemCarga": "CNSHK",
+    "portoDestFinal": "BRIOA",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2025-05-05",
+    "codigoTerminalCarregamento": "",
+    "numConhecimento": "SZX31186306"
+   },
+   {
+    "numeroCEmercante": "172505181017494",
+    "numeroCEMaster": "",
+    "tipoTrafego": "5",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "1525B01082765",
+    "portoOrigemCarga": "CNSHK",
+    "portoDestFinal": "BRIOA",
+    "paisDestinoFinalMercante": "",
+    "dataEmissao": "2025-05-05",
+    "codigoTerminalCarregamento": "BRITA007",
+    "numConhecimento": "252271281"
+   },
+   {
+    "numeroCEmercante": "172507220243315",
+    "numeroCEMaster": "",
+    "tipoTrafego": "7",
+    "tipoBLConhecimento": "10",
+    "manifestoCE": "1725701322425",
+    "portoOrigemCarga": "BRIOA",
+    "portoDestFinal": "CLSAI",
+    "paisDestinoFinalMercante": "CL",
+    "dataEmissao": "2025-07-24",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "numConhecimento": "256601399"
+   }
+  ],
+  "itensresumo": [
+   {
+    "numeroCEmercante": "152205118707169",
+    "codigoConteiner": "CAAU6628668",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G0",
+    "pesoBruto": "000021877.427",
+    "tara": "003700.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "152207166989820",
+    "codigoConteiner": "CAAU6628668",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G0",
+    "pesoBruto": "000024193.000",
+    "tara": "003700.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "152605303735013",
+    "codigoConteiner": "CAAU6628668",
+    "numeroSequencialItemCarga": "0004",
+    "tipoItemCarga": "1",
+    "isoCode": "45G1",
+    "pesoBruto": "000021814.662",
+    "tara": "003700.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "072603337213520",
+    "codigoConteiner": "CAAU6628668",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G0",
+    "pesoBruto": "000027726.048",
+    "tara": "003700.000",
+    "indicadorUsoParcial": "true"
+   },
+   {
+    "numeroCEmercante": "172505168150275",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G1",
+    "pesoBruto": "000003729.200",
+    "tara": "003720.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "172505169550820",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G0",
+    "pesoBruto": "000003729.200",
+    "tara": "003720.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "172505181017494",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G1",
+    "pesoBruto": "000003729.200",
+    "tara": "003720.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "172507220243315",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G1",
+    "pesoBruto": "000026154.000",
+    "tara": "003720.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "152605303750080",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G1",
+    "pesoBruto": "000010262.233",
+    "tara": "003720.000",
+    "indicadorUsoParcial": ""
+   },
+   {
+    "numeroCEmercante": "072603337213440",
+    "codigoConteiner": "MRSU4528707",
+    "numeroSequencialItemCarga": "0001",
+    "tipoItemCarga": "1",
+    "isoCode": "45G0",
+    "pesoBruto": "000027726.048",
+    "tara": "003880.000",
+    "indicadorUsoParcial": "true"
+   }
+  ],
+  "manifestosresumo": [
+   {
+    "numero": "0026901705792",
+    "tipoTrafego": "9",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705806",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705814",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705822",
+    "tipoTrafego": "9",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705830",
+    "tipoTrafego": "9",
+    "portoCarregamento": "GBSOU",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705873",
+    "tipoTrafego": "9",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705881",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705890",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705903",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705911",
+    "tipoTrafego": "9",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901705962",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901706764",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-15",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "0026901724487",
+    "tipoTrafego": "9",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724495",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724509",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724517",
+    "tipoTrafego": "9",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724592",
+    "tipoTrafego": "9",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724606",
+    "tipoTrafego": "9",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724630",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901724649",
+    "tipoTrafego": "9",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901725181",
+    "tipoTrafego": "9",
+    "portoCarregamento": "GBSOU",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-17",
+    "dataEncerramento": "2026-09-17"
+   },
+   {
+    "numero": "0026901738127",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-20",
+    "dataEncerramento": "2026-09-20"
+   },
+   {
+    "numero": "0026901738135",
+    "tipoTrafego": "9",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-20",
+    "dataEncerramento": "2026-09-20"
+   },
+   {
+    "numero": "0126301877106",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRMAO",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRMAO006",
+    "numeroViagem": "641N..",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-10",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "0126301879206",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRMAO",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRMAO006",
+    "numeroViagem": "641N..",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-11",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0126301879214",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRMAO",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRMAO006",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-11",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0126B01775164",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRMAO",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "BRMAO006",
+    "codigoTerminalDescarregamento": "BRSSZ009",
+    "numeroViagem": "640S",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-12",
+    "dataEncerramento": "2026-09-25"
+   },
+   {
+    "numero": "0126B01874995",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRMAO",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRMAO006",
+    "numeroViagem": "641NTS",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-10",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "0126B01880545",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRMAO",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRMAO006",
+    "numeroViagem": "641NTT",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-12",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "0126B01881282",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRMAO",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "BRMAO006",
+    "codigoTerminalDescarregamento": "BRSSZ009",
+    "numeroViagem": "640S",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-12",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0426301859883",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIGI",
+    "portoDescarregamento": "BRPEC",
+    "codigoTerminalCarregamento": "BRIGI001",
+    "codigoTerminalDescarregamento": "BRPEC001",
+    "numeroViagem": "641N",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-19",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "0426301877113",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRPEC",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRPEC001",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-19",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "0426301879230",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRPEC",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRPEC001",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-19",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0426301879469",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRPEC",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRPEC001",
+    "numeroViagem": "641N..",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-19",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0426B01880552",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRPEC",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRPEC001",
+    "numeroViagem": "641NTT",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-19",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "0726301859904",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIGI",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRIGI001",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641N",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "0726301860350",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIGI",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRIGI001",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641N....",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "0726301877180",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "0726301879247",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "0726B01875507",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641NTS",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "0726B01880578",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRSUA",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRSUA011",
+    "numeroViagem": "641NTT",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-17",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "1026301859840",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIGI",
+    "portoDescarregamento": "BRSSA",
+    "codigoTerminalCarregamento": "BRIGI001",
+    "codigoTerminalDescarregamento": "BRSSA002",
+    "numeroViagem": "641N",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-15",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "1026301877172",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSSA",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSSA002",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-15",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "1026301879221",
+    "tipoTrafego": "3",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRSSA",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRSSA002",
+    "numeroViagem": "641N.",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-15",
+    "dataEncerramento": "2026-10-11"
+   },
+   {
+    "numero": "1026B01875001",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSSA",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSSA002",
+    "numeroViagem": "641NTS",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-15",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "1026B01880560",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "BRSSA",
+    "codigoTerminalCarregamento": "BRSSZ009",
+    "codigoTerminalDescarregamento": "BRSSA002",
+    "numeroViagem": "641NTT",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-15",
+    "dataEncerramento": "2026-10-10"
+   },
+   {
+    "numero": "1326B01857886",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRIGI",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "BRIGI001",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "641N",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-10",
+    "dataEncerramento": "2026-10-08"
+   },
+   {
+    "numero": "1326B01875515",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSSZ009",
+    "numeroViagem": "641NTS",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-12",
+    "dataEncerramento": "2026-10-09"
+   },
+   {
+    "numero": "1522500834014",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ016",
+    "numeroViagem": "217S",
+    "numeroImoDPC": "9633939",
+    "dataInicioOperacao": "2022-05-24",
+    "dataEncerramento": "2022-05-18"
+   },
+   {
+    "numero": "1522701167090",
+    "tipoTrafego": "7",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "USJAX",
+    "codigoTerminalCarregamento": "BRSSZ016",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "226N",
+    "numeroImoDPC": "9232577",
+    "dataInicioOperacao": "2022-07-11",
+    "dataEncerramento": "2022-07-11"
+   },
+   {
+    "numero": "1525501007132",
+    "tipoTrafego": "5",
+    "portoCarregamento": "SGSIN",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ009",
+    "numeroViagem": "012W",
+    "numeroImoDPC": "9936513",
+    "dataInicioOperacao": "2025-06-17",
+    "dataEncerramento": "2025-06-06"
+   },
+   {
+    "numero": "1526501705768",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501705776",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501705946",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501705954",
+    "tipoTrafego": "5",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501706446",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501706454",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501706462",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526501724070",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-09"
+   },
+   {
+    "numero": "1526501724274",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-01"
+   },
+   {
+    "numero": "1526501724622",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-08-30"
+   },
+   {
+    "numero": "1526501756877",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-23"
+   },
+   {
+    "numero": "1526701735121",
+    "tipoTrafego": "7",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "GBSOU",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-11",
+    "dataEncerramento": "2026-09-18"
+   },
+   {
+    "numero": "1526701761947",
+    "tipoTrafego": "7",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-23"
+   },
+   {
+    "numero": "1526701763338",
+    "tipoTrafego": "7",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635STS",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-23"
+   },
+   {
+    "numero": "1526B01705990",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526B01706007",
+    "tipoTrafego": "B",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526B01706015",
+    "tipoTrafego": "B",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRSSZ058",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1526B01763310",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "ARBUE",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635STS",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-23"
+   },
+   {
+    "numero": "1526B01763329",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "635STS",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-23"
+   },
+   {
+    "numero": "1526B01768460",
+    "tipoTrafego": "B",
+    "portoCarregamento": "BRSSZ",
+    "portoDescarregamento": "UYMVD",
+    "codigoTerminalCarregamento": "BRSSZ058",
+    "codigoTerminalDescarregamento": "",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-25",
+    "dataEncerramento": "2026-09-24"
+   },
+   {
+    "numero": "1626501705845",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1626501705853",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1626501705861",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1626501706140",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1626501706159",
+    "tipoTrafego": "5",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1626501724017",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-01"
+   },
+   {
+    "numero": "1626501724025",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-08-30"
+   },
+   {
+    "numero": "1626501724041",
+    "tipoTrafego": "5",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-13"
+   },
+   {
+    "numero": "1626501724050",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "0EWOHS1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-09"
+   },
+   {
+    "numero": "1626501738115",
+    "tipoTrafego": "5",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-09-20"
+   },
+   {
+    "numero": "1626501751022",
+    "tipoTrafego": "5",
+    "portoCarregamento": "MAPTM",
+    "portoDescarregamento": "BRPNG",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRPNG002",
+    "numeroViagem": "0EWOHS1MAB",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-09-27",
+    "dataEncerramento": "2026-08-23"
+   },
+   {
+    "numero": "1726501705728",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1726501705736",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1726501705744",
+    "tipoTrafego": "5",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "635S",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1726501724099",
+    "tipoTrafego": "5",
+    "portoCarregamento": "NLRTM",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-08-30"
+   },
+   {
+    "numero": "1726501724102",
+    "tipoTrafego": "5",
+    "portoCarregamento": "BEANR",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "0EWOIN1MA",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-09"
+   },
+   {
+    "numero": "1726B01705976",
+    "tipoTrafego": "B",
+    "portoCarregamento": "DEBRV",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "640N",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1726B01705984",
+    "tipoTrafego": "B",
+    "portoCarregamento": "DEHAM",
+    "portoDescarregamento": "BRIOA",
+    "codigoTerminalCarregamento": "",
+    "codigoTerminalDescarregamento": "BRIOA001",
+    "numeroViagem": "640N",
+    "numeroImoDPC": "9526899",
+    "dataInicioOperacao": "2026-10-07",
+    "dataEncerramento": "2026-09-15"
+   },
+   {
+    "numero": "1926A01860379",
+    "tipoTrafego": "A",
+    "portoCarregamento": "BRIOA",
+    "portoDescarregamento": "BRSSZ",
+    "codigoTerminalCarregamento": "BRIOA001",
+    "codigoTerminalDescarregamento": "BRSSZ009",
+    "numeroViagem": "641N",
+    "numeroImoDPC": "9603219",
+    "dataInicioOperacao": "2026-10-12",
+    "dataEncerramento": "2026-10-09"
+   }
+  ],
+  "escalamanifestoresumo": [
+   {
+    "ID": 4218693,
+    "manifesto": "0726301879247",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218694,
+    "manifesto": "0726301879247",
+    "escala": "26000482440"
+   },
+   {
+    "ID": 4218695,
+    "manifesto": "0726301879247",
+    "escala": "26000498363"
+   },
+   {
+    "ID": 1718457,
+    "manifesto": "1522500834014",
+    "escala": "22000112420"
+   },
+   {
+    "ID": 1796923,
+    "manifesto": "1522701167090",
+    "escala": "22000227324"
+   },
+   {
+    "ID": 1796924,
+    "manifesto": "1522701167090",
+    "escala": "22000216047"
+   },
+   {
+    "ID": 1796925,
+    "manifesto": "1522701167090",
+    "escala": "22000243079"
+   },
+   {
+    "ID": 3426410,
+    "manifesto": "1525501007132",
+    "escala": "25000267223"
+   },
+   {
+    "ID": 3444291,
+    "manifesto": "1525B01082765",
+    "escala": "25000267223"
+   },
+   {
+    "ID": 3499758,
+    "manifesto": "1725701322425",
+    "escala": "25000279620"
+   },
+   {
+    "ID": 3499759,
+    "manifesto": "1725701322425",
+    "escala": "25000279639"
+   },
+   {
+    "ID": 3499760,
+    "manifesto": "1725701322425",
+    "escala": "25000279680"
+   },
+   {
+    "ID": 3499761,
+    "manifesto": "1725701322425",
+    "escala": "25000279728"
+   },
+   {
+    "ID": 4178810,
+    "manifesto": "1526501705768",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178811,
+    "manifesto": "1526501705776",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178812,
+    "manifesto": "1526501705946",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178813,
+    "manifesto": "1526501705954",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178814,
+    "manifesto": "1526501706446",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178815,
+    "manifesto": "1526501706454",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178816,
+    "manifesto": "1526501706462",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178817,
+    "manifesto": "1626501705845",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178818,
+    "manifesto": "1626501705853",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178819,
+    "manifesto": "1626501705861",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178820,
+    "manifesto": "1626501706140",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178821,
+    "manifesto": "1626501706159",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178822,
+    "manifesto": "1726501705728",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178823,
+    "manifesto": "1726501705736",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178824,
+    "manifesto": "1726501705744",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178825,
+    "manifesto": "7726501707162",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178826,
+    "manifesto": "7726501707170",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178857,
+    "manifesto": "1526B01705990",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178858,
+    "manifesto": "1526B01706007",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178859,
+    "manifesto": "1526B01706015",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178860,
+    "manifesto": "0026901705792",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178862,
+    "manifesto": "0026901705806",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178864,
+    "manifesto": "0026901705814",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178866,
+    "manifesto": "0026901705822",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178868,
+    "manifesto": "0026901705830",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178870,
+    "manifesto": "0026901705873",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178872,
+    "manifesto": "0026901705881",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178874,
+    "manifesto": "0026901705890",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178876,
+    "manifesto": "0026901705903",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178878,
+    "manifesto": "0026901705911",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178880,
+    "manifesto": "0026901705962",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178882,
+    "manifesto": "0026901706764",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178884,
+    "manifesto": "1726B01705976",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4178887,
+    "manifesto": "1726B01705984",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185494,
+    "manifesto": "1526501724070",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185495,
+    "manifesto": "1526501724274",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185496,
+    "manifesto": "1526501724622",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185497,
+    "manifesto": "1526701735121",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185498,
+    "manifesto": "1626501724017",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185500,
+    "manifesto": "1626501724025",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185502,
+    "manifesto": "1626501724041",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185504,
+    "manifesto": "1626501724050",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185506,
+    "manifesto": "1726501724099",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185509,
+    "manifesto": "1726501724102",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185520,
+    "manifesto": "0026901724487",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185522,
+    "manifesto": "0026901724495",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185524,
+    "manifesto": "0026901724509",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185526,
+    "manifesto": "0026901724517",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185528,
+    "manifesto": "0026901724592",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185530,
+    "manifesto": "0026901724606",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185532,
+    "manifesto": "0026901724630",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185534,
+    "manifesto": "0026901724649",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4185536,
+    "manifesto": "0026901725181",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4186428,
+    "manifesto": "1626501738115",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4186436,
+    "manifesto": "0026901738127",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4186438,
+    "manifesto": "0026901738135",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4189324,
+    "manifesto": "1626501751022",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4189969,
+    "manifesto": "1526501756877",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4191439,
+    "manifesto": "1526701763338",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4191463,
+    "manifesto": "0426B01763378",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4191464,
+    "manifesto": "1526B01763310",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4191465,
+    "manifesto": "1526B01763329",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4192839,
+    "manifesto": "1526B01768460",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4193600,
+    "manifesto": "1526701771527",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4193613,
+    "manifesto": "1526B01771542",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4194135,
+    "manifesto": "1526701773112",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4196252,
+    "manifesto": "1526701761947",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4197180,
+    "manifesto": "1526501785508",
+    "escala": "26000420623"
+   },
+   {
+    "ID": 4183118,
+    "manifesto": "0726B01721526",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4194606,
+    "manifesto": "0126B01775164",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4196102,
+    "manifesto": "0126B01781520",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4196888,
+    "manifesto": "1526301784583",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4206542,
+    "manifesto": "1526301829722",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4207161,
+    "manifesto": "0726B01831666",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4208130,
+    "manifesto": "0726B01835815",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4213405,
+    "manifesto": "1326B01857886",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4213868,
+    "manifesto": "1926A01860379",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217567,
+    "manifesto": "1326B01875515",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217569,
+    "manifesto": "1026B01875001",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217572,
+    "manifesto": "0726B01875507",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217577,
+    "manifesto": "0126B01874995",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217959,
+    "manifesto": "0126301877106",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217962,
+    "manifesto": "0426301877113",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217965,
+    "manifesto": "0726301877180",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4217968,
+    "manifesto": "1026301877172",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218185,
+    "manifesto": "0126301877866",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218194,
+    "manifesto": "0126301877939",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218357,
+    "manifesto": "0126301878250",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218691,
+    "manifesto": "1026301879221",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218696,
+    "manifesto": "0126301879214",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218701,
+    "manifesto": "0426301879230",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218706,
+    "manifesto": "0426301879469",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218711,
+    "manifesto": "0126301879206",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218807,
+    "manifesto": "1026301879965",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218959,
+    "manifesto": "1026B01880560",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218961,
+    "manifesto": "0726B01880578",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218964,
+    "manifesto": "0426B01880552",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4218968,
+    "manifesto": "0126B01880545",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4219160,
+    "manifesto": "0126B01881282",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4219324,
+    "manifesto": "1526301828513",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4224240,
+    "manifesto": "1026301859840",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4224244,
+    "manifesto": "1026301860326",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4228254,
+    "manifesto": "0726301859904",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4228259,
+    "manifesto": "0726301860309",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4228264,
+    "manifesto": "0726301860333",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4228269,
+    "manifesto": "0726301860350",
+    "escala": "26000442309"
+   },
+   {
+    "ID": 4229107,
+    "manifesto": "0426301859883",
+    "escala": "26000442309"
+   }
+  ],
+  "escalasresumo": [
+   {
+    "numeroDaEscala": "22000112420",
+    "portoDaEscala": "BRSSZ",
+    "dataPrevistaAtracacao": "2022-05-25",
+    "dataPrevistaDesatracacao": "2022-05-26",
+    "dataEfetivaPrimeiraAtracacao": "2022-05-24",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9633939",
+    "numeroViagemDoArmador": "217S",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "22000243079",
+    "portoDaEscala": "BRSSA",
+    "dataPrevistaAtracacao": "2022-07-20",
+    "dataPrevistaDesatracacao": "2022-07-20",
+    "dataEfetivaPrimeiraAtracacao": "2022-07-20",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9232577",
+    "numeroViagemDoArmador": "226N",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "25000267223",
+    "portoDaEscala": "BRSSZ",
+    "dataPrevistaAtracacao": "2025-06-16",
+    "dataPrevistaDesatracacao": "2025-06-16",
+    "dataEfetivaPrimeiraAtracacao": "2025-06-17",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9936513",
+    "numeroViagemDoArmador": "12W",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "25000279620",
+    "portoDaEscala": "BRIOA",
+    "dataPrevistaAtracacao": "2025-07-23",
+    "dataPrevistaDesatracacao": "2025-07-24",
+    "dataEfetivaPrimeiraAtracacao": "2025-07-24",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9928205",
+    "numeroViagemDoArmador": "526E/530W",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "25000279639",
+    "portoDaEscala": "BRRIO",
+    "dataPrevistaAtracacao": "2025-07-25",
+    "dataPrevistaDesatracacao": "2025-07-26",
+    "dataEfetivaPrimeiraAtracacao": "2025-07-27",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9928205",
+    "numeroViagemDoArmador": "526E/530W",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "25000279728",
+    "portoDaEscala": "BRRIG",
+    "dataPrevistaAtracacao": "2025-07-31",
+    "dataPrevistaDesatracacao": "2025-08-01",
+    "dataEfetivaPrimeiraAtracacao": "2025-07-31",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9928205",
+    "numeroViagemDoArmador": "526E/530W",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "26000420623",
+    "portoDaEscala": "BRSSZ",
+    "dataPrevistaAtracacao": "2026-09-25",
+    "dataPrevistaDesatracacao": "2026-09-26",
+    "dataEfetivaPrimeiraAtracacao": "2026-09-25",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9526899",
+    "numeroViagemDoArmador": "635S",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "26000442309",
+    "portoDaEscala": "BRSSZ",
+    "dataPrevistaAtracacao": "2026-10-11",
+    "dataPrevistaDesatracacao": "2026-10-12",
+    "dataEfetivaPrimeiraAtracacao": "2026-10-12",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9603219",
+    "numeroViagemDoArmador": "641N/644S",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "26000482440",
+    "portoDaEscala": "BRSSA",
+    "dataPrevistaAtracacao": "2026-10-15",
+    "dataPrevistaDesatracacao": "2026-10-16",
+    "dataEfetivaPrimeiraAtracacao": "2026-10-15",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9603219",
+    "numeroViagemDoArmador": "640S/641N",
+    "tipoOperacaoPrevista": "03"
+   },
+   {
+    "numeroDaEscala": "26000498363",
+    "portoDaEscala": "BRSUA",
+    "dataPrevistaAtracacao": "2026-10-17",
+    "dataPrevistaDesatracacao": "2026-10-18",
+    "dataEfetivaPrimeiraAtracacao": "2026-10-17",
+    "dataEfetivaPrimeiraDesatracacao": "",
+    "embarcacao": "9603219",
+    "numeroViagemDoArmador": "641N",
+    "tipoOperacaoPrevista": "03"
+   }
+  ],
+  "apirecintos_embarquedesembarque": [
+   {
+    "id": 11953341,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-09-26T02:55:57",
+    "dataHoraTransmissao": "2026-09-26T02:55:58",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "embarqueDesembarque": "D",
+    "numeroConhecimento": "152605303735013",
+    "tipoConhecimento": "CE_MERCANTE",
+    "pesoBrutoBalanca": 0.0,
+    "taraConteiner": 3700.0,
+    "pesoBrutoManifesto": 25514.0,
+    "tipoConteiner": "45G1",
+    "escala": "26000420623",
+    "viagem": "635S",
+    "cargaSolta": 0
+   },
+   {
+    "id": 12323868,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-12T19:42:23",
+    "dataHoraTransmissao": "2026-10-12T19:43:04",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "embarqueDesembarque": "E",
+    "numeroConhecimento": null,
+    "tipoConhecimento": null,
+    "pesoBrutoBalanca": 31440.0,
+    "taraConteiner": 3900.0,
+    "pesoBrutoManifesto": 27000.0,
+    "tipoConteiner": "45G1",
+    "escala": "26000442309",
+    "viagem": "641N",
+    "cargaSolta": 0
+   },
+   {
+    "id": 11953108,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-09-26T00:39:03",
+    "dataHoraTransmissao": "2026-09-26T00:39:06",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "embarqueDesembarque": "D",
+    "numeroConhecimento": "152605303750080",
+    "tipoConhecimento": "CE_MERCANTE",
+    "pesoBrutoBalanca": 0.0,
+    "taraConteiner": 3720.0,
+    "pesoBrutoManifesto": 13982.0,
+    "tipoConteiner": "45G1",
+    "escala": "26000420623",
+    "viagem": "635S",
+    "cargaSolta": 0
+   },
+   {
+    "id": 12324757,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-12T14:35:53",
+    "dataHoraTransmissao": "2026-10-12T14:36:27",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "embarqueDesembarque": "E",
+    "numeroConhecimento": null,
+    "tipoConhecimento": null,
+    "pesoBrutoBalanca": 30850.0,
+    "taraConteiner": 3900.0,
+    "pesoBrutoManifesto": 27000.0,
+    "tipoConteiner": "45G1",
+    "escala": "26000442309",
+    "viagem": "641N",
+    "cargaSolta": 0
+   }
+  ],
+  "apirecintos_acessosveiculo": [
+   {
+    "id": 24008488,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-04T23:07:03",
+    "dataHoraTransmissao": "2026-10-04T23:07:12",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "operacao": "C",
+    "direcao": "S",
+    "vazioConteiner": 0,
+    "numeroConhecimento": null,
+    "tipoConhecimento": null,
+    "tipoConteiner": "45G1",
+    "placa": "OPX3I08",
+    "placaSemirreboque": "RYC1I76",
+    "portoDescarregamento": "BRSSZ",
+    "navio": "9526899",
+    "tipoDeclaracao": "DUIMP",
+    "numeroDeclaracao": "26BR00018833382"
+   },
+   {
+    "id": 24176947,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-06T22:46:00",
+    "dataHoraTransmissao": "2026-10-06T22:49:25",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "operacao": "C",
+    "direcao": "E",
+    "vazioConteiner": 0,
+    "numeroConhecimento": "6AIBK879H",
+    "tipoConhecimento": "BL",
+    "tipoConteiner": "45G1",
+    "placa": "OPX3I08",
+    "placaSemirreboque": "RYC1I76",
+    "portoDescarregamento": "BRSUA",
+    "navio": "9603219",
+    "tipoDeclaracao": null,
+    "numeroDeclaracao": null
+   },
+   {
+    "id": 24002742,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-02T23:59:56",
+    "dataHoraTransmissao": "2026-10-03T00:00:05",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "operacao": "C",
+    "direcao": "S",
+    "vazioConteiner": 0,
+    "numeroConhecimento": null,
+    "tipoConhecimento": null,
+    "tipoConteiner": "45G1",
+    "placa": "AUQ0A68",
+    "placaSemirreboque": "ECH1H84",
+    "portoDescarregamento": "BRSSZ",
+    "navio": "9526899",
+    "tipoDeclaracao": "DUIMP",
+    "numeroDeclaracao": "26BR00018778900"
+   },
+   {
+    "id": 24177011,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-06T23:08:24",
+    "dataHoraTransmissao": "2026-10-06T23:31:49",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "operacao": "C",
+    "direcao": "E",
+    "vazioConteiner": 0,
+    "numeroConhecimento": "6AIBK879H",
+    "tipoConhecimento": "BL",
+    "tipoConteiner": "45G1",
+    "placa": "AUQ0A68",
+    "placaSemirreboque": "ECH1H84",
+    "portoDescarregamento": "BRSUA",
+    "navio": "9603219",
+    "tipoDeclaracao": null,
+    "numeroDeclaracao": null
+   }
+  ],
+  "apirecintos_inspecoesnaoinvasivas": [
+   {
+    "id": 7582583,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-09-26T03:00:59",
+    "dataHoraTransmissao": "2026-09-26T03:01:17",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "vazio": 0,
+    "numeroConhecimento": "152605303735013",
+    "tipoConhecimento": "CE_MERCANTE",
+    "tipoConteiner": "45G1",
+    "placa": null
+   },
+   {
+    "id": 7582378,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-09-26T00:46:38",
+    "dataHoraTransmissao": "2026-09-26T00:46:45",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "vazio": 0,
+    "numeroConhecimento": "152605303750080",
+    "tipoConhecimento": "CE_MERCANTE",
+    "tipoConteiner": "45G1",
+    "placa": null
+   }
+  ],
+  "apirecintos_pesagensveiculo": [
+   {
+    "id": 18476678,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-04T21:20:50",
+    "dataHoraTransmissao": "2026-10-04T21:21:00",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "placa": "OPX3I08",
+    "placaSemirreboque": "RYC1I76",
+    "pesoBrutoBalanca": 14830.0,
+    "taraConjunto": 0.0,
+    "capturaAutoPeso": 1
+   },
+   {
+    "id": 18476786,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-04T23:07:03",
+    "dataHoraTransmissao": "2026-10-04T23:07:13",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "placa": "OPX3I08",
+    "placaSemirreboque": "RYC1I76",
+    "pesoBrutoBalanca": 40680.0,
+    "taraConjunto": 0.0,
+    "capturaAutoPeso": 1
+   },
+   {
+    "id": 18681918,
+    "numeroConteiner": "CAAU6628668",
+    "dataHoraOcorrencia": "2026-10-06T22:46:02",
+    "dataHoraTransmissao": "2026-10-06T22:47:38",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "placa": "OPX3I08",
+    "placaSemirreboque": "RYC1I76",
+    "pesoBrutoBalanca": 46460.0,
+    "taraConjunto": 15560.0,
+    "capturaAutoPeso": 1
+   },
+   {
+    "id": 18457307,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-02T22:47:43",
+    "dataHoraTransmissao": "2026-10-02T22:47:52",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "placa": "AUQ0A68",
+    "placaSemirreboque": "ECH1H84",
+    "pesoBrutoBalanca": 15310.0,
+    "taraConjunto": 14940.0,
+    "capturaAutoPeso": 1
+   },
+   {
+    "id": 18457634,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-02T23:59:56",
+    "dataHoraTransmissao": "2026-10-03T00:00:04",
+    "codigoRecinto": "8931359",
+    "tipoOperacao": "I",
+    "placa": "AUQ0A68",
+    "placaSemirreboque": "ECH1H84",
+    "pesoBrutoBalanca": 29020.0,
+    "taraConjunto": 14940.0,
+    "capturaAutoPeso": 1
+   },
+   {
+    "id": 18681981,
+    "numeroConteiner": "MRSU4528707",
+    "dataHoraOcorrencia": "2026-10-06T23:08:27",
+    "dataHoraTransmissao": "2026-10-06T23:09:09",
+    "codigoRecinto": "8931404",
+    "tipoOperacao": "I",
+    "placa": "AUQ0A68",
+    "placaSemirreboque": "ECH1H84",
+    "pesoBrutoBalanca": 46600.0,
+    "taraConjunto": 15260.0,
+    "capturaAutoPeso": 1
+   }
+  ]
+ },
+ "recintos": [
+  {
+   "id": "10",
+   "nome": "ECOPORTO SANTOS - TERMINAL 1",
+   "cod_siscomex": "8931318",
+   "e_operador": 1,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "21",
+   "nome": "EMBRAPORT - EMPRESA BRASILEIRA DE TERMINAIS PORTUA",
+   "cod_siscomex": "8931404",
+   "e_operador": 1,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "22",
+   "nome": "Brasil Terminal Portuario",
+   "cod_siscomex": "8931359",
+   "e_operador": 1,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "3111401",
+   "nome": "Porto de Pecém",
+   "cod_siscomex": "3111401",
+   "e_operador": 1,
+   "cod_unidade": "0317800"
+  },
+  {
+   "id": "4931303",
+   "nome": "Tecon Suape S/A",
+   "cod_siscomex": "4931303",
+   "e_operador": 1,
+   "cod_unidade": "0417800"
+  },
+  {
+   "id": "50",
+   "nome": "TRANSBRASA IPA",
+   "cod_siscomex": "8931305",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "52",
+   "nome": "EUDMARCO - PORTO SECO",
+   "cod_siscomex": "8933202",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "61",
+   "nome": "MULTILOG BRASIL SA",
+   "cod_siscomex": "8933201",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "70",
+   "nome": "SANTOS BRASIL PARTICIPACOES S/A - OPERADOR",
+   "cod_siscomex": "8931356",
+   "e_operador": 1,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "721302",
+   "nome": "RIO_ICTSI",
+   "cod_siscomex": "7921302",
+   "e_operador": 1,
+   "cod_unidade": "0717600"
+  },
+  {
+   "id": "75",
+   "nome": "MARIMEX IPA",
+   "cod_siscomex": "8931342",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "7921303",
+   "nome": "RIO_Mult_Rio_TII8",
+   "cod_siscomex": "7921303",
+   "e_operador": 1,
+   "cod_unidade": "0717600"
+  },
+  {
+   "id": "7961304",
+   "nome": "ITAGUAI_SEPETIBA_TECON",
+   "cod_siscomex": "7961304",
+   "e_operador": 1,
+   "cod_unidade": "0717800"
+  },
+  {
+   "id": "8931333",
+   "nome": "TEAG",
+   "cod_siscomex": "8931333",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "8931354",
+   "nome": "TEG",
+   "cod_siscomex": "8931354",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "8931367",
+   "nome": "SANTOS BRASIL PARTICIPAÇÕES S/A - SABOÓ",
+   "cod_siscomex": "8931367",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "8932706",
+   "nome": "FASSINA 1",
+   "cod_siscomex": "8932706",
+   "e_operador": null,
+   "cod_unidade": null
+  },
+  {
+   "id": "8932774",
+   "nome": "DINAMO 1",
+   "cod_siscomex": "8932774",
+   "e_operador": null,
+   "cod_unidade": null
+  },
+  {
+   "id": "8932794",
+   "nome": "DINAMO 2",
+   "cod_siscomex": "8932794",
+   "e_operador": null,
+   "cod_unidade": null
+  },
+  {
+   "id": "8932796",
+   "nome": "REDEX - III - S.MAGALHAES S.A.",
+   "cod_siscomex": "8932796",
+   "e_operador": null,
+   "cod_unidade": null
+  },
+  {
+   "id": "8932797",
+   "nome": "SERRA E MARQUES",
+   "cod_siscomex": "8932797",
+   "e_operador": null,
+   "cod_unidade": null
+  },
+  {
+   "id": "90",
+   "nome": "Movecta  Guarujá T1 (era Localfrio IPA)",
+   "cod_siscomex": "8931309",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "91",
+   "nome": "LOCALFRIO - CLIA",
+   "cod_siscomex": "8933001",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "92",
+   "nome": "BANDEIRANTES DEICMAR - IPA OUTEIRINHOS",
+   "cod_siscomex": "8931364",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "929",
+   "nome": "ULTRACARGO LOGÍSTICA S.A. 14.688.220/0011-36",
+   "cod_siscomex": "8932216",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "95",
+   "nome": "SANTOS BRASIL LOGISTICA S/A - CLIA GUARUJA",
+   "cod_siscomex": "8933203",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "96",
+   "nome": "BANDEIRANTES DEICMAR - CLIA ALEMOA",
+   "cod_siscomex": "8933206",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  },
+  {
+   "id": "98",
+   "nome": "SANTOS BRASIL LOGISTICA S/A - CLIA SANTOS",
+   "cod_siscomex": "8933204",
+   "e_operador": null,
+   "cod_unidade": "0817800"
+  }
+ ],
+ "gravado": {
+  "ciclos": [
+   {
+    "ID": 331958,
+    "codigoRecintoDesembarque": "8931359",
+    "numeroConteiner": "MRSU4528707",
+    "numeroCEmercante": "072603337213440",
+    "portoDestFinal": "BRSUA",
+    "desembarque_id": 11953108,
+    "data_desembarque": "2026-09-26T00:39:03",
+    "saida_id": 24002742,
+    "data_saida": "2026-10-02T23:59:56",
+    "codigoRecintoArmazenagem": null,
+    "entrada_seco_id": null,
+    "data_entrada_seco": null,
+    "saida_seco_id": null,
+    "data_saida_seco": null,
+    "concluido": true,
+    "create_date": "2026-10-01T10:22:44",
+    "last_modified": "2026-10-21T12:19:51",
+    "situacao": "concluido",
+    "fluxo": "operador",
+    "motivo": "entregue pelo operador",
+    "confianca_ce": "media",
+    "vazio": false,
+    "numeroManifesto": null,
+    "escala": "26000420623",
+    "tipoConteiner": "45G1",
+    "oog": false,
+    "peso_balanca": 0.0,
+    "peso_manifesto": 13982.0,
+    "tara": 3720.0,
+    "peso_menos_tara": 10262.0,
+    "embarque_id": null,
+    "data_embarque": null,
+    "entrada_seco_implicita_de": null,
+    "versao_heuristica": "v2",
+    "processado_em": "2026-10-21T12:19:51"
+   },
+   {
+    "ID": 332165,
+    "codigoRecintoDesembarque": "8931359",
+    "numeroConteiner": "CAAU6628668",
+    "numeroCEmercante": "072603337213520",
+    "portoDestFinal": "BRSUA",
+    "desembarque_id": 11953341,
+    "data_desembarque": "2026-09-26T02:55:57",
+    "saida_id": 24008488,
+    "data_saida": "2026-10-04T23:07:03",
+    "codigoRecintoArmazenagem": null,
+    "entrada_seco_id": null,
+    "data_entrada_seco": null,
+    "saida_seco_id": null,
+    "data_saida_seco": null,
+    "concluido": true,
+    "create_date": "2026-10-01T10:22:44",
+    "last_modified": "2026-10-21T12:17:54",
+    "situacao": "concluido",
+    "fluxo": "baldeacao",
+    "motivo": "embarque em outro operador",
+    "confianca_ce": "media",
+    "vazio": false,
+    "numeroManifesto": null,
+    "escala": "26000420623",
+    "tipoConteiner": "45G1",
+    "oog": false,
+    "peso_balanca": 0.0,
+    "peso_manifesto": 25514.0,
+    "tara": 3700.0,
+    "peso_menos_tara": 21814.0,
+    "embarque_id": 12323868,
+    "data_embarque": "2026-10-12T19:42:23",
+    "entrada_seco_implicita_de": null,
+    "versao_heuristica": "v2",
+    "processado_em": "2026-10-21T12:17:54"
+   }
+  ],
+  "ces": [
+   {
+    "ID": 6389484,
+    "ciclo_de_vida_id": 332165,
+    "numeroCEmercante": "072603337213520",
+    "papel": "simples",
+    "principal": true,
+    "confianca": "media",
+    "create_date": "2026-10-21T12:18:22"
+   },
+   {
+    "ID": 6391704,
+    "ciclo_de_vida_id": 331958,
+    "numeroCEmercante": "072603337213440",
+    "papel": "simples",
+    "principal": true,
+    "confianca": "media",
+    "create_date": "2026-10-21T12:20:23"
+   }
+  ],
+  "escaneamentos": [
+   {
+    "ID": 185577,
+    "ciclo_de_vida_id": 332165,
+    "escaneamento_id": 7582583,
+    "data_escaneamento": "2026-09-26T03:00:59",
+    "imagem_id": "6abbb8074e0a167a433b1015",
+    "confianca": "media",
+    "motivo": "no recinto da etapa; CE declarado fora do Mercante",
+    "codigoRecinto": "8931359",
+    "fora": false
+   },
+   {
+    "ID": 195956,
+    "ciclo_de_vida_id": 331958,
+    "escaneamento_id": 7582378,
+    "data_escaneamento": "2026-09-26T00:46:38",
+    "imagem_id": "6aba625e31d1cacbc7717b58",
+    "confianca": "media",
+    "motivo": "no recinto da etapa; CE declarado fora do Mercante",
+    "codigoRecinto": "8931359",
+    "fora": false
+   }
+  ],
+  "pesagens": [
+   {
+    "ID": 194481,
+    "ciclo_de_vida_id": 332165,
+    "pesagem_id": 18476678,
+    "data": "2026-10-04T21:20:50",
+    "codigoRecinto": "8931359",
+    "placa": "OPX3I08",
+    "semirreboque": "RYC1I76",
+    "operacao": "outra pesagem no ciclo",
+    "principal": false,
+    "peso_bruto": 14830.0,
+    "captura_automatica": true,
+    "tara_pesagem_id": null,
+    "tara_conjunto": null,
+    "origem_tara_conjunto": null,
+    "tara_conteiner": null,
+    "origem_tara_conteiner": null,
+    "peso_medido": null,
+    "peso_declarado": null,
+    "origem_declarado": null,
+    "numeroCEmercante": null,
+    "diferenca_kg": null,
+    "diferenca_pct": null,
+    "razao": null,
+    "classificacao": null,
+    "diagnostico": null,
+    "detalhe": null,
+    "confirmacao": null,
+    "divisao": null,
+    "fora_da_divisao": null,
+    "create_date": "2026-10-21T12:18:22"
+   },
+   {
+    "ID": 194482,
+    "ciclo_de_vida_id": 332165,
+    "pesagem_id": 18476786,
+    "data": "2026-10-04T23:07:03",
+    "codigoRecinto": "8931359",
+    "placa": "OPX3I08",
+    "semirreboque": "RYC1I76",
+    "operacao": "saída do operador do desembarque (retirada)",
+    "principal": true,
+    "peso_bruto": 40680.0,
+    "captura_automatica": true,
+    "tara_pesagem_id": 18476678,
+    "tara_conjunto": 14830.0,
+    "origem_tara_conjunto": "par na visita",
+    "tara_conteiner": 3700.0,
+    "origem_tara_conteiner": "informada",
+    "peso_medido": 22150.0,
+    "peso_declarado": 27726.05,
+    "origem_declarado": "item do CE",
+    "numeroCEmercante": "072603337213520",
+    "diferenca_kg": -5576.05,
+    "diferenca_pct": -20.11,
+    "razao": 0.7989,
+    "classificacao": "divergência relevante",
+    "diagnostico": "divergencia",
+    "detalhe": "-20%",
+    "confirmacao": null,
+    "divisao": 10,
+    "fora_da_divisao": false,
+    "create_date": "2026-10-21T12:18:22"
+   },
+   {
+    "ID": 194483,
+    "ciclo_de_vida_id": 332165,
+    "pesagem_id": 18681918,
+    "data": "2026-10-06T22:46:02",
+    "codigoRecinto": "8931404",
+    "placa": "OPX3I08",
+    "semirreboque": "RYC1I76",
+    "operacao": "outra pesagem no ciclo",
+    "principal": false,
+    "peso_bruto": 46460.0,
+    "captura_automatica": true,
+    "tara_pesagem_id": null,
+    "tara_conjunto": null,
+    "origem_tara_conjunto": null,
+    "tara_conteiner": null,
+    "origem_tara_conteiner": null,
+    "peso_medido": null,
+    "peso_declarado": null,
+    "origem_declarado": null,
+    "numeroCEmercante": null,
+    "diferenca_kg": null,
+    "diferenca_pct": null,
+    "razao": null,
+    "classificacao": null,
+    "diagnostico": null,
+    "detalhe": null,
+    "confirmacao": null,
+    "divisao": null,
+    "fora_da_divisao": null,
+    "create_date": "2026-10-21T12:18:22"
+   },
+   {
+    "ID": 197145,
+    "ciclo_de_vida_id": 331958,
+    "pesagem_id": 18457307,
+    "data": "2026-10-02T22:47:43",
+    "codigoRecinto": "8931359",
+    "placa": "AUQ0A68",
+    "semirreboque": "ECH1H84",
+    "operacao": "outra pesagem no ciclo",
+    "principal": false,
+    "peso_bruto": 15310.0,
+    "captura_automatica": true,
+    "tara_pesagem_id": null,
+    "tara_conjunto": null,
+    "origem_tara_conjunto": null,
+    "tara_conteiner": null,
+    "origem_tara_conteiner": null,
+    "peso_medido": null,
+    "peso_declarado": null,
+    "origem_declarado": null,
+    "numeroCEmercante": null,
+    "diferenca_kg": null,
+    "diferenca_pct": null,
+    "razao": null,
+    "classificacao": null,
+    "diagnostico": null,
+    "detalhe": null,
+    "confirmacao": null,
+    "divisao": null,
+    "fora_da_divisao": null,
+    "create_date": "2026-10-21T12:20:24"
+   },
+   {
+    "ID": 197146,
+    "ciclo_de_vida_id": 331958,
+    "pesagem_id": 18457634,
+    "data": "2026-10-02T23:59:56",
+    "codigoRecinto": "8931359",
+    "placa": "AUQ0A68",
+    "semirreboque": "ECH1H84",
+    "operacao": "saída do operador do desembarque (retirada)",
+    "principal": true,
+    "peso_bruto": 29020.0,
+    "captura_automatica": true,
+    "tara_pesagem_id": 18457307,
+    "tara_conjunto": 15310.0,
+    "origem_tara_conjunto": "par na visita",
+    "tara_conteiner": 3880.0,
+    "origem_tara_conteiner": "informada",
+    "peso_medido": 9830.0,
+    "peso_declarado": 27726.05,
+    "origem_declarado": "item do CE",
+    "numeroCEmercante": "072603337213440",
+    "diferenca_kg": -17896.05,
+    "diferenca_pct": -64.55,
+    "razao": 0.3545,
+    "classificacao": "divergência relevante",
+    "diagnostico": "divergencia",
+    "detalhe": "-65%",
+    "confirmacao": null,
+    "divisao": 10,
+    "fora_da_divisao": false,
+    "create_date": "2026-10-21T12:20:24"
+   }
+  ]
+ }
+}

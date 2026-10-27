@@ -1,0 +1,12 @@
+{
+  "_comentario": "Mantido à mão (o atualiza_referencias.py não altera este arquivo). Códigos de porto que o Mercante usa e que no UN/LOCODE não estão marcados como porto ou são outra localidade. Tem precedência sobre portos.json. Acrescente aqui os códigos que aparecerem sem nome na tela.",
+  "BRIGI": "Itaguaí",
+  "CNCAN": "Guangzhou",
+  "CNDLC": "Dalian",
+  "CNNGB": "Ningbo",
+  "CNSHA": "Shanghai",
+  "CNSZX": "Shenzhen",
+  "CNTAO": "Qingdao",
+  "CNTSN": "Tianjin",
+  "CNXMN": "Xiamen"
+}

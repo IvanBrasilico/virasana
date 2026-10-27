@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="{% if csrf_token is defined %}{{ csrf_token() }}{% endif %}" />
+    <title>Estatísticas de uso — NAVI-I</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .pagina { max-width: 1280px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+        .voltar { font-size: .8125rem; }
+        h1.titulo { font-size: 1.625rem; font-weight: 700; margin: .5rem 0 .25rem; display: flex; align-items: center;
+                    gap: .625rem; }
+        .marca { background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700; letter-spacing: .04em;
+                 padding: .25rem .625rem; border-radius: 4px; }
+        .subtitulo { color: #555; font-size: .875rem; max-width: 60rem; }
+        .abas { display: flex; gap: .25rem; border-bottom: 2px solid #E6E6E6; margin: 1rem 0; flex-wrap: wrap; }
+        .abas a { padding: .5rem 1rem; font-weight: 600; font-size: .875rem; color: #1351B4; text-decoration: none;
+                  border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .abas a[aria-current="page"] { color: #1c1c1c; border-bottom-color: #1351B4; }
+        .periodo { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; }
+        .tipos { display: inline-flex; border: 1px solid #C5D4EB; border-radius: 6px; overflow: hidden; }
+        .tipos button { border: 0; background: #fff; color: #1351B4; font-weight: 600; font-size: .8125rem;
+                        padding: .375rem .75rem; cursor: pointer; }
+        .tipos button + button { border-left: 1px solid #C5D4EB; }
+        .tipos button[aria-pressed="true"] { background: #1351B4; color: #fff; }
+        .navega { display: inline-flex; align-items: center; gap: .5rem; }
+        .navega button { border: 1px solid #C5D4EB; background: #fff; color: #1351B4; border-radius: 6px;
+                         width: 2rem; height: 2rem; cursor: pointer; }
+        .navega button:disabled { color: #BBB; border-color: #E6E6E6; cursor: default; }
+        .rotulo-periodo { font-weight: 700; font-size: 1.125rem; min-width: 12rem; text-align: center; }
+        .nota { font-size: .8125rem; color: #555; margin: .5rem 0; }
+        .progresso { margin: .75rem 0; padding: .5rem .75rem; border-radius: 6px; background: #EDF5FF; color: #0C326F;
+                     font-size: .875rem; }
+        .progresso[hidden] { display: none; }
+        .estado { color: #555; font-size: .875rem; margin: 1rem 0; }
+        section { margin-top: 1.75rem; }
+        section h2 { font-size: 1.125rem; font-weight: 700; margin: 0 0 .625rem; }
+        .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; }
+        .indicador { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; padding: .75rem 1rem; }
+        .indicador .rotulo { font-size: .75rem; color: #555; }
+        .indicador .valor { font-size: 1.5rem; font-weight: 700; margin-top: .125rem; }
+        .indicador .comparacao { font-size: .75rem; color: #666; margin-top: .125rem; }
+        .var { font-weight: 700; color: #1351B4; }
+        .var.desce { color: #555; }
+        .var.sobe::before { content: '\25B2 '; }
+        .var.desce::before { content: '\25BC '; }
+        .funil { display: flex; flex-wrap: wrap; align-items: stretch; gap: .5rem; }
+        .funil > .nota { flex-basis: 100%; margin: 0; }
+        .funil .indicador { flex: 1 1 200px; }
+        .funil .seta { align-self: center; color: #888; font-size: 1.25rem; }
+        .colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+        table.dados { width: 100%; border-collapse: collapse; background: #fff; font-size: .8125rem;
+                      border: 1px solid #E6E6E6; border-radius: 8px; }
+        table.dados caption { text-align: left; font-weight: 700; font-size: .875rem; padding: .25rem 0; color: #333;
+                              caption-side: top; }
+        table.dados th { text-align: left; font-size: .6875rem; text-transform: uppercase; color: #666;
+                         border-bottom: 1px solid #E6E6E6; padding: .375rem .5rem; }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .375rem .5rem; }
+        table.dados td.num, table.dados th.num { text-align: right; }
+        table.dados td.num { white-space: nowrap; }
+        .rolavel { overflow-x: auto; }
+        .grafico { background: #fff; border: 1px solid #E6E6E6; border-radius: 8px; padding: .75rem; }
+        .grafico svg { width: 100%; height: 170px; display: block; }
+        .grafico .barra { fill: #1351B4; }
+        .grafico .eixo { font-size: 10px; fill: #666; }
+        table.dados tr.grupo td { font-weight: 700; background: #F3F6FB; }
+        table.dados tr.total td { font-weight: 600; border-top: 1px solid #DDD; }
+        table.dados td.origem { padding-left: 1.25rem; }
+        details.sobre { margin-top: 2rem; font-size: .8125rem; color: #333; }
+        details.sobre li { margin-bottom: .375rem; }
+        .sem { color: #888; }
+        @media (max-width: 720px) {
+            .pagina { padding: 1rem; }
+            .rotulo-periodo { min-width: 0; }
+            .funil .seta { display: none; }      /* empilhado, a ordem já diz o caminho */
+        }
+    </style>
+</head>
+<body>
+<div class="pagina">
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <h1 class="titulo"><span class="marca">NAVI-I</span> Estatísticas de uso</h1>
+    <p class="subtitulo">
+        Quanto o NAVI-I é usado, quanto dos contêineres que chegam ao porto foi analisado e o que virou Ficha — no
+        período, comparado com o anterior.
+    </p>
+    <nav class="abas" aria-label="NAVI-I">
+        <a href="{{ navii_url }}">Análise de risco</a>
+        <a href="{{ url_for('navii.texto') }}">Busca por texto</a>
+        <a href="{{ fichas_url }}">Fichas em acompanhamento</a>
+        <a href="{{ url_for('navii.estatisticas') }}" aria-current="page">Estatísticas de uso</a>
+    </nav>
+
+    <div class="periodo" role="group" aria-label="Período">
+        <div class="tipos" id="tipos">
+            <button type="button" data-tipo="mes">Mês</button><button type="button" data-tipo="trimestre">Trimestre</button><button type="button" data-tipo="semestre">Semestre</button><button type="button" data-tipo="ano">Ano</button>
+        </div>
+        <div class="navega">
+            <button type="button" id="btn-anterior" aria-label="Período anterior"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+            <span class="rotulo-periodo" id="rotulo-periodo" aria-live="polite"></span>
+            <button type="button" id="btn-seguinte" aria-label="Período seguinte"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+        </div>
+        <a class="br-button secondary small" id="link-planilha" href="{{ planilha_url }}">
+            <i class="fas fa-file-excel" aria-hidden="true"></i> Planilha</a>
+    </div>
+    <p class="nota" id="nota-periodo"></p>
+    <div class="progresso" id="progresso" role="status" aria-live="polite" hidden></div>
+    <div class="estado" id="estado"></div>
+
+    <div id="conteudo" hidden>
+        <section aria-labelledby="t-cobertura">
+            <h2 id="t-cobertura">Cobertura do porto</h2>
+            <div class="funil" id="funil"></div>
+        </section>
+        <section aria-labelledby="t-uso">
+            <h2 id="t-uso">Uso</h2>
+            <div class="grade" id="uso"></div>
+        </section>
+        <section aria-labelledby="t-fichas">
+            <h2 id="t-fichas">Fichas e resultado (repressão na importação)</h2>
+            <p class="nota" id="nota-fichas"></p>
+            <div class="grade" id="fichas-indicadores"></div>
+            <div class="rolavel" id="fichas" style="margin-top: .75rem"></div>
+        </section>
+        <section aria-labelledby="t-como">
+            <h2 id="t-como">Como se pesquisa</h2>
+            <div class="grade" id="como-indicadores"></div>
+            <div class="colunas" id="como" style="margin-top: .75rem"></div>
+        </section>
+        <section aria-labelledby="t-dias">
+            <h2 id="t-dias">Por dia</h2>
+            <div class="grafico" id="dias"></div>
+        </section>
+        <section aria-labelledby="t-setores">
+            <h2 id="t-setores">Por setor</h2>
+            <div class="rolavel" id="setores"></div>
+        </section>
+        <section aria-labelledby="t-usuarios">
+            <h2 id="t-usuarios">Por usuário</h2>
+            <p class="nota" id="acesso"></p>
+            <div class="rolavel" id="usuarios"></div>
+        </section>
+        <details class="sobre">
+            <summary>Como os números são contados</summary>
+            <ul>
+                <li><strong>Card visto</strong>: ao menos metade do card na tela (ou o card cobrindo metade da tela) por 1
+                    segundo seguido, ou com algum clique. A rolagem rápida não conta. Refinar a pesquisa e rever o mesmo
+                    card não conta duas vezes.</li>
+                <li><strong>Examinado</strong>: visto e com clique (imagem, descrição, extrato, risco, menus, Abrir Ficha).</li>
+                <li><strong>Sessão</strong>: pesquisas da mesma aba do navegador sem pausa maior que 30 minutos; as horas
+                    vão da primeira pesquisa à última gravação de cada sessão.</li>
+                <li><strong>Cobertura</strong>: dos contêineres que chegaram ao porto no período (desembarque, ou a previsão
+                    de atracação dos ainda sem desembarque), quantos foram vistos — pela data do contêiner, em pesquisas
+                    de até 30 dias antes ou depois. O uso conta pela data da pesquisa.</li>
+                <li><strong>Seletividade</strong>: o total da pesquisa sobre o universo do porto nos dias pesquisados, só
+                    das pesquisas com algum filtro além do porto ("navegação" à parte).</li>
+                <li><strong>Período em curso</strong>: comparado com o mesmo trecho do anterior (ex.: 1 a 17 de outubro
+                    contra 1 a 17 de setembro).</li>
+                <li><strong>Por usuário</strong>: cada um vê a sua linha; o supervisor no Fichas vê os usuários dos seus
+                    setores. Ordem alfabética: não é ranking.</li>
+                <li><strong>Fichas</strong>: as de repressão na importação abertas no período (pela data da Ficha).
+                    <em>Pelo card</em> = abertas pelo botão Abrir Ficha do NAVI-I; <em>provável NAVI-I</em> = abertas no
+                    Fichas por quem viu o CE no NAVI-I até 30 dias antes; <em>demais</em> = as outras. Verificação
+                    física informada em até 30 dias e TG ou resultado em até 180 dias contam só entre as Fichas abertas
+                    há esse tempo ou mais — as mais novas aparecem "em maturação". Compare dentro do mesmo setor: há
+                    setores em que a Ficha é outro processo (ex.: conferência de DTA).</li>
+            </ul>
+        </details>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var API_URL = {{ api_url | tojson }};
+    var UNIVERSO_URL = {{ universo_url | tojson }};
+    var PLANILHA_URL = {{ planilha_url | tojson }};
+    var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+    var TIPOS = ['mes', 'trimestre', 'semestre', 'ano'];
+    var ROTULOS_CAMPO = {
+        conteiner: 'Contêiner', ce: 'CE', dta: 'DTA', tem_dta: 'Tem DTA', porto_escala: 'Atracação em', ncm: 'NCM',
+        produto: 'Produto', porto_origem: 'Origem', porto_destino: 'Destino', porto_baldeacao: 'Baldeação',
+        recinto: 'Recinto', empresa: 'Empresa', ncms_max: 'NCMs distintos', estagio: 'Estágio', corad: 'Risco CORAD',
+        peso_min: 'Peso do contêiner ≥', peso_max: 'Peso do contêiner ≤', texto: 'Texto',
+        pesagem: 'Pesagem', dif_pct_min: 'Diferença de peso ≥', ordem_grandeza: 'Peso: ordem de grandeza',
+        com_imagem: 'Com imagem', tipo_bl: 'Tipo de BL', trafego: 'Tráfego', sem_oog: 'Sem OOG', risco: 'Risco histórico',
+        ncm_ocultar: 'Ocultar NCM', porto_origem_ocultar: 'Ocultar origem', so_com_desembarque: 'Só com desembarque'
+    };
+    var ROTULOS_ORIGEM = { tela: 'Na tela', link: 'Por link', salvo: 'Filtro salvo', card: 'Pelo card',
+                           desfazer: 'Desfazer', texto: 'Busca por texto', outra: 'Outra' };
+    var ROTULOS_JANELA = { efetiva: 'Desembarque efetivo', prevista: 'Previsão de atracação',
+                           texto: 'Busca por texto' };
+    var estado = { tipo: 'mes', codigo: null, dados: null, tentativas: 0 };
+    var el = {
+        rotulo: document.getElementById('rotulo-periodo'), nota: document.getElementById('nota-periodo'),
+        anterior: document.getElementById('btn-anterior'), seguinte: document.getElementById('btn-seguinte'),
+        planilha: document.getElementById('link-planilha'), progresso: document.getElementById('progresso'),
+        estado: document.getElementById('estado'), conteudo: document.getElementById('conteudo'),
+        funil: document.getElementById('funil'), uso: document.getElementById('uso'),
+        comoIndicadores: document.getElementById('como-indicadores'), como: document.getElementById('como'),
+        dias: document.getElementById('dias'), setores: document.getElementById('setores'),
+        usuarios: document.getElementById('usuarios'), acesso: document.getElementById('acesso'),
+        notaFichas: document.getElementById('nota-fichas'), fichas: document.getElementById('fichas'),
+        fichasIndicadores: document.getElementById('fichas-indicadores')
+    };
+    var ROTULOS_ORIGEM_FICHA = { navii: 'Pelo card (NAVI-I)', provavel: 'Provável NAVI-I', demais: 'Demais' };
+
+    function escapeHtml(texto) {
+        return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function numero(valor, casas) {
+        if (valor === null || valor === undefined) { return '—'; }
+        return Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: casas || 0,
+                                                       maximumFractionDigits: casas || 0 });
+    }
+
+    function percentual(valor) { return valor === null || valor === undefined ? '—' : numero(valor, 1) + '%'; }
+
+    function data(iso) { return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '--'; }
+
+    function variacao(atual, anterior) {
+        // sem julgamento de cor: subir não é "bom" nem "ruim" por si
+        if (atual === null || atual === undefined || anterior === null || anterior === undefined) { return ''; }
+        if (anterior === 0) { return atual === 0 ? '<span class="var">=</span>' : '<span class="var">novo</span>'; }
+        var pct = Math.round(100 * (atual - anterior) / anterior);
+        if (pct === 0) { return '<span class="var">=</span>'; }
+        return '<span class="var ' + (pct > 0 ? 'sobe' : 'desce') + '">' + (pct > 0 ? '+' : '') + pct + '%</span>';
+    }
+
+    function formatado(formato, valor) { return (formato || numero)(valor); }
+
+    function indicador(rotulo, atual, anterior, formato, titulo) {
+        return '<div class="indicador"' + (titulo ? ' title="' + escapeHtml(titulo) + '"' : '') + '>' +
+            '<div class="rotulo">' + escapeHtml(rotulo) + '</div><div class="valor">' + formatado(formato, atual) +
+            '</div><div class="comparacao">' + (anterior === undefined ? '' : 'anterior: ' +
+            formatado(formato, anterior) + ' ' + variacao(atual, anterior)) + '</div></div>';
+    }
+
+    function decimal(valor) { return numero(valor, 1); }
+
+    function montaFunil(dados) {
+        var atual = dados.cobertura.atual, anterior = dados.cobertura.anterior || {};
+        var registro = dados.cobertura.inicioDoRegistro;
+        if (!atual) {
+            el.funil.innerHTML = '<p class="nota">' + (dados.pendentes.length
+                ? 'O universo do porto ainda está sendo calculado…'
+                : 'Sem registro de uso neste período' + (registro ? ' (o registro do uso começou em ' + data(registro) +
+                  ')' : '') + '.') + '</p>';
+            return;
+        }
+        var desde = atual.desde > dados.periodo.inicio
+            ? '<p class="nota">Cobertura desde ' + data(atual.desde) + ', início do registro do uso.</p>' : '';
+        el.funil.innerHTML = desde +
+            indicador('Contêineres que chegaram (' + dados.porto + ')', atual.universo, anterior.universo, null,
+                      'Desembarque no período, ou previsão de atracação dos ainda sem desembarque') +
+            '<span class="seta" aria-hidden="true">&rarr;</span>' +
+            indicador('Vistos' + parteDe(atual.percentual, 'do universo'), atual.vistos, anterior.vistos) +
+            '<span class="seta" aria-hidden="true">&rarr;</span>' +
+            indicador('Examinados' + parteDe(atual.examinadosPorVistos, 'dos vistos'), atual.examinados,
+                      anterior.examinados);
+    }
+
+    function parteDe(valor, base) {
+        return valor === null || valor === undefined ? '' : ' — ' + percentual(valor) + ' ' + base;
+    }
+
+    function montaUso(dados) {
+        var a = dados.uso.atual, b = dados.uso.anterior;
+        el.uso.innerHTML = [
+            indicador('Usuários ativos', a.usuarios, b.usuarios), indicador('Sessões de análise', a.sessoes, b.sessoes),
+            indicador('Pesquisas', a.pesquisas, b.pesquisas), indicador('Horas de sessão', a.horas, b.horas, decimal),
+            indicador('Cards vistos', a.vistos, b.vistos), indicador('Vistos por hora', a.vistosPorHora,
+                                                                      b.vistosPorHora, decimal),
+            indicador('Examinados / vistos', a.examinadosPorVistos, b.examinadosPorVistos, percentual),
+            indicador('Fichas novas pelo card', a.fichasNovas, b.fichasNovas),
+            indicador('Cards acionados (Abrir Ficha)', a.acionados, b.acionados)
+        ].join('');
+    }
+
+    function tabelaContagem(titulo, pares, rotulos) {
+        if (!pares.length) { return ''; }
+        return '<table class="dados"><caption>' + escapeHtml(titulo) + '</caption><tbody>' + pares.map(function (p) {
+            return '<tr><td>' + escapeHtml((rotulos && rotulos[p[0]]) || p[0] || '—') + '</td><td class="num">' +
+                numero(p[1]) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function montaComo(dados) {
+        var s = dados.seletividade, a = dados.uso.atual, b = dados.uso.anterior;
+        var detalhe = s.pesquisas + ' pesquisa(s) com critério; ' + s.navegacao + ' de navegação; ' + s.foraDaBase +
+            ' fora da base (outro porto ou sem período)' + (s.semUniverso ? '; ' + s.semUniverso + ' sem universo' : '');
+        el.comoIndicadores.innerHTML =
+            indicador('Seletividade mediana', s.mediana, undefined, percentual, detalhe) +
+            indicador('Profundidade mediana (vistos / total)', a.profundidade, b.profundidade, percentual) +
+            indicador('Cards vistos de novo (refinamento)', a.repetidos, b.repetidos);
+        var c = dados.como;
+        el.como.innerHTML = tabelaContagem('Origem da pesquisa', c.origens, ROTULOS_ORIGEM) +
+            tabelaContagem('Janela', c.janelas, ROTULOS_JANELA) +
+            tabelaContagem('Filtros mais usados', c.campos.slice(0, 10), ROTULOS_CAMPO) +
+            tabelaContagem('Pesquisa seguinte na mesma aba', c.transicoes);
+    }
+
+    function tabelaLinhas(linhas, primeira) {
+        if (!linhas.length) { return '<p class="nota">Sem pesquisas no período.</p>'; }
+        return '<table class="dados"><thead><tr><th>' + escapeHtml(primeira) + '</th><th class="num">Pesquisas</th>' +
+            '<th class="num">Sessões</th><th class="num">Horas</th><th class="num">Vistos</th>' +
+            '<th class="num">Vistos/hora</th><th class="num">Examinados/vistos</th><th class="num">Fichas novas</th>' +
+            '</tr></thead><tbody>' + linhas.map(function (l) {
+                var a = l.atual;
+                return '<tr><td>' + escapeHtml(l.nome) + '</td><td class="num">' + numero(a.pesquisas) + '</td>' +
+                    '<td class="num">' + numero(a.sessoes) + '</td><td class="num">' + decimal(a.horas) + '</td>' +
+                    '<td class="num">' + numero(a.vistos) + ' ' + variacao(a.vistos, l.anterior.vistos) + '</td>' +
+                    '<td class="num">' + decimal(a.vistosPorHora) + '</td><td class="num">' +
+                    percentual(a.examinadosPorVistos) + '</td><td class="num">' + numero(a.fichasNovas) + '</td></tr>';
+            }).join('') + '</tbody></table>';
+    }
+
+    function moeda(valor) { return valor ? 'R$ ' + numero(valor, 2) : '—'; }
+
+    function coorteTexto(c) {
+        if (!c.elegiveis) {
+            return '<span class="sem" title="Nenhuma Ficha aberta há tempo suficiente">em maturação</span>';
+        }
+        return numero(c.chegaram) + ' de ' + numero(c.elegiveis) + ' (' + percentual(c.percentual) + ')';
+    }
+
+    function linhaFicha(rotulo, n, classe) {
+        return '<tr class="' + classe + '"><td' + (classe === 'origem' ? ' class="origem"' : '') + '>' +
+            escapeHtml(rotulo) + '</td><td class="num">' + numero(n.abertas) + '</td><td class="num">' +
+            coorteTexto(n.verificacao) + '</td><td class="num">' + coorteTexto(n.resultado) + '</td><td class="num">' +
+            numero(n.comResultado) + '</td><td class="num">' + numero(n.encerradasSemResultado) + '</td>' +
+            '<td class="num">' + numero(n.emAndamento) + '</td><td class="num">' + moeda(n.valorTG) + '</td>' +
+            '<td class="num">' + moeda(n.valorPerdimento) + '</td></tr>';
+    }
+
+    function linhasDoSetor(s) {
+        var linhas = '<tr class="grupo"><td colspan="9">' + escapeHtml(s.nome) + '</td></tr>';
+        Object.keys(ROTULOS_ORIGEM_FICHA).forEach(function (origem) {
+            if (s.origens[origem].abertas) { linhas += linhaFicha(ROTULOS_ORIGEM_FICHA[origem], s.origens[origem], 'origem'); }
+        });
+        return linhas + linhaFicha('Total do setor', s.total, 'total');
+    }
+
+    function montaFichas(dados) {
+        var f = dados.fichas, atual = f.atual, anterior = f.anterior;
+        if (!atual) {
+            el.notaFichas.textContent = 'As tabelas do Fichas não estão disponíveis neste servidor.';
+            el.fichasIndicadores.innerHTML = '';
+            el.fichas.innerHTML = '';
+            return;
+        }
+        var ant = anterior ? anterior.origens : null;
+        el.notaFichas.textContent = 'Fichas abertas no período (pela data da Ficha), por setor e origem. Verificação ' +
+            'física em até ' + f.prazos.verificacao + ' dias e TG ou resultado em até ' + f.prazos.resultado + ' dias ' +
+            'contam só entre as Fichas abertas há esse tempo ou mais. Compare o NAVI-I com as demais dentro do mesmo setor.';
+        el.fichasIndicadores.innerHTML =
+            indicador('Fichas pelo card (NAVI-I)', atual.origens.navii.abertas, ant ? ant.navii.abertas : undefined) +
+            indicador('Prováveis NAVI-I', atual.origens.provavel.abertas, ant ? ant.provavel.abertas : undefined, null,
+                      'Abertas no Fichas por quem viu o CE no NAVI-I até 30 dias antes') +
+            indicador('Fichas pelo card por 1.000 examinados', f.porMilExaminados, undefined, decimal) +
+            indicador('Fichas de repressão abertas', atual.total.abertas, anterior ? anterior.total.abertas : undefined);
+        if (!atual.setores.length) { el.fichas.innerHTML = '<p class="nota">Nenhuma Ficha aberta no período.</p>'; return; }
+        el.fichas.innerHTML = '<table class="dados"><thead><tr><th>Setor / origem</th><th class="num">Abertas</th>' +
+            '<th class="num">Verificação em até ' + f.prazos.verificacao + ' d</th><th class="num">TG ou resultado em ' +
+            'até ' + f.prazos.resultado + ' d</th><th class="num">Com resultado (até hoje)</th>' +
+            '<th class="num">Encerradas sem resultado</th><th class="num">Em andamento</th>' +
+            '<th class="num">Valor do TG</th><th class="num">Valor do perdimento</th></tr></thead><tbody>' +
+            atual.setores.map(linhasDoSetor).join('') + '</tbody></table>';
+    }
+
+    function montaAcesso(dados) {
+        el.acesso.textContent = dados.acesso.supervisor
+            ? 'Como supervisor, você vê os usuários dos setores: ' + dados.acesso.setores.map(function (s) {
+                return s.nome;
+            }).join(', ') + '.'
+            : 'Você vê a sua linha; os totais por setor estão acima.';
+    }
+
+    function montaDias(dias) {
+        if (!dias.length) { el.dias.innerHTML = '<p class="nota">Sem pesquisas no período.</p>'; return; }
+        var largura = 1000, altura = 150, maximo = Math.max.apply(null, dias.map(function (d) { return d.vistos; })) || 1;
+        var passo = largura / dias.length, barra = Math.max(passo * 0.7, 1);
+        var barras = dias.map(function (d, i) {
+            var h = Math.round((altura - 20) * d.vistos / maximo);
+            return '<rect class="barra" x="' + (i * passo + (passo - barra) / 2) + '" y="' + (altura - 15 - h) +
+                '" width="' + barra + '" height="' + h + '"><title>' + data(d.dia) + ': ' + d.vistos + ' cards vistos, ' +
+                d.pesquisas + ' pesquisas, ' + d.usuarios + ' usuário(s)</title></rect>';
+        }).join('');
+        el.dias.innerHTML = '<svg viewBox="0 0 ' + largura + ' ' + altura + '" preserveAspectRatio="none" role="img" ' +
+            'aria-label="Cards vistos por dia">' + barras + '<text class="eixo" x="0" y="' + altura + '">' +
+            data(dias[0].dia) + '</text><text class="eixo" x="' + largura + '" y="' + altura + '" text-anchor="end">' +
+            data(dias[dias.length - 1].dia) + '</text></svg><p class="nota">Cards vistos por dia (passe o mouse ' +
+            'sobre a barra para ver as pesquisas). Máximo: ' + numero(maximo) + '.</p>';
+    }
+
+    function montaPeriodo(p) {
+        el.rotulo.textContent = p.rotulo;
+        el.nota.textContent = (p.parcial ? 'Período em curso: ' + data(p.inicio) + ' a ' + data(p.fim) +
+            ', comparado com ' + data(p.anterior.inicio) + ' a ' + data(p.anterior.fim) + ' (o mesmo trecho).'
+            : 'De ' + data(p.inicio) + ' a ' + data(p.fim) + ', comparado com ' + p.anterior.rotulo + '.');
+        el.seguinte.disabled = !p.seguinte;
+        document.querySelectorAll('#tipos button').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.dataset.tipo === p.tipo ? 'true' : 'false');
+        });
+    }
+
+    function parametros() {
+        var params = new URLSearchParams({ tipo: estado.tipo });
+        if (estado.codigo) { params.set('codigo', estado.codigo); }
+        return params;
+    }
+
+    function mostra(dados) {
+        estado.dados = dados;
+        estado.codigo = dados.periodo.codigo;
+        history.replaceState(null, '', location.pathname + '?' + parametros().toString());
+        el.planilha.href = PLANILHA_URL + '?' + parametros().toString();
+        montaPeriodo(dados.periodo);
+        montaFunil(dados);
+        montaUso(dados);
+        montaFichas(dados);
+        montaComo(dados);
+        montaDias(dados.dias);
+        el.setores.innerHTML = tabelaLinhas(dados.setores, 'Setor');
+        el.usuarios.innerHTML = tabelaLinhas(dados.usuarios, 'Usuário');
+        montaAcesso(dados);
+        el.conteudo.hidden = false;
+        el.estado.textContent = '';
+    }
+
+    function carrega() {
+        el.estado.textContent = 'Carregando…';
+        fetch(API_URL + '?' + parametros().toString())
+            .then(function (resp) {
+                return resp.json().then(function (dados) {
+                    if (!resp.ok) { throw new Error(dados.erro || ('HTTP ' + resp.status)); }
+                    return dados;
+                });
+            })
+            .then(function (dados) {
+                mostra(dados);
+                if (dados.pendentes.length && estado.tentativas < 2) {
+                    estado.tentativas += 1;
+                    calculaUniverso(dados.pendentes, dados.pendentes.length);
+                }
+            })
+            .catch(function (erro) { el.estado.textContent = 'Falha ao carregar: ' + erro.message; });
+    }
+
+    function calculaUniverso(pendentes, total) {
+        // uma chamada por vez, cada uma dentro do tempo do proxy, até zerar; depois recarrega com tudo
+        el.progresso.hidden = false;
+        el.progresso.textContent = 'Calculando o universo do porto (só na primeira vez): ' + (total - pendentes.length) +
+            ' de ' + total + ' parte(s)…';
+        fetch(UNIVERSO_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+                              body: JSON.stringify({ pendentes: pendentes }) })
+            .then(function (resp) {
+                return resp.json().then(function (r) {
+                    if (!resp.ok) { throw new Error(r.erro || ('HTTP ' + resp.status)); }
+                    return r;
+                });
+            })
+            .then(function (r) {
+                if (r.restantes.length) {
+                    calculaUniverso(r.restantes, total);
+                } else {
+                    el.progresso.hidden = true;
+                    carrega();
+                }
+            })
+            .catch(function (erro) { el.progresso.textContent = 'Falha ao calcular o universo: ' + erro.message; });
+    }
+
+    function mudaTipo(tipo) {
+        estado.tipo = tipo;
+        estado.codigo = null;      // o período do tipo que contém hoje
+        estado.tentativas = 0;
+        carrega();
+    }
+
+    function vaiPara(codigo) {
+        if (!codigo) { return; }
+        estado.codigo = codigo;
+        estado.tentativas = 0;
+        carrega();
+    }
+
+    document.getElementById('tipos').addEventListener('click', function (e) {
+        var botao = e.target.closest('button[data-tipo]');
+        if (botao) { mudaTipo(botao.dataset.tipo); }
+    });
+    el.anterior.addEventListener('click', function () {
+        if (estado.dados) { vaiPara(estado.dados.periodo.anterior.codigo); }
+    });
+    el.seguinte.addEventListener('click', function () {
+        if (estado.dados) { vaiPara(estado.dados.periodo.seguinte); }
+    });
+
+    var inicial = new URLSearchParams(location.search);
+    estado.tipo = TIPOS.indexOf(inicial.get('tipo')) >= 0 ? inicial.get('tipo') : 'mes';
+    estado.codigo = inicial.get('codigo');
+    carrega();
+})();
+</script>
+</body>
+</html>

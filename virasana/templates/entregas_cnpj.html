@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entregas por CNPJ</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual da tela do NAVI-I (templates/navii.html) */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .form-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-linha .br-input { flex: 1 1 12rem; margin: 0; }
+        .form-linha .br-input.cnpj { flex: 2 1 16rem; }
+        .form-linha .botoes { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1rem; }
+        .resumo .item { font-size: .875rem; color: #555; }
+        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.entregas { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.entregas th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.entregas td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
+        table.entregas tr:hover td { background: #F5F8FD; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .mercadoria { max-width: 22rem; }
+        .secundario { display: block; color: #888; font-size: .75rem; }
+        .ligacao-confirmada { color: #168821; font-weight: 600; white-space: nowrap; }
+        .ligacao-data { color: #A15C00; white-space: nowrap; }
+        .aviso { color: #A15C00; font-size: .8125rem; margin-top: .75rem; }
+        .sem-saida { font-size: .8125rem; color: #555; margin-top: 1rem; }
+        .estado-vazio { text-align: center; padding: 2.5rem 1rem; border: 2px dashed #DDDEE0; border-radius: 8px; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ request.script_root }}/"><i class="fas fa-arrow-left" aria-hidden="true"></i> Virasana</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">ENTREGAS</span> Entregas por CNPJ</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">
+            Saídas pelos gates dos recintos (API Recintos) de contêineres carregados dos CEs de importação
+            em que o CNPJ é consignatário ou notify, no período informado.
+        </p>
+    </div>
+
+    <form class="painel" method="get" action="{{ url_for('entregas.index') }}">
+        <div class="form-linha">
+            <div class="br-input cnpj">
+                <label for="cnpj">CNPJ (consignatário ou notify) — 14 dígitos ou raiz de 8</label>
+                <input id="cnpj" name="cnpj" type="text" value="{{ cnpj }}" placeholder="00.000.000/0000-00" required />
+            </div>
+            <div class="br-input">
+                <label for="inicio">Saída de</label>
+                <input id="inicio" name="inicio" type="date" value="{{ inicio }}" required />
+            </div>
+            <div class="br-input">
+                <label for="fim">até</label>
+                <input id="fim" name="fim" type="date" value="{{ fim }}" required />
+            </div>
+            <div class="botoes">
+                <button class="br-button primary" type="submit">
+                    <i class="fas fa-search mr-1" aria-hidden="true"></i> Pesquisar
+                </button>
+                {% if resultado %}
+                <a class="br-button secondary"
+                   href="{{ url_for('entregas.planilha', cnpj=cnpj, inicio=inicio, fim=fim) }}">
+                    <i class="fas fa-file-excel mr-1" aria-hidden="true"></i> Exportar planilha
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% if erro %}<div class="br-message danger mt-3 mb-0" role="alert">
+            <div class="content"><span class="message-body">{{ erro }}</span></div></div>{% endif %}
+    </form>
+
+    {% if resultado %}
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resultado.linhas | length }}</strong>saídas localizadas</div>
+            <div class="item"><strong>{{ resultado.qtd_conteineres }}</strong>contêineres nos CEs</div>
+            <div class="item"><strong>{{ resultado.conteineres_sem_saida | length }}</strong>contêineres sem saída no período</div>
+            <div class="item"><strong>{{ resultado.qtd_ces }}</strong>CEs de importação</div>
+            {% if resultado.empresa %}<div class="item"><strong>{{ resultado.empresa }}</strong>{{ resultado.cnpj }}</div>{% endif %}
+        </div>
+
+        {% if resultado.linhas %}
+        <div class="tabela-rolavel">
+            <table class="entregas">
+                <thead>
+                    <tr>
+                        <th>Data de saída</th><th>Contêiner</th><th>Placa</th><th>Recinto</th>
+                        <th>CE / CNPJ</th><th>Mercadoria</th><th>Transportadora / motorista</th><th>Ligação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for linha in resultado.linhas[:limite] %}
+                    <tr>
+                        <td class="mono">{{ linha.data_saida.strftime('%d/%m/%Y %H:%M') if linha.data_saida else '' }}</td>
+                        <td class="mono">{{ linha.conteiner }}</td>
+                        <td class="mono">{{ linha.placa or '' }}
+                            {% if linha.placa_semirreboque %}<span class="secundario">semirreboque {{ linha.placa_semirreboque }}</span>{% endif %}</td>
+                        <td>{{ linha.recinto or '' }}<span class="secundario">{{ linha.nome_recinto or '' }}</span></td>
+                        <td class="mono">{% if linha.ce and url_extrato_ce is defined %}<a href="{{ url_extrato_ce(linha.ce) }}" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">{{ linha.ce }}</a>{% else %}{{ linha.ce }}{% endif %}<span class="secundario">{{ linha.cnpj }}
+                            {% if linha.papel %}({{ linha.papel }}){% endif %}</span></td>
+                        <td class="mercadoria">{{ linha.mercadoria or '' }}
+                            {% if linha.ncms %}<span class="secundario">{{ linha.ncms }}</span>{% endif %}</td>
+                        <td class="mono">{{ linha.cnpj_transportador or '' }}
+                            <span class="secundario">{{ linha.nome_motorista or '' }} {{ linha.cpf_motorista or '' }}</span></td>
+                        <td class="{{ 'ligacao-confirmada' if linha.ligacao == 'confirmada pelo CE' else 'ligacao-data' }}">{{ linha.ligacao }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if resultado.linhas | length > limite %}
+        <p class="aviso">Exibindo as primeiras {{ limite }} saídas. A planilha traz todas.</p>
+        {% endif %}
+        {% else %}
+        <div class="estado-vazio">Nenhuma saída de contêiner carregado localizada no período.</div>
+        {% endif %}
+
+        {% if resultado.conteineres_sem_saida %}
+        <p class="sem-saida"><strong>Sem saída localizada no período:</strong>
+            {{ resultado.conteineres_sem_saida[:200] | join(', ') }}{% if resultado.conteineres_sem_saida | length > 200 %}…{% endif %}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

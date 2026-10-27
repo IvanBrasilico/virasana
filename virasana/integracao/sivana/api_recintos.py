@@ -35,7 +35,7 @@ def grava_ultimo_id_transmitido(psession, novo_id):
     logger.info(f"Atualizado 'ultimo_id_transmitido' com novo ID: {novo_id}")
 
 
-def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, int]:
+def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, AcessoVeiculo]:
     """ Pesquisa novos registros na tabela.
     Se retornar payload com passagens vazio, ocorreu erro ou não há registros novos.
 
@@ -49,17 +49,23 @@ def le_novos_acesssos_veiculo(psession, pultimo_id, limit=500) -> Tuple[dict, in
     """
     maior_id = pultimo_id
     payload = {'totalLinhas': 0, 'offset': '-03:00', 'passagens': []}
+    ultimo_acesso = None
     try:
-        acessos = psession.query(AcessoVeiculo).filter(AcessoVeiculo.id > pultimo_id).limit(limit).all()
-        passagens = [acesso.to_sivana() for acesso in acessos]
+        acessos = (psession.query(AcessoVeiculo).filter(AcessoVeiculo.id > pultimo_id).
+                   order_by(AcessoVeiculo.id).limit(limit).all())
+        passagens = []
+        for acesso in acessos:
+            try:
+                passagens.append(acesso.to_sivana())
+                ultimo_acesso = acesso
+            except Exception as err:
+                logger.error(err)
         payload = {'totalLinhas': len(passagens), 'offset': '-03:00', 'passagens': passagens}
         # print(payload)
-        if len(passagens) >0:
-            maior_id = max(acesso.id for acesso in acessos)
     except Exception as err:
         logger.error(f'Erro ao recuperar registros de AcessoVeiculo. pultimo_id:{pultimo_id}')
         logger.error(err)
-    return payload, maior_id
+    return payload, ultimo_acesso
 
 
 class APIRecintos(TratamentoLPR):
@@ -72,12 +78,18 @@ class APIRecintos(TratamentoLPR):
         """
         ultimo_id = self.organizacao.ultimo_id_transmitido
         logger.info(f"Organização APIRecintos Iniciando a transmissão a partir do ID: {ultimo_id}")
-        payload, maior_id = le_novos_acesssos_veiculo(self.session, ultimo_id)
-        return payload, maior_id
+        payload, ultimo_acesso = le_novos_acesssos_veiculo(self.session, ultimo_id)
+        return payload, ultimo_acesso
 
-    def set_ultima_transmissao(self, ultima_transmissao: int):
-        self.organizacao.ultimo_id_transmitido = ultima_transmissao
-        self.session.add(self.organizacao)
-        self.session.commit()
-        logger.info(f'Atualizado "ultimo_id_transmitido" da organização APIRecintos '
-                    f'com novo ID: {ultima_transmissao}')
+
+    def set_ultima_transmissao(self, ultimo_acesso: AcessoVeiculo):
+        if ultimo_acesso:
+            self.organizacao.ultimo_id_transmitido = ultimo_acesso.id
+            self.organizacao.ultima_transmissao = ultimo_acesso.dataHoraTransmissao
+            self.session.add(self.organizacao)
+            self.session.commit()
+            logger.info(f'Atualizado "ultimo_id_transmitido" da organização APIRecintos '
+                        f'com novo ID: {ultimo_acesso.id}')
+        else:
+            logger.info(f'Não atualizado "ultimo_id_transmitido" da organização APIRecintos '
+                        f'recebido ultimo_acesso {ultimo_acesso}')

@@ -1,0 +1,144 @@
+# virasana
+
+## O que é este repositório
+
+`virasana` é o módulo de imagens do sistema AJNA (Vigilância Aduaneira): recebimento, exibição e interação com imagens de escaneamento (raio-X de contêineres/cargas), integração com bases externas (Mercante, DUE, API Recintos, bagagens/viajantes, risco/conformidade) e processamento assíncrono via Celery.
+
+**Também está em produção, em uso ativo** — mesma restrição de estabilidade do sistema irmão [bhadrasana2 (Fichas)](../bhadrasana2/CLAUDE.md): não arriscar quebrar produção com mudanças não solicitadas.
+
+**Nome do sistema (23/10/2026):** o AJNA foi rebatizado **NAVI** — módulos **NAVI-I** (importação), **NAVI-E** (exportação) e **Navi-Fichas** (o Fichas). Grafia em maiúsculas, decisão do usuário. Em texto NOVO para o usuário (títulos, marcas, manual, relatórios) usar "NAVI", nunca "AJNA" — a tela `saude.html` e o relatório do health check já dizem NAVI. O legado com "AJNA" (`layout.html`, ~29 templates daqui e ~37 do bhadrasana2, textos históricos dos documentos) fica como está por enquanto, decisão do usuário: só mexer com novo pedido. Identificadores técnicos (repositórios, `ajna_commons`, `ajna_docs`, URL `/ajna/` do manual, programas do supervisor já em produção) não mudam sem pedido explícito.
+
+## Relação com bhadrasana2 (Fichas)
+
+`virasana` e `bhadrasana2` são projetos irmãos do mesmo ecossistema AJNA e **dependem um do outro via `sys.path`** (não via pip), não via um pacote publicado:
+
+- `bhadrasana2` importa `virasana.integracao.mercante.mercantealchemy` (ver `tests/app_creator.py` do bhadrasana2).
+- `virasana/wsgi_production.py` e `virasana/main.py` incluem `../bhadrasana2` (e `../bhadrasana`, `../ajna_api`) no `sys.path`, embora o uso direto de `bhadrasana.models.db_session` esteja comentado em `main.py` no momento.
+
+Ao mexer em modelos/tabelas compartilhados (ex.: `mercantealchemy`), considerar o impacto nos dois repositórios.
+
+## Stack
+
+- Flask 2.3.3, SQLAlchemy 1.4.54, pandas 2.1.4 (ver [setup.py](setup.py)).
+- Processamento de imagem/visão computacional: `opencv-python-headless`, `Pillow`, `scikit-learn`, `scipy`, `matplotlib`.
+- Persistência: MariaDB 10.11 (não é MySQL: medir queries com `ANALYZE FORMAT=JSON`, não `EXPLAIN ANALYZE`) via SQLAlchemy (`db.py` → `mysql`); tabelas do Mercante são grandes (ncmitemresumo ~150M linhas, itensresumo ~50M, conhecimentosresumo ~22M) — toda busca precisa partir de um índice seletivo + MongoDB (`mongodb`, `mongodb_risco`).
+- **Celery** para tarefas assíncronas/periódicas (`virasana/workers/tasks.py`, `dir_monitor.py`; scripts de start em [celery.sh](celery.sh)/[celery_periodic.sh](celery_periodic.sh), configs em `supervisor_virasana_celery.old`/`supervisor_virasana_periodic.conf`).
+- Deploy via gunicorn ([Procfile](Procfile)); WSGI de produção em [wsgi_production.py](wsgi_production.py), de teste em [wsgi_teste.py](wsgi_teste.py).
+
+## Dependências de repositórios irmãos
+
+Assim como o bhadrasana2, este repo depende de projetos irmãos referenciados via `sys.path` (não instalados via pip):
+
+- `ajna_commons` (`../ajna_docs/commons`) — conf, login, logging.
+- `../bhadrasana2` — ver seção acima.
+- `../ajna_api` — API Recintos.
+- Documentação/instalação centralizada no projeto principal **AJNA** (não presente neste workspace).
+
+## Arquitetura / mapa de módulos
+
+- `virasana/main.py` — ponto de montagem: cria `app`, conecta Mongo (`mongodb`, `mongodb_risco`) e MySQL, registra todos os blueprints/rotas (`*_app.configure(app)` ou `app.register_blueprint(...)`).
+- `virasana/routes/` — um arquivo por blueprint/"app" (padrão `*_app.py` com função `configure(app)`): `imagens_app.py`, `apirecintos_app.py`, `conformidade_app.py`, `escaneamento_app.py`, `pyxvis_app.py`, etc. **Padrão a seguir para novas "apps".**
+- `virasana/integracao/` — integrações com bases externas, organizadas por domínio: `mercante/`, `carga2/`, `due/`, `bagagens/`, `risco/`, `sivana/`, `transito/`.
+- `virasana/models/` — modelos SQLAlchemy/Mongo (`models.py`, `image_search.py`, `auditoria.py`, `anomalia_lote.py`).
+- `virasana/usecases/` — regras de negócio (`apirecintos_manager.py`, `auditoria.py`, `bagagens_manager.py`).
+- `virasana/navii/` — **NAVI-I**, tela de análise de risco na importação (`/navii`, blueprint `bp_navii`, template gov.br `templates/navii.html`). **Antes de mexer, ler [virasana/navii/CONTEXTO.md](virasana/navii/CONTEXTO.md)**: decisões do usuário, modelo de dados, medições do banco, armadilhas e pendências. Em resumo: a busca parte do contêiner declarado (`Item`), o Ciclo de Vida é opcional, filtros em outras tabelas usam `_existe` (subquery com `LIMIT 1`, nunca `IN`/`JOIN`), `ovr_recintos` é lida por `tabela_recintos` (não importar `bhadrasana.models.ovr`). `navii/referencias/` tem tabelas locais código→nome (NCM, portos, países, navios) geradas de fontes públicas e filtradas pelo uso real na base (`atualiza_referencias.py --banco`); `navii/diagnostico_sql.py` mede as queries da tela (`--analyze`). `navii/filtros_salvos.py` guarda os filtros salvos de cada usuário no **MongoDB** (coleção `navii_filtros_salvos`).
+- `virasana/entregas/` — **Entregas por CNPJ** (`/entregas_cnpj/`, blueprint `bp_entregas`, template `templates/entregas_cnpj.html`): saídas pelos gates (AcessoVeiculo) dos contêineres dos CEs de importação de um CNPJ; tela + planilha. Lógica em `busca_entregas.py`, reusada pelo script `analytic_scripts/entregas_cnpj.py`.
+- `virasana/apreensoes/` — tela **Transporte das apreensões** (`/apreensoes_transporte/`, blueprint `bp_apreensoes`, template `templates/apreensoes_transporte.html`, planilha). Só valida e formata: a lógica é a do script `analytic_scripts/dados_transporte_apreensoes.py`.
+- `virasana/risco_historico/` — tela **Risco histórico das Fichas** (`/risco_historico/`, blueprint `bp_risco_historico`, template `templates/risco_historico.html`, planilha; cache de 30 min por parâmetros). Lógica em `analytic_scripts/dados_risco_perdimentos.py`. Em andamento (plano aprovado em 14/10/2026): **risco histórico por CE** — fichas positivas, sinais do CE e cálculo explicável em `fichas_positivas.py`, `sinais.py`, `calculo.py`; tabelas novas em `ddl_risco_historico.sql`/`tabelas.py`; extração incremental (`extracao.py`), parâmetros em versões (`parametros.py`) e linha de comando (`lotes.py`); página `/risco_historico/parametros`; pontuação (`pontuacao.py`) e etapa no serviço do ciclo (`etapa.py`); no NAVI-I, `navii/risco_navii.py` (selo, memória de cálculo, filtro); diagnóstico F0 em `analytic_scripts/diagnostico_risco_ce.py`. **Ler `virasana/risco_historico/CONTEXTO.md` antes de retomar.**
+- `virasana/completude/` — tela **Completude de escaneamentos** (`/completude_escaneamentos/`, blueprint `bp_completude`, templates `navii_completude*.html` — `completude.html` e `completude_escaneamentos.html` são de telas legadas). Pelo ciclo de vida, dois fluxos: TRA (entrada no seco no período, por recinto seco) e operador (ciclos concluídos sem entrada no seco, saída no período, por operador). Substitui no NAVII a tela legada `/analise/completude-escaneamentos-recintos-secos` (`analisecompletude_app` + `models/analise_completude_service.py`), que continua no ar sem alteração.
+- `virasana/analytic_scripts/declaracao/` — **sinais de declaração inventada** (itens 16–18 do `BACKLOG.md`, passo 0 aprovado em 23/10/2026; 1ª rodada em produção no mesmo dia, resultados e decisões no backlog): `regras_declaracao.py` (regras puras: 16e cubagem copiada, 17a prefixo do BL raro em empresa de prefixo dominante, 18a/18b peso e densidade atípicos para o NCM por direção; 16a/16b só como qualidade do dado) e `diagnostico_declaracao.py` (só leitura; população pela janela de ID, famílias master/filhote, validação nas fichas positivas, RVFs e pesagens com **controle da mesma época** — vizinhos pelo ID). As Fichas são evidência fraca (usuário): não são rótulo de fraude. Capacidades por tipo em `navii/referencias/tipos_conteiner.json` (`capacidades`). Nada em produção usa ainda. **ADIADO em 24/10/2026** (revisão do usuário: os selecionados eram coerentes na imagem e na pesagem) — antes de retomar, ler `CONTEXTO.md` (lições de método: Fichas não servem de rótulo positivo; o que se aprendeu dos dados: bagagem NCM 9797, 84/87, cubagem, qualidade da pesagem por recinto; ideias: rede neural de peso e volume pela imagem, com o modelo `peso` do AJNA-PADMA como precedente). Histórico rodada a rodada em `DIAGNOSTICO.md`; piloto adiado em `PLANO_PILOTO.md`.
+- `virasana/saude/` — **health check** (23/10/2026): verificações OK / ATENÇÃO / FALHA em `fontes.py` (carga do Mercante e da API Recintos), `imagens.py` (imagens no MongoDB), `ciclo.py` (serviço, invariantes, refaz, cobertura e pesagens do ciclo de vida) e `aplicacoes.py` (risco histórico, busca por texto, NAVI-I, Fichas de FMA); `servico_saude.py` = programa `saude_navi` do supervisor (`supervisor_saude.conf`: rodada diária às 7 h e as pedidas pela tela); `historico.py` = rodadas, pedidos e batimento no Mongo do virasana (TTL 180 dias; achados "novo"/"desde"); tela `/saude/` (blueprint `bp_saude`, `views_saude.py`, `templates/saude.html`; só o perfil Supervisor do Fichas). `saude_navi.py` roda à mão (sai com 0/1/2). Componentes, limiares e próximos passos no `BACKLOG.md`.
+- `virasana/navii/menu.py` — submenu **NAVII** do menu principal (`views.mynavbar` só chama `subgrupo_navii()`). Tela nova de análise de risco entra em `ENTRADAS_NAVII`; o teste `test_prefixo_proxy.TestMenuNavii` garante que cada endpoint existe (endpoint errado quebra todas as páginas).
+- `virasana/analytic_scripts/` — scripts de análise rodados à mão (não por cron): `dados_transporte_apreensoes.py` (apreensões de drogas do Fichas → acessos de veículo: placa, motorista, transportadora; CSV), `entregas_cnpj.py`, `diagnostico_risco_perdimentos.py` (o que as Fichas com resultado oferecem para extrair filtros de risco; log com CPF/CNPJ mascarados), `dados_risco_perdimentos.py` (risco histórico: sinais por Ficha com resultado — importador, embarcador, rota, NCM declarada/encontrada, CNPJ/CPF citados... — e indicadores por dimensão; planilha), `ciclo_de_vida/` (tabelas do Ciclo de Vida usadas pelo NAVI-I e pela Completude; `manager_ciclo_de_vida.py` é o loop ANTIGO que preenche os ciclos (não alterar: fica para rollback) — **antes de mexer, ler [ciclo_de_vida/CICLO_DE_VIDA.md](virasana/analytic_scripts/ciclo_de_vida/CICLO_DE_VIDA.md)**: fluxos, exceções, bugs conhecidos, medições e plano v2; `diagnostico_ciclo_de_vida.py` mede pendentes, passagem, saídas, escaneamentos e risco de outra operação; `diagnostico_ces_ciclo_de_vida.py` mede master x filhote e o CE declarado nos eventos. Heurística v2: núcleo puro `linha_do_tempo.py` + `ces_do_ciclo.py` + `heuristica_ciclo.py`; `carga_ciclo.py` (leitura em lote), `sombra_ciclo_de_vida.py` (compara com os ciclos atuais, só lê), `servico_ciclo_de_vida.py` + `gravacao_ciclo.py` + `imagens_ciclo.py` (serviço por eventos que grava, EM PRODUÇÃO desde 02/10/2026 — programas em `supervisor_ciclo_de_vida.conf`; NUNCA rodar junto com o loop antigo), `acompanha_ciclo_de_vida.py` (relatório rápido de acompanhamento do serviço, só lê), `diagnostico_imagens_ciclo.py` (por que faltam imagens nos escaneamentos: por dia, atributos da inspeção e classificação no Mongo; só lê), `estagios_ciclo.py` (estágios do contêiner — no operador, em trânsito, em recinto seco, entregue... — para filtrar e mostrar nas telas); `ddl_ciclo_de_vida_v2.sql` são as colunas/tabelas novas).
+- `virasana/workers/` — tarefas Celery e monitoramento de diretórios.
+- `virasana/scripts/` — scripts standalone de importação/atualização (rodados via cron/periodic, não pela app web).
+- `virasana/forms/`, `virasana/exportacao/`, `virasana/analises/` — WTForms, exportação de dados, análises pontuais.
+- `virasana/tests/` — pytest (alguns arquivos são scripts de laboratório/exploração, não testes automatizados formais — ex.: `cargalab.py`, `xmllab.py`, `image_search_tester.py`).
+- `navi_etls/` (raiz do repositório, **fora** do pacote `virasana`) — **NAVI-ETL** (24/10/2026, em planejamento, F0): aplicação nova e separada que vai receber as entradas de API (API Recintos, imagens, DUE, CNPJ, DTA) e o `virasana_periodic`, **copiados** — o código atual não muda. Antes de mexer, ler `navi_etls/PLANO.md`, `INVENTARIO.md` e `AMOSTRAS.md`. O pacote novo não importa `virasana`, `bhadrasana`, `ajna_commons` nem `ajnaapi`.
+
+## Produção: prefixo `/virasana` atrás de proxy (obrigatório para código novo)
+
+No Servidor a app roda via WSGI atrás de um **proxy Apache**, montada no prefixo **`/virasana`** por
+`DispatcherMiddleware` ([wsgi_production.py](wsgi_production.py); o `wsgi_debug.py` local também monta `/virasana`). O Apache só encaminha o
+que está sob o prefixo e repassa um Host interno. Funcionar no `localhost` **não** prova que funciona
+no Servidor. Regras:
+
+- Toda URL interna sai de `url_for(...)` nos templates; o JS **recebe** as URLs do servidor
+  (`var API = {{ url_for('bp.rota') | tojson }};`) e nunca monta caminhos começando com `/`.
+- Sem redirect absoluto: use `redirect(url_for(...))` ou caminho relativo (padrão do código antigo,
+  ex.: `redirect('bagagens?...')`). **Rotas índice com `strict_slashes=False`**: o redirect
+  automático da barra final (`/tela` → `/tela/`) sai com o Host interno e quebra atrás do proxy
+  (foi o caso de `/entregas_cnpj` em 01/10/2026).
+- Link para a outra app usa o prefixo dela fixo: `/bhadrasana2/...` ou `/virasana/...`.
+- Teste montando a app no prefixo (modelo: `virasana/tests/test_prefixo_proxy.py`, no repo virasana):
+  abre cada tela com e sem barra final sem redirect e confere que todo `href`/`src`/`action`/URL do
+  JS começa com o prefixo.
+
+## Como rodar os testes
+
+```bash
+python -m pytest --cov=virasana virasana/tests
+```
+
+(equivalente ao `testenv` do [tox.ini](tox.ini); `testenv:check` roda `flake8`/`bandit`/`isort`).
+
+A suíte inteira falha neste ambiente por motivos antigos e alheios (coleta sem `ajna_commons` no path, Mongo). Para as funcionalidades novas, rodar os testes delas, que usam SQLite em memória e não tocam bases reais (venv: `virasana-venv`):
+
+```bash
+python qualidade_navii.py              # o gate inteiro: testes + flake8 + bandit + radon dos módulos novos
+python qualidade_navii.py --rapido     # só as verificações estáticas
+python qualidade_navii.py --alterados  # só os testes afetados pelos arquivos alterados (git) e a estática deles
+```
+
+`qualidade_navii.py` (ou `tox -e navii`) tem a lista dos módulos e testes novos: **módulo ou teste novo entra
+lá**. Regras: flake8 com 120 colunas, aspas (`'` simples; `"""` em texto multilinha) e complexidade ciclomática
+≤ 10; bandit sem alertas (SQL montado só com constantes leva `# nosec B608`, com a justificativa num comentário
+na linha de cima — palavras depois do `nosec` viram ruído no bandit); radon sem nota D ou pior. Mongo nos
+testes: `mongomock` (extras `dev`). Cada arquivo de teste tem de passar também rodando sozinho.
+
+**Durante o desenvolvimento, só os testes necessários** (pedido do usuário, 22/10/2026): numa mudança
+localizada, rodar `python qualidade_navii.py --alterados` (ou só os arquivos de teste da área) em vez do gate
+inteiro. Afetados por um `.py`: os testes que executaram o arquivo na última rodada inteira (mapa gravado pelo
+pytest-cov em `.mapa_testes_gate.json`) mais os que o importam direto; sem o mapa, todos que o importam direta
+ou indiretamente (bem mais largo: `busca_navii` importa o núcleo do ciclo de vida). Template, dado ou estático
+vale pelos `.py` que citam o nome dele. Ao terminar, **dizer o que rodou e oferecer** o gate inteiro
+(`python qualidade_navii.py`) — não rodar sem o usuário aceitar, salvo mudança ampla ou em código compartilhado.
+Antes do deploy, o gate inteiro.
+
+**No servidor (Linux, homologação), à mão** — ambiente isolado do tox, sem tocar no `virasana-venv` da produção;
+precisa de acesso ao PyPI (o tox repassa `HTTP(S)_PROXY`/`PIP_*`) e dos irmãos `../ajna_docs/commons` e
+`../bhadrasana2`, onde a produção já os procura:
+
+```bash
+virasana-venv/bin/python -m venv ../tox-venv
+../tox-venv/bin/pip install tox
+../tox-venv/bin/tox -e navii
+../tox-venv/bin/tox -e navii -- --alterados --desde ORIG_HEAD
+```
+
+(as duas primeiras, uma vez só — o `tox-venv` sai do Python do `virasana-venv`, então o ambiente do gate usa a
+mesma versão da produção; a última roda só o afetado pelo último `git pull`). O `tox -e navii` instala só
+`requirements-gate.txt` — o que o gate importa, nas versões em que ele passa (Python 3.9, as centrais iguais às
+do `setup.py`), dependências indiretas incluídas; pacote novo importado pelo gate entra lá. Não repassa
+`SQL_URI`/`MONGODB_URI`: os testes ficam no SQLite em memória e no mongomock. Os ambientes `py39`/`check` do
+tox são do código legado (a suíte inteira falha por motivos antigos).
+
+## Backlog
+
+[BACKLOG.md](BACKLOG.md) junta as pendências do NAVI-I, do ciclo de vida, do risco histórico e da busca por texto,
+priorizadas (P0–P3), com a decisão que falta em cada uma. Ao fechar um item, mover para "Feito" com a data.
+
+## Restrição principal: não arriscar produção
+
+Mesma política do [bhadrasana2](../bhadrasana2/CLAUDE.md):
+
+- Mudanças aditivas e isoladas (nova rota/blueprint próprio) em vez de refatorações do que já está em produção.
+- Cuidado redobrado com `virasana/workers/` (Celery) e `virasana/scripts/` usados em cron/periodic — quebrar um desses pode parar processamento assíncrono sem erro visível na hora.
+- Não fazer upgrade de dependências centrais (Flask, SQLAlchemy, OpenCV) como efeito colateral de outra tarefa.
+- Rodar os testes relevantes antes de considerar uma mudança pronta e oferecer o gate inteiro (ver "Como rodar os
+  testes").
+- Mudanças em modelos compartilhados com bhadrasana2 (ex.: `mercantealchemy`) são de maior risco — confirmar com o usuário antes.
+
+## Como trabalhar neste repo (workflow)
+
+Mesmo workflow do bhadrasana2: plano antes de mudanças não-triviais ou que toquem código compartilhado; novas funcionalidades isoladas em blueprint próprio; testes antes de dar por concluído — só os necessários (`--alterados`), dizendo o que rodou e oferecendo o gate inteiro.

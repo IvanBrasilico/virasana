@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Validação de Escaneamento</title>
+  <style>
+    :root{
+      --gov-blue:#155b9c;
+      --gov-blue-dark:#0b3d6e;
+      --gov-green:#168821;
+      --gov-bg:#f8fafc;
+      --gov-surface:#fff;
+      --gov-border:#d9e2ec;
+      --gov-text:#1f2933;
+      --gov-muted:#52606d;
+      --gov-soft:#eff6fb;
+      --gov-warn:#fff4ce;
+      --shadow:0 2px 8px rgba(21,91,156,.08);
+      --radius:10px;
+      --font:'Rawline', 'Open Sans', Arial, sans-serif;
+    }
+    @font-face {
+      font-family: 'Rawline';
+      src: local('Rawline'), local('Open Sans');
+      font-display: swap;
+    }
+    body{
+      margin:0;
+      font-family:var(--font);
+      background:var(--gov-bg);
+      color:var(--gov-text);
+    }
+    header{
+      background:linear-gradient(90deg,var(--gov-blue-dark),var(--gov-blue));
+      color:#fff;
+      padding:20px 24px;
+      box-shadow:var(--shadow);
+    }
+    header h1{
+      margin:0;
+      font-size:24px;
+      font-weight:700;
+    }
+    header p{
+      margin:6px 0 0;
+      opacity:.9;
+      font-size:14px;
+    }
+    main{
+      max-width:1400px;
+      margin:24px auto;
+      padding:0 16px 32px;
+    }
+    .card{
+      background:var(--gov-surface);
+      border:1px solid var(--gov-border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:16px;
+      margin-bottom:16px;
+    }
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .toolbar .left, .toolbar .right{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      align-items:center;
+    }
+    input[type="file"]{
+      padding:8px;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+      background:#fff;
+    }
+    button{
+      border:0;
+      background:var(--gov-blue);
+      color:#fff;
+      padding:10px 14px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    button:hover{ background:var(--gov-blue-dark); }
+    .badge{
+      display:inline-block;
+      padding:4px 10px;
+      border-radius:999px;
+      background:var(--gov-soft);
+      color:var(--gov-blue-dark);
+      font-size:12px;
+      font-weight:700;
+      margin-right:8px;
+    }
+    h2{
+      margin:0 0 12px;
+      font-size:18px;
+      color:var(--gov-blue-dark);
+    }
+    h3{
+      margin:18px 0 10px;
+      font-size:16px;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      overflow:hidden;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+    }
+    th, td{
+      border-bottom:1px solid var(--gov-border);
+      padding:10px 12px;
+      text-align:left;
+      vertical-align:top;
+      font-size:13px;
+      word-break:break-word;
+    }
+    th{
+      background:#f2f7fb;
+      color:var(--gov-blue-dark);
+      font-weight:700;
+      position:sticky;
+      top:0;
+    }
+    tr:hover td{ background:#fbfdff; }
+    .muted{ color:var(--gov-muted); font-size:13px; }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+      gap:12px;
+    }
+    .section{
+      margin-top:16px;
+    }
+    .list-item{
+      margin:0 0 12px;
+    }
+    .subtle{
+      background:var(--gov-warn);
+      border:1px solid #f2d98a;
+      padding:10px 12px;
+      border-radius:8px;
+      color:#6b4e00;
+      font-size:13px;
+    }
+    pre{
+      white-space:pre-wrap;
+      word-break:break-word;
+      margin:0;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+    }
+    details{
+      margin-top:8px;
+      border:1px solid var(--gov-border);
+      border-radius:8px;
+      overflow:hidden;
+      background:#fff;
+    }
+    summary{
+      cursor:pointer;
+      padding:10px 12px;
+      background:#f7fafc;
+      font-weight:600;
+    }
+    details > div{
+      padding:12px;
+      border-top:1px solid var(--gov-border);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Validação de Escaneamento</h1>
+    <p>Visualização dos resultados em formato de tabela, com estilo inspirado no Padrão Digital de Governo.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <input type="file" id="fileInput" accept=".json,application/json" />
+          <button id="loadBtn">Carregar JSON</button>
+        </div>
+        <div class="right">
+          <span class="badge" id="statusBadge">Aguardando arquivo</span>
+        </div>
+      </div>
+      <p class="muted" style="margin:10px 0 0;">Selecione o arquivo JSON gerado pela rotina Python.</p>
+    </div>
+
+    <div id="content" class="section"></div>
+  </main>
+
+  <script>
+    const el = (tag, attrs = {}, children = []) => {
+      const node = document.createElement(tag);
+      Object.entries(attrs).forEach(([k, v]) => {
+        if (k === 'class') node.className = v;
+        else if (k === 'html') node.innerHTML = v;
+        else node.setAttribute(k, v);
+      });
+      (Array.isArray(children) ? children : [children]).forEach(c => {
+        if (c === null || c === undefined) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+      return node;
+    };
+
+    function renderTable(title, data) {
+      const wrap = el('div', { class: 'card' });
+      wrap.appendChild(el('h2', {}, title));
+
+      if (!Array.isArray(data) || data.length === 0) {
+        wrap.appendChild(el('div', { class: 'subtle' }, 'Sem registros.'));
+        return wrap;
+      }
+
+      const keys = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+      const table = el('table');
+      const thead = el('thead');
+      const trh = el('tr');
+      keys.forEach(k => trh.appendChild(el('th', {}, k)));
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = el('tbody');
+      data.forEach(row => {
+        const tr = el('tr');
+        keys.forEach(k => {
+          let v = row[k];
+          if (v && typeof v === 'object') v = JSON.stringify(v, null, 2);
+          tr.appendChild(el('td', {}, v === null || v === undefined ? '' : String(v)));
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      return wrap;
+    }
+
+    function renderJsonSection(title, value) {
+      const wrap = el('div', { class: 'card' });
+      wrap.appendChild(el('h2', {}, title));
+      const pre = el('pre', {}, JSON.stringify(value, null, 2));
+      wrap.appendChild(pre);
+      return wrap;
+    }
+
+    function renderInfo(info) {
+      const wrap = el('div', { class: 'card' });
+      wrap.appendChild(el('h2', {}, 'Informações'));
+
+      const grid = el('div', { class: 'grid' });
+
+      const p = info?.parametros || {};
+      const t = info?.totais || {};
+      const g = t?.geral || {};
+
+      grid.appendChild(renderMiniTable('Parâmetros', [
+        { chave: 'Recintos', valor: (p.recintos || []).join(', ') },
+        { chave: 'Data início', valor: p.intervaloPesquisa?.data_inicio || '' },
+        { chave: 'Data fim', valor: p.intervaloPesquisa?.data_fim || '' },
+      ]));
+
+      grid.appendChild(renderMiniTable('Totais gerais', [
+        { chave: 'Total desembarque', valor: g.totalDesembarque ?? '' },
+        { chave: 'Total sem escaneamento', valor: g.totalSemEscaneamento ?? '' },
+        { chave: 'Total baldeação', valor: g.totalBaldeacao ?? '' },
+        { chave: 'Total com entrada sem escaneamento', valor: g.totalComEntradaSemEscaneamento ?? '' },
+      ]));
+
+      wrap.appendChild(grid);
+
+      if (Array.isArray(t.por_recinto) && t.por_recinto.length) {
+        wrap.appendChild(renderTable('Totais por recinto', t.por_recinto));
+      }
+
+      return wrap;
+    }
+
+    function renderMiniTable(title, rows) {
+      const card = el('div', { class: 'card', style: 'margin:0;' });
+      card.appendChild(el('h3', {}, title));
+      const table = el('table');
+      const tbody = el('tbody');
+      rows.forEach(r => {
+        const tr = el('tr');
+        tr.appendChild(el('th', { style: 'width:45%; position:static;' }, r.chave));
+        tr.appendChild(el('td', {}, r.valor));
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      card.appendChild(table);
+      return card;
+    }
+
+    function renderData(json) {
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+
+      document.getElementById('statusBadge').textContent = 'Arquivo carregado';
+
+      content.appendChild(renderInfo(json.info || {}));
+      content.appendChild(renderTable('Desembarques baldeação', json.desembarques_baldeacao || []));
+      content.appendChild(renderTable('Sem saída e sem escaneamento', json.sem_saida_sem_escaneamento || []));
+      content.appendChild(renderTable('Com saída e sem escaneamento', json.com_saida_sem_escaneamento || []));
+      content.appendChild(renderTable('Com entrada e sem escaneamento', json.com_entrada_sem_escaneamento || []));
+      content.appendChild(renderTable('Escaneados após 24h', json.escaneados_apos_24h || []));
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', async () => {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) {
+        document.getElementById('statusBadge').textContent = 'Selecione um arquivo';
+        return;
+      }
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        renderData(json);
+      } catch (err) {
+        document.getElementById('statusBadge').textContent = 'Erro ao carregar';
+        document.getElementById('content').innerHTML = `<div class="card subtle">Erro ao ler JSON: ${err.message}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>

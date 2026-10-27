@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Completude — {{ codigo }}</title>
+
+    <link rel="stylesheet" href="https://cdngovbr-ds.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@govbr-ds/core@3.7.0/dist/core.min.css">
+
+    <style>
+        /* Mesma linguagem visual das telas do NAVII */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: #F8F8F8; }
+        .container-pagina { max-width: 100%; padding: 0 1.5rem; }
+        .voltar { font-size: .8125rem; display: inline-block; margin-bottom: .5rem; }
+        .cabecalho-pagina h1 {
+            font-size: 1.625rem; font-weight: 700; color: #1c1c1c; margin: 0;
+            display: flex; align-items: center; gap: .625rem; flex-wrap: wrap;
+        }
+        .marca {
+            background: #1351B4; color: #fff; font-size: .8125rem; font-weight: 700;
+            letter-spacing: .04em; padding: .25rem .625rem; border-radius: 4px;
+        }
+        .page-subtitle { color: #666; }
+        .painel {
+            background: #fff; border: 1px solid #E6E6E6; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 1.25rem; margin: 1.25rem 0;
+        }
+        .resumo { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+        .resumo .item { font-size: .875rem; color: #555; }
+        .resumo .item strong { display: block; font-size: 1.375rem; color: #1c1c1c; }
+        .alerta { color: #E52207 !important; }
+        .tabela-rolavel { overflow-x: auto; }
+        table.dados { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+        table.dados th {
+            text-align: left; font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em;
+            color: #666; border-bottom: 2px solid #E6E6E6; padding: .5rem .625rem; white-space: nowrap;
+        }
+        table.dados td { border-bottom: 1px solid #F0F0F0; padding: .5rem .625rem; vertical-align: top; }
+        table.dados tr:hover td { background: #F5F8FD; }
+        table.dados tr.sem-escaneamento td { background: #FEF3F2; }
+        .mono { font-family: monospace; white-space: nowrap; }
+        .secundario { display: block; color: #888; font-size: .75rem; }
+        .selo { font-size: .6875rem; font-weight: 700; padding: .125rem .5rem; border-radius: 999px; white-space: nowrap; }
+        .selo.ok { background: rgba(22,136,33,.1); color: #168821; }
+        .selo.falta { background: rgba(229,34,7,.1); color: #E52207; }
+        .miniaturas { display: flex; gap: .375rem; flex-wrap: wrap; }
+        .miniaturas img { width: 7rem; height: 4rem; object-fit: cover; border-radius: 4px; border: 1px solid #DDD; }
+        .vazio { color: #999; font-style: italic; font-size: .8125rem; }
+        .selo.oog { background: #FDE7E4; color: #B3261E; }
+        .selo.fora { background: #FFF5C2; color: #8A6D00; }
+        .selo.so-imagem { background: #F3E8FD; color: #6A1B9A; }
+        .selo.estagio { background: #EDF5FF; color: #1351B4; }
+        .escaneamento { margin-bottom: .25rem; }
+        a.selo.ficha { background: #EDF5FF; color: #1351B4; text-decoration: none; }
+        a.selo.ficha.aberta { background: #FDE7E4; color: #B3261E; }
+        a.selo.ficha.abandono { background: #3D2B1F; color: #fff; }
+        .tipo { white-space: nowrap; }
+    </style>
+</head>
+<body>
+<div class="container-pagina py-4">
+
+    <a class="voltar" href="{{ url_for('completude.index', inicio=inicio, fim=fim, sem_oog=1 if sem_oog else None,
+                                     com_cabotagem=1 if com_cabotagem else None) }}">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Completude de escaneamentos</a>
+    <div class="cabecalho-pagina">
+        <h1><span class="marca">{{ 'TRA' if fluxo == 'tra' else 'OPERADOR' }}</span>
+            {{ codigo }} {% if nome %}— {{ nome }}{% endif %}</h1>
+        <p class="page-subtitle text-down-01 mb-0 mt-1">{{ dados_fluxo.titulo }}: {{ dados_fluxo.caminho }}.
+            Período de {{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}.
+            {% if sem_oog %}Sem os potenciais OOG (open top, plataforma).{% endif %}
+            {% if not com_cabotagem %}Sem a cabotagem (escaneamento não obrigatório).{% endif %}
+            {% if url_navii %}Clique no contêiner para ver o card da operação no NAVI-I.{% endif %}</p>
+    </div>
+
+    <div class="painel">
+        <div class="resumo">
+            <div class="item"><strong>{{ resumo.total }}</strong>{{ dados_fluxo.rotulo_total }}</div>
+            <div class="item"><strong class="{{ 'alerta' if resumo.sem_escaneamento }}">{{ resumo.sem_escaneamento }}</strong>sem escaneamento</div>
+            <div class="item"><strong>{{ '%.1f' | format(resumo.pct_sem_escaneamento * 100) }}%</strong>sem escaneamento</div>
+            <div class="item"><strong>{{ resumo.sem_imagem }}</strong>sem imagem</div>
+            {% if not sem_oog %}<div class="item"><strong>{{ resumo.oog }}</strong>potenciais OOG ({{ resumo.oog_sem_escaneamento }} sem escaneamento)</div>{% endif %}
+            {% set com_ficha = linhas | selectattr('fichas') | list %}
+            <div class="item"><strong>{{ com_ficha | length }}</strong>com Ficha OVR
+                ({{ linhas | selectattr('fichas') | map(attribute='fichas') | map('selectattr', 'abandono') | map('list') | select | list | length }} com FMA — abandono)</div>
+            {% if fluxo == 'tra' %}
+            <div class="item"><strong>{{ resumo.total_saidas }}</strong>saídas do seco</div>
+            <div class="item"><strong>{{ resumo.saidas_sem_escaneamento }}</strong>saídas sem escaneamento</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% set implicita = {'inspecao': 'inspeção', 'pesagem': 'pesagem'} %}
+    {% set confianca = {'alta': 'alta', 'media': 'média', 'baixa': 'baixa'} %}
+    <div class="painel">
+        {% if linhas %}
+        <div class="tabela-rolavel">
+            <table class="dados">
+                <thead>
+                    <tr>
+                        <th>Contêiner / CE</th><th>Tipo</th><th>Desembarque</th><th>Saída do operador</th>
+                        {% if fluxo == 'tra' %}<th>Entrada no seco</th><th>Saída do seco</th>{% endif %}
+                        <th>Situação</th><th>Ficha OVR</th><th>Escaneamento</th><th>Imagens</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for lin in linhas %}
+                    <tr class="{{ '' if lin.escaneamentos else 'sem-escaneamento' }}">
+                        <td class="mono">{% if url_navii and lin.navii %}<a href="{{ url_navii }}?{{ lin.navii | urlencode }}" target="_blank" rel="noopener" title="Abrir o card do contêiner no NAVI-I (nova aba)">{{ lin.conteiner }}</a>{% else %}{{ lin.conteiner }}{% endif %}<span class="secundario">{% if lin.ce and url_extrato_ce is defined %}<a href="{{ url_extrato_ce(lin.ce) }}" target="_blank" rel="noopener" title="Extrato do CE (nova aba)">{{ lin.ce }}</a>{% else %}{{ lin.ce or '' }}{% endif %}{% if lin.cabotagem %} · cabotagem{% endif %}</span></td>
+                        <td class="tipo">{% if lin.tipo %}<span title="{{ lin.tipo.descricao }}"><span class="mono">{{ lin.tipo.codigo }}</span>
+                            <span class="secundario">{{ lin.tipo.curta }}</span></span>{% if lin.oog %} <span class="selo oog" title="Open top / plataforma: pode ser carga fora de gabarito, que não passa no escâner">potencial OOG</span>{% endif %}{% elif lin.tipo_codigo %}<span class="mono">{{ lin.tipo_codigo }}</span>{% else %}—{% endif %}</td>
+                        <td class="mono">{{ lin.desembarque.strftime('%d/%m/%Y %H:%M') if lin.desembarque else '—' }}</td>
+                        <td class="mono">{{ lin.saida.strftime('%d/%m/%Y %H:%M') if lin.saida else '—' }}</td>
+                        {% if fluxo == 'tra' %}
+                        <td class="mono">{{ lin.entrada_seco.strftime('%d/%m/%Y %H:%M') if lin.entrada_seco else '—' }}{% if lin.entrada_implicita %}<span class="secundario" title="O recinto não informou a entrada: deduzida da {{ implicita[lin.entrada_implicita] or lin.entrada_implicita }} no recinto">implícita ({{ implicita[lin.entrada_implicita] or lin.entrada_implicita }})</span>{% endif %}</td>
+                        <td class="mono">{{ lin.saida_seco.strftime('%d/%m/%Y %H:%M') if lin.saida_seco else '—' }}</td>
+                        {% endif %}
+                        <td>{% if lin.estagio %}<span class="selo estagio" title="{{ lin.estagio.descricao }}">{{ lin.estagio.rotulo }}</span>{% else %}—{% endif %}{% if lin.motivo %}<span class="secundario">{{ lin.motivo }}</span>{% endif %}</td>
+                        <td>{% for f in lin.fichas %}<div class="escaneamento"><a class="selo ficha{{ ' aberta' if f.aberta }}{{ ' abandono' if f.abandono }}" href="{{ f.url }}" target="_blank" rel="noopener" title="{{ 'FMA' if f.abandono else 'Ficha' }} {{ f.numero }} · {{ f.tipo or '' }} — {{ f.fase or '' }}{{ ' (pelo contêiner)' if f.via == 'contêiner' }}">Ficha {{ f.id }}{{ ' · FMA' if f.abandono }}</a><span class="secundario">{{ f.fase or '' }}</span></div>{% else %}—{% endfor %}</td>
+                        <td>{% for e in lin.escaneamentos %}<div class="escaneamento"><span class="selo ok" title="{{ e.motivo or '' }}">{{ e.data.strftime('%d/%m %H:%M') if e.data else e.id }}</span>{% if e.fora %} <span class="selo fora" title="Escaneado fora, antes da entrada no recinto seco (escaneamento terceirizado)">fora</span>{% endif %}{% if e.so_imagem %} <span class="selo so-imagem" title="Há a imagem do escâner no horário, mas a inspeção não foi transmitida à API Recintos">sem inspeção na API</span>{% endif %}{% if e.recinto or e.confianca %}<span class="secundario">{{ e.recinto or '' }}{% if e.confianca %} · confiança {{ confianca[e.confianca] or e.confianca }}{% endif %}</span>{% endif %}</div>{% else %}<span class="selo falta">sem escaneamento</span>{% endfor %}</td>
+                        <td><div class="miniaturas">{% for imagem in lin.imagens %}<a href="{{ urls_imagem.arquivo }}{{ imagem }}" target="_blank"><img src="{{ urls_imagem.mini }}{{ imagem }}" alt="Imagem de escaneamento" loading="lazy"></a>{% else %}{% if lin.escaneamentos %}<span class="selo falta">sem imagem</span>{% endif %}{% endfor %}</div></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="vazio">Nenhum contêiner deste recinto no período.</p>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>

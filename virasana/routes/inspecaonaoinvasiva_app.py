@@ -4,16 +4,10 @@ import gridfs
 from dateutil import parser
 from flask import request, jsonify, flash, redirect, url_for, render_template
 
+from bhadrasana.models.ovr import Recinto
 from virasana.forms.InspecaoNaoInvasiva import InspecaoNaoInvasivaForm
-from virasana.views import csrf
 
-# Dicionário para traduzir codigoRecinto
-RECINTO_DICT = {
-    "8931305": "TRANSBRASA",
-}
-
-
-def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
+def processar_inspecaonaoinvasiva(mongodb, session, json_original, arquivo_imagem):
     # 3) Montar metadata
     metadata = {'contentType': 'image/jpeg'}
     print(json_original)
@@ -25,28 +19,45 @@ def processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem):
         metadata['dataescaneamento'] = data_escaneamento
     except Exception as e:
         raise Exception(f'Não foi possível parsear data "{data_escaneamento_str}" do arquivo "{filename}": {e}')
+    try:
+        data_transmissao_str = json_original.get('dataHoraTransmissao')
+        data_transmissao = parser.parse(data_transmissao_str).replace(microsecond=0)
+        metadata['datahoratransmissao'] = data_transmissao
+    except Exception as e:
+        raise Exception(f'Não foi possível parsear data "{data_transmissao_str}" do arquivo "{filename}": {e}')
     lista_conteineres = json_original.get('listaConteineresUld', [])
     numeroinformado = None
     if lista_conteineres and len(lista_conteineres) > 0:
         numeroinformado = lista_conteineres[0].get('numeroConteiner') or lista_conteineres[0].get('numero')
     metadata['numeroinformado'] = numeroinformado
-    metadata['unidade'] = 'ALFSTS'
     codigo_recinto = json_original.get('codigoRecinto')
-    recinto = RECINTO_DICT.get(codigo_recinto, 'RECINTO_NAO_ENCONTRADO')
-    metadata['recinto'] = recinto
+    recinto = session.query(Recinto).filter(Recinto.cod_siscomex == codigo_recinto).one_or_none()
+    if recinto is None:
+        metadata['unidade'] = 'ALFSTS'
+        metadata['cod_unidade'] = '0817800'
+        metadata['recinto'] = 'RECINTO_NAO_ENCONTRADO'
+        metadata['recintoid'] = 0
+    else:
+        metadata['unidade'] = recinto.sigla_unidade
+        metadata['cod_unidade'] = recinto.cod_unidade
+        metadata['recinto'] = recinto.cod_avatar
+        metadata['recintoid'] = recinto.cod_siscomex
 
     # 4) Salvar arquivo no GridFS com metadata
     # arquivo_imagem.stream já é um arquivo-like object (bytes)
     fs = gridfs.GridFS(mongodb)
     file_id = fs.put(arquivo_imagem.stream, filename=filename, metadata=metadata)
+    return file_id
 
 
-def configure(app):
+def configure(app, csrf):
     """Configura rotas para evento."""
 
+    @csrf.exempt
     @app.route('/inspecaonaoinvasiva', methods=['GET', 'POST'])
     def inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
+        session = app.config['db_session']
         form = InspecaoNaoInvasivaForm()
         if form.validate_on_submit():
             json_data = {
@@ -58,7 +69,7 @@ def configure(app):
             }
 
             try:
-                file_id = processar_inspecaonaoinvasiva(mongodb, json_data, form.imagem.data)
+                file_id = processar_inspecaonaoinvasiva(mongodb, session, json_data, form.imagem.data)
                 flash('Evento enviado com sucesso! File ID: ' + str(file_id), 'success')
             except Exception as e:
                 flash('Erro ao enviar evento: ' + str(e), 'danger')
@@ -71,6 +82,7 @@ def configure(app):
     @app.route('/api/inspecaonaoinvasiva', methods=['POST'])
     def api_inspecaonaoinvasiva():
         mongodb = app.config['mongodb']
+        session = app.config['db_session']
         try:
             # 1) Receber JSON da forma multipart, campo 'json'
             if 'json' not in request.form:
@@ -88,7 +100,7 @@ def configure(app):
                     '.jpg'):
                 return jsonify({"error": "Arquivo deve ser .jpeg ou .jpg"}), 400
 
-            file_id = processar_inspecaonaoinvasiva(mongodb, json_original, arquivo_imagem)
+            file_id = processar_inspecaonaoinvasiva(mongodb, session, json_original, arquivo_imagem)
             return jsonify({"message": "Salvo com sucesso", "file_id": str(file_id)}), 201
 
         except Exception as e:

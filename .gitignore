@@ -46,6 +46,9 @@ htmlcov/
 .tox/
 .coverage
 .coverage.*
+# qualidade_navii.py: cobertura por teste e mapa dos testes por arquivo (para o --alterados)
+.cobertura_gate
+.mapa_testes_gate.json
 .cache
 nosetests.xml
 coverage.xml
@@ -175,3 +178,6 @@ ultimo_id_transmitido.txt
 /bhadrasana/*
 /APS.json
 /virasana/notebooks/saidas_entradas.xlsx
+/pymysql_test.py
+virasana/static/25945585831/
+/navi_etls/ambiente/RFEMP0007433243_20261024.md

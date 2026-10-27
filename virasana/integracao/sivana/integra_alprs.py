@@ -50,7 +50,29 @@ def update(connection):
                 # Adiciona milisegundos à última datahora, para evitar pegar dado repetido.
                 start_date = start_date + timedelta(milliseconds=999)
                 logger.debug(lpr_manager.format_datetime_for_url(start_date))
-                payload, ultima_transmissao = lpr_manager.processa_fonte_alpr(start_date, end_date)
+                try:
+                    payload, ultima_transmissao = lpr_manager.processa_fonte_alpr(start_date, end_date)
+                except Exception as err:
+                    logger.error(err)
+                    continue
+                if payload['totalLinhas'] == 0:
+                    # Para fontes baseadas em janela (não-APIRecintos), avançar no máximo até now()
+                    if classe is not APIRecintos:
+                        agora = datetime.now()
+                        candidato = end_date
+                        nova_ultima_transmissao = min(candidato, agora)
+                        # Inserir uma tolerância de 1h no salto temporal
+                        nova_ultima_transmissao = nova_ultima_transmissao - timedelta(hours=1)
+                        lpr_manager.set_ultima_transmissao(nova_ultima_transmissao)
+                        logger.info(
+                            f"Nenhum registro para {classe.__name__}; marcador avançado para "
+                            f"{nova_ultima_transmissao}"
+                        )
+                    else:
+                        logger.info(
+                            f"Nenhum registro para {classe.__name__}; marcador de ID não alterado."
+                        )
+                    continue
                 logger.info('Primeiros 3 registros a enviar, para conferência: %s',
                             payload['passagens'][:2])
                 url_api_sivana = lpr_manager.organizacao.url_api_sivana

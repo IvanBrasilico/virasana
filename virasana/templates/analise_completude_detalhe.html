@@ -1,0 +1,127 @@
+{% extends "layout.html" %} {% block content %} {{super()}}
+<div id="main" class="container-fluid">
+    <div id="top" class="row col-sm-12">
+        <h3>Detalhamento — {{ cod_recinto }} ({{ totais.nome_recinto }})</h3>
+        <p>Período: {{ data_inicio.strftime('%d/%m/%Y') }} a {{ data_fim.strftime('%d/%m/%Y') }}</p>
+        <a class="btn btn-default" href="{{ url_for('analise_completude_recintos_secos', datainicio=data_inicio.isoformat(), datafim=data_fim.isoformat()) }}">
+            &laquo; Voltar para a visão agregada
+        </a>
+    </div>
+
+    <div id="totais" class="row col-sm-12">
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.total }}</h4>
+                    <small>Total de entradas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.sem_escaneamento }} ({{ '%.1f'|format(totais.pct_sem_escaneamento * 100) }}%)</h4>
+                    <small>Sem escaneamento</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.sem_imagem }}</h4>
+                    <small>Sem imagem</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="panel panel-default">
+                <div class="panel-body text-center">
+                    <h4>{{ totais.saidas_sem_escaneamento }} ({{ '%.1f'|format(totais.pct_saidas_sem_escaneamento * 100) }}%)</h4>
+                    <small>Saídas (seco) sem escaneamento — {{ totais.total_saidas }} saídas no período</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="resultados" class="row col-sm-12 table">
+        <table class="inlineTable table table-bordered table-hover table-responsive sortable">
+            <thead>
+                <tr>
+                    <th data-sort="text">Contêiner</th>
+                    <th data-sort="text">Data entrada (seco)</th>
+                    <th data-sort="text">Data saída (seco)</th>
+                    <th data-sort="text">Escaneamento</th>
+                    <th data-sort="text">Imagem</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for numeroConteiner, data_entrada_seco, data_saida_seco, escaneamento_id, imagem_id in linhas %}
+                <tr>
+                    <td>{{ numeroConteiner }}</td>
+                    <td data-sort-value="{{ data_entrada_seco.isoformat() if data_entrada_seco else '' }}">
+                        {{ data_entrada_seco.strftime('%d/%m/%Y %H:%M') if data_entrada_seco else '' }}
+                    </td>
+                    <td data-sort-value="{{ data_saida_seco.isoformat() if data_saida_seco else '' }}">
+                        {{ data_saida_seco.strftime('%d/%m/%Y %H:%M') if data_saida_seco else '—' }}
+                    </td>
+                    <td>
+                        {% if escaneamento_id %}
+                            <span class="label label-success">OK ({{ escaneamento_id }})</span>
+                        {% else %}
+                            <span class="label label-danger">Sem escaneamento</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if imagem_id %}
+                            <a href="/virasana/file?_id={{imagem_id}}" target="_BLANK">
+                                <img src="/virasana/mini1/{{imagem_id}}" width="150px"/>
+                            </a>
+                        {% else %}
+                            <span class="label label-danger">Sem imagem</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">Nenhum registro no período selecionado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="bottom" class="row col-sm-12">
+        AJNA - Receita Federal do Brasil 2026
+    </div>
+</div>
+{% endblock %} {% block scripts %} {{super()}}
+<script>
+function ordenarTabela(tabela, indiceColuna, numerico) {
+    const tbody = tabela.querySelector('tbody');
+    const linhas = Array.from(tbody.querySelectorAll('tr'));
+    const asc = !(tabela.dataset.sortCol == indiceColuna && tabela.dataset.sortDir === 'asc');
+    linhas.sort((a, b) => {
+        const celA = a.children[indiceColuna];
+        const celB = b.children[indiceColuna];
+        let valA = celA.dataset.sortValue !== undefined ? celA.dataset.sortValue : celA.innerText.trim();
+        let valB = celB.dataset.sortValue !== undefined ? celB.dataset.sortValue : celB.innerText.trim();
+        if (numerico) {
+            valA = parseFloat(valA) || 0;
+            valB = parseFloat(valB) || 0;
+            return asc ? valA - valB : valB - valA;
+        }
+        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+    linhas.forEach(linha => tbody.appendChild(linha));
+    tabela.dataset.sortCol = indiceColuna;
+    tabela.dataset.sortDir = asc ? 'asc' : 'desc';
+}
+
+document.querySelectorAll('table.sortable th[data-sort]').forEach((th) => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', () => {
+        const tabela = th.closest('table');
+        const indiceColuna = Array.from(th.parentNode.children).indexOf(th);
+        const numerico = th.dataset.sort === 'numeric';
+        ordenarTabela(tabela, indiceColuna, numerico);
+    });
+});
+</script>
+{% endblock %}

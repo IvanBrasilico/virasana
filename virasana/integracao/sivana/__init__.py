@@ -78,20 +78,20 @@ class TratamentoLPR:
         # Baixar o conteúdo XML
         payload = {'totalLinhas': 0, 'offset': self.organizacao.offset, 'passagens': []}
         ultima_transmissao = self.organizacao.ultima_transmissao
-        try:
-            root = self.get(self.get_url(pstart, pend))
-            # Iterate over each LPRRecord and put result in a list
-            logger.info('Processando XML..')
-            records = []
-            for lpr_record in root.findall('.//LPRRecord'):
-                self.parse_xml(lpr_record)
+        root = self.get(self.get_url(pstart, pend))
+        # Iterate over each LPRRecord and put result in a list
+        logger.info('Processando XML..')
+        records = []
+        for lpr_record in root.findall('.//LPRRecord'):
+            self.parse_xml(lpr_record)
+            try:
                 records.append(self.to_sivana())
-                ultima_transmissao = max(self.dataHora, ultima_transmissao)
-            payload = {'totalLinhas': len(records), 'offset': self.organizacao.offset,
-                       'passagens': records}
-            logger.info(f'Recuperadas {len(records)} passagens da organização {type(self).__name__}')
-        except Exception as err:
-            logger.error(err)
+            except Exception as err:
+                logger.error(err)
+            ultima_transmissao = max(self.dataHora, ultima_transmissao)
+        payload = {'totalLinhas': len(records), 'offset': self.organizacao.offset,
+                   'passagens': records}
+        logger.info(f'Recuperadas {len(records)} passagens da organização {type(self).__name__}')
         return payload, ultima_transmissao
 
     def to_sivana(self):

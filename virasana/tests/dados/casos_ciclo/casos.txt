@@ -1,0 +1,33 @@
+# Casos REAIS do ciclo de vida a extrair (caso_ciclo.py --casos; 22/10/2026). Uma linha por caso:
+#   nome  contêiner [contêiner ...]  # o que o caso marca
+# Escolhidos nas sombras de 22/10/2026 (sombra_porto*.csv, desembarques de 22/09 a 22/10). Depois de extrair, os JSON
+# vão para esta pasta e o gabarito de cada um para test_casos_reais_ciclo.py.
+
+# --- o que a correção do porto do desembarque mudou (validar o gabarito com o usuário)
+perna_seguinte_suape          CIPU5003273   # Suape: o CE gravado era a cabotagem que SAI de Suape; o novo, a que chega
+perna_seguinte_pecem          EAIU1601355   # Pecém: idem
+cabotagem_que_sai_embraport   FTAU1593723 HAMU4699375 MNBU9227107  # vazio no Mercante; o gravado era a cabotagem que sai depois; agora sem CE
+cabotagem_que_sai_btp         MRSU4528707 CAAU6628668  # BTP: CE da inspeção fora do Mercante; entrada na Embraport 95 h depois / baldeação na Embraport
+pecem_duas_familias           SUDU6238839 MMAU1065037 MTSU9615182 MRKU6602987  # duas famílias de importação com escala próxima; mudou com as escalas do porto; escala declarada não confere
+passagem_ce_novo_confere      FSCU8280571 MRKU4972961  # CE de passagem (tráfego 9) achado agora; a escala declarada confere
+passagem_ce_novo_nao_confere  MRKU9673388 MRKU7971613  # CE de passagem achado agora; a escala declarada NÃO confere (pode ser a perna seguinte)
+porto_intermediario_suape     MSMU8710664 TGHU8767660  # CE de importação de outra unidade descarregado em Suape e reembarcado
+porto_intermediario_rio       GCXU5651625 MRSU8255642  # idem no Rio (MultiRio)
+embarque_exportacao_outro     MRSU7476660 CMAU3225772  # sem CE de chegada; o embarque declara CE de exportação de outra unidade: incompleto (gravado: passagem)
+
+# --- regras estáveis (cada fluxo e cada tratamento de dado ruim)
+tra_master_filhote            BEAU4564789   # TRA para o seco, família master/filhote, confiança alta
+operador_entregue             BEAU4275512   # entregue pelo operador (BTP), master/filhote
+operador_em_papel_de_tra      BAOU3800744 BMOU5617445  # outro operador de Santos em papel de TRA
+ecoporto_escaneamento_fora    CAAU7943520   # escaneamento na passagem pelo Ecoporto antes do seco
+entrada_implicita             BSIU8301693   # entrada no Ecoporto não informada, deduzida da pesagem
+reentrada_no_operador         CAAU2000816   # incompleto: saída do operador não informada (reentrada); vazio
+saida_duvidosa                CHIU9036227 CAIU3022807  # saída com CE de outra família: aberto para revisão (Rio e Suape)
+vazio_entrada_seguinte        BEAU2601538 APHU7283233  # entregue sem a saída informada (entrada seguinte com o contêiner vazio)
+voltou_ao_operador            APHU7242419   # entregue e depois voltou ao operador do desembarque
+seco_sem_saida                BMOU1450600   # saída do seco não informada (entrada noutro operador)
+embraport_sem_ce              BEAU5056191   # Embraport não declara CE: passagem sem CE
+multirio_sem_ce               AXIU2199156   # MultiRio sem CE declarado: passagem
+aguardando_seco               BAFU8896871   # saiu do operador; aguardando a entrada no seco (aberto)
+conteiner_consolidado         EMCU8243827   # dois BLs únicos do mesmo manifesto no contêiner (C7: uma família)
+pecem_entregue                BEAU2951238   # Pecém: entregue pelo operador

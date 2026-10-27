@@ -38,7 +38,8 @@ from ajna_commons.utils import ImgEnhance
 from ajna_commons.utils.images import bytes_toPIL, mongo_image, PIL_tobytes, recorta_imagem
 from ajna_commons.utils.sanitiza import mongo_sanitizar
 from bhadrasana.models import Usuario
-from bhadrasana.models.ovr import OVR
+from bhadrasana.models.ovr import OVR, Recinto
+from virasana.analytic_scripts.apirecintos.completude_escaneamentos import valida_regra_escaneamento_json
 from virasana.conf import APP_PATH
 from virasana.forms.auditoria import FormAuditoria, SelectAuditoria
 from virasana.forms.filtros import FormFiltro, FormFiltroAlerta, FilesForm, ColorMapForm
@@ -50,6 +51,7 @@ from virasana.integracao import (CHAVES_GRIDFS, carga, dict_to_html,
 from virasana.integracao.due import due_manager
 from virasana.integracao.mercante.mercantealchemy import Conhecimento, Item
 from virasana.integracao.padma import consulta_padma
+from virasana.navii.menu import subgrupo_navii
 from virasana.integracao.risco.alertas_manager import get_alertas_filtro_agrupados
 from virasana.models.anomalia_lote import get_conhecimentos_filtro, \
     get_ids_score_conhecimento_zscore
@@ -1484,6 +1486,50 @@ def image_editor(_id):
     return render_template('filerobot.html', _id=_id)
 
 
+def parse_datetime_local(value):
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+
+
+@csrf.exempt
+@app.route("/completude_escaneamento", methods=["GET", "POST"])
+def validacao():
+    session = app.config.get('db_session')
+    dados = None
+    selecionado = "SBT"
+    data_inicio = ""
+    data_fim = ""
+    recintos = [recinto.cod_avatar for recinto in session.query(Recinto).all()]
+
+    if request.method == "POST":
+        selecionado = request.form.get("codigo_recinto", "SBT")
+        data_inicio = request.form.get("data_inicio", "")
+        data_fim = request.form.get("data_fim", "")
+        recinto = session.query(Recinto).filter(Recinto.cod_avatar == selecionado).one_or_none()
+        if recinto:
+            codigo_recinto = recinto.cod_siscomex
+        inicio = parse_datetime_local(data_inicio)
+        fim = parse_datetime_local(data_fim)
+
+        if codigo_recinto and inicio and fim:
+            dados = valida_regra_escaneamento_json(
+                session,
+                inicio,
+                fim,
+                recintos=[codigo_recinto]
+            )
+
+    return render_template(
+        "completude_escaneamentos.html",
+        dados=dados,
+        selecionado=selecionado,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        recintos=recintos
+    )
+
+
 @nav.navigation()
 def mynavbar():
     """Menu da aplicação."""
@@ -1509,6 +1555,7 @@ def mynavbar():
                  Separator(),
                  View('Importar Bson', 'upload_bson'),
              ),
+             subgrupo_navii(),
              ]
     if current_user.is_authenticated:
         items.append(View('Sair', 'commons.logout'))

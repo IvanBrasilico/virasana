@@ -1,0 +1,35 @@
+# coding: utf-8
+"""
+Submenu "NAVII" do menu principal do virasana (`views.mynavbar`).
+
+As telas de análise de risco ficam aqui, num lugar só, para não mexer mais no
+menu legado. Cada entrada é (texto, endpoint Flask); o menu é montado com
+`url_for`, então respeita o prefixo /virasana do Servidor. Um endpoint errado
+derrubaria TODAS as páginas (o menu é renderizado em todas): o teste
+`test_prefixo_proxy.TestMenuNavii` monta cada entrada.
+"""
+from flask_nav.elements import Link, Separator, Subgroup, View
+
+ENTRADAS_NAVII = [
+    ('NAVI-I — Análise de risco na importação', 'navii.index'),
+    ('NAVI-I — Busca por texto', 'navii.texto'),
+    ('NAVI-I — Fichas em acompanhamento', 'navii.fichas'),
+    ('NAVI-I — Estatísticas de uso', 'navii.estatisticas'),
+    ('Entregas por CNPJ', 'entregas.index'),
+    ('Transporte das apreensões', 'apreensoes.index'),
+    ('Risco histórico das Fichas', 'risco_historico.index'),
+    ('Completude de escaneamentos', 'completude.index'),
+    ('Saúde do sistema (supervisores)', 'saude.index'),   # health check; a tela recusa quem não é Supervisor
+]
+
+# Manual publicado no Apache, fora das apps (ver ajna_docs/docs2.0/publica_manual.sh)
+URL_MANUAL = '/ajna/risco/'
+
+
+def subgrupo_navii() -> Subgroup:
+    return Subgroup(
+        'NAVII',
+        *[View(texto, endpoint) for texto, endpoint in ENTRADAS_NAVII],
+        Separator(),
+        Link('Manual (análise de risco)', URL_MANUAL),
+    )

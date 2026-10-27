@@ -221,7 +221,8 @@ def configure(app):
     def classifica_aleatoriamente(session, numeroCEmercante: str,
                                   num_dsi: str, data_registro: datetime,
                                   user_name):
-        if e_canal_vermelho(num_dsi, data_registro):
+        canal_vermelho, motivo = e_canal_vermelho(num_dsi, data_registro)
+        if canal_vermelho:
             classifica_ce(session, numeroCEmercante,
                           ClasseRisco.VERMELHO.value, 'Classificação aleatória',
                           bloquear_edicao=True)

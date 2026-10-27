@@ -117,47 +117,6 @@ def periodic_updates(db, connection, lote=2000):
     except Exception as err:
         logger.error(err, exc_info=True)
     # carga.dados_carga_grava_fsfiles(db, lote * 2, doisdias)
-    try:
-        anomalia_lote.processa_zscores(db, cincodias, ontem)
-    except Exception as err:
-        logger.error(err, exc_info=True)
-    try:
-        info_ade02.adquire_pesagens(db, cincodias, ontem)
-        info_ade02.pesagens_grava_fsfiles(db, cincodias, ontem)
-        atualiza_stats(db)
-        carga.cria_campo_pesos_carga(db, lote * 3)
-        carga.cria_campo_pesos_carga_pesagem(db, lote * 3)
-    except Exception as err:
-        logger.error(err, exc_info=True)
-    try:
-        print('TFS desligado...')
-        # predictions_update2('index', 'index', lote, 8)
-    except Exception as err:
-        logger.error(err, exc_info=True)
-    # predictions_update2('ssd', 'bbox', lote, 4)
-    # gera_indexes()
-    # print(reload_indexes())
-    # tfs_predictions_update('vazio', lote, 20)
-    try:
-        # tfs_predictions_update('peso', lote, 20)
-        print('TFS desligado...')
-    except Exception as err:
-        logger.error(err, exc_info=True)
-    # predictions_update2('vaziosvm', 'vazio', lote, 4)
-    # predictions_update2('peso', 'peso', lote, 16)
-    try:
-        jupapi.novas_gmcis(connection)
-    except Exception as err:
-        logger.error(err, exc_info=True)
-    try:
-        conformidadeupdate.update_conformidade(db, connection)
-        # Depois de dez dias, desiste de atualizar os campos extras puxados do bbox
-        conformidadeupdate.preenche_bbox(db, connection, start=dezdias)
-        # Depois de vinte dias, desiste de atualizar os campos extras puxados do Carga
-        conformidadeupdate.completa_conformidade(db, connection, start=vintedias)
-        conformidadeupdate.preenche_isocode(db, connection, start=vintedias)
-    except Exception as err:
-        logger.error(err, exc_info=True)
     call_update(connection,
                 'Rodando acertos SQL',
                 acertos_sql.update)
